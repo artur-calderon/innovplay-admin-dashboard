@@ -1,829 +1,517 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/authContext';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { MultiSelect, Option } from '@/components/ui/multi-select';
-import { Headset, Copy, ExternalLink, Link as LinkIcon, Users, CheckCircle2, Loader2, AlertCircle, Filter } from 'lucide-react';
+import { Headset, RefreshCw, School, GraduationCap, BookOpen, Eye, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
-import { createGoogleMeetLink } from '@/services/googleMeetService';
-
-interface Class {
-  id: string;
-  name: string;
-  school_id?: string;
-  school_name?: string;
-  grade_id?: string;
-  grade_name?: string;
-}
-
-interface Student {
-  id: string;
-  name: string;
-  email?: string;
-  class_id: string;
-}
-
-interface School {
-  id: string;
-  name: string;
-}
-
-interface Grade {
-  id: string;
-  name: string;
-}
+import { CreatePlantaoForm } from '@/components/plantao/CreatePlantaoForm';
+import { PlantaoList } from '@/components/plantao/PlantaoList';
+import { PlantaoOnline, PlantaoFilters } from '@/types/plantao';
+import { getUserHierarchyContext } from '@/utils/userHierarchy';
 
 export default function PlantaoOnline() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { toast } = useToast();
-  const [meetLink, setMeetLink] = useState<string>('');
-  const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
-  const [classes, setClasses] = useState<Class[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [isLoadingClasses, setIsLoadingClasses] = useState(false);
-  const [isLoadingStudents, setIsLoadingStudents] = useState(false);
-  const [isGeneratingLink, setIsGeneratingLink] = useState(false);
-
-  // Estados de filtros
-  const [filters, setFilters] = useState({
-    school: '',
-    grade: '',
-  });
-  const [schools, setSchools] = useState<School[]>([]);
-  const [grades, setGrades] = useState<Grade[]>([]);
-  const [isLoadingFilters, setIsLoadingFilters] = useState(false);
+  const [plantoes, setPlantoes] = useState<PlantaoOnline[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('visualizar');
+  const [filters, setFilters] = useState<PlantaoFilters>({});
+  const [schools, setSchools] = useState<Array<{ id: string; name: string }>>([]);
+  const [grades, setGrades] = useState<Array<{ id: string; name: string }>>([]);
+  const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [userContext, setUserContext] = useState<{
+    municipio_id?: string;
+    escola_id?: string;
+    estado_id?: string;
+    turmas?: Array<{ class_id: string; school_id: string; grade_id: string; subject_id?: string }>;
+  }>({});
+  const [isLoadingContext, setIsLoadingContext] = useState(true);
 
   // Verificar permissões
-  const allowedRoles = ['admin', 'professor', 'diretor', 'coordenador', 'tecadm'];
+  const allowedRoles = useMemo(() => ['admin', 'professor', 'diretor', 'coordenador', 'tecadm'], []);
+  const canCreate = allowedRoles.includes(user.role);
 
-  // Carregar escolas e séries para filtros
-  useEffect(() => {
-    const loadFilters = async () => {
-      setIsLoadingFilters(true);
-      try {
-        // Para diretor, coordenador e professor, buscar apenas a escola do usuário
-        if (['diretor', 'coordenador', 'professor'].includes(user.role)) {
-          let userSchoolId: string | null = null;
-          let userSchoolName: string | null = null;
-
-          try {
-            // Buscar dados do usuário
-            const userResponse = await api.get(`/users/${user.id}`);
-            const userData = userResponse.data;
-
-            // Para professor, buscar via turmas
-            if (user.role === 'professor') {
-              try {
-                const teacherResponse = await api.get(`/teacher/${user.id}`);
-                const teacherData = teacherResponse.data;
-                if (teacherData.turmas && teacherData.turmas.length > 0) {
-                  // Pegar a escola da primeira turma (assumindo que professor tem apenas uma escola)
-                  const firstClass = teacherData.turmas[0];
-                  userSchoolId = firstClass.school_id;
-                  userSchoolName = firstClass.school_name || firstClass.escola_nome;
-                }
-              } catch (error) {
-                console.error('Erro ao buscar escola do professor:', error);
-              }
-            } 
-            // Para diretor e coordenador, buscar via endpoint específico
-            else if (['diretor', 'coordenador'].includes(user.role)) {
-              try {
-                const schoolResponse = await api.get(`/users/school/${user.id}`).catch(() => ({ data: null }));
-                const schoolData = schoolResponse?.data?.school || schoolResponse?.data || null;
-                userSchoolId = schoolData?.id || schoolData?.school_id || schoolData?.school?.id;
-                userSchoolName = schoolData?.name || schoolData?.nome || schoolData?.school?.name;
-                
-                // Se não encontrou, tentar via city_id
-                if (!userSchoolId && userData.city_id) {
-                  const schoolsResponse = await api.get('/school/');
-                  const allSchools = Array.isArray(schoolsResponse.data) 
-                    ? schoolsResponse.data 
-                    : (schoolsResponse.data?.data || []);
-                  const municipalitySchools = allSchools.filter(
-                    (school: any) => school.city_id === userData.city_id
-                  );
-                  if (municipalitySchools.length === 1) {
-                    userSchoolId = municipalitySchools[0].id;
-                    userSchoolName = municipalitySchools[0].name || municipalitySchools[0].nome;
-                  }
-                }
-              } catch (error) {
-                console.error('Erro ao buscar escola do diretor/coordenador:', error);
-              }
-            }
-
-            // Se encontrou a escola, definir apenas ela
-            if (userSchoolId && userSchoolName) {
-              setSchools([{
-                id: userSchoolId,
-                name: userSchoolName,
-              }]);
-              // Pré-selecionar a escola automaticamente
-              setTimeout(() => {
-                setFilters((prevFilters) => ({
-                  ...prevFilters,
-                  school: userSchoolId!,
-                }));
-              }, 0);
-            } else {
-              setSchools([]);
-            }
-          } catch (error) {
-            console.error('Erro ao buscar escola do usuário:', error);
-            setSchools([]);
-          }
-        } else if (user.role === 'tecadm') {
-          // Para tecadm, buscar escolas do município do usuário
-          try {
-            const userResponse = await api.get(`/users/${user.id}`);
-            const userData = userResponse.data;
-
-            if (userData.city_id) {
-              // Buscar todas as escolas
-              const schoolsResponse = await api.get('/school/');
-              const allSchools = Array.isArray(schoolsResponse.data) 
-                ? schoolsResponse.data 
-                : (schoolsResponse.data?.data || []);
-              
-              // Filtrar escolas do município do tecadm
-              const municipalitySchools = allSchools.filter(
-                (school: any) => school.city_id === userData.city_id
-              );
-
-              setSchools(municipalitySchools.map((s: any) => ({
-                id: s.id,
-                name: s.name || s.nome,
-              })));
-            } else {
-              setSchools([]);
-            }
-          } catch (error) {
-            console.error('Erro ao buscar escolas do município do tecadm:', error);
-            setSchools([]);
-          }
-        } else {
-          // Para admin, carregar todas as escolas
-          const schoolsResponse = await api.get('/school/');
-          const schoolsData = Array.isArray(schoolsResponse.data) 
-            ? schoolsResponse.data 
-            : (schoolsResponse.data?.data || []);
-          setSchools(schoolsData.map((s: any) => ({
-            id: s.id,
-            name: s.name || s.nome,
-          })));
+  const loadUserContext = useCallback(async () => {
+    setIsLoadingContext(true);
+    try {
+      const context = await getUserHierarchyContext(user.id, user.role);
+      
+      // Buscar estado ID se tiver município com state
+      let estadoId: string | undefined;
+      if (context.municipality?.state) {
+        try {
+          const statesResponse = await api.get('/city/states');
+          const states = statesResponse.data || [];
+          const state = states.find((s: { nome: string }) => s.nome === context.municipality?.state);
+          estadoId = state?.id;
+        } catch (error) {
+          console.error('Erro ao buscar estado:', error);
         }
-      } catch (error) {
-        console.error('Erro ao carregar filtros:', error);
-      } finally {
-        setIsLoadingFilters(false);
       }
-    };
 
-    if (allowedRoles.includes(user.role)) {
-      loadFilters();
+      // Converter turmas do professor para o formato esperado
+      const turmas = context.classes?.map(c => ({
+        class_id: c.class_id,
+        school_id: c.school_id,
+        grade_id: c.grade_id,
+        subject_id: undefined, // Turmas podem não ter subject_id direto
+      })) || [];
+
+      setUserContext({
+        municipio_id: context.municipality?.id,
+        escola_id: context.school?.id,
+        estado_id: estadoId,
+        turmas,
+      });
+    } catch (error) {
+      console.error('Erro ao carregar contexto do usuário:', error);
+      setUserContext({});
+    } finally {
+      setIsLoadingContext(false);
     }
   }, [user.id, user.role]);
 
-  // Carregar séries da escola selecionada
   useEffect(() => {
-    const loadGradesForSchool = async () => {
-      if (!filters.school) {
-        setGrades([]);
-        return;
-      }
-
-      setIsLoadingFilters(true);
-      try {
-        // Buscar turmas da escola para obter as séries disponíveis
-        const classesResponse = await api.get(`/classes/school/${filters.school}`);
-        const classesData = Array.isArray(classesResponse.data) 
-          ? classesResponse.data 
-          : (classesResponse.data?.data || []);
-        
-        // Extrair séries únicas das turmas
-        const gradeMap = new Map<string, Grade>();
-        classesData.forEach((classItem: any) => {
-          if (classItem.grade && classItem.grade.id && !gradeMap.has(classItem.grade.id)) {
-            gradeMap.set(classItem.grade.id, {
-              id: classItem.grade.id,
-              name: classItem.grade.name || classItem.grade.nome || classItem.grade.name || '',
-            });
-          }
-        });
-
-        setGrades(Array.from(gradeMap.values()));
-      } catch (error) {
-        console.error('Erro ao carregar séries da escola:', error);
-        setGrades([]);
-      } finally {
-        setIsLoadingFilters(false);
-      }
-    };
-
-    loadGradesForSchool();
-  }, [filters.school]);
-
-  // Carregar turmas do professor
-  useEffect(() => {
-    const loadClasses = async () => {
-      if (!user.id || !allowedRoles.includes(user.role)) return;
-
-      setIsLoadingClasses(true);
-      try {
-        if (user.role === 'professor') {
-          // Buscar turmas do professor
-          const response = await api.get(`/teacher/${user.id}`);
-          const teacherData = response.data;
-          if (teacherData.turmas && Array.isArray(teacherData.turmas)) {
-            const classesData = teacherData.turmas.map((turma: any) => ({
-              id: turma.id,
-              name: turma.name || turma.nome || `Turma ${turma.id}`,
-              school_id: turma.school_id,
-              school_name: turma.school_name || turma.escola_nome,
-              grade_id: turma.grade_id || turma.grade?.id,
-              grade_name: turma.grade_name || turma.grade?.name || turma.grade?.nome,
-            }));
-            setClasses(classesData);
-          }
-        } else {
-          // Para outros roles, buscar todas as turmas (ou filtrar por escola se necessário)
-          const response = await api.get('/classes');
-          const classesData = Array.isArray(response.data) 
-            ? response.data 
-            : (response.data?.data || []);
-          setClasses(classesData.map((c: any) => ({
-            id: c.id,
-            name: c.name || c.nome || `Turma ${c.id}`,
-            school_id: c.school_id,
-            school_name: c.school_name || c.escola_nome,
-            grade_id: c.grade_id || c.grade?.id,
-            grade_name: c.grade_name || c.grade?.name || c.grade?.nome,
-          })));
-        }
-      } catch (error) {
-        console.error('Erro ao carregar turmas:', error);
-        toast({
-          title: 'Erro',
-          description: 'Não foi possível carregar as turmas. Tente novamente.',
-          variant: 'destructive',
-        });
-      } finally {
-        setIsLoadingClasses(false);
-      }
-    };
-
-    loadClasses();
-  }, [user.id, user.role, toast]);
-
-  // Carregar alunos das turmas selecionadas
-  useEffect(() => {
-    const loadStudents = async () => {
-      if (selectedClasses.length === 0) {
-        setStudents([]);
-        return;
-      }
-
-      setIsLoadingStudents(true);
-      try {
-        const studentPromises = selectedClasses.map(async (classId) => {
-          try {
-            const response = await api.get(`/students/classes/${classId}`);
-            const studentsData = Array.isArray(response.data) ? response.data : [];
-            return studentsData.map((student: any) => ({
-              id: student.id,
-              name: student.name || student.nome,
-              email: student.email || student.user?.email,
-              class_id: classId,
-            }));
-          } catch (error) {
-            console.error(`Erro ao carregar alunos da turma ${classId}:`, error);
-            return [];
-          }
-        });
-
-        const studentsArrays = await Promise.all(studentPromises);
-        const allStudents = studentsArrays.flat();
-        setStudents(allStudents);
-      } catch (error) {
-        console.error('Erro ao carregar alunos:', error);
-        setStudents([]);
-      } finally {
-        setIsLoadingStudents(false);
-      }
-    };
-
-    loadStudents();
-  }, [selectedClasses]);
-
-  // Filtrar turmas baseado nos filtros
-  const filteredClasses = useMemo(() => {
-    let filtered = classes;
-
-    // Filtro por escola (obrigatório)
-    if (!filters.school || filters.school === 'all') {
-      return [];
-    }
-    filtered = filtered.filter((c) => c.school_id === filters.school);
-
-    // Filtro por série (obrigatório)
-    if (!filters.grade || filters.grade === 'all') {
-      return [];
-    }
-    filtered = filtered.filter((c) => c.grade_id === filters.grade);
-
-    return filtered;
-  }, [classes, filters.school, filters.grade]);
-
-  // Opções de turmas para o MultiSelect (após filtros)
-  const classOptions: Option[] = useMemo(() => {
-    return filteredClasses.map((c) => ({
-      id: c.id,
-      name: c.school_name ? `${c.name} - ${c.school_name}` : c.name,
-    }));
-  }, [filteredClasses]);
-
-  // Agrupar alunos por turma
-  const studentsByClass = useMemo(() => {
-    const grouped: Record<string, Student[]> = {};
-    students.forEach((student) => {
-      if (!grouped[student.class_id]) {
-        grouped[student.class_id] = [];
-      }
-      grouped[student.class_id].push(student);
-    });
-    return grouped;
-  }, [students]);
-
-  const generateMeetLink = async () => {
-    setIsGeneratingLink(true);
-    try {
-      // Criar título baseado nas turmas selecionadas
-      const classesNames = classes
-        .filter(c => selectedClasses.includes(c.id))
-        .map(c => c.name)
-        .join(', ');
-      
-      const title = classesNames 
-        ? `Plantão Online - ${classesNames}`
-        : 'Plantão Online';
-
-      // Criar descrição com informações das turmas e alunos
-      const description = selectedClasses.length > 0
-        ? `Plantão online para ${selectedClasses.length} ${selectedClasses.length === 1 ? 'turma' : 'turmas'}.\nAlunos: ${students.length}`
-        : 'Plantão online criado pelo sistema Afirme Play';
-
-      // Criar evento no Google Calendar com Meet
-      const meetLink = await createGoogleMeetLink(title, description);
-      
-      setMeetLink(meetLink);
-      
+    if (!allowedRoles.includes(user.role)) {
       toast({
-        title: 'Link gerado',
-        description: 'Link do Google Meet criado com sucesso!',
-      });
-    } catch (error: any) {
-      console.error('Erro ao gerar link do Meet:', error);
-      
-      let errorMessage = 'Não foi possível gerar o link do Google Meet.';
-      
-      if (error.response?.status === 404) {
-        errorMessage = 'Endpoint não implementado no backend. Entre em contato com o administrador.';
-      } else if (error.response?.status === 401) {
-        errorMessage = 'Autenticação com Google necessária. Entre em contato com o administrador.';
-      } else if (error.response?.status >= 500) {
-        errorMessage = 'Erro no servidor ao criar link do Meet. Tente novamente mais tarde.';
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      toast({
-        title: 'Erro ao gerar link',
-        description: errorMessage,
+        title: 'Acesso Negado',
+        description: 'Você não tem permissão para acessar esta página.',
         variant: 'destructive',
       });
+      navigate('/app');
+      return;
+    }
+    loadUserContext();
+  }, [user.id, user.role, allowedRoles, toast, navigate, loadUserContext]);
+
+  useEffect(() => {
+    if (!isLoadingContext && allowedRoles.includes(user.role)) {
+      loadPlantoes();
+      loadFilterOptions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.role, filters, isLoadingContext, allowedRoles]);
+
+  const loadFilterOptions = async () => {
+    try {
+      // Carregar escolas, séries e disciplinas para filtros em paralelo
+      const [schoolsRes, subjectsRes, gradesRes] = await Promise.all([
+        api.get('/school/').catch(() => ({ data: [] })),
+        api.get('/subjects').catch(() => ({ data: [] })),
+        api.get('/grades/').catch(() => ({ data: [] })),
+      ]);
+
+      setSchools(Array.isArray(schoolsRes.data) ? schoolsRes.data : (schoolsRes.data?.data || []));
+      setSubjects(subjectsRes.data || []);
+      // Sempre carregar todas as séries disponíveis
+      setGrades(gradesRes.data || []);
+    } catch (error) {
+      console.error('Erro ao carregar opções de filtro:', error);
+    }
+  };
+
+  const loadPlantoes = async () => {
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filters.school) params.append('school', filters.school);
+      if (filters.grade) params.append('grade', filters.grade);
+      if (filters.subject) params.append('subject', filters.subject);
+
+      const response = await api.get(`/plantao-online?${params.toString()}`);
+      let allPlantoes = response.data || [];
+
+      // Filtrar plantões baseado no role
+      allPlantoes = filterPlantoesByRole(allPlantoes);
+
+      setPlantoes(allPlantoes);
+    } catch (err) {
+      const error = err as {
+        response?: {
+          status?: number;
+          data?: {
+            message?: string;
+          };
+        };
+        message?: string;
+      };
+      // Se o endpoint não existir (404), apenas definir lista vazia sem mostrar erro
+      const is404 = error.response?.status === 404 || 
+                    error.message?.includes('não encontrado') ||
+                    error.message?.includes('Not Found');
+      
+      if (is404) {
+        setPlantoes([]);
+        // Não logar erro para 404 em endpoints que podem não estar implementados ainda
+        return;
+      }
+      
+      console.error('Erro ao carregar plantões:', error);
+      toast({
+        title: 'Erro',
+        description: error.response?.data?.message || error.message || 'Não foi possível carregar os plantões online.',
+        variant: 'destructive',
+      });
+      setPlantoes([]);
     } finally {
-      setIsGeneratingLink(false);
+      setIsLoading(false);
     }
   };
 
-  const handleCopyLink = async () => {
-    if (!meetLink) {
-      toast({
-        title: 'Erro',
-        description: 'Nenhum link disponível para copiar.',
-        variant: 'destructive',
-      });
-      return;
+  const filterPlantoesByRole = (plantoes: PlantaoOnline[]): PlantaoOnline[] => {
+    if (user.role === 'admin') {
+      return plantoes;
     }
+
+    if (user.role === 'tecadm' && userContext.municipio_id) {
+      // Tecadmin vê plantões do seu município
+      return plantoes.filter(plantao => 
+        plantao.schools.some(school => {
+          // O backend deve filtrar corretamente
+          return true;
+        })
+      );
+    }
+
+    if ((user.role === 'diretor' || user.role === 'coordenador') && userContext.escola_id) {
+      return plantoes.filter(plantao => 
+        plantao.schools.some(school => school.id === userContext.escola_id)
+      );
+    }
+
+    if (user.role === 'professor' && userContext.turmas && userContext.turmas.length > 0) {
+      const allowedSchoolIds = new Set(userContext.turmas.map(t => t.school_id));
+      const allowedGradeIds = new Set(userContext.turmas.map(t => t.grade_id));
+      
+      return plantoes.filter(plantao => 
+        plantao.schools.some(school => allowedSchoolIds.has(school.id)) &&
+        allowedGradeIds.has(plantao.grade.id)
+      );
+    }
+
+    return plantoes;
+  };
+
+  const canDeletePlantao = (plantao: PlantaoOnline): boolean => {
+    if (user.role === 'admin') {
+      return true;
+    }
+
+    if (user.role === 'coordenador' || user.role === 'professor') {
+      return false;
+    }
+
+    if (user.role === 'tecadm' && userContext.municipio_id) {
+      // Tecadmin pode deletar plantões do seu município
+      return plantao.schools.length > 0;
+    }
+
+    if ((user.role === 'diretor') && userContext.escola_id) {
+      return plantao.schools.some(school => school.id === userContext.escola_id);
+    }
+
+    return false;
+  };
+
+  const handleDeletePlantao = async (plantaoId: string) => {
+    if (!confirm('Tem certeza que deseja excluir este plantão online?')) return;
 
     try {
-      await navigator.clipboard.writeText(meetLink);
+      await api.delete(`/plantao-online/${plantaoId}`);
       toast({
-        title: 'Link copiado',
-        description: 'Link do Google Meet copiado para a área de transferência!',
+        title: 'Sucesso',
+        description: 'Plantão online excluído com sucesso.',
       });
-    } catch (error) {
-      console.error('Erro ao copiar link:', error);
+      loadPlantoes();
+    } catch (err) {
+      const error = err as {
+        response?: {
+          data?: {
+            message?: string;
+          };
+        };
+      };
+      console.error('Erro ao excluir plantão:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível copiar o link. Tente novamente.',
+        description: error.response?.data?.message || 'Não foi possível excluir o plantão online.',
         variant: 'destructive',
       });
     }
   };
 
-  const handleCopyLinkWithMessage = async () => {
-    if (!meetLink) {
-      toast({
-        title: 'Erro',
-        description: 'Nenhum link disponível para copiar.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    const message = `Olá! Aqui está o link para o plantão online:\n\n${meetLink}\n\nEspero você lá!`;
-    
-    try {
-      await navigator.clipboard.writeText(message);
-      toast({
-        title: 'Mensagem copiada',
-        description: 'Link e mensagem copiados para compartilhar!',
-      });
-    } catch (error) {
-      console.error('Erro ao copiar mensagem:', error);
-      handleCopyLink();
-    }
+  const handlePlantaoClick = (plantao: PlantaoOnline) => {
+    // Abrir link da reunião em nova aba
+    window.open(plantao.link, '_blank');
   };
 
-  const handleOpenLink = () => {
-    if (!meetLink) {
-      toast({
-        title: 'Erro',
-        description: 'Nenhum link disponível para abrir.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    window.open(meetLink, '_blank');
+  const handleRefresh = () => {
+    loadPlantoes();
   };
 
-  if (!allowedRoles.includes(user.role)) {
-    return (
-      <div className="container mx-auto py-6 px-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center text-muted-foreground">
-              <p>Você não tem permissão para acessar esta página.</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  const handlePlantaoCreated = () => {
+    loadPlantoes();
+    setActiveTab('visualizar');
+  };
 
   return (
-    <div className="container mx-auto py-6 px-4 space-y-6">
+    <div className="container mx-auto py-6 space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="space-y-1">
+      <div className="flex justify-between items-center">
+        <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
             <Headset className="w-8 h-8 text-blue-600" />
             Plantão Online
           </h1>
           <p className="text-muted-foreground">
-            Gere e compartilhe links do Google Meet para realizar videochamadas com seus alunos
+            {canCreate
+              ? 'Gerencie e cadastre plantões online para os alunos'
+              : 'Visualize os plantões online disponíveis'}
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleRefresh} disabled={isLoading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
         </div>
       </div>
 
-      {/* Card de Filtros */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="w-5 h-5" />
-            Filtros
-          </CardTitle>
-          <CardDescription>
-            Filtre turmas e alunos para facilitar a seleção
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Filtro por Escola */}
-            <div className="space-y-2">
-              <Label>Escola</Label>
-              {['diretor', 'coordenador', 'professor'].includes(user.role) && schools.length === 1 ? (
-                // Para diretor, coordenador e professor, mostrar apenas a escola (readonly)
-                <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted">
-                  <span className="text-sm font-medium">{schools[0].name}</span>
+      {/* Tabs */}
+      {canCreate && (
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="visualizar" className="flex items-center gap-2">
+              <Eye className="w-4 h-4" />
+              Visualizar Plantões
+            </TabsTrigger>
+            <TabsTrigger value="cadastrar" className="flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              Cadastrar Plantão
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="visualizar" className="space-y-6 mt-6">
+            {/* Filtros */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <School className="h-5 w-5" />
+                  Filtros
+                </CardTitle>
+                <CardDescription>Filtre os plantões por escola, série ou disciplina</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Escola</label>
+                    <Select
+                      value={filters.school || 'all'}
+                      onValueChange={(value) => {
+                        setFilters({
+                          ...filters,
+                          school: value === 'all' ? undefined : value,
+                        });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Todas as escolas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as escolas</SelectItem>
+                        {schools.map((school) => (
+                          <SelectItem key={school.id} value={school.id}>
+                            {school.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Série</label>
+                    <Select
+                      value={filters.grade || 'all'}
+                      onValueChange={(value) =>
+                        setFilters({
+                          ...filters,
+                          grade: value === 'all' ? undefined : value,
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Todas as séries" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as séries</SelectItem>
+                        {grades.map((grade) => (
+                          <SelectItem key={grade.id} value={grade.id}>
+                            {grade.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Disciplina</label>
+                    <Select
+                      value={filters.subject || 'all'}
+                      onValueChange={(value) =>
+                        setFilters({
+                          ...filters,
+                          subject: value === 'all' ? undefined : value,
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Todas as disciplinas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as disciplinas</SelectItem>
+                        {subjects.map((subject) => (
+                          <SelectItem key={subject.id} value={subject.id}>
+                            {subject.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-              ) : (
-                <Select
-                  value={filters.school || ''}
-                  onValueChange={(value) => {
-                    setFilters({
-                      ...filters,
-                      school: value,
-                      grade: '', // Reset série ao mudar escola
-                    });
-                    // Limpar seleção de turmas quando mudar escola
-                    setSelectedClasses([]);
-                  }}
-                  disabled={isLoadingFilters}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione uma escola" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {schools.map((school) => (
-                      <SelectItem key={school.id} value={school.id}>
-                        {school.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
+              </CardContent>
+            </Card>
 
-            {/* Filtro por Série */}
-            <div className="space-y-2">
-              <Label>Série</Label>
-              <Select
-                value={filters.grade || ''}
-                onValueChange={(value) => {
-                  setFilters({
-                    ...filters,
-                    grade: value,
-                  });
-                  // Limpar seleção de turmas quando mudar série
-                  setSelectedClasses([]);
-                }}
-                disabled={isLoadingFilters || !filters.school}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={isLoadingFilters ? "Carregando séries..." : filters.school ? "Selecione uma série" : "Selecione uma escola primeiro"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {grades.length === 0 && filters.school ? (
-                    <SelectItem value="no-grades" disabled>
-                      Nenhuma série encontrada
-                    </SelectItem>
-                  ) : (
-                    grades.map((grade) => (
-                      <SelectItem key={grade.id} value={grade.id}>
-                        {grade.name}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+            {/* Lista de Plantões */}
+            <PlantaoList 
+              plantoes={plantoes} 
+              isLoading={isLoading} 
+              onPlantaoClick={handlePlantaoClick}
+              onDeletePlantao={handleDeletePlantao}
+              userRole={user.role}
+              canDeletePlantao={canDeletePlantao}
+            />
+          </TabsContent>
 
-          {/* Botão para limpar filtros */}
-          {(filters.school || filters.grade) && (
-            <div className="mt-4 pt-4 border-t">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setFilters({
-                    school: '',
-                    grade: '',
-                  });
-                  setSelectedClasses([]);
-                }}
-              >
-                Limpar Filtros
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          <TabsContent value="cadastrar">
+            <CreatePlantaoForm
+              onSuccess={handlePlantaoCreated}
+              userRole={user.role}
+              userMunicipioId={userContext.municipio_id}
+              userEscolaId={userContext.escola_id}
+              userEstadoId={userContext.estado_id}
+              userTurmas={userContext.turmas}
+            />
+          </TabsContent>
+        </Tabs>
+      )}
 
-      {/* Card principal */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <LinkIcon className="w-5 h-5" />
-            Link do Google Meet
-          </CardTitle>
-          <CardDescription>
-            Insira um link do Google Meet ou gere um novo link para compartilhar com seus alunos
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Campo de input para o link */}
-          <div className="space-y-2">
-            <Label htmlFor="meet-link">Link do Google Meet</Label>
-            <div className="flex gap-2">
-              <Input
-                id="meet-link"
-                type="url"
-                placeholder="https://meet.google.com/xxx-xxxx-xxx"
-                value={meetLink}
-                onChange={(e) => setMeetLink(e.target.value)}
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={generateMeetLink}
-                disabled={isGeneratingLink}
-                className="whitespace-nowrap"
-              >
-                {isGeneratingLink ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Gerando...
-                  </>
-                ) : (
-                  'Gerar Link'
-                )}
-              </Button>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Você pode inserir um link manualmente ou clicar em "Gerar Link" para criar um link do Google Meet usando a API do Google Calendar
-            </p>
-          </div>
-
-          {/* Seleção de turmas */}
-          <div className="space-y-2">
-            <Label>Turmas para compartilhar</Label>
-            {isLoadingClasses ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Carregando turmas...
-              </div>
-            ) : classes.length === 0 ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <AlertCircle className="w-4 h-4" />
-                Nenhuma turma disponível
-              </div>
-            ) : !filters.school ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground p-4 border rounded-lg bg-muted">
-                <AlertCircle className="w-4 h-4" />
-                Selecione uma escola primeiro para escolher as turmas
-              </div>
-            ) : !filters.grade ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground p-4 border rounded-lg bg-muted">
-                <AlertCircle className="w-4 h-4" />
-                Selecione uma série primeiro para escolher as turmas
-              </div>
-            ) : filteredClasses.length === 0 ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground p-4 border rounded-lg bg-muted">
-                <AlertCircle className="w-4 h-4" />
-                Nenhuma turma encontrada para a escola e série selecionadas
-              </div>
-            ) : (
-              <MultiSelect
-                options={classOptions}
-                selected={selectedClasses}
-                onChange={setSelectedClasses}
-                placeholder="Selecione as turmas que receberão o link"
-                label=""
-                mode="popover"
-              />
-            )}
-          </div>
-
-          {/* Preview de alunos */}
-          {selectedClasses.length > 0 && (
-            <div className="p-4 bg-muted rounded-lg space-y-3">
-              <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-blue-500" />
-                <div>
-                  <p className="font-medium">
-                    {students.length} {students.length === 1 ? 'aluno receberá' : 'alunos receberão'} o link
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedClasses.length} {selectedClasses.length === 1 ? 'turma selecionada' : 'turmas selecionadas'}
-                    {filteredClasses.length !== classes.length && (
-                      <span className="ml-2">
-                        (de {classes.length} turmas disponíveis)
-                      </span>
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              {isLoadingStudents ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Carregando alunos...
-                </div>
-              ) : students.length > 0 ? (
+      {!canCreate && (
+        <>
+          {/* Filtros */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <School className="h-5 w-5" />
+                Filtros
+              </CardTitle>
+              <CardDescription>Filtre os plantões por escola, série ou disciplina</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Separator />
-                  <ScrollArea className="h-[200px]">
-                    <div className="space-y-3 pr-4">
-                      {Object.entries(studentsByClass).map(([classId, classStudents]) => {
-                        const classInfo = classes.find((c) => c.id === classId);
-                        return (
-                          <div key={classId} className="space-y-1">
-                            <p className="text-sm font-medium text-blue-600">
-                              {classInfo?.name || `Turma ${classId}`}
-                            </p>
-                            <div className="flex flex-wrap gap-1">
-                              {classStudents.map((student) => (
-                                <Badge key={student.id} variant="secondary" className="text-xs">
-                                  {student.name}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </ScrollArea>
+                  <label className="text-sm font-medium">Escola</label>
+                  <Select
+                    value={filters.school || 'all'}
+                    onValueChange={(value) => {
+                      setFilters({
+                        ...filters,
+                        school: value === 'all' ? undefined : value,
+                      });
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas as escolas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as escolas</SelectItem>
+                      {schools.map((school) => (
+                        <SelectItem key={school.id} value={school.id}>
+                          {school.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              ) : (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <AlertCircle className="w-4 h-4" />
-                  Nenhum aluno encontrado nas turmas selecionadas
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Série</label>
+                  <Select
+                    value={filters.grade || 'all'}
+                    onValueChange={(value) =>
+                      setFilters({
+                        ...filters,
+                        grade: value === 'all' ? undefined : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas as séries" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as séries</SelectItem>
+                      {grades.map((grade) => (
+                        <SelectItem key={grade.id} value={grade.id}>
+                          {grade.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
-            </div>
-          )}
 
-          {/* Botões de ação */}
-          {meetLink && (
-            <div className="space-y-3 pt-4 border-t">
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Button
-                  onClick={handleCopyLink}
-                  className="flex-1"
-                >
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copiar Link
-                </Button>
-                <Button
-                  onClick={handleCopyLinkWithMessage}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copiar Link com Mensagem
-                </Button>
-                <Button
-                  onClick={handleOpenLink}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Abrir no Google Meet
-                </Button>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Disciplina</label>
+                  <Select
+                    value={filters.subject || 'all'}
+                    onValueChange={(value) =>
+                      setFilters({
+                        ...filters,
+                        subject: value === 'all' ? undefined : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas as disciplinas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as disciplinas</SelectItem>
+                      {subjects.map((subject) => (
+                        <SelectItem key={subject.id} value={subject.id}>
+                          {subject.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
+            </CardContent>
+          </Card>
 
-              {/* Link exibido */}
-              <div className="p-4 bg-muted rounded-lg">
-                <p className="text-sm font-medium mb-1">Link gerado:</p>
-                <p className="text-sm text-muted-foreground break-all">{meetLink}</p>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Card de instruções */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5" />
-            Como compartilhar
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm text-muted-foreground">
-          <div className="space-y-2">
-            <p className="font-medium text-foreground">Passo a passo:</p>
-            <ol className="list-decimal list-inside space-y-1 ml-2">
-              <li>Selecione as turmas que receberão o link do plantão online</li>
-              <li>Gere ou insira um link do Google Meet</li>
-              <li>Use "Copiar Link com Mensagem" para copiar uma mensagem pronta para compartilhar</li>
-              <li>Compartilhe o link pelos canais de comunicação disponíveis (WhatsApp, Email, Plataforma, etc.)</li>
-            </ol>
-          </div>
-          <Separator />
-          <div className="space-y-2">
-            <p className="font-medium text-foreground">Dicas:</p>
-            <ul className="list-disc list-inside space-y-1 ml-2">
-              <li>O link pode ser compartilhado com múltiplas turmas ao mesmo tempo</li>
-              <li>Você pode copiar apenas o link ou o link com uma mensagem pré-formatada</li>
-              <li>Os alunos das turmas selecionadas aparecerão no preview acima</li>
-            </ul>
-          </div>
-        </CardContent>
-      </Card>
+          {/* Lista de Plantões */}
+          <PlantaoList 
+            plantoes={plantoes} 
+            isLoading={isLoading} 
+            onPlantaoClick={handlePlantaoClick}
+            onDeletePlantao={handleDeletePlantao}
+            userRole={user.role}
+            canDeletePlantao={canDeletePlantao}
+          />
+        </>
+      )}
     </div>
   );
 }

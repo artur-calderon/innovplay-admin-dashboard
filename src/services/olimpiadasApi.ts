@@ -1,6 +1,6 @@
 import { api } from '@/lib/api';
 import { Olimpiada, OlimpiadaFormData, OlimpiadaResult, OlimpiadaRanking } from '@/types/olimpiada-types';
-import { Evaluation } from '@/types/evaluation-types';
+import { Evaluation, AppliedClass } from '@/types/evaluation-types';
 import { convertDateTimeLocalToISO, toLocalOffsetISO } from '@/utils/date';
 
 /**
@@ -274,9 +274,53 @@ export class OlimpiadasApiService {
         });
       }
       
+      // Se GET /test/{id} não trouxe applied_classes, buscar via GET /test/{id}/classes
+      if (!result.applied_classes || !Array.isArray(result.applied_classes) || result.applied_classes.length === 0) {
+        try {
+          const appliedClasses = await this.getAppliedClasses(id);
+          if (appliedClasses.length > 0) {
+            result.applied_classes = appliedClasses;
+          }
+        } catch (err) {
+          console.warn('⚠️ [olimpiadasApi] Erro ao buscar turmas aplicadas (GET /test/{id}/classes):', err);
+        }
+      }
+
       return result;
     } catch (error) {
       console.error('Erro ao buscar olimpíada:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Buscar turmas aplicadas à olimpíada (GET /test/{id}/classes).
+   * Retorna lista no formato AppliedClass[] para preencher applied_classes.
+   */
+  static async getAppliedClasses(olimpiadaId: string): Promise<AppliedClass[]> {
+    try {
+      const response = await api.get(`/test/${olimpiadaId}/classes`);
+      const data = response.data;
+      if (!data || !Array.isArray(data)) return [];
+      return data.map((item: any) => {
+        const cls = item.class || item;
+        const classObj = typeof cls === 'object' ? cls : { id: cls, name: '' };
+        return {
+          class_test_id: item.class_test_id ?? null,
+          class: {
+            id: String(classObj.id ?? classObj.class_id ?? item.class_id ?? ''),
+            name: classObj.name ?? '',
+            students_count: classObj.students_count ?? item.students_count ?? 0,
+            school: classObj.school,
+            grade: classObj.grade,
+          },
+          application: item.application ?? null,
+          expiration: item.expiration ?? null,
+          status: item.status ?? 'applied',
+        } as AppliedClass;
+      });
+    } catch (error) {
+      console.warn('⚠️ [olimpiadasApi] getAppliedClasses:', error);
       throw error;
     }
   }
@@ -395,13 +439,20 @@ export class OlimpiadasApiService {
   }
 
   /**
-   * Aplicar/enviar olimpíada para alunos individuais
-   * Usa o endpoint apply-olympics para aplicar a alunos específicos
-   * @param id - ID da olimpíada
-   * @param studentIds - Array de IDs dos alunos
+   * Aplicar olimpíada só para aluno(s) individual(is) (sem aplicar para a turma).
+   * Endpoint: POST /test/{olimpiadaId}/apply-olympics
+   * Body exigido pelo backend:
+   *   - student_id (obrigatório): UUID do aluno
+   *   - application (obrigatório na criação): ISO 8601 – quando a prova fica disponível
+   *   - expiration (obrigatório na criação): ISO 8601 – quando a prova deixa de estar disponível
+   *   - timezone (opcional): default no backend "America/Sao_Paulo"; aqui enviamos o do navegador se não informado
+   * Autenticação: JWT no header (api já envia). Não envia turma/class_id; aplicação via student_test_olimpics.
+   *
+   * @param id - ID da olimpíada (test)
+   * @param studentIds - Array de UUIDs dos alunos
    * @param startDateTime - Data/hora de início (ISO ou datetime-local)
    * @param endDateTime - Data/hora de fim (ISO ou datetime-local)
-   * @param timezone - Timezone do usuário (opcional, será detectado automaticamente se não fornecido)
+   * @param timezone - Timezone (opcional; se não informado, usa o do navegador)
    */
   static async applyOlimpiadaToStudents(
     id: string,
@@ -512,9 +563,9 @@ export class OlimpiadasApiService {
         ? endDateTime
         : convertDateTimeLocalToISO(endDateTime);
 
-      // Formatar classes no mesmo formato usado para avaliações
-      const classesData = classes.map(classId => ({
-        class_id: classId,
+      // Backend exige "classes": array de { class_id, application, expiration } (e timezone opcional)
+      const classesPayload = classes.map(classId => ({
+        class_id: String(classId),
         application: startDateTimeISO,
         expiration: endDateTimeISO
       }));
@@ -528,7 +579,7 @@ export class OlimpiadasApiService {
       console.log('📡 [olimpiadasApi] Enviando dados para backend:', {
         endpoint: `/test/${id}/apply`,
         payload: {
-          classes: classesData,
+          classes: classesPayload,
           timezone: userTimezone
         },
         datas_enviadas: {
@@ -578,7 +629,7 @@ export class OlimpiadasApiService {
       }
 
       const response = await api.post(`/test/${id}/apply`, {
-        classes: classesData,
+        classes: classesPayload,
         timezone: userTimezone
       });
       
@@ -602,27 +653,29 @@ export class OlimpiadasApiService {
   }
 
   /**
-   * Buscar lista de alunos individuais aplicados via apply-olympics
-   * Retorna array de IDs de alunos que foram aplicados individualmente
-   * IMPORTANTE: Não chama getOlimpiada para evitar recursão
+   * Buscar lista de alunos individuais aplicados via apply-olympics.
+   * Contrato oficial: GET /test/{olimpiadaId}/applied-students retorna 200 com { students: string[] } (array de UUIDs).
+   * Fallback: se response.data for array direto, aceita; se endpoint falhar, usa GET /evaluation-results/relatorio-detalhado/{id}.
+   * IMPORTANTE: Não chama getOlimpiada para evitar recursão.
    */
   static async getIndividualAppliedStudents(olimpiadaId: string): Promise<string[]> {
     try {
-      // Tentar buscar lista de alunos individuais aplicados
-      // O backend pode retornar isso em diferentes formatos
       try {
-        // Tentar endpoint específico para alunos individuais (se existir)
-        const response = await api.get(`/test/${olimpiadaId}/applied-students`);
+        // Forma recomendada: GET /test/{id}/applied-students → { students: ["uuid-1", "uuid-2", ...] }
+        const response = await api.get(`/test/${olimpiadaId}/applied-students`, {
+          _optionalEndpoint: true,
+        } as any);
         if (response.data && Array.isArray(response.data.students)) {
-          const students = response.data.students.map((s: any) => String(s.id || s.student_id || s));
+          const students = response.data.students.map((s: any) => String(s.id ?? s.student_id ?? s));
           console.log('📥 [olimpiadasApi] getIndividualAppliedStudents - endpoint /applied-students retornou:', {
             count: students.length,
             ids: students
           });
           return students;
         }
+        // Fallback: resposta como array direto (robustez)
         if (response.data && Array.isArray(response.data)) {
-          const students = response.data.map((s: any) => String(s.id || s.student_id || s));
+          const students = response.data.map((s: any) => String(s.id ?? s.student_id ?? s));
           console.log('📥 [olimpiadasApi] getIndividualAppliedStudents - endpoint /applied-students retornou (array direto):', {
             count: students.length,
             ids: students
@@ -630,16 +683,17 @@ export class OlimpiadasApiService {
           return students;
         }
       } catch (error: any) {
-        // Endpoint não existe, continuar com método alternativo
+        // Endpoint não existe ou indisponível (rede/CORS), continuar com método alternativo
         if (error.response?.status === 404) {
           console.log('ℹ️ [olimpiadasApi] Endpoint /test/{id}/applied-students não disponível (404), usando método alternativo');
+        } else if (error.code === 'ERR_NETWORK' || error.message?.includes('CORS') || error.message?.includes('conexão')) {
+          console.log('ℹ️ [olimpiadasApi] Endpoint /applied-students indisponível, continuando sem alunos individuais');
         } else {
           console.warn('⚠️ [olimpiadasApi] Erro ao buscar /applied-students:', error);
         }
       }
 
-      // Método alternativo: buscar via relatório detalhado e identificar alunos individuais
-      // pelos registros que têm student_test_olimpics_id
+      // Fallback (doc): GET /evaluation-results/relatorio-detalhado/{id} e filtrar por student_test_olimpics_id
       try {
         const response = await api.get(`/evaluation-results/relatorio-detalhado/${olimpiadaId}`);
         const alunos = response.data?.alunos || [];
@@ -671,6 +725,13 @@ export class OlimpiadasApiService {
       // Retornar array vazio em caso de erro - o sistema continuará funcionando
       return [];
     }
+  }
+
+  /**
+   * Remover aplicação individual de um aluno (DELETE /test/{id}/olympics/{studentId}).
+   */
+  static async removeIndividualApplication(olimpiadaId: string, studentId: string): Promise<void> {
+    await api.delete(`/test/${olimpiadaId}/olympics/${studentId}`);
   }
 
   /**

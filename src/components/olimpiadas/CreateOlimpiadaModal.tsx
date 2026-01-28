@@ -27,7 +27,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 interface CreateOlimpiadaModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  /** Chamado após criar/editar; (id, payload) para preservar selected_students no parent quando modo alunos individuais */
+  onSuccess: (createdOrUpdatedId?: string, payload?: { selected_students?: string[] }) => void;
   olimpiadaId?: string; // Para modo de edição
 }
 
@@ -586,21 +587,28 @@ export function CreateOlimpiadaModal({
         created_by: user?.id,
       };
 
+      let createdOrUpdatedId: string | undefined;
       if (olimpiadaId) {
         await OlimpiadasApiService.updateOlimpiada(olimpiadaId, formData);
+        createdOrUpdatedId = olimpiadaId;
         toast({
           title: 'Olimpíada atualizada!',
           description: 'A olimpíada foi atualizada com sucesso',
         });
       } else {
-        await OlimpiadasApiService.createOlimpiada(formData);
+        const result = await OlimpiadasApiService.createOlimpiada(formData);
+        createdOrUpdatedId = result?.id;
         toast({
           title: 'Olimpíada criada!',
           description: 'A olimpíada foi criada com sucesso. Use o botão "Aplicar" para enviá-la aos alunos.',
         });
       }
 
-      onSuccess();
+      const payload =
+        applicationMode === 'students' && studentsToSave && studentsToSave.length > 0
+          ? { selected_students: studentsToSave }
+          : undefined;
+      onSuccess(createdOrUpdatedId, payload);
       handleClose();
     } catch (error) {
       console.error('Erro ao salvar olimpíada:', error);
@@ -659,16 +667,21 @@ export function CreateOlimpiadaModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+      <DialogContent
+        className="max-w-4xl max-h-[90vh] flex flex-col"
+        aria-describedby={isOpen ? 'create-olimpiada-dialog-desc' : undefined}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-yellow-600" />
             {olimpiadaId ? 'Editar Olimpíada' : 'Nova Olimpíada'}
           </DialogTitle>
-          <DialogDescription>
-            {step === 1 && 'Configure os dados básicos da olimpíada'}
-            {step === 2 && 'Selecione as questões do banco'}
-            {step === 3 && 'Selecione como a olimpíada será aplicada (turmas ou alunos individuais)'}
+          <DialogDescription id="create-olimpiada-dialog-desc">
+            {step === 1
+              ? 'Configure os dados básicos da olimpíada'
+              : step === 2
+                ? 'Selecione as questões do banco'
+                : 'Selecione como a olimpíada será aplicada (turmas ou alunos individuais)'}
           </DialogDescription>
         </DialogHeader>
 

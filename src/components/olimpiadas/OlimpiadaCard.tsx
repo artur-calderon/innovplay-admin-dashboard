@@ -99,33 +99,109 @@ export function OlimpiadaCard({
     // 1. Olimpíada está ativa (atualização em tempo real)
     // 2. Não tem dados de participantes ou total (buscar uma vez para preencher)
     // 3. Olimpíada está concluída (mostrar dados finais)
+    // 4. ✅ Modo individual: sempre buscar se houver selected_students (mesmo que status seja scheduled)
+    const hasIndividualStudents = olimpiada.selected_students && olimpiada.selected_students.length > 0;
     const shouldFetch = olimpiada.status === 'active' || 
                        olimpiada.status === 'completed' ||
-                       (olimpiada.completedStudents === 0 && olimpiada.totalStudents === 0);
+                       (olimpiada.completedStudents === 0 && olimpiada.totalStudents === 0) ||
+                       hasIndividualStudents; // ✅ Buscar sempre quando há alunos individuais aplicados
 
     const fetchParticipants = async () => {
       try {
         setIsLoadingParticipants(true);
+        
+        if (import.meta.env.DEV) {
+          console.log(`[OlimpiadaCard] Buscando participantes para ${olimpiada.id}`, {
+            selected_students: olimpiada.selected_students,
+            status: olimpiada.status,
+            hasSelectedStudents: olimpiada.selected_students?.length > 0
+          });
+        }
+        
         const detailedReport = await EvaluationResultsApiService.getDetailedReport(olimpiada.id);
         if (detailedReport?.alunos && Array.isArray(detailedReport.alunos)) {
-          const alunos = detailedReport.alunos;
-          const total = alunos.length;
-          const completed = alunos.filter((a: any) => a.status === 'concluida').length;
+          let alunos = detailedReport.alunos;
           
+          if (import.meta.env.DEV) {
+            console.log(`[OlimpiadaCard] Relatório retornou ${alunos.length} alunos`, {
+              alunoIds: alunos.map((a: any) => String(a.id || a.student_id || 'desconhecido')),
+              statuses: alunos.map((a: any) => a.status)
+            });
+          }
+          
+          // ✅ Modo individual: filtrar apenas alunos em selected_students OU alunos individuais aplicados
+          if (olimpiada.selected_students && olimpiada.selected_students.length > 0) {
+            const selectedIds = olimpiada.selected_students.map((id) => String(id));
+            
+            if (import.meta.env.DEV) {
+              console.log(`[OlimpiadaCard] Filtrando por selected_students:`, selectedIds);
+            }
+            
+            alunos = alunos.filter((a: { id?: string; student_id?: string }) => {
+              const alunoId = String(a.id || a.student_id || '');
+              // Comparar de forma mais flexível (com e sem hífens, case-insensitive)
+              const matches = selectedIds.some((selectedId) => {
+                const normalizedSelected = selectedId.toLowerCase().replace(/-/g, '');
+                const normalizedAluno = alunoId.toLowerCase().replace(/-/g, '');
+                return normalizedSelected === normalizedAluno || selectedId === alunoId;
+              });
+              
+              if (import.meta.env.DEV && matches) {
+                console.log(`[OlimpiadaCard] Aluno encontrado:`, { alunoId, selectedIds });
+              }
+              
+              return matches;
+            });
+            
+            if (import.meta.env.DEV) {
+              console.log(`[OlimpiadaCard] Após filtro: ${alunos.length} alunos de ${detailedReport.alunos.length} total`, {
+                selectedIds,
+                alunosEncontrados: alunos.map((a: any) => ({
+                  id: String(a.id || a.student_id),
+                  status: a.status,
+                  nome: a.nome || a.name
+                }))
+              });
+            }
+          } else {
+            // ✅ Fallback: tentar identificar alunos individuais pelo application_info
+            const alunosIndividuais = alunos.filter((a: any) => {
+              return a.application_info?.student_test_olimpics_id || 
+                     a.student_test_olimpics_id ||
+                     (a.application_info && !a.application_info.class_test_id && a.application_info.student_test_olimpics_id);
+            });
+            
+            if (alunosIndividuais.length > 0) {
+              alunos = alunosIndividuais;
+              if (import.meta.env.DEV) {
+                console.log(`[OlimpiadaCard] Identificados ${alunos.length} alunos individuais pelo application_info`);
+              }
+            }
+          }
+          
+          const total = alunos.length;
+          const completed = alunos.filter((a: { status?: string }) => a.status === 'concluida').length;
+
+          if (import.meta.env.DEV) {
+            console.log(`[OlimpiadaCard] Atualizando contadores:`, { total, completed, olimpiadaId: olimpiada.id });
+          }
+
           // Sempre atualizar, mesmo se for 0
           setParticipantsCount(completed);
           setTotalCount(total);
           setLastUpdate(new Date());
         } else {
           // Se não houver alunos no relatório, manter valores originais
-          console.log(`Olimpíada ${olimpiada.id} não possui dados de alunos ainda`);
+          if (import.meta.env.DEV) {
+            console.log(`[OlimpiadaCard] Olimpíada ${olimpiada.id} não possui dados de alunos ainda`);
+          }
         }
       } catch (error) {
         // Se falhar (ex: olimpíada ainda não foi aplicada), manter valores originais
         const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
         // Não logar erro se for 404 ou se a olimpíada ainda não foi aplicada
         if (!errorMessage.includes('404') && !errorMessage.includes('não possui')) {
-          console.warn(`Erro ao buscar participantes para olimpíada ${olimpiada.id}:`, error);
+          console.warn(`[OlimpiadaCard] Erro ao buscar participantes para olimpíada ${olimpiada.id}:`, error);
         }
         // Não resetar valores em caso de erro para não perder dados já carregados
       } finally {
@@ -143,12 +219,18 @@ export function OlimpiadaCard({
         return () => clearInterval(interval);
       }
     }
-  }, [olimpiada.id, olimpiada.status]);
+  }, [olimpiada.id, olimpiada.status, olimpiada.selected_students]);
 
   // Usar o contador atualizado se disponível, senão usar o valor original
   // Priorizar valores atualizados, mas manter valores originais se atualizados forem 0 e originais não
   const displayParticipants = participantsCount >= 0 ? participantsCount : (olimpiada.completedStudents || 0);
-  const displayTotal = totalCount > 0 ? totalCount : (olimpiada.totalStudents || 0);
+  // Modo individual: quando selected_students tem length, usar como total para não mostrar 0/4
+  const displayTotal =
+    totalCount > 0
+      ? totalCount
+      : (olimpiada.selected_students?.length ?? 0) > 0
+        ? olimpiada.selected_students!.length
+        : (olimpiada.totalStudents || 0);
 
   return (
     <Card
@@ -238,7 +320,7 @@ export function OlimpiadaCard({
               {isLoadingParticipants && displayTotal === 0 ? (
                 <span className="text-muted-foreground">Carregando...</span>
               ) : (
-                `${displayParticipants}/${displayTotal} alunos`
+                `${displayParticipants}/${displayTotal} ${displayTotal === 1 ? 'aluno' : 'alunos'}`
               )}
             </span>
             {(olimpiada.status === 'active' || isLoadingParticipants) && (

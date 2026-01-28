@@ -645,29 +645,47 @@ export default function PhysicalTestPage() {
 
   const handleDownloadForm = async (form: GeneratedForm) => {
     try {
-      const response = await api.get(`/physical-tests/test/${id}/download/${form.id}`, {
-        responseType: 'blob'
-      });
+      // A nova rota retorna JSON com uma URL pré-assinada do MinIO
+      const response = await api.get(`/physical-tests/test/${id}/download/${form.id}`);
 
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Avaliacao_${form.student_name.replace(/\s+/g, '_')}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const { download_url, expires_in } = response.data || {};
+
+      if (!download_url) {
+        throw new Error("URL de download não disponível");
+      }
+
+      // Abrir o PDF em uma nova aba/janela usando a URL pré-assinada
+      window.open(download_url, '_blank');
 
       toast({
         title: "Download iniciado",
-        description: "O arquivo PDF está sendo baixado.",
+        description: `O arquivo PDF foi aberto em uma nova aba. Link expira em ${expires_in || "1 hora"}.`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao baixar formulário:", error);
+
+      let description = "Não foi possível baixar o formulário.";
+
+      if (error.response) {
+        const status = error.response.status;
+        const backendError = error.response.data?.error;
+
+        if (status === 404) {
+          description = backendError || "Formulário não encontrado ou URL do PDF não encontrada.";
+        } else if (status === 400) {
+          description = backendError || "Erro de formato de URL de download.";
+        } else if (status === 500) {
+          description = backendError || "Erro ao gerar URL de download.";
+        } else if (backendError) {
+          description = backendError;
+        }
+      } else if (error.message) {
+        description = error.message;
+      }
+
       toast({
         title: "Erro",
-        description: "Não foi possível baixar o formulário.",
+        description,
         variant: "destructive",
       });
     }
