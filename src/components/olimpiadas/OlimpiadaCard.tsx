@@ -224,6 +224,7 @@ export function OlimpiadaCard({
   // Usar o contador atualizado se disponível, senão usar o valor original
   // Priorizar valores atualizados, mas manter valores originais se atualizados forem 0 e originais não
   const displayParticipants = participantsCount >= 0 ? participantsCount : (olimpiada.completedStudents || 0);
+  const isIndividual = (olimpiada.selected_students?.length ?? 0) > 0;
   // Modo individual: quando selected_students tem length, usar como total para não mostrar 0/4
   const displayTotal =
     totalCount > 0
@@ -388,12 +389,18 @@ export function OlimpiadaCard({
               size="sm"
               onClick={() => onViewResults(olimpiada.id)}
               className="border-yellow-300 dark:border-yellow-700 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 text-xs sm:text-sm"
-              disabled={displayParticipants === 0}
-              title={displayParticipants === 0 ? 'Nenhum resultado disponível ainda' : 'Ver resultados'}
+              disabled={displayTotal === 0}
+              title={
+                displayTotal === 0
+                  ? 'Nenhum resultado disponível ainda'
+                  : isIndividual
+                    ? 'Ver resultado (mesma página do aluno)'
+                    : 'Ver resultados'
+              }
             >
               <Medal className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-              <span className="hidden xs:inline">Resultados</span>
-              <span className="xs:hidden">Res.</span>
+              <span className="hidden xs:inline">{isIndividual ? 'Resultado' : 'Resultados'}</span>
+              <span className="xs:hidden">{isIndividual ? 'Res.' : 'Res.'}</span>
             </Button>
           )}
         </div>
