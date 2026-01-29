@@ -201,73 +201,100 @@ export function OlimpiadaResultsModal({
   const loadResults = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
-      // ✅ NOVO: Buscar lista de alunos individuais aplicados primeiro
       const individualStudentIds = await OlimpiadasApiService.getIndividualAppliedStudents(olimpiadaId);
       const hasIndividualStudents = individualStudentIds.length > 0;
 
-      // Usar endpoint direto de relatório detalhado que funciona para olimpíadas
-      const detailedReport = await EvaluationResultsApiService.getDetailedReport(olimpiadaId);
-      
-      if (!detailedReport || !detailedReport.alunos) {
-        throw new Error('A olimpíada ainda não possui resultados disponíveis.');
-      }
+      let detailedReport: any = await EvaluationResultsApiService.getDetailedReport(olimpiadaId);
+      let alunosFiltrados: any[] = [];
 
-      // ✅ FILTRAR: Se há alunos individuais aplicados, filtrar apenas esses alunos
-      let alunosFiltrados = detailedReport.alunos;
-      
-      if (hasIndividualStudents) {
-        console.log(`🔍 [OlimpiadaResultsModal] Filtrando resultados para ${individualStudentIds.length} alunos individuais aplicados`);
-        alunosFiltrados = detailedReport.alunos.filter((aluno: any) => {
-          const alunoId = String(aluno.id || aluno.student_id || '');
-          // Comparar de forma mais flexível (com e sem hífens, case-insensitive)
-          return individualStudentIds.some((selectedId) => {
-            const normalizedSelected = String(selectedId).toLowerCase().replace(/-/g, '');
-            const normalizedAluno = alunoId.toLowerCase().replace(/-/g, '');
-            return normalizedSelected === normalizedAluno || String(selectedId) === alunoId;
+      if (detailedReport?.alunos && Array.isArray(detailedReport.alunos)) {
+        if (hasIndividualStudents) {
+          alunosFiltrados = detailedReport.alunos.filter((aluno: any) => {
+            const alunoId = String(aluno.id || aluno.student_id || '');
+            return individualStudentIds.some((selectedId) => {
+              const n1 = String(selectedId).toLowerCase().replace(/-/g, '');
+              const n2 = alunoId.toLowerCase().replace(/-/g, '');
+              return n1 === n2 || String(selectedId) === alunoId;
+            });
           });
-        });
-        console.log(`✅ [OlimpiadaResultsModal] ${alunosFiltrados.length} alunos individuais encontrados nos resultados`, {
-          individualStudentIds,
-          alunosEncontrados: alunosFiltrados.map((a: any) => String(a.id || a.student_id))
-        });
-      } else {
-        // Tentar identificar alunos individuais pelo application_info no relatório
-        // Se o aluno tem student_test_olimpics_id no application_info, é individual
-        const alunosIndividuais = detailedReport.alunos.filter((aluno: any) => {
-          // Verificar se há indicação de aplicação individual
-          // O backend pode retornar isso de diferentes formas
-          return aluno.application_info?.student_test_olimpics_id || 
-                 aluno.student_test_olimpics_id ||
-                 (aluno.application_info && !aluno.application_info.class_test_id);
-        });
-
-        if (alunosIndividuais.length > 0) {
-          console.log(`🔍 [OlimpiadaResultsModal] Identificados ${alunosIndividuais.length} alunos individuais pelo application_info`);
-          alunosFiltrados = alunosIndividuais;
         } else {
-          console.log('ℹ️ [OlimpiadaResultsModal] Nenhum aluno individual identificado, usando todos os alunos (compatibilidade)');
+          const alunosIndividuais = detailedReport.alunos.filter((aluno: any) =>
+            aluno.application_info?.student_test_olimpics_id ||
+            aluno.student_test_olimpics_id ||
+            (aluno.application_info && !aluno.application_info.class_test_id)
+          );
+          alunosFiltrados = alunosIndividuais.length > 0 ? alunosIndividuais : detailedReport.alunos;
         }
       }
 
-      // Criar relatório filtrado apenas com alunos individuais
-      const filteredReport = {
-        ...detailedReport,
-        alunos: alunosFiltrados
-      };
+      // Olimpíada individual: relatório detalhado não traz alunos (só class_test). Buscar por aluno.
+      if (hasIndividualStudents && alunosFiltrados.length === 0) {
+        const resultsPerStudent = await Promise.all(
+          individualStudentIds.map((studentId) =>
+            EvaluationResultsApiService.getStudentDetailedResults(olimpiadaId, studentId)
+          )
+        );
+        const alunosFromIndividual = resultsPerStudent
+          .filter((r): r is NonNullable<typeof r> => r != null)
+          .map((r) => ({
+            id: r.student_id,
+            nome: r.student_name ?? 'Aluno',
+            turma: '',
+            nota_final: r.grade ?? 0,
+            proficiencia: r.proficiencia ?? 0,
+            classificacao: r.classificacao ?? 'Abaixo do Básico',
+            status: r.status === 'concluida' ? 'concluida' : 'nao_respondida',
+            total_acertos: r.correct_answers ?? 0,
+            total_erros: (r.total_questions ?? 0) - (r.correct_answers ?? 0),
+            total_em_branco: 0,
+            respostas: (r.answers ?? []).map((a: any) => ({
+              questao_id: a.question_id,
+              questao_numero: a.question_number,
+              resposta_correta: a.is_correct,
+              resposta_em_branco: false,
+              tempo_gasto: 0,
+            })),
+          }));
+        if (alunosFromIndividual.length > 0) {
+          const tituloOlimpiada = detailedReport?.avaliacao?.titulo ?? 'Olimpíada';
+          detailedReport = {
+            avaliacao: {
+              id: olimpiadaId,
+              titulo: tituloOlimpiada,
+              disciplina: detailedReport?.avaliacao?.disciplina ?? '',
+              total_questoes: alunosFromIndividual[0] ? (alunosFromIndividual[0].total_acertos + (alunosFromIndividual[0].total_erros || 0)) : 0,
+            },
+            questoes: detailedReport?.questoes ?? [],
+            alunos: alunosFromIndividual,
+          };
+          alunosFiltrados = alunosFromIndividual;
+        }
+      }
 
-      // Mapear dados do relatorio-detalhado filtrado para formato esperado pelos componentes
+      // Se o relatório trouxe alunos mas o filtro ficou vazio (ex.: olimpíada por turma), usar todos os alunos
+      if (alunosFiltrados.length === 0 && detailedReport?.alunos?.length > 0) {
+        alunosFiltrados = detailedReport.alunos;
+      }
+
+      if (!detailedReport || alunosFiltrados.length === 0) {
+        if (hasIndividualStudents && individualStudentIds.length > 0) {
+          throw new Error('Nenhum resultado encontrado para os alunos aplicados individualmente. Os alunos já fizeram a prova?');
+        }
+        throw new Error('A olimpíada ainda não possui resultados disponíveis.');
+      }
+
+      const filteredReport = { ...detailedReport, alunos: alunosFiltrados };
       const mappedData = mapDetailedReportToApiData(filteredReport);
       setApiData(mappedData);
 
-      // Criar resumo da olimpíada (apenas alunos individuais)
       const resumo: EvaluationInfoSummary = {
         id: olimpiadaId,
         titulo: detailedReport.avaliacao?.titulo || 'Olimpíada',
-        total_alunos: alunosFiltrados.length, // ✅ Total de alunos individuais aplicados
-        alunos_participantes: alunosFiltrados.filter(a => a.status === 'concluida').length,
-        alunos_ausentes: alunosFiltrados.length - alunosFiltrados.filter(a => a.status === 'concluida').length,
+        total_alunos: alunosFiltrados.length,
+        alunos_participantes: alunosFiltrados.filter((a: any) => a.status === 'concluida').length,
+        alunos_ausentes: alunosFiltrados.length - alunosFiltrados.filter((a: any) => a.status === 'concluida').length,
         media_nota: mappedData.estatisticas_gerais.media_nota_geral || 0,
         media_proficiencia: mappedData.estatisticas_gerais.media_proficiencia_geral || 0,
         escola: detailedReport.avaliacao?.escola,
@@ -278,7 +305,6 @@ export function OlimpiadaResultsModal({
       };
 
       setEvaluationInfo(resumo);
-      
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro ao carregar dados';
       console.error('Erro ao carregar resultados da olimpíada:', {
@@ -877,10 +903,14 @@ export function OlimpiadaResultsModal({
                         </div>
                       </div>
                       <h3 className="text-lg font-semibold text-foreground mb-2">
-                        Nenhum resultado disponível
+                        {evaluationInfo && evaluationInfo.total_alunos > 0
+                          ? 'Nenhum aluno concluiu a prova ainda'
+                          : 'Nenhum resultado disponível'}
                       </h3>
                       <p className="text-sm text-muted-foreground">
-                        Os alunos ainda não completaram a olimpíada
+                        {evaluationInfo && evaluationInfo.total_alunos > 0
+                          ? `${evaluationInfo.total_alunos} aluno(s) aplicado(s), ${evaluationInfo.alunos_participantes ?? 0} concluíram. Você pode ver a lista na aba Estatísticas.`
+                          : 'Os alunos ainda não completaram a olimpíada'}
                       </p>
                     </CardContent>
                   </Card>

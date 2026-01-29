@@ -99,13 +99,17 @@ export default function Olimpiadas() {
             totalStudents = selectedStudents.length;
           }
 
+          const appInfo = olimpiada.application_info || {};
+          const startDateTime = olimpiada.startDateTime || olimpiada.time_limit || appInfo.application;
+          const endDateTime = olimpiada.endDateTime || olimpiada.end_time || appInfo.expiration;
+
           return {
             id: olimpiada.id,
             title: olimpiada.title,
             description: olimpiada.description,
             status: getStatus(olimpiada),
-            startDateTime: olimpiada.startDateTime || olimpiada.time_limit,
-            endDateTime: olimpiada.endDateTime || olimpiada.end_time,
+            startDateTime,
+            endDateTime,
             totalStudents,
             completedStudents,
             subjects: olimpiada.subjects || olimpiada.subjects_info || [],
@@ -114,6 +118,10 @@ export default function Olimpiadas() {
             schools: olimpiada.schools || [],
             municipalities: olimpiada.municipalities || [],
             selected_students: selectedStudents, // ✅ Alunos individuais selecionados (garantido como array)
+            // ✅ Necessário para o recálculo do status após enriquecimento (turmas não têm selected_students)
+            applied_classes: olimpiada.applied_classes || [],
+            is_applied: olimpiada.is_applied,
+            is_active: olimpiada.is_active,
           };
         })
       );
@@ -125,10 +133,18 @@ export default function Olimpiadas() {
           try {
             const individualIds = await OlimpiadasApiService.getIndividualAppliedStudents(item.id);
             if (Array.isArray(individualIds) && individualIds.length > 0) {
+              let completedStudents = item.completedStudents ?? 0;
+              try {
+                const results = await OlimpiadasApiService.getOlimpiadaResults(item.id);
+                completedStudents = results.completedStudents ?? completedStudents;
+              } catch (_) {
+                // Relatório pode não retornar alunos individuais; manter contagem existente
+              }
               return {
                 ...item,
                 selected_students: individualIds.map((id) => String(id)),
                 totalStudents: individualIds.length,
+                completedStudents,
               };
             }
           } catch (err) {
@@ -140,7 +156,17 @@ export default function Olimpiadas() {
           return item;
         })
       );
-      
+
+      // ✅ Recalcular status apenas para individuais (que ganharam selected_students no enriquecimento).
+      // Por turma: manter o status já calculado com os dados do backend (applied_classes, etc.).
+      olimpiadasData = olimpiadasData.map((item) => {
+        const hasIndividual = Array.isArray(item.selected_students) && item.selected_students.length > 0;
+        return {
+          ...item,
+          status: hasIndividual ? getStatus(item) : item.status,
+        };
+      });
+
       setOlimpiadas(olimpiadasData);
     } catch (error) {
       console.error('Erro ao carregar olimpíadas:', error);
@@ -321,16 +347,7 @@ export default function Olimpiadas() {
   };
 
   const handleViewResults = (id: string) => {
-    // Verificar se há alunos participantes antes de abrir o modal
-    const olimpiada = olimpiadas.find(o => o.id === id);
-    if (olimpiada && (olimpiada.completedStudents || 0) === 0) {
-      toast({
-        title: 'Nenhum resultado disponível',
-        description: 'Ainda não há alunos que completaram esta olimpíada.',
-        variant: 'destructive',
-      });
-      return;
-    }
+    // Sempre abrir o modal: mostra lista de alunos (participantes e ausentes) mesmo quando ninguém concluiu
     setSelectedOlimpiadaId(id);
     setShowResultsModal(true);
   };
@@ -436,30 +453,57 @@ export default function Olimpiadas() {
         olimpiadaCard ? { ...olimpiadaCard, selected_students: students } : null
       );
 
-      // Buscar nomes dos alunos individuais se houver
+      // Buscar nomes dos alunos individuais se houver (relatório detalhado inclui individuais com id/nome)
       if (students.length > 0) {
+        const namesMap: Record<string, string> = {};
+        const normalizeId = (s: string) => s.toLowerCase().replace(/-/g, '');
         try {
-          const studentsData = await EvaluationResultsApiService.getStudentsByEvaluation(id);
-          const namesMap: Record<string, string> = {};
+          // 1) Relatório detalhado: traz alunos individuais (StudentTestOlimpics) com id e nome
+          const detailedReport = await EvaluationResultsApiService.getDetailedReport(id).catch(() => null);
+          if (detailedReport?.alunos && Array.isArray(detailedReport.alunos)) {
+            detailedReport.alunos.forEach((aluno: { id?: string; student_id?: string; nome?: string; name?: string }) => {
+              const idAluno = String(aluno.id || aluno.student_id || '');
+              const nome = (aluno.nome || aluno.name || '').trim();
+              if (idAluno && nome) {
+                namesMap[idAluno] = nome;
+                const n = normalizeId(idAluno);
+                students.forEach((sid) => {
+                  if (normalizeId(sid) === n && !namesMap[sid]) namesMap[sid] = nome;
+                });
+              }
+            });
+          }
+          // 2) Preencher por studentId (com e sem hífens) para garantir match
           students.forEach((studentId) => {
-            const student = studentsData.find(
-              (s: { id?: string; student_id?: string }) =>
-                String(s.id || s.student_id || '') === String(studentId)
-            );
-            if (student) {
-              namesMap[studentId] = (student as { nome?: string; name?: string }).nome || (student as { nome?: string; name?: string }).name || studentId;
-            } else {
-              namesMap[studentId] = studentId; // Fallback para ID se não encontrar
-            }
+            if (namesMap[studentId]) return;
+            const n = normalizeId(studentId);
+            const found = Object.entries(namesMap).find(([k]) => normalizeId(k) === n);
+            if (found) namesMap[studentId] = found[1];
+          });
+          // 3) Fallback: endpoint de alunos da avaliação (quem já respondeu ou está no relatório por turma)
+          const stillMissing = students.filter((sid) => !namesMap[sid] || namesMap[sid] === sid);
+          if (stillMissing.length > 0) {
+            const studentsData = await EvaluationResultsApiService.getStudentsByEvaluation(id).catch(() => []);
+            stillMissing.forEach((studentId) => {
+              const student = studentsData.find(
+                (s: { id?: string; student_id?: string }) =>
+                  String(s.id || s.student_id || '') === String(studentId) || normalizeId(String(s.id || s.student_id || '')) === normalizeId(studentId)
+              );
+              if (student) {
+                const nome = (student as { nome?: string; name?: string }).nome || (student as { nome?: string; name?: string }).name;
+                if (nome) namesMap[studentId] = nome;
+              }
+              if (!namesMap[studentId] || namesMap[studentId] === studentId) namesMap[studentId] = studentId;
+            });
+          }
+          students.forEach((sid) => {
+            if (!namesMap[sid] || namesMap[sid] === sid) namesMap[sid] = sid;
           });
           setStudentNamesMap(namesMap);
         } catch (err) {
           console.warn('Erro ao buscar nomes dos alunos:', err);
-          // Usar IDs como fallback
           const fallbackMap: Record<string, string> = {};
-          students.forEach((id) => {
-            fallbackMap[id] = id;
-          });
+          students.forEach((sid) => { fallbackMap[sid] = sid; });
           setStudentNamesMap(fallbackMap);
         }
       } else {
