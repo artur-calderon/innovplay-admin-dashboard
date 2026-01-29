@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -243,6 +244,21 @@ export function QuestionBank({
 
   const [erro, setErro] = useState<string | null>(null);
 
+  // [QuestionBank] Log para debug: props ao abrir
+  useEffect(() => {
+    if (open) {
+      const selectedFromList = propsSubjects?.find((s) => String(s.id) === String(subjectId));
+      console.log("[QuestionBank] props ao abrir:", {
+        open,
+        subjectId,
+        selectedSubjectId,
+        filtersSubject: filters.subject,
+        selectedSubjectName: selectedFromList?.name,
+        subjectsFromModal: propsSubjects?.map((s) => ({ id: s.id, name: s.name })),
+      });
+    }
+  }, [open, subjectId, selectedSubjectId, propsSubjects]);
+
   // Atualizar filtro quando subjectId mudar
   useEffect(() => {
     if (subjectId) {
@@ -342,7 +358,7 @@ export function QuestionBank({
           title: apiQuestion.title || "",
           type: getQuestionType(apiQuestion.question_type),
           difficulty: mapDifficulty(apiQuestion.difficulty_level || apiQuestion.difficulty),
-          subjectId: apiQuestion.subject_id || "",
+          subjectId: apiQuestion.subject_id || apiQuestion.subject?.id || "",
           subject: apiQuestion.subject ? {
             id: apiQuestion.subject.id,
             name: apiQuestion.subject.name
@@ -367,6 +383,21 @@ export function QuestionBank({
           secondStatement: apiQuestion.second_statement || "",
         };
         return question;
+      });
+
+      // [QuestionBank] Log para debug: resposta da API e disciplina filtrada
+      const sample = convertedQuestions.slice(0, 3).map((q) => ({
+        id: q.id,
+        subjectId: q.subjectId,
+        "subject?.id": q.subject?.id,
+        "subject?.name": q.subject?.name,
+      }));
+      console.log("[QuestionBank] fetchQuestions:", {
+        rawLength: questionsData.length,
+        convertedLength: convertedQuestions.length,
+        subjectIdProp: subjectId,
+        filtersSubject: filters.subject,
+        sampleQuestions: sample,
       });
 
       setQuestions(convertedQuestions);
@@ -426,13 +457,18 @@ export function QuestionBank({
     }
   };
 
-  // Filtrar questões
+  // Filtrar questões (subjectMatch: compara por subject.id e subjectId, com String() para evitar tipo diferente)
   const filteredQuestions = useMemo(() => {
-    return (questions || []).filter((question) => {
+    const subjectMatch = (q: Question, id: string) =>
+      !id || id === "all" ||
+      (q.subject && String(q.subject.id) === String(id)) ||
+      String(q.subjectId) === String(id);
+
+    const filtered = (questions || []).filter((question) => {
       const matchesSearch = (question.text || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
                            (question.title || "").toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesSubjectId = !subjectId || (question.subject && question.subject.id === subjectId);
-      const matchesSubject = !filters.subject || filters.subject === "all" || (question.subject && question.subject.id === filters.subject);
+      const matchesSubjectId = subjectMatch(question, subjectId);
+      const matchesSubject = subjectMatch(question, filters.subject);
       const matchesGrade = !filters.grade || filters.grade === "all" || (question.grade && question.grade.id === filters.grade);
       const matchesDifficulty = !filters.difficulty || filters.difficulty === "all" || question.difficulty === filters.difficulty;
       const matchesType = !filters.type || filters.type === "all" || question.type === filters.type;
@@ -446,6 +482,25 @@ export function QuestionBank({
       
       return matchesSearch && matchesSubjectId && matchesSubject && matchesGrade && matchesDifficulty && matchesType;
     });
+
+    // [QuestionBank] Log para debug: filtro por disciplina
+    const sampleForLog = (questions || []).slice(0, 5).map((q) => ({
+      id: q.id?.slice(0, 8),
+      "subject?.id": q.subject?.id,
+      subjectId: q.subjectId,
+      "subject?.name": q.subject?.name,
+      matchById: subjectMatch(q, subjectId),
+      matchByFilter: subjectMatch(q, filters.subject),
+    }));
+    console.log("[QuestionBank] filter:", {
+      subjectId,
+      filtersSubject: filters.subject,
+      totalQuestions: (questions || []).length,
+      filteredCount: filtered.length,
+      sampleCheck: sampleForLog,
+    });
+
+    return filtered;
   }, [questions, searchTerm, subjectId, filters, gradeId, gradeName, grades]);
 
   // Paginação
@@ -532,6 +587,9 @@ export function QuestionBank({
               <Book className="h-5 w-5" />
               Banco de Questões
             </DialogTitle>
+            <DialogDescription>
+              Pesquise e selecione questões para adicionar. Use os filtros para refinar a lista.
+            </DialogDescription>
           </DialogHeader>
 
           {/* Filtros e Pesquisa */}
@@ -873,6 +931,7 @@ export function QuestionBank({
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Visualizar Questão</DialogTitle>
+            <DialogDescription>Visualização em modo somente leitura.</DialogDescription>
           </DialogHeader>
           {viewQuestion && (
             <QuestionPreview question={viewQuestion} />
