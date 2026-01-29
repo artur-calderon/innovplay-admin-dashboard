@@ -196,13 +196,19 @@ const ClassificationBadge = ({ classification }: { classification: string }) => 
 };
 
 export default function StudentResult() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id?: string; testId?: string; studentId?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  
+
+  // Modo admin: /app/olimpiada-resultado/:testId/:studentId (mesma rota/API que o aluno vê)
+  const isAdminView = Boolean(params.testId && params.studentId);
+  const testId = params.testId ?? params.id;
+  const studentId = params.studentId ?? user?.id ?? null;
+  const id = testId ?? undefined;
+
   // Detectar se é uma olimpíada pela URL
-  const isOlimpiada = location.pathname.includes('/olimpiada/');
+  const isOlimpiada = location.pathname.includes('/olimpiada/') || isAdminView;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -261,10 +267,54 @@ export default function StudentResult() {
 
   // Função auxiliar para buscar resultados
   const fetchResults = async (): Promise<{ found: boolean; hasResults: boolean }> => {
-    if (!id || !user?.id) return { found: false, hasResults: false };
+    if (!testId || !studentId) return { found: false, hasResults: false };
 
     try {
-      // Buscar avaliações da turma do aluno (autenticado)
+      // Modo admin: mesma rota que o aluno usa — GET /evaluation-results/<test_id>/student/<student_id>/results
+      if (isAdminView) {
+        const detailed = await EvaluationResultsApiService.getStudentDetailedResults(String(testId), String(studentId));
+        if (!detailed) {
+          return { found: true, hasResults: false };
+        }
+        let testTitle = "Olimpíada";
+        try {
+          const testResp = await api.get(`/test/${testId}`);
+          if (testResp.data?.title) testTitle = testResp.data.title.replace(/\[OLIMPÍADA\]\s?/gi, "").trim() || testTitle;
+        } catch (_) {}
+        setTest({
+          test_id: testId,
+          title: testTitle,
+          availability: { is_available: true, status: "completed" as const },
+          student_status: { has_completed: true, status: "finalizada", can_start: false, score: detailed.score_percentage, grade: detailed.grade },
+        } as MyClassTestItem);
+        setGrade(typeof detailed.grade === "number" ? detailed.grade : null);
+        setScorePct(typeof detailed.score_percentage === "number" ? detailed.score_percentage : null);
+        setProficiency(typeof detailed.proficiencia === "number" ? detailed.proficiencia : null);
+        setClassification(detailed.classificacao ?? null);
+        setCorrectAnswers(typeof detailed.correct_answers === "number" ? detailed.correct_answers : null);
+        setTotalQuestions(typeof detailed.total_questions === "number" ? detailed.total_questions : null);
+        setEvaluationData({
+          success: true,
+          data: {
+            user_id: studentId,
+            student_id: studentId,
+            student_name: detailed.student_name ?? "Aluno",
+            evaluation_id: testId,
+            evaluation_name: testTitle,
+            grade: detailed.grade ?? 0,
+            proficiency: detailed.proficiencia ?? 0,
+            classification: detailed.classificacao ?? "",
+            correct_answers: detailed.correct_answers ?? 0,
+            total_questions: detailed.total_questions ?? 0,
+            score_percentage: detailed.score_percentage ?? 0,
+            rankings: { school: { position: 0, total_students: 0, ranking: [] }, class: { position: 0, total_students: 0, ranking: [] }, municipality: { position: 0, total_students: 0, ranking: [] } },
+          },
+          message: "",
+        });
+        return { found: true, hasResults: true };
+      }
+
+      // Modo aluno: buscar avaliações da turma do aluno (autenticado)
       const resp = await api.get("/test/my-class/tests");
       const tests: MyClassTestItem[] = resp.data?.tests || [];
       const found = tests.find(t => String(t.test_id) === String(id)) || null;
@@ -275,17 +325,14 @@ export default function StudentResult() {
 
       setTest(found);
 
-      // Verificar se o aluno completou a avaliação
       const hasCompleted = found.student_status?.has_completed;
-
       if (!hasCompleted) {
         return { found: true, hasResults: false };
       }
 
-      // Tentar usar nova API primeiro
       try {
         console.log('🔄 Tentando buscar dados via nova API...');
-        const apiData = await fetchEvaluationGrades(String(user.id), String(id));
+        const apiData = await fetchEvaluationGrades(String(user!.id), String(id));
         
         if (apiData.success && apiData.data) {
           console.log('✅ Dados obtidos via nova API:', apiData.data);
@@ -449,7 +496,7 @@ export default function StudentResult() {
       }
     };
     load();
-  }, [id, user?.id]);
+  }, [testId, studentId, isAdminView, id, user?.id]);
 
   // Polling automático para verificar resultados quando completado mas sem nota
   useEffect(() => {
@@ -544,12 +591,16 @@ export default function StudentResult() {
   // Usar título da avaliação de test ou evaluationData
   const evaluationTitle = test?.title || evaluationData?.data?.evaluation_name || (isOlimpiada ? "Resultado da Olimpíada" : "Resultado da Avaliação");
   
-  // Títulos e navegação personalizados para olimpíadas
-  const pageTitle = isOlimpiada ? "Resultado da Olimpíada" : "Resultado da Avaliação";
-  const backButtonText = isOlimpiada ? "Voltar às Olimpíadas" : "Voltar às Avaliações";
-  const backButtonPath = isOlimpiada ? "/aluno/olimpiadas" : "/aluno/avaliacoes";
-  const myItemsButtonText = isOlimpiada ? "Minhas Olimpíadas" : "Minhas Avaliações";
-  const myItemsButtonPath = isOlimpiada ? "/aluno/olimpiadas" : "/aluno/avaliacoes";
+  // Títulos e navegação: admin (olimpiada-resultado/:testId/:studentId) vs aluno
+  const pageTitle = isAdminView
+    ? "Resultado do Aluno - Olimpíada"
+    : isOlimpiada
+      ? "Resultado da Olimpíada"
+      : "Resultado da Avaliação";
+  const backButtonText = isAdminView ? "Voltar às Olimpíadas" : isOlimpiada ? "Voltar às Olimpíadas" : "Voltar às Avaliações";
+  const backButtonPath = isAdminView ? "/app/olimpiadas" : isOlimpiada ? "/aluno/olimpiadas" : "/aluno/avaliacoes";
+  const myItemsButtonText = isAdminView ? "Voltar às Olimpíadas" : isOlimpiada ? "Minhas Olimpíadas" : "Minhas Avaliações";
+  const myItemsButtonPath = isAdminView ? "/app/olimpiadas" : isOlimpiada ? "/aluno/olimpiadas" : "/aluno/avaliacoes";
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">

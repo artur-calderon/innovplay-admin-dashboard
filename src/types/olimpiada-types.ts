@@ -1,15 +1,21 @@
 import { Evaluation, Subject, Grade, ClassInfo } from './evaluation-types';
 
 /**
+ * Tipos para Olimpíadas.
+ *
+ * Aplicação por turma (ClassTest): class_id + test_id; tabela class_test. Turma inteira vê a prova.
+ * Aplicação individual (StudentTestOlimpics): student_id + test_id; tabela student_test_olimpics. Só o(s) aluno(s) vê(em).
+ * As duas podem coexistir na mesma prova; para o mesmo aluno, a aplicação individual costuma prevalecer.
+ */
+
+/**
  * Interface para Olimpíada
  * Similar a Evaluation, mas com type: "OLIMPIADA"
  */
 export interface Olimpiada extends Omit<Evaluation, 'type'> {
   type: "OLIMPIADA";
-  // Por enquanto usa classes como avaliações normais
-  // Futuro: adicionar selected_students quando backend suportar
-  classes?: string[];
-  selected_students?: string[]; // Para uso futuro
+  classes?: string[]; // IDs das turmas (aplicação por turma — ClassTest)
+  selected_students?: string[]; // IDs dos alunos com aplicação individual (StudentTestOlimpics)
   // Campos de timezone para formatação correta de datas
   timeZone?: string;
   applicationTimeZone?: string;
@@ -53,7 +59,7 @@ export interface OlimpiadaFormData {
   municipalities: string[];
   classes: string[]; // IDs das turmas selecionadas
   selectedClasses?: ClassInfo[]; // Informações completas das turmas
-  selected_students?: string[]; // IDs dos alunos individuais selecionados (para aplicação individual)
+  selected_students?: string[]; // IDs dos alunos (aplicação individual — StudentTestOlimpics)
   questions: string[]; // IDs das questões
   startDateTime?: string;
   endDateTime?: string;
@@ -127,7 +133,7 @@ export interface OlimpiadaCardData {
   completedStudents?: number;
   subjects?: Subject[];
   created_at?: string;
-  selected_students?: string[]; // ✅ Alunos individuais selecionados
+  selected_students?: string[]; // Alunos com aplicação individual (StudentTestOlimpics)
   // Informações adicionais para filtros
   estado?: string | null;
   municipio?: string | null;

@@ -6,6 +6,37 @@ import { convertDateTimeLocalToISO, toLocalOffsetISO } from '@/utils/date';
 /**
  * Serviço de API para Olimpíadas
  * Reutiliza endpoints de avaliação, diferenciando apenas pelo type: "OLIMPIADA"
+ *
+ * --- Diferença entre aplicação por turma e individual ---
+ * A diferença está em quem recebe a aplicação e em qual tabela isso é registrado:
+ *
+ * Aplicação por turma (ClassTest)
+ *   Chave: class_id + test_id — uma turma inteira recebe a prova.
+ *   Efeito: Todos os alunos dessa turma veem a avaliação disponível (via turma do aluno).
+ *   Uso típico: Prova aplicada à turma 9º A, 9º B etc.
+ *   Tabela: class_test — um registro por par (turma, prova).
+ *
+ * Aplicação individual (StudentTestOlimpics)
+ *   Chave: student_id + test_id — um aluno específico recebe a prova.
+ *   Efeito: Só esse aluno vê a avaliação (independente da turma).
+ *   Uso típico: Olimpíada em que só alguns alunos são inscritos (aplicação "aluno a aluno").
+ *   Tabela: student_test_olimpics — um registro por par (aluno, prova).
+ *
+ * As duas podem coexistir na mesma prova (ex.: prova aplicada à turma 9º A + três alunos
+ * de outras turmas via aplicação individual). O backend considera turma ou individual;
+ * quando os dois existem para o mesmo aluno, a aplicação individual costuma prevalecer
+ * (datas de aplicação/expiração podem ser diferentes por aluno).
+ *
+ * --- Rotas oficiais ---
+ * Individual (StudentTestOlimpics):
+ *   POST   /test/<test_id>/apply-olympics     — Aplica a um aluno. Body: student_id; opcional: application, expiration, timezone.
+ *   DELETE /test/<test_id>/olympics/<student_id> — Remove aplicação individual do aluno.
+ *   GET    /test/<test_id>/applied-students   — Lista IDs dos alunos. Resposta: { "students": ["uuid-1", ...] }.
+ * Turma (ClassTest):
+ *   POST   /test/<test_id>/apply              — Aplica a turmas. Body: classes [{ class_id, application?, expiration? }], opcional timezone.
+ *   GET    /test/<test_id>/classes            — Lista turmas aplicadas (escola, série, datas).
+ *   DELETE /test/<test_id>/classes/<class_id> — Remove aplicação de uma turma.
+ *   POST   /test/<test_id>/classes/remove     — Remove aplicação de várias turmas. Body: { "class_ids": ["uuid-1", ...] }.
  */
 export class OlimpiadasApiService {
   /**
@@ -294,8 +325,8 @@ export class OlimpiadasApiService {
   }
 
   /**
-   * Buscar turmas aplicadas à olimpíada (GET /test/{id}/classes).
-   * Retorna lista no formato AppliedClass[] para preencher applied_classes.
+   * Olimpíada de turma (ClassTest): GET /test/<test_id>/classes
+   * Lista as turmas onde a avaliação foi aplicada (escola, série, datas, etc.).
    */
   static async getAppliedClasses(olimpiadaId: string): Promise<AppliedClass[]> {
     try {
@@ -323,6 +354,22 @@ export class OlimpiadasApiService {
       console.warn('⚠️ [olimpiadasApi] getAppliedClasses:', error);
       throw error;
     }
+  }
+
+  /**
+   * Olimpíada de turma (ClassTest): DELETE /test/<test_id>/classes/<class_id>
+   * Remove a aplicação da avaliação para aquela turma.
+   */
+  static async removeAppliedClass(testId: string, classId: string): Promise<void> {
+    await api.delete(`/test/${testId}/classes/${classId}`);
+  }
+
+  /**
+   * Olimpíada de turma (ClassTest): POST /test/<test_id>/classes/remove
+   * Remove a aplicação da avaliação para várias turmas. Body: { "class_ids": ["uuid-1", "uuid-2", ...] }.
+   */
+  static async removeAppliedClasses(testId: string, classIds: string[]): Promise<void> {
+    await api.post(`/test/${testId}/classes/remove`, { class_ids: classIds });
   }
 
   /**
@@ -439,20 +486,8 @@ export class OlimpiadasApiService {
   }
 
   /**
-   * Aplicar olimpíada só para aluno(s) individual(is) (sem aplicar para a turma).
-   * Endpoint: POST /test/{olimpiadaId}/apply-olympics
-   * Body exigido pelo backend:
-   *   - student_id (obrigatório): UUID do aluno
-   *   - application (obrigatório na criação): ISO 8601 – quando a prova fica disponível
-   *   - expiration (obrigatório na criação): ISO 8601 – quando a prova deixa de estar disponível
-   *   - timezone (opcional): default no backend "America/Sao_Paulo"; aqui enviamos o do navegador se não informado
-   * Autenticação: JWT no header (api já envia). Não envia turma/class_id; aplicação via student_test_olimpics.
-   *
-   * @param id - ID da olimpíada (test)
-   * @param studentIds - Array de UUIDs dos alunos
-   * @param startDateTime - Data/hora de início (ISO ou datetime-local)
-   * @param endDateTime - Data/hora de fim (ISO ou datetime-local)
-   * @param timezone - Timezone (opcional; se não informado, usa o do navegador)
+   * Olimpíada individual (StudentTestOlimpics): POST /test/<test_id>/apply-olympics
+   * Aplica a avaliação a um aluno. Body: student_id; opcionalmente application, expiration, timezone.
    */
   static async applyOlimpiadaToStudents(
     id: string,
@@ -528,13 +563,8 @@ export class OlimpiadasApiService {
   }
 
   /**
-   * Aplicar/enviar olimpíada para alunos
-   * Usa o mesmo endpoint de avaliação
-   * @param id - ID da olimpíada
-   * @param classes - Array de IDs das turmas
-   * @param startDateTime - Data/hora de início (ISO ou datetime-local)
-   * @param endDateTime - Data/hora de fim (ISO ou datetime-local)
-   * @param timezone - Timezone do usuário (opcional, será detectado automaticamente se não fornecido)
+   * Olimpíada de turma (ClassTest): POST /test/<test_id>/apply
+   * Aplica a avaliação a uma ou mais turmas. Body: classes (lista de { class_id, application?, expiration? }), opcionalmente timezone.
    */
   static async applyOlimpiada(
     id: string,
@@ -653,10 +683,8 @@ export class OlimpiadasApiService {
   }
 
   /**
-   * Buscar lista de alunos individuais aplicados via apply-olympics.
-   * Contrato oficial: GET /test/{olimpiadaId}/applied-students retorna 200 com { students: string[] } (array de UUIDs).
-   * Fallback: se response.data for array direto, aceita; se endpoint falhar, usa GET /evaluation-results/relatorio-detalhado/{id}.
-   * IMPORTANTE: Não chama getOlimpiada para evitar recursão.
+   * Olimpíada individual (StudentTestOlimpics): GET /test/<test_id>/applied-students
+   * Lista os IDs dos alunos com aplicação individual. Resposta: { "students": ["uuid-1", "uuid-2", ...] }.
    */
   static async getIndividualAppliedStudents(olimpiadaId: string): Promise<string[]> {
     try {
@@ -728,7 +756,8 @@ export class OlimpiadasApiService {
   }
 
   /**
-   * Remover aplicação individual de um aluno (DELETE /test/{id}/olympics/{studentId}).
+   * Olimpíada individual (StudentTestOlimpics): DELETE /test/<test_id>/olympics/<student_id>
+   * Remove a aplicação individual para aquele aluno.
    */
   static async removeIndividualApplication(olimpiadaId: string, studentId: string): Promise<void> {
     await api.delete(`/test/${olimpiadaId}/olympics/${studentId}`);

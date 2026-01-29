@@ -893,6 +893,10 @@ export function CreateOlimpiadaModal({
                                 variant="outline"
                                 size="sm"
                                 onClick={() => {
+                                  console.log("[CreateOlimpiadaModal] Abrindo Banco de Questões:", {
+                                    subjectId: subject.id,
+                                    subjectName: subject.name,
+                                  });
                                   setSelectedSubjectForQuestion(subject.id);
                                   setShowQuestionBank(true);
                                 }}
@@ -1227,8 +1231,6 @@ export function CreateOlimpiadaModal({
               });
             }}
             onClose={() => setShowQuestionBank(false)}
-            gradeId={grade}
-            gradeName={grades.find(g => g.id === grade)?.name}
             subjects={selectedSubjects}
             selectedSubjectId={selectedSubjectForQuestion}
           />
