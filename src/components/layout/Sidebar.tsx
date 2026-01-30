@@ -274,16 +274,6 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
       links: [
         { icon: Award, label: "Certificados", href: `${user.role === 'aluno' ? "/aluno/certificados" : "/app/certificados"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
-        { icon: Trophy, label: "Competições", href: "/aluno/competicoes", role: ["aluno"] },
-        { 
-          icon: Trophy, 
-          label: "Competições", 
-          role: ["admin", "professor", "diretor", "coordenador", "tecadm"],
-          children: [
-            { icon: Trophy, label: "Ver Competições", href: "/app/competicoes", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-            { icon: Settings, label: "Gerenciar", href: "/app/competicoes/admin", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-          ]
-        },
         { icon: Sparkles, label: "Olimpíadas", href: `${user.role === 'aluno' ? "/aluno/olimpiadas" : "/app/olimpiadas"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
       ]
     },

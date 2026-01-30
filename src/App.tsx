@@ -76,11 +76,7 @@ const QuestionarioList = React.lazy(() => import("./pages/QuestionarioList"));
 const QuestionarioRespond = React.lazy(() => import("./pages/QuestionarioRespond"));
 
 // Lazy loading para competições e torneios
-const Competicoes = React.lazy(() => import("./pages/Competicoes"));
 const TorneioExecucao = React.lazy(() => import("./pages/TorneioExecucao"));
-const CompeticoesAdmin = React.lazy(() => import("./pages/CompeticoesAdmin"));
-const CompeticaoExecucao = React.lazy(() => import("./pages/CompeticaoExecucao"));
-const CompeticaoResultados = React.lazy(() => import("./pages/CompeticaoResultados"));
 
 // Lazy loading para dashboards específicos
 const StudentDashboard = React.lazy(() => import("./pages/StudentDashboard"));
@@ -168,10 +164,7 @@ const App = () => {
               <Route path="/aluno/play-tv/:id" element={<PrivateRoute><PlayTvVideoView /></PrivateRoute>} />
               <Route path="/aluno/plantao-online" element={<PrivateRoute><PlantaoOnlineStudent /></PrivateRoute>} />
               <Route path="/aluno/certificados" element={<PrivateRoute><StudentCertificates /></PrivateRoute>} />
-              <Route path="/aluno/competicoes" element={<PrivateRoute><Competicoes /></PrivateRoute>} />
               <Route path="/aluno/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
-              <Route path="/aluno/competicao/:competitionId" element={<PrivateRoute><CompeticaoExecucao /></PrivateRoute>} />
-              <Route path="/aluno/competicoes/:competitionId/resultados" element={<PrivateRoute><CompeticaoResultados /></PrivateRoute>} />
               <Route path="/aluno/olimpiadas" element={<PrivateRoute><OlimpiadasStudent /></PrivateRoute>} />
               <Route path="/aluno/olimpiada/:id/fazer" element={<FullscreenLayout />}>
                 <Route index element={<PrivateRoute><OlimpiadaStudent /></PrivateRoute>} />
@@ -218,10 +211,6 @@ const App = () => {
               <Route path="/app/cartao-resposta" element={<PrivateRoute><AnswerSheetGenerator /></PrivateRoute>} />
               <Route path="/app/cartao-resposta/resultados/:gabaritoId" element={<PrivateRoute><AnswerSheetResults /></PrivateRoute>} />
               <Route path="/app/certificados" element={<PrivateRoute><Certificates /></PrivateRoute>} />
-              <Route path="/app/competicoes" element={<PrivateRoute><Competicoes /></PrivateRoute>} />
-              <Route path="/app/competicoes/admin" element={<PrivateRoute><CompeticoesAdmin /></PrivateRoute>} />
-              <Route path="/app/competicao/:competitionId" element={<PrivateRoute><CompeticaoExecucao /></PrivateRoute>} />
-              <Route path="/app/competicoes/:competitionId/resultados" element={<PrivateRoute><CompeticaoResultados /></PrivateRoute>} />
               <Route path="/app/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
               <Route path="/app/olimpiadas" element={<PrivateRoute><Olimpiadas /></PrivateRoute>} />
               <Route path="/app/olimpiada/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
