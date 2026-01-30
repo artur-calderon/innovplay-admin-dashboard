@@ -264,7 +264,11 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
         if (!student.nota) {
           student.nota = Number(aluno.nota ?? 0);
         }
-        if (!student.proficiencia) {
+        // Sempre priorizar proficiencia_geral se existir, independente do valor atual
+        const profGeralFromDisciplina = aluno.proficiencia_geral;
+        if (profGeralFromDisciplina != null && profGeralFromDisciplina !== 0) {
+          student.proficiencia = Number(profGeralFromDisciplina);
+        } else if (!student.proficiencia || student.proficiencia === 0) {
           student.proficiencia = Number(aluno.proficiencia ?? 0);
         }
       } else {
@@ -1787,8 +1791,8 @@ export default function AcertoNiveis() {
         doc.text(`${totalFaltosos}`, leftColX + labelWidth, cardY);
       };
 
-      // Função para adicionar capa de turma
-      const addTurmaCover = (turmaName: string, alunosTurma: StudentResult[]) => {
+      // Função para adicionar capa de turma (totalTurmas: quando 1, usa valor do backend; filtroTodos: quando true, proficiência = valorProficienciaTodos = mesmo valor da UI "Informações Gerais")
+      const addTurmaCover = (turmaName: string, alunosTurma: StudentResult[], totalTurmas: number = 1, filtroTodos: boolean = false, valorProficienciaTodos: number | null = null) => {
         // Garantir fundo branco limpo - desenhar primeiro e cobrir toda a página
         doc.setFillColor(...COLORS.white);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
@@ -1872,9 +1876,21 @@ export default function AcertoNiveis() {
         const mediaNota = concluidos.length > 0 
           ? (concluidos.reduce((sum, s) => sum + s.nota, 0) / concluidos.length).toFixed(1)
           : '0.0';
-        const mediaProficiencia = concluidos.length > 0
-          ? (concluidos.reduce((sum, s) => sum + s.proficiencia, 0) / concluidos.length).toFixed(1)
-          : '0.0';
+        // Filtro "todos": usar o MESMO valor da UI "Informações Gerais" = valorProficienciaTodos (backend prioritário). Uma turma selecionada: valor do backend. Várias turmas (por turma): média dos concluídos desta turma.
+        const mediaProficiencia =
+          filtroTodos
+            ? (valorProficienciaTodos != null
+                ? Number(valorProficienciaTodos).toFixed(1)
+                : estatisticasGerais?.media_proficiencia_geral != null
+                  ? Number(estatisticasGerais.media_proficiencia_geral).toFixed(1)
+                  : concluidos.length > 0
+                    ? (concluidos.reduce((sum, s) => sum + s.proficiencia, 0) / concluidos.length).toFixed(1)
+                    : '0.0')
+            : totalTurmas === 1 && estatisticasGerais?.media_proficiencia_geral != null
+              ? Number(estatisticasGerais.media_proficiencia_geral).toFixed(1)
+              : concluidos.length > 0
+                ? (concluidos.reduce((sum, s) => sum + s.proficiencia, 0) / concluidos.length).toFixed(1)
+                : '0.0';
         const taxaParticipacao = totalAlunos > 0 
           ? ((concluidos.length / totalAlunos) * 100).toFixed(1)
           : '0.0';
@@ -1913,10 +1929,10 @@ export default function AcertoNiveis() {
         doc.text(`${mediaNota}`, leftColX + labelWidth, cardY);
         cardY += 5;
 
-        // MÉDIA PROFICIÊNCIA
+        // PROFICIÊNCIA (mesmo valor da tabela; com 1 aluno = valor do aluno)
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...COLORS.primary);
-        doc.text('MÉDIA PROFICIÊNCIA:', leftColX, cardY);
+        doc.text('PROFICIÊNCIA:', leftColX, cardY);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...COLORS.textDark);
         doc.text(`${mediaProficiencia}`, leftColX + labelWidth, cardY);
@@ -2322,38 +2338,37 @@ export default function AcertoNiveis() {
           bodyRows.push(row);
         });
         
-        // Calcular larguras das colunas dinamicamente (otimizado)
+        // Calcular larguras para caber na página (evitar overflow com muitas questões)
         const availableWidth = landscapeWidth - (2 * landscapeMargin);
-        const nameColWidth = Math.min(45, availableWidth * 0.2); // Nome do aluno
-        const finalColsWidth = 20 + 25 + 30; // Total, Prof, Nível (reduzido)
-        const questionColWidth = Math.max(8, Math.min(12, (availableWidth - nameColWidth - finalColsWidth) / questoes.length));
-        
+        const nameColWidth = Math.min(45, availableWidth * 0.2);
+        const finalColsWidth = 20 + 25 + 30;
+        const spaceForQuestions = availableWidth - nameColWidth - finalColsWidth;
+        const questionColWidth = Math.max(2.8, spaceForQuestions / questoes.length);
+        const tableFontSize = questionColWidth < 4 ? 4.5 : questionColWidth < 5 ? 5.5 : 6;
+        const cellPadding = questionColWidth < 4 ? 0.2 : questionColWidth < 5 ? 0.3 : 0.5;
+
         const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
           0: { cellWidth: nameColWidth, halign: 'left' }
         };
-        
-        // Configurar largura das colunas de questões (otimizado)
         for (let i = 1; i <= questoes.length; i++) {
           columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
         }
-        
-        // Configurar colunas finais (reduzido)
         columnStyles[questoes.length + 1] = { cellWidth: 20, halign: 'center' };
         columnStyles[questoes.length + 2] = { cellWidth: 25, halign: 'center' };
         columnStyles[questoes.length + 3] = { cellWidth: 30, halign: 'center' };
-        
-        // Gerar tabela
+
+        // Gerar tabela (largura fixa para não sair da página)
         autoTable(doc, {
           startY: y,
           head: [headerRow1, headerRow2, headerRow3],
           body: bodyRows,
           theme: 'grid',
           margin: { left: landscapeMargin, right: landscapeMargin },
-          tableWidth: 'auto',
+          tableWidth: availableWidth,
           showHead: 'everyPage',
           styles: {
-            fontSize: 6,
-            cellPadding: 0.5,
+            fontSize: tableFontSize,
+            cellPadding: cellPadding,
             lineColor: [200, 200, 200],
             lineWidth: 0.05,
             overflow: 'linebreak',
@@ -2365,7 +2380,7 @@ export default function AcertoNiveis() {
             textColor: [0, 0, 0],
             fontStyle: 'bold',
             halign: 'center',
-            fontSize: 6
+            fontSize: tableFontSize
           },
           columnStyles: columnStyles,
           bodyStyles: { textColor: [33, 33, 33] },
@@ -2583,6 +2598,10 @@ export default function AcertoNiveis() {
           headerRow2.push('', '', '', '');
           headerRow3.push('', '', '', '');
 
+          // Padronizar: usar proficiencia_geral quando disponível (mesmo valor de Informações Gerais)
+          const geralAlunos = tabelaDetalhada?.geral?.alunos ?? [];
+          const geralPorId = new Map(geralAlunos.map((a) => [a.id, a]));
+
           // Linhas de alunos (usar somente dados do backend, apenas da turma específica)
           const bodyRows: (string | number)[][] = [];
           alunosTurmaDisciplina.forEach(al => {
@@ -2612,40 +2631,47 @@ export default function AcertoNiveis() {
               }
             });
 
+            const alunoGeral = geralPorId.get(al.id);
+            const proficienciaVal = alunoGeral?.proficiencia_geral != null ? Number(alunoGeral.proficiencia_geral) : Number(al.proficiencia ?? 0);
+            const nivelVal = alunoGeral?.nivel_proficiencia_geral || al.nivel_proficiencia || '';
+            const notaVal = alunoGeral?.nota_geral != null ? Number(alunoGeral.nota_geral) : Number(al.nota ?? 0);
+
             row.push(`${al.total_acertos ?? acertos}/${qs.length}`);
-            row.push(Number(al.nota ?? 0).toFixed(1));
-            row.push(Number(al.proficiencia ?? 0).toFixed(1));
-            row.push(String(al.nivel_proficiencia || ''));
+            row.push(notaVal.toFixed(1));
+            row.push(proficienciaVal.toFixed(1));
+            row.push(String(nivelVal));
             bodyRows.push(row);
           });
 
-          // Larguras
+          // Larguras para caber na página (evitar overflow com muitas questões)
           const availableWidth = landscapeWidth - (2 * landscapeMargin);
           const nameColWidth = Math.min(45, availableWidth * 0.2);
-          const finalColsWidth = 20 + 20 + 25 + 30; // Total, Nota, Prof, Nível
-          const questionColWidth = Math.max(8, Math.min(12, (availableWidth - nameColWidth - finalColsWidth) / qs.length));
+          const finalColsWidth = 20 + 20 + 25 + 30;
+          const spaceForQuestions = availableWidth - nameColWidth - finalColsWidth;
+          const questionColWidth = Math.max(3.5, spaceForQuestions / qs.length);
+          const tableFontSize = questionColWidth < 5 ? 5 : 6;
 
           const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
             0: { cellWidth: nameColWidth, halign: 'left' }
           };
           for (let i = 1; i <= qs.length; i++) columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
-          columnStyles[qs.length + 1] = { cellWidth: 20, halign: 'center' }; // Total
-          columnStyles[qs.length + 2] = { cellWidth: 20, halign: 'center' }; // Nota
-          columnStyles[qs.length + 3] = { cellWidth: 25, halign: 'center' }; // Prof
-          columnStyles[qs.length + 4] = { cellWidth: 30, halign: 'center' }; // Nível
+          columnStyles[qs.length + 1] = { cellWidth: 20, halign: 'center' };
+          columnStyles[qs.length + 2] = { cellWidth: 20, halign: 'center' };
+          columnStyles[qs.length + 3] = { cellWidth: 25, halign: 'center' };
+          columnStyles[qs.length + 4] = { cellWidth: 30, halign: 'center' };
 
-          // Tabela
+          // Tabela (largura fixa para não sair da página)
           autoTable(doc, {
             startY: y,
             head: [headerRow1, headerRow2, headerRow3],
             body: bodyRows,
             theme: 'grid',
             margin: { left: landscapeMargin, right: landscapeMargin },
-            tableWidth: 'auto',
+            tableWidth: availableWidth,
             showHead: 'everyPage',
             styles: {
-              fontSize: 6,
-              cellPadding: 0.5,
+              fontSize: tableFontSize,
+              cellPadding: questionColWidth < 5 ? 0.3 : 0.5,
               lineColor: [200, 200, 200],
               lineWidth: 0.05,
               overflow: 'linebreak',
@@ -2657,7 +2683,7 @@ export default function AcertoNiveis() {
               textColor: [0, 0, 0],
               fontStyle: 'bold',
               halign: 'center',
-              fontSize: 6
+              fontSize: tableFontSize
             },
             columnStyles: columnStyles,
             bodyStyles: { textColor: [33, 33, 33] },
@@ -2811,7 +2837,12 @@ export default function AcertoNiveis() {
           }
         });
         
-        // Buscar em disciplinas
+        // Map de geral.alunos por id para priorizar proficiencia_geral na tabela geral
+        const geralPorId = new Map(
+          (tabelaParaUsar.geral?.alunos ?? []).map((a) => [a.id, a])
+        );
+
+        // Buscar em disciplinas (priorizar proficiencia_geral quando o aluno existir em geral)
         tabelaParaUsar.disciplinas?.forEach(disciplina => {
           disciplina.alunos?.forEach(aluno => {
             const turmaAlunoNormalizada = normalizeTurmaName(aluno.turma);
@@ -2825,14 +2856,23 @@ export default function AcertoNiveis() {
               const participou = Array.isArray(aluno.respostas_por_questao) && 
                                  aluno.respostas_por_questao.some(r => r.respondeu);
               const statusFinal = participou ? 'concluida' : 'pendente';
-              
+              const alunoGeral = geralPorId.get(aluno.id);
+              // Na tabela geral usar proficiencia_geral quando disponível (mesmo valor do Resumo/backend)
+              const proficiencia = alunoGeral?.proficiencia_geral != null
+                ? Number(alunoGeral.proficiencia_geral)
+                : Number(aluno.proficiencia ?? 0);
+              const nota = alunoGeral?.nota_geral != null
+                ? Number(alunoGeral.nota_geral)
+                : Number(aluno.nota ?? 0);
+              const classificacao = (alunoGeral?.nivel_proficiencia_geral || aluno.nivel_proficiencia || 'Abaixo do Básico') as StudentResult['classificacao'];
+
               alunos.push({
                 id: aluno.id,
                 nome: aluno.nome,
                 turma: aluno.turma || '',
-                nota: Number(aluno.nota ?? 0),
-                proficiencia: Number(aluno.proficiencia ?? 0),
-                classificacao: (aluno.nivel_proficiencia || 'Abaixo do Básico') as StudentResult['classificacao'],
+                nota,
+                proficiencia,
+                classificacao,
                 acertos: totalAcertos,
                 erros: totalErros,
                 questoes_respondidas: totalRespondidas,
@@ -2915,6 +2955,15 @@ export default function AcertoNiveis() {
         }
         turmasMap.get(turma)!.push(s);
       });
+      
+      // Quando filtro "todos": valor EXATO da UI "Informações Gerais" (mesma fórmula: média concluídos ?? backend ?? 0)
+      const filtroTodosAtivo = !selectedClassId;
+      const concluidosUI = students.filter(s => s.status === 'concluida');
+      const valorProficienciaTodos: number =
+        estatisticasGerais?.media_proficiencia_geral ??
+        (concluidosUI.length > 0
+          ? concluidosUI.reduce((sum, s) => sum + s.proficiencia, 0) / concluidosUI.length
+          : 0);
       
       // Se uma turma específica foi selecionada e não encontramos alunos em studentsToUse,
       // mas a turma existe na lista de turmas, garantir que ela apareça no relatório
@@ -3029,7 +3078,7 @@ export default function AcertoNiveis() {
         // Garantir fundo branco limpo na nova página antes de desenhar a capa
         doc.setFillColor(...COLORS.white);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
-        addTurmaCover(turmaName, alunosTurma);
+        addTurmaCover(turmaName, alunosTurma, turmasOrdenadas.length, filtroTodosAtivo, valorProficienciaTodos);
         pageCount++;
         
         // 1. RELATÓRIO DE DESEMPENHO GERAL (resumo)
@@ -3510,7 +3559,18 @@ export default function AcertoNiveis() {
                    <div className="space-y-2">
                      <div className="text-sm font-medium text-muted-foreground">Proficiência</div>
                      <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                       {Number(estatisticasGerais.media_proficiencia_geral || 0).toFixed(1)}
+                       {(() => {
+                         // Priorizar backend para consistência com PDF
+                         if (estatisticasGerais?.media_proficiencia_geral != null) {
+                           return Number(estatisticasGerais.media_proficiencia_geral).toFixed(1);
+                         }
+                         // Fallback: calcular média dos concluídos
+                         const concluidos = students.filter(s => s.status === 'concluida');
+                         if (concluidos.length > 0) {
+                           return (concluidos.reduce((sum, s) => sum + s.proficiencia, 0) / concluidos.length).toFixed(1);
+                         }
+                         return '0.0';
+                       })()}
                      </div>
                    </div>
                  </div>
