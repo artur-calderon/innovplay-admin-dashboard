@@ -101,6 +101,7 @@ const OlimpiadasStudent = React.lazy(() => import("./pages/OlimpiadasStudent"));
 const OlimpiadaStudent = React.lazy(() => import("./pages/OlimpiadaStudent"));
 const CoinHistory = React.lazy(() => import("./pages/CoinHistory"));
 const CoinsAdmin = React.lazy(() => import("./pages/CoinsAdmin"));
+const Competitions = React.lazy(() => import("./pages/Competitions"));
 
 // Loading component
 const LoadingSpinner = () => (
@@ -217,6 +218,7 @@ const App = () => {
               <Route path="/app/certificados" element={<PrivateRoute><Certificates /></PrivateRoute>} />
               <Route path="/app/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
               <Route path="/app/olimpiadas" element={<PrivateRoute><Olimpiadas /></PrivateRoute>} />
+              <Route path="/app/competitions" element={<PrivateRoute><RoleRoute allowed={["admin", "coordenador"]}><Competitions /></RoleRoute></PrivateRoute>} />
               <Route path="/app/olimpiada/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
               <Route path="/app/olimpiada-resultado/:testId/:studentId" element={<PrivateRoute><StudentResult /></PrivateRoute>} />
               <Route path="/app/city" element={<PrivateRoute><Cities /></PrivateRoute>} />
@@ -253,7 +255,6 @@ const App = () => {
               {/* Rotas de Relatórios */}
               <Route path="/app/relatorios/analise-avaliacoes" element={<PrivateRoute><AnaliseAvaliacoes /></PrivateRoute>} />
               <Route path="/app/relatorios/acerto-niveis" element={<PrivateRoute><AcertoNiveis /></PrivateRoute>} />
-              <Route path="/app/relatorios/relatorio-escolar" element={<PrivateRoute><RelatorioEscolar /></PrivateRoute>} />
             </Route>
 
             {/* Rota de avaliação em tela cheia para admin/professor */}
