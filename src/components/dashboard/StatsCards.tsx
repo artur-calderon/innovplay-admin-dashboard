@@ -1,13 +1,12 @@
 import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Target, BookOpen, Award, Star } from "lucide-react";
+import { Target, BookOpen, Award } from "lucide-react";
 
 interface StatsCardsProps {
   stats: {
     proficiencia: { value: number; change: number; trend: 'up' | 'down' };
     nota: { value: number; change: number; trend: 'up' | 'down' };
     nivel: { value: string; change: number; trend: 'up' | 'down' };
-    acertos: { value: number; change: number; trend: 'up' | 'down' };
   };
 }
 
@@ -43,7 +42,7 @@ const StatCard = ({
 
 const StatsCards: React.FC<StatsCardsProps> = ({ stats }) => {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
       <StatCard
         title="Proficiência"
         value={stats.proficiencia.value || 0}
@@ -61,12 +60,6 @@ const StatsCards: React.FC<StatsCardsProps> = ({ stats }) => {
         value={stats.nivel.value || 'N/A'}
         icon={Award}
         color="bg-yellow-500"
-      />
-      <StatCard
-        title="Acertos"
-        value={stats.acertos.value || 0}
-        icon={Star}
-        color="bg-green-500"
       />
     </div>
   );

@@ -130,7 +130,7 @@ const TorneioExecucao = () => {
           description: "Não foi possível carregar o torneio.",
           variant: "destructive",
         });
-        navigate('/aluno/competicoes');
+        navigate('/');
       } finally {
         setIsLoading(false);
       }
@@ -337,7 +337,7 @@ const TorneioExecucao = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Button 
-                onClick={() => navigate('/aluno/competicoes')}
+                onClick={() => navigate('/')}
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 Voltar às Competições

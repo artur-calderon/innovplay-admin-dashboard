@@ -1,5 +1,5 @@
 /**
- * Utilitários para gerenciamento de InnovCoins (moedas virtuais)
+ * Utilitários para gerenciamento de Afirme Coins (moedas virtuais)
  */
 
 /**

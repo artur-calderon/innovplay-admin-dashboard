@@ -125,7 +125,6 @@ const EditQuickLinks = () => {
       { icon: "Gamepad", iconComponent: Gamepad, label: "Jogos", href: `/aluno/jogos` },
       { icon: "Tv", iconComponent: Tv, label: "Play TV", href: `/aluno/play-tv` },
       { icon: "Award", iconComponent: Award, label: "Certificados", href: `/aluno/certificados` },
-      { icon: "Trophy", iconComponent: Trophy, label: "Competições", href: `/aluno/competicoes` },
       { icon: "Award", iconComponent: Award, label: "Olimpíadas", href: `/aluno/olimpiadas` },
       { icon: "UserIcon", iconComponent: UserIcon, label: "Editar Perfil", href: `/aluno/perfil` },
       { icon: "Bell", iconComponent: Bell, label: "Avisos", href: `/aluno/avisos` },
@@ -138,7 +137,6 @@ const EditQuickLinks = () => {
       { icon: "Headset", iconComponent: Headset, label: "Plantão Online", href: "/app/plantao" },
       { icon: "Ticket", iconComponent: Ticket, label: "Cartão Resposta", href: "/app/cartao-resposta" },
       { icon: "Award", iconComponent: Award, label: "Certificados", href: `/app/certificados` },
-      { icon: "Trophy", iconComponent: Trophy, label: "Competições", href: `/app/competicoes` },
       { icon: "Award", iconComponent: Award, label: "Olimpíadas", href: `/app/olimpiadas` },
   
       { icon: "UserIcon", iconComponent: UserIcon, label: "Editar Perfil", href: `/app/perfil` },

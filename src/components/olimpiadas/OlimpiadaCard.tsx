@@ -236,7 +236,7 @@ export function OlimpiadaCard({
   return (
     <Card
       className={cn(
-        'group relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:scale-[1.01] sm:hover:scale-[1.02]',
+        'group relative overflow-visible transition-all duration-300 hover:shadow-lg hover:scale-[1.01] sm:hover:scale-[1.02]',
         'bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-50',
         'dark:from-yellow-950/20 dark:via-amber-950/20 dark:to-orange-950/20',
         'border-yellow-200 dark:border-yellow-800',
@@ -250,13 +250,17 @@ export function OlimpiadaCard({
         <div className="absolute top-2 right-2 sm:top-4 sm:right-4 text-4xl sm:text-6xl">🏆</div>
       </div>
 
-      <CardHeader className="relative flex-shrink-0">
-        <div className="flex flex-col gap-2 w-full">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-2">
-                <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
-                <CardTitle className="text-base sm:text-lg md:text-xl font-bold text-yellow-900 dark:text-yellow-100 line-clamp-2 break-words">
+      <CardHeader className="relative flex-shrink-0 pb-2 sm:pb-4 overflow-visible">
+        <div className="flex flex-col gap-2 w-full min-w-0 overflow-visible">
+          <div className="flex items-start justify-between gap-2 sm:gap-3">
+            <div className="flex-1 min-w-0 overflow-visible">
+              <div className="flex items-start gap-2 mb-2 min-w-0 overflow-visible">
+                <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+                <CardTitle
+                  className="text-base sm:text-lg md:text-xl font-bold text-yellow-900 dark:text-yellow-100 min-w-0 break-all overflow-visible"
+                  title={olimpiada.title}
+                  style={{ overflowWrap: 'anywhere', wordBreak: 'break-word', display: 'block' } as React.CSSProperties}
+                >
                   {olimpiada.title}
                 </CardTitle>
               </div>
