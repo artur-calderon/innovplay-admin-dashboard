@@ -9,6 +9,7 @@ import { useAuth } from "./context/authContext";
 import Layout from "./components/layout/Layout";
 import FullscreenLayout from "./components/layout/FullscreenLayout";
 import { PrivateRoute } from "./components/PrivateRoute";
+import { RoleRoute } from "./components/layout/RoleRoute";
 
 // Lazy loading para reduzir o tamanho dos chunks
 const Index = React.lazy(() => import("./pages/Index"));
@@ -98,6 +99,8 @@ const AnswerSheetResults = React.lazy(() => import("./pages/AnswerSheetResults")
 const Olimpiadas = React.lazy(() => import("./pages/Olimpiadas"));
 const OlimpiadasStudent = React.lazy(() => import("./pages/OlimpiadasStudent"));
 const OlimpiadaStudent = React.lazy(() => import("./pages/OlimpiadaStudent"));
+const CoinHistory = React.lazy(() => import("./pages/CoinHistory"));
+const CoinsAdmin = React.lazy(() => import("./pages/CoinsAdmin"));
 
 // Loading component
 const LoadingSpinner = () => (
@@ -176,6 +179,7 @@ const App = () => {
               <Route path="/aluno/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/aluno/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
               <Route path="/aluno/configuracoes" element={<PrivateRoute><Settings /></PrivateRoute>} />
+              <Route path="/aluno/moedas/historico" element={<PrivateRoute><CoinHistory /></PrivateRoute>} />
             </Route>
 
             {/* Rota de avaliação em tela cheia para alunos */}
@@ -222,6 +226,7 @@ const App = () => {
               <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/app/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
               <Route path="/app/configuracoes" element={<PrivateRoute><Settings /></PrivateRoute>} />
+              <Route path="/app/moedas" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><CoinsAdmin /></RoleRoute></PrivateRoute>} />
 
               {/* Rotas de gerenciamento de questões */}
               <Route path="/app/cadastros/questao" element={<PrivateRoute><QuestionsPage /></PrivateRoute>} />
