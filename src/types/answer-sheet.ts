@@ -92,6 +92,9 @@ export interface Gabarito {
   created_at: string;
   created_by: string;
   creator_name: string;
+  // Novos campos para batch
+  is_batch?: boolean;
+  batch_id?: string | null;
 }
 
 export interface GabaritosResponse {
@@ -100,6 +103,61 @@ export interface GabaritosResponse {
   page: number;
   per_page: number;
   pages: number;
+}
+
+// Novos tipos para batch
+export interface BatchClass {
+  gabarito_id: string;
+  class_id: string;
+  class_name: string;
+  grade_name: string;
+  filename?: string;
+  total_students?: number;
+  total_pages?: number;
+  school_name?: string;
+}
+
+export interface GenerateResponseData {
+  status: 'processing' | 'completed' | 'failed';
+  message: string;
+  task_id: string;
+  scope: 'class' | 'grade' | 'school';
+  scope_name: string;
+  batch_id: string | null;
+  gabarito_ids: string[];
+  classes_count: number;
+  classes: BatchClass[];
+  num_questions: number;
+  polling_url: string;
+}
+
+export interface TaskStatusResult {
+  success: boolean;
+  scope: 'class' | 'grade' | 'school';
+  batch_id?: string;
+  gabarito_ids: string[];
+  total_classes: number;
+  total_students: number;
+  total_pdfs: number;
+  minio_url: string;
+  download_size_bytes: number;
+  classes: BatchClass[];
+  // Campos antigos (quando scope === 'class')
+  sheets?: any[];
+  generated_sheets?: number;
+}
+
+export interface BatchDownloadResponse {
+  download_url: string;
+  expires_in: string;
+  batch_id: string;
+  classes_count: number;
+  classes: BatchClass[];
+  title: string;
+  num_questions: number;
+  generated_at: string;
+  created_at: string;
+  minio_url: string;
 }
 
 

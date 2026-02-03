@@ -33,7 +33,8 @@ import {
   Trash2,
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { AnswerSheetConfig, StudentAnswerSheet, School as SchoolType, Serie, Turma, Estado, Municipio, Gabarito, GabaritosResponse } from '@/types/answer-sheet';
+import { AnswerSheetConfig, StudentAnswerSheet, School as SchoolType, Serie, Turma, Estado, Municipio, Gabarito, GabaritosResponse, GenerateResponseData, TaskStatusResult, BatchDownloadResponse, BatchClass } from '@/types/answer-sheet';
+import { FormFiltersApiService } from '@/services/formFiltersApi';
 
 type Step = 1 | 2;
 
@@ -52,8 +53,6 @@ export default function AnswerSheetGenerator() {
   const [isLoadingMunicipios, setIsLoadingMunicipios] = useState(false);
   
   // Filtros de escola/turma
-  const [cursos, setCursos] = useState<Array<{id: string; name: string}>>([]);
-  const [selectedCurso, setSelectedCurso] = useState('');
   const [schools, setSchools] = useState<SchoolType[]>([]);
   const [series, setSeries] = useState<Serie[]>([]);
   const [turmas, setTurmas] = useState<Turma[]>([]);
@@ -62,7 +61,6 @@ export default function AnswerSheetGenerator() {
   const [selectedTurma, setSelectedTurma] = useState('');
   const [provaTitulo, setProvaTitulo] = useState('');
   const [gradeName, setGradeName] = useState<string>('');
-  const [isLoadingCursos, setIsLoadingCursos] = useState(false);
   const [isLoadingSchools, setIsLoadingSchools] = useState(false);
   const [isLoadingSeries, setIsLoadingSeries] = useState(false);
   const [isLoadingTurmas, setIsLoadingTurmas] = useState(false);
@@ -107,6 +105,12 @@ export default function AnswerSheetGenerator() {
   const [taskId, setTaskId] = useState<string | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [generatedSheets, setGeneratedSheets] = useState<any[]>([]);
+  
+  // Novos estados para batch
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [batchClasses, setBatchClasses] = useState<BatchClass[]>([]);
+  const [totalPdfs, setTotalPdfs] = useState<number>(0);
+  const [totalStudents, setTotalStudents] = useState<number>(0);
 
   // Estados para correção
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
@@ -146,15 +150,13 @@ export default function AnswerSheetGenerator() {
     const fetchInitialData = async () => {
       try {
         setIsLoadingEstados(true);
-        setIsLoadingCursos(true);
         
-        const [estadosRes, cursosRes] = await Promise.all([
-          api.get('/city/states'),
-          api.get('/education_stages'),
-        ]);
+        const estadosData = await FormFiltersApiService.getFormFilterStates();
         
-        setEstados(estadosRes.data || []);
-        setCursos(cursosRes.data || []);
+        setEstados(estadosData.map(estado => ({
+          id: estado.id,
+          name: estado.nome
+        })));
       } catch (error) {
         console.error('Erro ao carregar dados iniciais:', error);
         toast({
@@ -164,7 +166,6 @@ export default function AnswerSheetGenerator() {
         });
       } finally {
         setIsLoadingEstados(false);
-        setIsLoadingCursos(false);
       }
     };
     fetchInitialData();
@@ -202,9 +203,9 @@ export default function AnswerSheetGenerator() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEstado]);
 
-  // Carregar séries quando curso ou município forem selecionados
+  // Carregar séries quando escola for selecionada
   useEffect(() => {
-    if (selectedCurso) {
+    if (selectedSchool) {
       fetchSeries();
     } else {
       setSeries([]);
@@ -213,7 +214,7 @@ export default function AnswerSheetGenerator() {
       setNoSeriesMessage('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCurso, selectedMunicipio]);
+  }, [selectedSchool]);
 
   // Carregar nome da série quando série for selecionada
   useEffect(() => {
@@ -225,31 +226,38 @@ export default function AnswerSheetGenerator() {
     }
   }, [selectedSerie, series]);
 
-  // Carregar escolas quando município ou série forem selecionados
+  // Carregar escolas quando município for selecionado
   useEffect(() => {
     if (selectedMunicipio) {
       fetchSchools();
       // Limpar seleções subsequentes
       setSelectedSchool('');
       setSchools([]);
+      setSelectedSerie('');
+      setSeries([]);
       setSelectedTurma('');
       setTurmas([]);
       setNoSchoolsMessage('');
+      setNoSeriesMessage('');
       setNoTurmasMessage('');
     } else {
       setSchools([]);
       setSelectedSchool('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMunicipio, selectedSerie]);
+  }, [selectedMunicipio]);
 
-  // Carregar turmas quando escola for selecionada
+  // Carregar turmas quando escola e série forem selecionadas
   useEffect(() => {
-    if (selectedSchool) {
+    if (selectedSchool && selectedSerie) {
       fetchTurmas();
+    } else {
+      setTurmas([]);
+      setSelectedTurma('');
+      setNoTurmasMessage('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSchool]);
+  }, [selectedSchool, selectedSerie]);
 
   // Carregar disciplinas quando separateBySubject for ativado
   useEffect(() => {
@@ -396,9 +404,12 @@ export default function AnswerSheetGenerator() {
     
     try {
       setIsLoadingMunicipios(true);
-      const response = await api.get(`/city/municipalities/state/${selectedEstado}`);
-      const municipiosData = response.data || [];
-      setMunicipios(municipiosData);
+      const municipiosData = await FormFiltersApiService.getFormFilterMunicipalities(selectedEstado);
+      setMunicipios(municipiosData.map(mun => ({
+        id: mun.id,
+        name: mun.nome,
+        state: selectedEstado
+      })));
     } catch (error) {
       console.error('Erro ao carregar municípios:', error);
       toast({
@@ -413,62 +424,25 @@ export default function AnswerSheetGenerator() {
   };
 
   const fetchSchools = async () => {
-    if (!selectedMunicipio) return;
+    if (!selectedMunicipio || !selectedEstado) return;
     
     try {
       setIsLoadingSchools(true);
       setNoSchoolsMessage('');
       
-      let schoolsData: SchoolType[] = [];
+      const schoolsData = await FormFiltersApiService.getFormFilterSchools({
+        estado: selectedEstado,
+        municipio: selectedMunicipio
+      });
       
-      // ✅ PRIORIDADE: Se houver série selecionada, buscar apenas escolas com aquela série
-      if (selectedSerie) {
-        try {
-          const response = await api.get(`/school/by-grade/${selectedSerie}`);
-          schoolsData = response.data?.schools || [];
-          
-          // Filtrar escolas pelo município selecionado
-          // O endpoint /school/by-grade retorna escolas de todos os municípios
-          // Precisamos filtrar apenas as do município selecionado
-          if (schoolsData.length > 0) {
-            // Buscar todas as escolas do município para comparar
-            const municipalitySchoolsResponse = await api.get(`/school/city/${selectedMunicipio}`);
-            const municipalitySchoolIds = (municipalitySchoolsResponse.data?.schools || municipalitySchoolsResponse.data || []).map((s: SchoolType) => s.id);
-            
-            // Filtrar apenas escolas que estão no município E têm turmas da série
-            schoolsData = schoolsData.filter((school: SchoolType) => 
-              municipalitySchoolIds.includes(school.id)
-            );
-          }
-          
-          if (schoolsData.length === 0) {
-            setNoSchoolsMessage('Nenhuma escola encontrada com turmas cadastradas para esta série neste município.');
-          }
-        } catch (err: any) {
-          // Ignorar silenciosamente erros 404 (séries sem escolas com turmas)
-          const errorMessage = err?.message || '';
-          const isNotFound = err?.response?.status === 404 || 
-                             errorMessage.includes('não encontrado') || 
-                             errorMessage.includes('not found');
-          
-          if (isNotFound) {
-            setNoSchoolsMessage('Nenhuma escola encontrada com turmas cadastradas para esta série neste município.');
-            schoolsData = [];
-          } else {
-            throw err;
-          }
-        }
-      } else {
-        // Se NÃO houver série, buscar todas as escolas do município
-        const response = await api.get(`/school/city/${selectedMunicipio}`);
-        schoolsData = response.data?.schools || response.data || [];
-        
-        if (schoolsData.length === 0) {
-          setNoSchoolsMessage('Nenhuma escola encontrada para este município.');
-        }
+      if (schoolsData.length === 0) {
+        setNoSchoolsMessage('Nenhuma escola encontrada para este município.');
       }
       
-      setSchools(schoolsData);
+      setSchools(schoolsData.map(school => ({
+        id: school.id,
+        name: school.nome
+      })));
     } catch (error) {
       console.error('Erro ao carregar escolas:', error);
       toast({
@@ -484,58 +458,26 @@ export default function AnswerSheetGenerator() {
   };
 
   const fetchSeries = async () => {
-    if (!selectedCurso) return;
+    if (!selectedSchool || !selectedEstado || !selectedMunicipio) return;
     
     try {
       setIsLoadingSeries(true);
       setNoSeriesMessage('');
       
-      // Buscar todas as séries do curso
-      const response = await api.get(`/grades/education-stage/${selectedCurso}`);
-      const allSeriesData = response.data || [];
+      const seriesData = await FormFiltersApiService.getFormFilterGrades({
+        estado: selectedEstado,
+        municipio: selectedMunicipio,
+        escola: selectedSchool
+      });
       
-      // Se não houver município selecionado, mostrar todas as séries
-      if (!selectedMunicipio) {
-        setSeries(allSeriesData);
-        return;
+      if (seriesData.length === 0) {
+        setNoSeriesMessage('Nenhuma série encontrada para esta escola.');
       }
       
-      // Buscar todas as escolas do município para verificar quais séries têm turmas
-      const schoolsResponse = await api.get(`/school/city/${selectedMunicipio}`);
-      const allSchoolsData = schoolsResponse.data?.schools || schoolsResponse.data || [];
-      
-      // Criar um Set com IDs de séries que têm turmas
-      const seriesWithTurmas = new Set<string>();
-      
-      for (const school of allSchoolsData) {
-        try {
-          // Buscar turmas da escola
-          const turmasResponse = await api.get(`/classes/school/${school.id}`);
-          const turmasData = turmasResponse.data || [];
-          
-          // Adicionar IDs de séries que têm turmas
-          turmasData.forEach((turma: { grade_id?: string; grade?: { id?: string } }) => {
-            const gradeId = turma.grade_id || turma.grade?.id;
-            if (gradeId) {
-              seriesWithTurmas.add(gradeId);
-            }
-          });
-        } catch (error) {
-          // Se der erro ao buscar turmas de uma escola, ignorar essa escola
-          console.warn(`Erro ao buscar turmas da escola ${school.id}:`, error);
-        }
-      }
-      
-      // Filtrar séries que têm turmas
-      const filteredSeries = allSeriesData.filter((serie: Serie) => 
-        seriesWithTurmas.has(serie.id)
-      );
-      
-      setSeries(filteredSeries);
-      
-      if (filteredSeries.length === 0) {
-        setNoSeriesMessage('Nenhuma série encontrada com turmas cadastradas para este município.');
-      }
+      setSeries(seriesData.map(serie => ({
+        id: serie.id,
+        name: serie.nome
+      })));
     } catch (error) {
       console.error('Erro ao carregar séries:', error);
       toast({
@@ -551,24 +493,23 @@ export default function AnswerSheetGenerator() {
   };
 
   const fetchTurmas = async () => {
-    if (!selectedSchool) return;
+    if (!selectedSchool || !selectedSerie || !selectedEstado || !selectedMunicipio) return;
     
     try {
       setIsLoadingTurmas(true);
       setNoTurmasMessage('');
       
-      const response = await api.get(`/classes/school/${selectedSchool}`);
-      let turmasData = response.data || [];
+      const turmasData = await FormFiltersApiService.getFormFilterClasses({
+        estado: selectedEstado,
+        municipio: selectedMunicipio,
+        escola: selectedSchool,
+        serie: selectedSerie
+      });
       
-      // Filtrar por série se tiver selecionada
-      if (selectedSerie && turmasData.length > 0) {
-        turmasData = turmasData.filter((turma: { grade_id?: string; grade?: { id?: string } }) => {
-          const gradeId = turma.grade_id || turma.grade?.id;
-          return gradeId === selectedSerie;
-        });
-      }
-      
-      setTurmas(turmasData);
+      setTurmas(turmasData.map(turma => ({
+        id: turma.id,
+        name: turma.nome
+      })));
       
       // Limpar seleção de turma se não houver turmas disponíveis
       if (turmasData.length === 0) {
@@ -576,7 +517,7 @@ export default function AnswerSheetGenerator() {
         setNoTurmasMessage('Nenhuma turma encontrada para esta escola e série.');
       } else {
         // Verificar se a turma selecionada ainda existe na lista
-        const turmaExists = turmasData.some((t: Turma) => t.id === selectedTurma);
+        const turmaExists = turmasData.some((t) => t.id === selectedTurma);
         if (!turmaExists) {
           setSelectedTurma('');
         }
@@ -847,14 +788,24 @@ export default function AnswerSheetGenerator() {
 
 
 
+  // Função para inferir o escopo automaticamente baseado nos filtros selecionados
+  const getInferredScope = useCallback((): 'class' | 'grade' | 'school' | null => {
+    if (!selectedSchool) return null;
+    
+    if (selectedTurma) {
+      return 'class';  // Tem turma = escopo class
+    } else if (selectedSerie) {
+      return 'grade';  // Tem série mas não tem turma = escopo grade
+    } else {
+      return 'school'; // Tem só escola = escopo school
+    }
+  }, [selectedSchool, selectedSerie, selectedTurma]);
+
   const isStep1Valid = () => {
     const hasBaseInfo =
       selectedEstado &&
       selectedMunicipio &&
-      selectedCurso &&
-      selectedSerie &&
       selectedSchool &&
-      selectedTurma &&
       provaTitulo &&
       department;
 
@@ -862,10 +813,25 @@ export default function AnswerSheetGenerator() {
       return false;
     }
 
-    // Verificar se há turmas disponíveis e se a turma selecionada existe
-    if (turmas.length === 0 || !turmas.some(t => t.id === selectedTurma)) {
+    // Inferir escopo e validar
+    const scope = getInferredScope();
+    if (!scope) {
       return false;
     }
+
+    // Validações específicas por escopo
+    if (scope === 'class') {
+      // Para gerar cartões de uma turma, precisa ter turma selecionada
+      if (!selectedTurma || turmas.length === 0 || !turmas.some(t => t.id === selectedTurma)) {
+        return false;
+      }
+    } else if (scope === 'grade') {
+      // Para gerar cartões de uma série, precisa ter série selecionada
+      if (!selectedSerie) {
+        return false;
+      }
+    }
+    // Para 'school', não precisa de validações extras além da escola
 
     if (totalQuestoes <= 0) {
       return false;
@@ -1036,6 +1002,11 @@ export default function AnswerSheetGenerator() {
         // Atualizar progresso visual
         if (data.status === 'processing' || data.status === 'pending') {
           setGenerationProgress(prev => Math.min(prev + 5, 80));
+          
+          // Atualizar progresso por turma se disponível
+          if (data.result?.classes) {
+            setBatchClasses(data.result.classes);
+          }
         }
 
         // SUCESSO: parar polling e exibir resultado
@@ -1049,15 +1020,29 @@ export default function AnswerSheetGenerator() {
           setIsGenerating(false);
 
           // Processar resultado
-          const result = data.result;
+          const result: TaskStatusResult = data.result;
           
-          // Armazenar cartões gerados
-          setGeneratedSheets(result.sheets || []);
-
-          toast({
-            title: "✅ Cartões gerados com sucesso!",
-            description: `${result.generated_sheets || 0} cartões foram gerados para ${result.total_students || 0} alunos.`,
-          });
+          // Verificar se é batch ou single
+          if (result.scope === 'class') {
+            // Comportamento antigo (uma turma)
+            setGeneratedSheets(result.sheets || []);
+            
+            toast({
+              title: "✅ Cartões gerados com sucesso!",
+              description: `${result.generated_sheets || 0} cartões foram gerados para ${result.total_students || 0} alunos.`,
+            });
+          } else {
+            // Novo: múltiplas turmas (batch)
+            setBatchId(result.batch_id || null);
+            setBatchClasses(result.classes || []);
+            setTotalPdfs(result.total_pdfs || 0);
+            setTotalStudents(result.total_students || 0);
+            
+            toast({
+              title: "✅ Cartões gerados com sucesso!",
+              description: `${result.total_pdfs} PDFs gerados para ${result.total_students} alunos em ${result.total_classes} turmas.`,
+            });
+          }
 
           // Recarregar lista de gabaritos
           await fetchGabaritos();
@@ -1122,10 +1107,32 @@ export default function AnswerSheetGenerator() {
   };
 
   const handleGenerateCards = async () => {
-    if (!selectedTurma) {
+    // Inferir escopo automaticamente
+    const scope = getInferredScope();
+    
+    if (!scope) {
       toast({
         title: 'Erro',
-        description: 'Selecione uma turma antes de gerar os cartões.',
+        description: 'Selecione pelo menos um estado, município e escola.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    // Validações específicas por escopo
+    if (scope === 'class' && !selectedTurma) {
+      toast({
+        title: 'Erro',
+        description: 'Para gerar cartões de uma turma, selecione a turma.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    if (scope === 'grade' && !selectedSerie) {
+      toast({
+        title: 'Erro',
+        description: 'Para gerar cartões de uma série, selecione a série.',
         variant: 'destructive',
       });
       return;
@@ -1135,26 +1142,36 @@ export default function AnswerSheetGenerator() {
       setIsGenerating(true);
       setGenerationProgress(10);
       setGeneratedSheets([]);
+      setBatchId(null);
+      setBatchClasses([]);
 
       const municipioData = municipios.find(m => m.id === selectedMunicipio);
       const schoolData = schools.find(s => s.id === selectedSchool);
       const serieData = series.find(s => s.id === selectedSerie);
-      const turmaData = turmas.find(t => t.id === selectedTurma);
 
       // Preparar payload no formato esperado pelo backend
       const payload: any = {
-        class_id: selectedTurma,
         num_questions: totalQuestoes,
         correct_answers: gabaritoManual,
         test_data: {
           title: provaTitulo,
           municipality: municipioData?.name || '',
-          state: selectedEstado || 'ALAGOAS',
+          state: selectedEstado || '',
           department: department,
           institution: schoolData?.name || '',
           grade_name: serieData?.name || '',
         }
       };
+
+      // Adicionar campos baseados no escopo inferido
+      if (scope === 'class') {
+        payload.class_id = selectedTurma;
+      } else if (scope === 'grade') {
+        payload.grade_id = selectedSerie;
+        payload.school_id = selectedSchool;
+      } else if (scope === 'school') {
+        payload.school_id = selectedSchool;
+      }
 
       // Adicionar questions_options se necessário
       const questionsOptionsData = buildQuestionsOptions();
@@ -1207,12 +1224,25 @@ export default function AnswerSheetGenerator() {
 
       // Verificar se a resposta é 202 Accepted (assíncrono)
       if (response.status === 202) {
-        const data = response.data;
+        const data: GenerateResponseData = response.data;
         setTaskId(data.task_id);
+
+        // Armazenar informações do batch se houver
+        if (data.batch_id) {
+          setBatchId(data.batch_id);
+          setBatchClasses(data.classes || []);
+        }
+
+        // Mensagem personalizada por escopo
+        const scopeMessages = {
+          class: `Os cartões de resposta para 1 turma estão sendo gerados.`,
+          grade: `Os cartões de resposta para ${data.classes_count} turmas da série ${data.scope_name} estão sendo gerados.`,
+          school: `Os cartões de resposta para ${data.classes_count} turmas da escola ${data.scope_name} estão sendo gerados.`,
+        };
 
         toast({
           title: "⏳ Geração iniciada",
-          description: `Os cartões de resposta estão sendo gerados em background. Isso pode levar vários minutos (cerca de 40s por aluno).`,
+          description: scopeMessages[data.scope] + ` Isso pode levar vários minutos.`,
         });
 
         // 2. INICIAR POLLING
@@ -1453,6 +1483,44 @@ export default function AnswerSheetGenerator() {
         errorMessage = 'Gabarito não encontrado.';
       } else if (error.response?.status === 400) {
         errorMessage = 'Gabarito não possui turma associada.';
+      }
+      
+      toast({
+        title: 'Erro',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloadingGabaritoId(null);
+    }
+  };
+
+  // Nova função para baixar batch completo
+  const handleDownloadBatch = async (batchId: string) => {
+    try {
+      setDownloadingGabaritoId(batchId);
+      
+      const response = await api.get<BatchDownloadResponse>(`/answer-sheets/batch/${batchId}/download`);
+
+      if (response.data.download_url) {
+        window.location.href = response.data.download_url;
+
+        toast({
+          title: 'Download iniciado',
+          description: `Baixando ZIP com ${response.data.classes_count} PDFs. Link expira em ${response.data.expires_in}.`,
+        });
+      } else {
+        throw new Error('URL de download não disponível');
+      }
+    } catch (error: any) {
+      console.error('Erro ao baixar batch:', error);
+      
+      let errorMessage = 'Não foi possível baixar o batch de gabaritos.';
+      
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.response?.status === 404) {
+        errorMessage = 'Batch não encontrado.';
       }
       
       toast({
@@ -1730,67 +1798,12 @@ export default function AnswerSheetGenerator() {
                 Informações da Prova
               </CardTitle>
               <CardDescription>
-                Selecione o curso, série, escola e turma
+                Selecione a escola, série e turma
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="curso">Curso *</Label>
-                  {isLoadingCursos ? (
-                    <Skeleton className="h-10 w-full" />
-                  ) : (
-                    <Select 
-                      value={selectedCurso} 
-                      onValueChange={setSelectedCurso}
-                      disabled={!selectedMunicipio}
-                    >
-                      <SelectTrigger id="curso">
-                        <SelectValue placeholder="Selecione o curso" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {cursos.map(curso => (
-                          <SelectItem key={curso.id} value={curso.id}>
-                            {curso.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="serie">Série *</Label>
-                  {isLoadingSeries ? (
-                    <Skeleton className="h-10 w-full" />
-                  ) : (
-                    <>
-                      <Select 
-                        value={selectedSerie} 
-                        onValueChange={setSelectedSerie} 
-                        disabled={!selectedCurso || !selectedMunicipio || series.length === 0}
-                      >
-                        <SelectTrigger id="serie">
-                          <SelectValue placeholder="Selecione a série" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {series.map(serie => (
-                            <SelectItem key={serie.id} value={serie.id}>
-                              {serie.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {noSeriesMessage && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3" />
-                          {noSeriesMessage}
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-
+                {/* PRIMEIRO: Escola (depende de município) */}
                 <div className="space-y-2">
                   <Label htmlFor="school">Escola *</Label>
                   {isLoadingSchools ? (
@@ -1800,7 +1813,7 @@ export default function AnswerSheetGenerator() {
                       <Select 
                         value={selectedSchool} 
                         onValueChange={setSelectedSchool}
-                        disabled={!selectedSerie}
+                        disabled={!selectedMunicipio || schools.length === 0}
                       >
                         <SelectTrigger id="school">
                           <SelectValue placeholder="Selecione a escola" />
@@ -1823,37 +1836,131 @@ export default function AnswerSheetGenerator() {
                   )}
                 </div>
 
+                {/* SEGUNDO: Série (depende de escola, opcional) */}
                 <div className="space-y-2">
-                  <Label htmlFor="turma">Turma *</Label>
-                  {isLoadingTurmas ? (
+                  <Label htmlFor="serie">Série (opcional)</Label>
+                  {isLoadingSeries ? (
                     <Skeleton className="h-10 w-full" />
                   ) : (
                     <>
-                      <Select 
-                        value={selectedTurma} 
-                        onValueChange={setSelectedTurma} 
-                        disabled={!selectedSchool || turmas.length === 0}
-                      >
-                        <SelectTrigger id="turma">
-                          <SelectValue placeholder="Selecione a turma" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {turmas.map(turma => (
-                            <SelectItem key={turma.id} value={turma.id}>
-                              {turma.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {noTurmasMessage && (
+                      <div className="flex gap-2">
+                        <Select 
+                          value={selectedSerie} 
+                          onValueChange={setSelectedSerie} 
+                          disabled={!selectedSchool || series.length === 0}
+                        >
+                          <SelectTrigger id="serie" className="flex-1">
+                            <SelectValue placeholder="Selecione a série (opcional)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {series.map(serie => (
+                              <SelectItem key={serie.id} value={serie.id}>
+                                {serie.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {selectedSerie && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => {
+                              setSelectedSerie('');
+                              setSelectedTurma('');
+                              setTurmas([]);
+                            }}
+                            title="Limpar seleção - Voltar para toda a escola"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                      {noSeriesMessage && (
                         <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
                           <AlertCircle className="h-3 w-3" />
-                          {noTurmasMessage}
+                          {noSeriesMessage}
+                        </p>
+                      )}
+                      {!selectedSerie && selectedSchool && (
+                        <p className="text-xs text-muted-foreground">
+                          Deixe vazio para gerar para toda a escola
                         </p>
                       )}
                     </>
                   )}
                 </div>
+
+                {selectedSerie && (
+                  <div className="space-y-2">
+                    <Label htmlFor="turma">Turma (opcional)</Label>
+                    {isLoadingTurmas ? (
+                      <Skeleton className="h-10 w-full" />
+                    ) : (
+                      <>
+                        <div className="flex gap-2">
+                          <Select 
+                            value={selectedTurma} 
+                            onValueChange={setSelectedTurma} 
+                            disabled={!selectedSerie || turmas.length === 0}
+                          >
+                            <SelectTrigger id="turma" className="flex-1">
+                              <SelectValue placeholder="Selecione a turma (opcional)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {turmas.map(turma => (
+                                <SelectItem key={turma.id} value={turma.id}>
+                                  {turma.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {selectedTurma && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={() => setSelectedTurma('')}
+                              title="Limpar seleção - Voltar para todas as turmas da série"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                        {noTurmasMessage && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3" />
+                            {noTurmasMessage}
+                          </p>
+                        )}
+                        {!selectedTurma && selectedSerie && turmas.length > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            Deixe vazio para gerar para todas as turmas da série
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Feedback visual do escopo */}
+                {selectedSchool && (
+                  <div className="md:col-span-2">
+                    <Alert>
+                      <AlertDescription>
+                        {!selectedSerie && !selectedTurma && (
+                          <>📚 Gerando cartões para <strong>toda a escola</strong> {schools.find(s => s.id === selectedSchool)?.name}</>
+                        )}
+                        {selectedSerie && !selectedTurma && (
+                          <>📖 Gerando cartões para <strong>todas as turmas da série</strong> {series.find(s => s.id === selectedSerie)?.name}</>
+                        )}
+                        {selectedTurma && (
+                          <>✏️ Gerando cartões para a <strong>turma</strong> {turmas.find(t => t.id === selectedTurma)?.name}</>
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
 
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="prova">Nome da Prova *</Label>
@@ -2485,12 +2592,17 @@ export default function AnswerSheetGenerator() {
                   <Label className="text-muted-foreground">Escola</Label>
                   <p className="font-medium">{schools.find(s => s.id === selectedSchool)?.name}</p>
                 </div>
+                
+                {/* Mostrar escopo de geração */}
                 <div className="space-y-2">
-                  <Label className="text-muted-foreground">Turma</Label>
+                  <Label className="text-muted-foreground">Escopo</Label>
                   <p className="font-medium">
-                    {series.find(s => s.id === selectedSerie)?.name} - {turmas.find(t => t.id === selectedTurma)?.name}
+                    {selectedTurma && `Turma: ${series.find(s => s.id === selectedSerie)?.name} - ${turmas.find(t => t.id === selectedTurma)?.name}`}
+                    {!selectedTurma && selectedSerie && `Série: ${series.find(s => s.id === selectedSerie)?.name} (todas as turmas)`}
+                    {!selectedTurma && !selectedSerie && 'Escola inteira (todas as turmas)'}
                   </p>
                 </div>
+                
                 <div className="space-y-2">
                   <Label className="text-muted-foreground">Prova</Label>
                   <p className="font-medium">{provaTitulo}</p>
@@ -2501,24 +2613,57 @@ export default function AnswerSheetGenerator() {
                 <div className="flex items-center justify-between mb-2">
                   <Label className="text-lg font-semibold">Geração de Cartões</Label>
                   <Badge variant="default" className="text-lg px-4 py-2">
-                    Todos os alunos da turma
+                    {selectedTurma && 'Uma turma'}
+                    {!selectedTurma && selectedSerie && 'Série completa'}
+                    {!selectedTurma && !selectedSerie && 'Escola inteira'}
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Os cartões resposta serão gerados automaticamente para todos os alunos da turma selecionada. Após a conclusão, você poderá acessá-los na aba "Cartões Gerados".
+                  {selectedTurma && 'Os cartões resposta serão gerados automaticamente para todos os alunos da turma selecionada.'}
+                  {!selectedTurma && selectedSerie && 'Os cartões resposta serão gerados automaticamente para todas as turmas da série selecionada. Será gerado 1 PDF por turma.'}
+                  {!selectedTurma && !selectedSerie && 'Os cartões resposta serão gerados automaticamente para todas as turmas da escola. Será gerado 1 PDF por turma, organizados em pastas por série.'}
+                  {' '}Após a conclusão, você poderá acessá-los na aba "Cartões Gerados".
                 </p>
               </div>
 
               {isGenerating && (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>⏳ Gerando cartões PDF em background...</span>
-                    <span>{generationProgress}%</span>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>⏳ Gerando cartões PDF em background...</span>
+                      <span>{generationProgress}%</span>
+                    </div>
+                    <Progress value={generationProgress} />
+                    <p className="text-xs text-muted-foreground text-center">
+                      Isso pode levar vários minutos (~40s por aluno). Não feche esta página.
+                    </p>
                   </div>
-                  <Progress value={generationProgress} />
-                  <p className="text-xs text-muted-foreground text-center">
-                    Isso pode levar vários minutos (~40s por aluno). Não feche esta página.
-                  </p>
+                  
+                  {/* Mostrar progresso por turma para batches */}
+                  {batchClasses.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-sm">Turmas Processadas</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ScrollArea className="h-48">
+                          <ul className="space-y-2">
+                            {batchClasses.map((cls, index) => (
+                              <li key={cls.gabarito_id || index} className="flex items-center gap-2 text-sm">
+                                <CheckCircle className="h-4 w-4 text-green-500" />
+                                <span>{cls.grade_name} - {cls.class_name}</span>
+                                {cls.total_students && (
+                                  <Badge variant="secondary" className="ml-auto">
+                                    {cls.total_students} alunos
+                                  </Badge>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </ScrollArea>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               )}
 
@@ -2954,6 +3099,11 @@ export default function AnswerSheetGenerator() {
                                     Com blocos
                                   </Badge>
                                 )}
+                                {gabarito.is_batch && (
+                                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300">
+                                    📦 Batch
+                                  </Badge>
+                                )}
                               </div>
                             </div>
                             
@@ -2987,23 +3137,43 @@ export default function AnswerSheetGenerator() {
                           </div>
                           
                           <div className="flex flex-col gap-2 min-w-[140px]">
-                            <Button
-                              onClick={() => handleDownloadGabarito(gabarito.id)}
-                              disabled={downloadingGabaritoId === gabarito.id || isDeleting}
-                              className="w-full"
-                            >
-                              {downloadingGabaritoId === gabarito.id ? (
-                                <>
-                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                  Preparando download...
-                                </>
-                              ) : (
-                                <>
-                                  <Download className="h-4 w-4 mr-2" />
-                                  Baixar ZIP
-                                </>
-                              )}
-                            </Button>
+                            {gabarito.is_batch && gabarito.batch_id ? (
+                              <Button
+                                onClick={() => handleDownloadBatch(gabarito.batch_id!)}
+                                disabled={downloadingGabaritoId === gabarito.batch_id || isDeleting}
+                                className="w-full bg-purple-600 hover:bg-purple-700"
+                              >
+                                {downloadingGabaritoId === gabarito.batch_id ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Preparando...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Download className="h-4 w-4 mr-2" />
+                                    Baixar ZIP Completo
+                                  </>
+                                )}
+                              </Button>
+                            ) : (
+                              <Button
+                                onClick={() => handleDownloadGabarito(gabarito.id)}
+                                disabled={downloadingGabaritoId === gabarito.id || isDeleting}
+                                className="w-full"
+                              >
+                                {downloadingGabaritoId === gabarito.id ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Preparando download...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Download className="h-4 w-4 mr-2" />
+                                    Baixar ZIP
+                                  </>
+                                )}
+                              </Button>
+                            )}
                             <Button
                               variant="outline"
                               onClick={() => handleViewResults(gabarito.id)}
