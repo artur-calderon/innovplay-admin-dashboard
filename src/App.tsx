@@ -94,6 +94,17 @@ const PlantaoOnlineStudent = React.lazy(() => import("./pages/PlantaoOnlineStude
 const AnswerSheetGenerator = React.lazy(() => import("./pages/AnswerSheetGenerator"));
 const AnswerSheetResults = React.lazy(() => import("./pages/AnswerSheetResults"));
 
+// Lazy loading para moedas (aluno)
+const CoinHistory = React.lazy(() => import("./pages/CoinHistory"));
+
+// Lazy loading para Competições (admin)
+const CompetitionList = React.lazy(() => import("./pages/Admin/Competitions/CompetitionList"));
+const ViewCompetition = React.lazy(() => import("./pages/Admin/Competitions/ViewCompetition"));
+const EditCompetition = React.lazy(() => import("./pages/Admin/Competitions/EditCompetition"));
+const CompetitionListStudent = React.lazy(() => import("./pages/Student/Competitions/CompetitionListStudent"));
+const CompetitionTemplates = React.lazy(() => import("./pages/Admin/Competitions/CompetitionTemplates"));
+const AdminCoins = React.lazy(() => import("./pages/Admin/AdminCoins"));
+
 // Lazy loading para Olimpíadas
 const Olimpiadas = React.lazy(() => import("./pages/Olimpiadas"));
 const OlimpiadasStudent = React.lazy(() => import("./pages/OlimpiadasStudent"));
@@ -173,6 +184,8 @@ const App = () => {
               <Route path="/aluno/questionario" element={<PrivateRoute><QuestionarioList /></PrivateRoute>} />
               <Route path="/aluno/questionario/responder/:formId" element={<PrivateRoute><QuestionarioRespond /></PrivateRoute>} />
 
+              <Route path="/aluno/moedas/historico" element={<PrivateRoute><CoinHistory /></PrivateRoute>} />
+              <Route path="/aluno/competitions" element={<PrivateRoute><CompetitionListStudent /></PrivateRoute>} />
               <Route path="/aluno/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/aluno/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
               <Route path="/aluno/configuracoes" element={<PrivateRoute><Settings /></PrivateRoute>} />
@@ -212,6 +225,11 @@ const App = () => {
               <Route path="/app/cartao-resposta/resultados/:gabaritoId" element={<PrivateRoute><AnswerSheetResults /></PrivateRoute>} />
               <Route path="/app/certificados" element={<PrivateRoute><Certificates /></PrivateRoute>} />
               <Route path="/app/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
+              <Route path="/app/competitions" element={<PrivateRoute><CompetitionList /></PrivateRoute>} />
+              <Route path="/app/competitions/:id" element={<PrivateRoute><ViewCompetition /></PrivateRoute>} />
+              <Route path="/app/competitions/:id/editar" element={<PrivateRoute><EditCompetition /></PrivateRoute>} />
+              <Route path="/app/competitions/templates" element={<PrivateRoute><CompetitionTemplates /></PrivateRoute>} />
+              <Route path="/app/moedas/admin" element={<PrivateRoute><AdminCoins /></PrivateRoute>} />
               <Route path="/app/olimpiadas" element={<PrivateRoute><Olimpiadas /></PrivateRoute>} />
               <Route path="/app/olimpiada/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
               <Route path="/app/olimpiada-resultado/:testId/:studentId" element={<PrivateRoute><StudentResult /></PrivateRoute>} />

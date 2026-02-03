@@ -45,7 +45,8 @@ import {
   MapPin,
   Sparkles,
   Medal,
-  Star
+  Star,
+  Coins
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useMemo } from "react";
@@ -57,6 +58,7 @@ import { useUnreadAvisos } from "@/hooks/useUnreadAvisos";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getRoleDisplayName } from "@/lib/constants";
 import { AvatarPreview } from "@/components/profile/AvatarPreview";
+import { CoinBalance } from "@/components/Coins/CoinBalance";
 
 type SidebarLink = {
   icon: React.ElementType;
@@ -274,6 +276,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
       links: [
         { icon: Award, label: "Certificados", href: `${user.role === 'aluno' ? "/aluno/certificados" : "/app/certificados"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
+        { icon: Coins, label: "Histórico de Moedas", href: "/aluno/moedas/historico", role: ["aluno"] },
+        { icon: Coins, label: "Administrar Moedas", href: "/app/moedas/admin", role: ["admin", "coordenador"] },
+        { icon: Trophy, label: "Competições", href: `${user.role === 'aluno' ? "/aluno/competitions" : "/app/competitions"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
+        { icon: FileText, label: "Templates de Competição", href: "/app/competitions/templates", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: Sparkles, label: "Olimpíadas", href: `${user.role === 'aluno' ? "/aluno/olimpiadas" : "/app/olimpiadas"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
       ]
     },
@@ -348,10 +354,15 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                 </TooltipProvider>
               </div>
 
-              <div className="mt-0.5 md:mt-1">
+              <div className="mt-0.5 md:mt-1 flex items-center gap-2 flex-wrap">
                 <p className="text-[10px] md:text-xs truncate text-slate-700 dark:text-white/70">
                   {user?.role ? getRoleDisplayName(user.role) : "Usuário"}
                 </p>
+                {user?.role === "aluno" && (
+                  <Link to="/aluno/moedas/historico" onClick={handleLinkClick} className="flex-shrink-0">
+                    <CoinBalance size="small" showLabel={false} />
+                  </Link>
+                )}
               </div>
             </div>
           </div>
