@@ -74,8 +74,8 @@ interface Filters {
 }
 
 interface QuestionBankProps {
-  open: boolean;
-  onClose: () => void;
+  open?: boolean;
+  onClose?: () => void;
   subjectId: string | null;
   onQuestionSelected: (question: Question) => void;
   onCreateEvaluation?: (evaluation: {
@@ -88,6 +88,8 @@ interface QuestionBankProps {
   gradeName?: string;
   subjects?: Subject[];
   selectedSubjectId?: string;
+  /** Quando true, renderiza só o conteúdo (sem Dialog), para ser usado dentro de outro modal. */
+  embedded?: boolean;
 }
 
 const DIFFICULTIES = ["Abaixo do Básico", "Básico", "Adequado", "Avançado"];
@@ -215,14 +217,15 @@ function shouldIncludeQuestionForEJA(
 }
 
 export function QuestionBank({
-  open,
-  onClose,
+  open = true,
+  onClose = () => {},
   subjectId,
   onQuestionSelected,
   gradeId,
   gradeName,
   subjects: propsSubjects,
   selectedSubjectId,
+  embedded = false,
 }: QuestionBankProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -266,21 +269,23 @@ export function QuestionBank({
     }
   }, [subjectId]);
 
+  const isActive = open || embedded;
+
   useEffect(() => {
-    if (open) {
+    if (isActive) {
       fetchQuestions();
       fetchSubjects();
       fetchGrades();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [isActive]);
 
   useEffect(() => {
-    if (open) {
+    if (isActive) {
       fetchQuestions();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, subjectId, open]);
+  }, [filters, subjectId, isActive]);
 
   const fetchQuestions = async () => {
     try {
@@ -576,13 +581,9 @@ export function QuestionBank({
     return <div className="text-red-600 p-4">Erro: Dados inválidos.</div>;
   }
 
-  return (
+  const innerContent = (
     <>
-      <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent 
-          className="max-w-7xl max-h-[90vh] w-[95vw] overflow-y-auto"
-        >
-          <DialogHeader>
+          <DialogHeader className={embedded ? "pb-2" : undefined}>
             <DialogTitle className="flex items-center gap-2">
               <Book className="h-5 w-5" />
               Banco de Questões
@@ -923,8 +924,22 @@ export function QuestionBank({
               )}
             </>
           )}
-        </DialogContent>
-      </Dialog>
+        </>
+  );
+
+  return (
+    <>
+      {embedded ? (
+        <div className="max-w-7xl max-h-[75vh] w-full overflow-y-auto space-y-4">
+          {innerContent}
+        </div>
+      ) : (
+        <Dialog open={open} onOpenChange={onClose}>
+          <DialogContent className="max-w-7xl max-h-[90vh] w-[95vw] overflow-y-auto">
+            {innerContent}
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Modal de Visualização da Questão */}
       <Dialog open={!!viewQuestion} onOpenChange={() => setViewQuestion(null)}>
