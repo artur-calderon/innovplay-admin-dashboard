@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/context/authContext';
+import type { AvatarConfig } from '@/context/authContext';
 import { api } from '@/lib/api';
 import {
   getBalance,
@@ -11,13 +12,13 @@ import {
   type CoinTransaction,
 } from '@/services/coinsApi';
 import { CoinBalance } from '@/components/coins/CoinBalance';
+import { AvatarPreview } from '@/components/profile/AvatarPreview';
 import { getUserHierarchyContext } from '@/utils/userHierarchy';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   Select,
   SelectContent,
@@ -25,16 +26,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { formatCoins } from '@/utils/coins';
-import { Loader2, Coins } from 'lucide-react';
+import { Loader2, Coins, Plus, Minus, Search, GraduationCap } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface StateOption {
   id: string;
@@ -57,6 +51,7 @@ interface ClassItem {
   id: string;
   name: string;
   school_id?: string;
+  grade?: string | { id?: string; name?: string };
 }
 
 interface StudentRow {
@@ -66,6 +61,9 @@ interface StudentRow {
   matricula?: string;
   class_name?: string;
   school_name?: string;
+  serie_name?: string;
+  user_id?: string;
+  avatar_config?: AvatarConfig | null;
 }
 
 /** Normaliza nome do aluno a partir da resposta da API */
@@ -79,6 +77,39 @@ function getStudentDisplayName(s: Record<string, unknown>): string {
 function getStudentClassName(s: Record<string, unknown>): string | undefined {
   const raw = s.class_name ?? (s.class as Record<string, unknown>)?.name;
   return raw != null ? String(raw) : undefined;
+}
+
+/** Extrai user_id do aluno (para buscar avatar em GET /users/:id) */
+function getStudentUserId(s: Record<string, unknown>): string | undefined {
+  const u = (s.usuario ?? s.user) as Record<string, unknown> | undefined;
+  const id = u?.id ?? s.user_id ?? s.usuario_id;
+  return id != null ? String(id) : undefined;
+}
+
+/** Extrai avatar_config do aluno (usuario ou user na resposta da API) */
+function getStudentAvatarConfig(s: Record<string, unknown>): AvatarConfig | null | undefined {
+  const user = (s.usuario ?? s.user) as Record<string, unknown> | undefined;
+  const config = user?.avatar_config ?? (s as Record<string, unknown>).avatar_config;
+  if (config && typeof config === 'object') return config as AvatarConfig;
+  return undefined;
+}
+
+/** Extrai nome da série do aluno (class.grade na resposta da API) ou da turma */
+function getStudentSerieName(
+  s: Record<string, unknown>,
+  classItem?: ClassItem | null
+): string | undefined {
+  if (classItem?.grade != null) {
+    return typeof classItem.grade === 'object' && classItem.grade !== null
+      ? classItem.grade.name
+      : String(classItem.grade);
+  }
+  const cls = s.class as Record<string, unknown> | undefined;
+  if (!cls) return (s.serie as string) ?? (s.grade_name as string);
+  const g = cls.grade;
+  if (g == null) return (s.serie as string) ?? (s.grade_name as string);
+  if (typeof g === 'object' && g !== null && 'name' in g) return String((g as { name?: string }).name);
+  return String(g);
 }
 
 const CAN_EDIT_ROLES = ['admin', 'coordenador', 'diretor', 'tecadm'];
@@ -117,24 +148,24 @@ export default function CoinsAdmin() {
   const [selectedBalance, setSelectedBalance] = useState<number | null>(null);
   const [recentTransactions, setRecentTransactions] = useState<CoinTransaction[]>([]);
 
-  const [actionType, setActionType] = useState<'credit' | 'debit'>('credit');
-  const [amount, setAmount] = useState('');
-  const [reasonOptionId, setReasonOptionId] = useState(CREDIT_REASONS[0].id);
-  const [description, setDescription] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [creditAmount, setCreditAmount] = useState('');
+  const [creditReasonId, setCreditReasonId] = useState(CREDIT_REASONS[0].id);
+  const [creditDescription, setCreditDescription] = useState('');
+  const [debitAmount, setDebitAmount] = useState('');
+  const [debitReasonId, setDebitReasonId] = useState(DEBIT_REASONS[0].id);
+  const [debitDescription, setDebitDescription] = useState('');
+  const [isSubmittingCredit, setIsSubmittingCredit] = useState(false);
+  const [isSubmittingDebit, setIsSubmittingDebit] = useState(false);
 
   const [loadingStates, setLoadingStates] = useState(true);
   const [loadingCities, setLoadingCities] = useState(false);
   const [loadingSchools, setLoadingSchools] = useState(false);
   const [loadingClasses, setLoadingClasses] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(false);
+  const [avatarConfigsByStudentId, setAvatarConfigsByStudentId] = useState<Record<string, AvatarConfig>>({});
 
-  const reasonOptions = actionType === 'credit' ? CREDIT_REASONS : DEBIT_REASONS;
-  const selectedReasonOption = reasonOptions.find((r) => r.id === reasonOptionId) ?? reasonOptions[0];
-
-  useEffect(() => {
-    setReasonOptionId(actionType === 'credit' ? CREDIT_REASONS[0].id : DEBIT_REASONS[0].id);
-  }, [actionType]);
+  const selectedCreditReason = CREDIT_REASONS.find((r) => r.id === creditReasonId) ?? CREDIT_REASONS[0];
+  const selectedDebitReason = DEBIT_REASONS.find((r) => r.id === debitReasonId) ?? DEBIT_REASONS[0];
 
   const canEdit = user?.role && CAN_EDIT_ROLES.includes(user.role);
   const pageTitle = canEdit ? 'Administração de moedas' : 'Consulta de saldos';
@@ -274,6 +305,9 @@ export default function CoinsAdmin() {
             nome: getStudentDisplayName(s),
             class_name: getStudentClassName(s) ?? classDisplayName,
             school_name: schoolName,
+            serie_name: getStudentSerieName(s, classItem ?? undefined),
+            user_id: getStudentUserId(s),
+            avatar_config: getStudentAvatarConfig(s),
           }))
         );
       } else {
@@ -285,6 +319,9 @@ export default function CoinsAdmin() {
             nome: getStudentDisplayName(s),
             class_name: getStudentClassName(s),
             school_name: schoolName,
+            serie_name: getStudentSerieName(s),
+            user_id: getStudentUserId(s),
+            avatar_config: getStudentAvatarConfig(s),
           }))
         );
       }
@@ -301,7 +338,53 @@ export default function CoinsAdmin() {
     loadStudents();
   }, [loadStudents]);
 
+  // Buscar avatar do perfil (GET /users/:id) para alunos que ainda não têm avatar_config
+  useEffect(() => {
+    if (students.length === 0) return;
+    const toFetch = students.filter((s) => s.user_id && !s.avatar_config);
+    if (toFetch.length === 0) return;
+    const BATCH_SIZE = 8;
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < toFetch.length && !cancelled; i += BATCH_SIZE) {
+        const batch = toFetch.slice(i, i + BATCH_SIZE);
+        const results = await Promise.all(
+          batch.map(({ id: studentId, user_id: userId }) =>
+            api
+              .get<{ user?: { avatar_config?: AvatarConfig }; avatar_config?: AvatarConfig }>(`/users/${userId}`)
+              .then((res) => {
+                const data = res.data?.user ?? res.data;
+                const config = data?.avatar_config;
+                return {
+                  studentId,
+                  config: config && typeof config === 'object' ? (config as AvatarConfig) : null,
+                };
+              })
+              .catch(() => ({ studentId, config: null }))
+          )
+        );
+        if (cancelled) return;
+        const updates = results.reduce<Record<string, AvatarConfig>>((acc, r) => {
+          if (r.config != null) acc[r.studentId] = r.config;
+          return acc;
+        }, {});
+        if (Object.keys(updates).length > 0) {
+          setAvatarConfigsByStudentId((prev) => ({ ...prev, ...updates }));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [students]);
+
   const getStudentDisplayNameRow = (s: StudentRow) => s.nome ?? s.name ?? s.id ?? '—';
+
+  /** Avatar do aluno: da lista, do cache (busca por user_id) ou undefined (mostra ícone) */
+  const getStudentAvatar = (s: StudentRow): AvatarConfig | null | undefined => {
+    if (s.avatar_config) return s.avatar_config;
+    return avatarConfigsByStudentId[s.id] ?? undefined;
+  };
 
   const filteredStudents = nameFilter.trim()
     ? students.filter((s) =>
@@ -321,43 +404,57 @@ export default function CoinsAdmin() {
       .catch(() => setRecentTransactions([]));
   }, [selectedStudent?.id]);
 
-  const handleExecute = async () => {
+  const handleCredit = async () => {
     if (!selectedStudent?.id || !canEdit) return;
-    const num = parseInt(amount, 10);
+    const num = parseInt(creditAmount, 10);
     if (isNaN(num) || num <= 0) {
       toast({ title: 'Valor inválido', description: 'Informe uma quantidade maior que zero.', variant: 'destructive' });
       return;
     }
-    if (actionType === 'debit' && selectedBalance !== null && num > selectedBalance) {
-      toast({ title: 'Saldo insuficiente', description: 'A quantidade não pode ser maior que o saldo atual.', variant: 'destructive' });
-      return;
-    }
-    const apiReason = selectedReasonOption.apiReason;
-    const descriptionToSend = description.trim() || selectedReasonOption.label;
-
-    setIsSubmitting(true);
+    const descriptionToSend = creditDescription.trim() || selectedCreditReason.label;
+    setIsSubmittingCredit(true);
     try {
-      if (actionType === 'credit') {
-        await credit(selectedStudent.id, num, apiReason, descriptionToSend);
-        toast({ title: 'Sucesso', description: `${formatCoins(num)} moedas creditadas.` });
-      } else {
-        await debit(selectedStudent.id, num, apiReason, descriptionToSend);
-        toast({ title: 'Sucesso', description: `${formatCoins(num)} moedas debitadas.` });
-      }
-      setAmount('');
-      setDescription('');
+      await credit(selectedStudent.id, num, selectedCreditReason.apiReason, descriptionToSend);
+      toast({ title: 'Sucesso', description: `${formatCoins(num)} moedas creditadas.` });
+      setCreditAmount('');
+      setCreditDescription('');
       const newBalance = await getBalance(selectedStudent.id);
       setSelectedBalance(newBalance);
       const tx = await getTransactions({ student_id: selectedStudent.id, limit: 5 });
       setRecentTransactions(tx);
     } catch (err) {
-      toast({
-        title: 'Erro',
-        description: getApiErrorMessage(err),
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro', description: getApiErrorMessage(err), variant: 'destructive' });
     } finally {
-      setIsSubmitting(false);
+      setIsSubmittingCredit(false);
+    }
+  };
+
+  const handleDebit = async () => {
+    if (!selectedStudent?.id || !canEdit) return;
+    const num = parseInt(debitAmount, 10);
+    if (isNaN(num) || num <= 0) {
+      toast({ title: 'Valor inválido', description: 'Informe uma quantidade maior que zero.', variant: 'destructive' });
+      return;
+    }
+    if (selectedBalance !== null && num > selectedBalance) {
+      toast({ title: 'Saldo insuficiente', description: 'A quantidade não pode ser maior que o saldo atual.', variant: 'destructive' });
+      return;
+    }
+    const descriptionToSend = debitDescription.trim() || selectedDebitReason.label;
+    setIsSubmittingDebit(true);
+    try {
+      await debit(selectedStudent.id, num, selectedDebitReason.apiReason, descriptionToSend);
+      toast({ title: 'Sucesso', description: `${formatCoins(num)} moedas debitadas.` });
+      setDebitAmount('');
+      setDebitDescription('');
+      const newBalance = await getBalance(selectedStudent.id);
+      setSelectedBalance(newBalance);
+      const tx = await getTransactions({ student_id: selectedStudent.id, limit: 5 });
+      setRecentTransactions(tx);
+    } catch (err) {
+      toast({ title: 'Erro', description: getApiErrorMessage(err), variant: 'destructive' });
+    } finally {
+      setIsSubmittingDebit(false);
     }
   };
 
@@ -443,163 +540,245 @@ export default function CoinsAdmin() {
           </div>
           <div className="space-y-2">
             <Label>Nome do aluno</Label>
-            <Input
-              className="w-[200px]"
-              placeholder="Buscar por nome"
-              value={nameFilter}
-              onChange={(e) => setNameFilter(e.target.value)}
-            />
+            <div className="relative w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="Buscar por nome"
+                value={nameFilter}
+                onChange={(e) => setNameFilter(e.target.value)}
+              />
+            </div>
           </div>
           <div className="flex items-end">
             <Button onClick={loadStudents} disabled={loadingStudents}>
-              {loadingStudents ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Buscar'}
+              {loadingStudents ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Atualizar'}
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Alunos (clique para selecionar)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loadingStudents ? (
-            <div className="flex items-center gap-2 py-4">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Carregando alunos...
-            </div>
-          ) : filteredStudents.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Coins className="h-12 w-12 text-muted-foreground/50 mb-3" />
+      <div>
+        <h2 className="text-lg font-semibold mb-3">Alunos — clique em um card para selecionar</h2>
+        {loadingStudents ? (
+          <div className="flex items-center gap-2 py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <span className="text-muted-foreground">Carregando alunos...</span>
+          </div>
+        ) : filteredStudents.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+              <Coins className="h-14 w-14 text-muted-foreground/50 mb-4" />
               <p className="font-medium text-muted-foreground">Nenhum aluno encontrado</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Ajuste os filtros (estado, cidade, escola, turma) e clique em Buscar.
+                Ajuste os filtros (estado, cidade, escola, turma) e clique em Atualizar.
               </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="min-w-[200px]">Nome</TableHead>
-                    <TableHead className="min-w-[120px] whitespace-nowrap">Turma</TableHead>
-                    <TableHead className="min-w-[180px]">Escola</TableHead>
-                    <TableHead className="text-right min-w-[100px]">Saldo</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredStudents.map((s) => (
-                    <TableRow
-                      key={s.id}
-                      className={selectedStudent?.id === s.id ? 'bg-muted/50' : 'cursor-pointer hover:bg-muted/30'}
-                      onClick={() => setSelectedStudent(s)}
-                    >
-                      <TableCell className="min-w-[200px] font-medium">{getStudentDisplayNameRow(s)}</TableCell>
-                      <TableCell className="min-w-[120px] whitespace-nowrap">{s.class_name ?? '—'}</TableCell>
-                      <TableCell className="min-w-[180px]">{s.school_name ?? '—'}</TableCell>
-                      <TableCell className="text-right min-w-[100px]">
-                        {selectedStudent?.id === s.id && selectedBalance !== null
-                          ? formatCoins(selectedBalance)
-                          : '—'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+            {filteredStudents.map((s) => {
+              const isSelected = selectedStudent?.id === s.id;
+              const displayName = getStudentDisplayNameRow(s);
+              const serieTurma = [s.serie_name, s.class_name].filter(Boolean).join(' · ') || '—';
+              return (
+                <Card
+                  key={s.id}
+                  className={cn(
+                    'cursor-pointer transition-all hover:shadow-md',
+                    isSelected
+                      ? 'ring-2 ring-primary bg-primary/5 shadow-md'
+                      : 'hover:bg-muted/30'
+                  )}
+                  onClick={() => setSelectedStudent(s)}
+                >
+                  <CardContent className="flex items-center gap-3 p-4">
+                    {getStudentAvatar(s) ? (
+                      <AvatarPreview config={getStudentAvatar(s)!} size={44} className="shrink-0" />
+                    ) : (
+                      <div
+                        className="h-11 w-11 shrink-0 rounded-full bg-primary/20 text-primary flex items-center justify-center"
+                        aria-hidden
+                      >
+                        <GraduationCap className="h-6 w-6" />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate">{displayName}</p>
+                      <p className="text-xs text-muted-foreground truncate">{serieTurma}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {selectedStudent && (
         <>
-          <Card>
+          <Card className="border-2 border-primary/30 bg-primary/5">
             <CardHeader>
-              <CardTitle>Aluno selecionado</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-lg font-medium">{getStudentDisplayNameRow(selectedStudent)}</p>
-              <p className="text-sm text-muted-foreground">ID para conferência: {selectedStudent.id}</p>
-              <p><strong>Saldo atual:</strong> <CoinBalance studentId={selectedStudent.id} size="medium" showLabel={true} /></p>
-            </CardContent>
-          </Card>
-
-          {canEdit && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Ação</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <RadioGroup value={actionType} onValueChange={(v) => setActionType(v as 'credit' | 'debit')}>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="credit" id="credit" />
-                    <Label htmlFor="credit">Dar moedas</Label>
+              <CardTitle className="flex items-center gap-3">
+                {getStudentAvatar(selectedStudent) ? (
+                  <AvatarPreview config={getStudentAvatar(selectedStudent)!} size={48} className="shrink-0" />
+                ) : (
+                  <div
+                    className="h-12 w-12 shrink-0 rounded-full bg-primary/20 text-primary flex items-center justify-center"
+                    aria-hidden
+                  >
+                    <GraduationCap className="h-7 w-7" />
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="debit" id="debit" />
-                    <Label htmlFor="debit">Remover moedas</Label>
-                  </div>
-                </RadioGroup>
-                <div className="space-y-2">
-                  <Label>Quantidade</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="0"
-                  />
+                )}
+                <div>
+                  <span className="block">{getStudentDisplayNameRow(selectedStudent)}</span>
+                  <span className="text-sm font-normal text-muted-foreground">
+                    {[selectedStudent.serie_name, selectedStudent.class_name].filter(Boolean).join(' · ') || '—'}
+                  </span>
                 </div>
-                <div className="space-y-2">
-                  <Label>Motivo</Label>
-                  <Select value={reasonOptionId} onValueChange={setReasonOptionId}>
-                    <SelectTrigger className="w-[280px]">
-                      <SelectValue placeholder="Selecione o motivo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {reasonOptions.map((r) => (
-                        <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Descrição (opcional)</Label>
-                  <Input
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Descrição"
-                  />
-                </div>
-                <Button onClick={handleExecute} disabled={isSubmitting}>
-                  {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  Executar
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Últimas transações</CardTitle>
+              </CardTitle>
             </CardHeader>
-            <CardContent>
-              {recentTransactions.length === 0 ? (
-                <p className="text-muted-foreground text-sm">Nenhuma transação recente.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {recentTransactions.map((t) => (
-                    <li key={t.id} className="flex justify-between text-sm">
-                      <span className={t.amount > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
-                        {t.amount > 0 ? '+' : ''}{formatCoins(t.amount)}
-                      </span>
-                      <span className="text-muted-foreground">{t.description || t.reason}</span>
-                      <span>{new Date(t.created_at).toLocaleDateString('pt-BR')}</span>
-                      <span>Saldo: {formatCoins(t.balance_after)}</span>
-                    </li>
-                  ))}
-                </ul>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-2 rounded-lg bg-background/80 p-4">
+                <Coins className="h-6 w-6 text-amber-500" />
+                <span className="text-lg font-semibold">Saldo atual:</span>
+                <CoinBalance studentId={selectedStudent.id} size="medium" showLabel={true} />
+              </div>
+
+              {canEdit && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Card className="border-green-200 dark:border-green-900/50 bg-green-50/50 dark:bg-green-950/20">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base flex items-center gap-2 text-green-700 dark:text-green-400">
+                        <Plus className="h-5 w-5" />
+                        Dar moedas
+                      </CardTitle>
+                      <p className="text-xs font-normal text-muted-foreground">
+                        Adicione moedas ao saldo do aluno.
+                      </p>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="space-y-2">
+                        <Label>Quantidade</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={creditAmount}
+                          onChange={(e) => setCreditAmount(e.target.value)}
+                          placeholder="Ex.: 50"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Motivo</Label>
+                        <Select value={creditReasonId} onValueChange={setCreditReasonId}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CREDIT_REASONS.map((r) => (
+                              <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Descrição (opcional)</Label>
+                        <Input
+                          value={creditDescription}
+                          onChange={(e) => setCreditDescription(e.target.value)}
+                          placeholder="Ex.: Participação na gincana"
+                        />
+                      </div>
+                      <Button
+                        className="w-full bg-green-600 hover:bg-green-700"
+                        onClick={handleCredit}
+                        disabled={isSubmittingCredit}
+                      >
+                        {isSubmittingCredit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                        Creditar moedas
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/20">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                        <Minus className="h-5 w-5" />
+                        Remover moedas
+                      </CardTitle>
+                      <p className="text-xs font-normal text-muted-foreground">
+                        Subtraia moedas do saldo do aluno.
+                      </p>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="space-y-2">
+                        <Label>Quantidade</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={debitAmount}
+                          onChange={(e) => setDebitAmount(e.target.value)}
+                          placeholder="Ex.: 10"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Motivo</Label>
+                        <Select value={debitReasonId} onValueChange={setDebitReasonId}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {DEBIT_REASONS.map((r) => (
+                              <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Descrição (opcional)</Label>
+                        <Input
+                          value={debitDescription}
+                          onChange={(e) => setDebitDescription(e.target.value)}
+                          placeholder="Ex.: Correção de lançamento"
+                        />
+                      </div>
+                      <Button
+                        variant="destructive"
+                        className="w-full"
+                        onClick={handleDebit}
+                        disabled={isSubmittingDebit}
+                      >
+                        {isSubmittingDebit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Minus className="h-4 w-4 mr-2" />}
+                        Debitar moedas
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </div>
               )}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Últimas transações</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {recentTransactions.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">Nenhuma transação recente.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {recentTransactions.map((t) => (
+                        <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 text-sm border-b border-border/50 pb-2 last:border-0 last:pb-0">
+                          <span className={t.amount > 0 ? 'text-green-600 dark:text-green-400 font-medium' : 'text-red-600 dark:text-red-400 font-medium'}>
+                            {t.amount > 0 ? '+' : ''}{formatCoins(t.amount)}
+                          </span>
+                          <span className="text-muted-foreground flex-1 min-w-0 truncate">{t.description || t.reason}</span>
+                          <span className="text-muted-foreground shrink-0">{new Date(t.created_at).toLocaleDateString('pt-BR')}</span>
+                          <span className="shrink-0">Saldo: {formatCoins(t.balance_after)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
             </CardContent>
           </Card>
         </>

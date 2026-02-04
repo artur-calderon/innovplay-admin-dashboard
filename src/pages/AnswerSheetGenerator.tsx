@@ -878,6 +878,19 @@ export default function AnswerSheetGenerator() {
 
   const handlePreviousStep = () => {
     if (currentStep > 1) {
+      if (currentStep === 2 && pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      if (currentStep === 2) {
+        setTaskId(null);
+        setBatchId(null);
+        setBatchClasses([]);
+        setGeneratedSheets([]);
+        setTotalPdfs(0);
+        setTotalStudents(0);
+        setGenerationProgress(0);
+      }
       setCurrentStep((currentStep - 1) as Step);
     }
   };
@@ -1019,11 +1032,21 @@ export default function AnswerSheetGenerator() {
           setGenerationProgress(100);
           setIsGenerating(false);
 
+          // Avisos (ex.: turmas puladas por não terem alunos)
+          const warnings: string[] = data.warnings ?? [];
+          if (warnings.length > 0) {
+            toast({
+              title: "Avisos na geração",
+              description: warnings.join(' '),
+              variant: "default",
+            });
+          }
+
           // Processar resultado
           const result: TaskStatusResult = data.result;
           
           // Verificar se é batch ou single
-          if (result.scope === 'class') {
+          if (result?.scope === 'class') {
             // Comportamento antigo (uma turma)
             setGeneratedSheets(result.sheets || []);
             
@@ -1031,16 +1054,20 @@ export default function AnswerSheetGenerator() {
               title: "✅ Cartões gerados com sucesso!",
               description: `${result.generated_sheets || 0} cartões foram gerados para ${result.total_students || 0} alunos.`,
             });
-          } else {
-            // Novo: múltiplas turmas (batch)
+          } else if (result) {
+            // Novo: múltiplas turmas (batch) — total_classes = apenas turmas que geraram PDF
             setBatchId(result.batch_id || null);
             setBatchClasses(result.classes || []);
             setTotalPdfs(result.total_pdfs || 0);
             setTotalStudents(result.total_students || 0);
             
+            const skippedCount = result.skipped_classes?.length ?? 0;
+            const skippedText = skippedCount > 0
+              ? ` ${skippedCount} turma(s) pulada(s) (sem alunos).`
+              : '';
             toast({
               title: "✅ Cartões gerados com sucesso!",
-              description: `${result.total_pdfs} PDFs gerados para ${result.total_students} alunos em ${result.total_classes} turmas.`,
+              description: `${result.total_pdfs} PDFs gerados para ${result.total_students} alunos em ${result.total_classes} turmas.${skippedText}`,
             });
           }
 
@@ -1141,9 +1168,12 @@ export default function AnswerSheetGenerator() {
     try {
       setIsGenerating(true);
       setGenerationProgress(10);
-      setGeneratedSheets([]);
+      setTaskId(null);
       setBatchId(null);
       setBatchClasses([]);
+      setGeneratedSheets([]);
+      setTotalPdfs(0);
+      setTotalStudents(0);
 
       const municipioData = municipios.find(m => m.id === selectedMunicipio);
       const schoolData = schools.find(s => s.id === selectedSchool);
@@ -3084,16 +3114,36 @@ export default function AnswerSheetGenerator() {
                                   <School className="h-3 w-3" />
                                   {gabarito.school_name}
                                 </Badge>
-                                <Badge variant="secondary" className="flex items-center gap-1">
-                                  <Users className="h-3 w-3" />
-                                  {gabarito.class_name}
-                                </Badge>
-                                <Badge variant="secondary">
-                                  {gabarito.grade_name}
-                                </Badge>
-                                <Badge variant="outline">
-                                  {gabarito.num_questions} questões
-                                </Badge>
+                                {gabarito.classes_count != null && gabarito.students_count != null ? (
+                                  <>
+                                    <Badge variant="secondary" className="flex items-center gap-1">
+                                      <Users className="h-3 w-3" />
+                                      {gabarito.classes_count} turmas
+                                    </Badge>
+                                    <Badge variant="secondary">
+                                      {gabarito.students_count} alunos
+                                    </Badge>
+                                  </>
+                                ) : (
+                                  <>
+                                    {gabarito.class_name != null && (
+                                      <Badge variant="secondary" className="flex items-center gap-1">
+                                        <Users className="h-3 w-3" />
+                                        {gabarito.class_name}
+                                      </Badge>
+                                    )}
+                                    {gabarito.grade_name != null && (
+                                      <Badge variant="secondary">
+                                        {gabarito.grade_name}
+                                      </Badge>
+                                    )}
+                                  </>
+                                )}
+                                {gabarito.num_questions != null && (
+                                  <Badge variant="outline">
+                                    {gabarito.num_questions} questões
+                                  </Badge>
+                                )}
                                 {gabarito.use_blocks && (
                                   <Badge variant="outline" className="border-purple-500 text-purple-700">
                                     Com blocos
@@ -3104,18 +3154,27 @@ export default function AnswerSheetGenerator() {
                                     📦 Batch
                                   </Badge>
                                 )}
+                                {gabarito.generation_status != null && (
+                                  <Badge variant="outline">
+                                    {gabarito.generation_status === 'completed' ? 'Concluído' : gabarito.generation_status}
+                                  </Badge>
+                                )}
                               </div>
                             </div>
                             
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                              <div>
-                                <p className="text-muted-foreground">Localização</p>
-                                <p className="font-medium">{gabarito.municipality}, {gabarito.state}</p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground">Criado por</p>
-                                <p className="font-medium">{gabarito.creator_name}</p>
-                              </div>
+                              {gabarito.municipality != null && gabarito.state != null && (
+                                <div>
+                                  <p className="text-muted-foreground">Localização</p>
+                                  <p className="font-medium">{gabarito.municipality}, {gabarito.state}</p>
+                                </div>
+                              )}
+                              {gabarito.creator_name != null && (
+                                <div>
+                                  <p className="text-muted-foreground">Criado por</p>
+                                  <p className="font-medium">{gabarito.creator_name}</p>
+                                </div>
+                              )}
                               <div>
                                 <p className="text-muted-foreground">Data de criação</p>
                                 <p className="font-medium">
@@ -3128,10 +3187,12 @@ export default function AnswerSheetGenerator() {
                                   })}
                                 </p>
                               </div>
-                              <div>
-                                <p className="text-muted-foreground">Instituição</p>
-                                <p className="font-medium">{gabarito.institution}</p>
-                              </div>
+                              {gabarito.institution != null && (
+                                <div>
+                                  <p className="text-muted-foreground">Instituição</p>
+                                  <p className="font-medium">{gabarito.institution}</p>
+                                </div>
+                              )}
                             </div>
                             </div>
                           </div>
@@ -3140,7 +3201,7 @@ export default function AnswerSheetGenerator() {
                             {gabarito.is_batch && gabarito.batch_id ? (
                               <Button
                                 onClick={() => handleDownloadBatch(gabarito.batch_id!)}
-                                disabled={downloadingGabaritoId === gabarito.batch_id || isDeleting}
+                                disabled={downloadingGabaritoId === gabarito.batch_id || isDeleting || gabarito.can_download === false}
                                 className="w-full bg-purple-600 hover:bg-purple-700"
                               >
                                 {downloadingGabaritoId === gabarito.batch_id ? (
@@ -3158,7 +3219,7 @@ export default function AnswerSheetGenerator() {
                             ) : (
                               <Button
                                 onClick={() => handleDownloadGabarito(gabarito.id)}
-                                disabled={downloadingGabaritoId === gabarito.id || isDeleting}
+                                disabled={downloadingGabaritoId === gabarito.id || isDeleting || gabarito.can_download === false}
                                 className="w-full"
                               >
                                 {downloadingGabaritoId === gabarito.id ? (

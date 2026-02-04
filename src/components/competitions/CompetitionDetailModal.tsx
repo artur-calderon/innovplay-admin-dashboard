@@ -153,7 +153,20 @@ export function CompetitionDetailModal({
                     <p className="text-sm"><strong>Modo:</strong> {competition.question_mode}</p>
                   )}
                   {competition.question_rules && (
-                    <p className="text-sm whitespace-pre-wrap">{competition.question_rules}</p>
+                    <p className="text-sm whitespace-pre-wrap">
+                      {typeof competition.question_rules === 'string'
+                        ? competition.question_rules
+                        : JSON.stringify(competition.question_rules, null, 2)}
+                    </p>
+                  )}
+                  {competition.question_mode === 'auto_random' && competition.question_rules != null && (
+                    <p className="text-sm text-muted-foreground">
+                      {(() => {
+                        const r = typeof competition.question_rules === 'object' ? competition.question_rules : (() => { try { return JSON.parse(competition.question_rules as string); } catch { return null; } })();
+                        const n = (r as { num_questions?: number } | null)?.num_questions;
+                        return n != null ? `${n} questão(ões) sorteadas aleatoriamente` : null;
+                      })()}
+                    </p>
                   )}
                   {competition.question_ids && competition.question_ids.length > 0 && (
                     <p className="text-sm text-muted-foreground">
@@ -163,15 +176,18 @@ export function CompetitionDetailModal({
                 </div>
               )}
 
-              {(competition.reward_participation != null || competition.reward_ranking != null) && (
+              {(competition.reward_config?.participation_coins != null ||
+                (competition.reward_config?.ranking_rewards?.length ?? 0) > 0 ||
+                competition.reward_participation != null ||
+                competition.reward_ranking != null) && (
                 <div className="rounded-lg border p-3 space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Recompensas</p>
-                  {competition.reward_participation != null && (
-                    <p className="text-sm">Participação: {String(competition.reward_participation)}</p>
-                  )}
-                  {competition.reward_ranking != null && (
-                    <p className="text-sm">Ranking: {String(competition.reward_ranking)}</p>
-                  )}
+                  <p className="text-sm">
+                    Participação: {String(competition.reward_config?.participation_coins ?? competition.reward_participation ?? '—')}
+                    {((competition.reward_config?.ranking_rewards?.length ?? 0) > 0 || competition.reward_ranking != null) && (
+                      <> · Ranking: {competition.reward_config?.ranking_rewards?.length ? competition.reward_config.ranking_rewards.map((r) => `${r.position}º: ${r.coins}`).join(', ') : String(competition.reward_ranking ?? '—')}</>
+                    )}
+                  </p>
                 </div>
               )}
 

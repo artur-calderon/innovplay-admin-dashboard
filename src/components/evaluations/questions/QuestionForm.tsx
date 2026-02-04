@@ -28,6 +28,7 @@ import { useAuth } from "@/context/authContext";
 import QuestionPreview from "./QuestionPreview";
 import SkillsSelector from "./SkillsSelector";
 import { scrollToFirstError, getFieldLabel } from "@/utils/formValidation";
+import { UpdateQuestionResponse } from "@/types/question-update";
 
 // Form schema
 const baseSchema = z.object({
@@ -573,14 +574,51 @@ const QuestionForm = ({
       setIsSubmitting(true);
       
       if (questionId) {
-        // Update existing question - fazer a chamada direta
-        const response = await api.put(`/questions/${questionId}`, payload);
-        const updatedQuestion: Question = response.data;
+        // Update existing question
+        const response = await api.put<UpdateQuestionResponse>(`/questions/${questionId}`, payload);
+        const updateResponse = response.data;
         
-        toast({
-          title: "Sucesso",
-          description: "Questão atualizada com sucesso!",
-        });
+        // Verificar se houve mudança de gabarito
+        if (updateResponse.gabarito_changed && updateResponse.recalculation) {
+          const { status, students_recalculated, tests_affected, errors } = updateResponse.recalculation;
+          const gabaritoMsg = `Gabarito alterado de "${updateResponse.old_answer}" para "${updateResponse.new_answer}".`;
+          
+          if (status === 'completed' && errors === 0) {
+            toast({
+              title: "Sucesso",
+              description: `${gabaritoMsg} ${students_recalculated} ${students_recalculated === 1 ? 'aluno recalculado' : 'alunos recalculados'} em ${tests_affected} ${tests_affected === 1 ? 'teste' : 'testes'}.`,
+              duration: 6000,
+            });
+          } else if (status === 'processing') {
+            toast({
+              title: "Sucesso",
+              description: `${gabaritoMsg} Recalculação em andamento...`,
+              duration: 5000,
+            });
+          } else if (status === 'error') {
+            toast({
+              title: "Questão atualizada com avisos",
+              description: `${gabaritoMsg} Ocorreram ${errors} ${errors === 1 ? 'erro' : 'erros'} ao recalcular.`,
+              variant: "default",
+              duration: 6000,
+            });
+          } else {
+            toast({
+              title: "Sucesso",
+              description: gabaritoMsg,
+            });
+          }
+        } else {
+          // Atualização normal sem mudança de gabarito
+          toast({
+            title: "Sucesso",
+            description: "Questão atualizada com sucesso!",
+          });
+        }
+        
+        // Buscar a questão atualizada
+        const updatedQuestionResponse = await api.get<Question>(`/questions/${questionId}`);
+        const updatedQuestion = updatedQuestionResponse.data;
         
         if (externalOnSubmit) {
           externalOnSubmit(data);
@@ -590,7 +628,7 @@ const QuestionForm = ({
         }
         onClose();
       } else {
-        // Create new question - fazer a chamada direta para a API
+        // Create new question
         const response = await api.post("/questions", payload);
         const newQuestion: Question = response.data;
         
