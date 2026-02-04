@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Coins } from 'lucide-react';
-import { CoinBalance } from '@/components/Coins/CoinBalance';
+import { CoinBalance } from '@/components/coins/CoinBalance';
 import { getTransactions, type CoinTransaction } from '@/services/coinsApi';
 import { formatCoins } from '@/utils/coins';
 import {
