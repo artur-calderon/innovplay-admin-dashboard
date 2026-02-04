@@ -186,6 +186,7 @@ const App = () => {
               <Route path="/aluno/moedas/historico" element={<PrivateRoute><CoinHistory /></PrivateRoute>} />
               <Route path="/aluno/competitions" element={<PrivateRoute><CompetitionsStudent /></PrivateRoute>} />
               <Route path="/aluno/competitions/:id" element={<PrivateRoute><CompetitionStudentDetail /></PrivateRoute>} />
+              <Route path="/aluno/competitions/:id/fazer" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             </Route>
 
             {/* Rota de avaliação em tela cheia para alunos */}

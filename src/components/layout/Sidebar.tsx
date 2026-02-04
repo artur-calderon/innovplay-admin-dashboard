@@ -55,6 +55,7 @@ import { useAuth } from "@/context/authContext";
 import { Button } from "@/components/ui/button";
 import { useGamesCount } from "@/hooks/useGamesCount";
 import { useUnreadAvisos } from "@/hooks/useUnreadAvisos";
+import { useOpenCompetitionsCount } from "@/hooks/useOpenCompetitionsCount";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getRoleDisplayName } from "@/lib/constants";
 import { AvatarPreview } from "@/components/profile/AvatarPreview";
@@ -98,6 +99,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   const { logout, user } = useAuth();
   useGamesCount();
   const { getUnreadCount } = useUnreadAvisos();
+  const openCompetitionsCount = useOpenCompetitionsCount();
 
   useEffect(() => {
     const loadAvisoIds = async () => {
@@ -278,7 +280,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       links: [
         { icon: Award, label: "Certificados", href: `${user.role === 'aluno' ? "/aluno/certificados" : "/app/certificados"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
         { icon: Sparkles, label: "Olimpíadas", href: `${user.role === 'aluno' ? "/aluno/olimpiadas" : "/app/olimpiadas"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
-        { icon: Trophy, label: "Competições", href: `${user.role === 'aluno' ? "/aluno/competitions" : "/app/competitions"}`, role: ["admin", "coordenador", "diretor", "tecadm", "aluno"] },
+        { icon: Trophy, label: "Competições", href: `${user.role === 'aluno' ? "/aluno/competitions" : "/app/competitions"}`, role: ["admin", "coordenador", "diretor", "tecadm", "aluno"], badge: user.role === 'aluno' && openCompetitionsCount > 0 ? String(openCompetitionsCount) : undefined },
         { icon: Coins, label: "Histórico de Moedas", href: "/aluno/moedas/historico", role: ["aluno"] },
       ]
     },
@@ -436,7 +438,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         {!isCollapsed && (
           <div className="flex items-center gap-1.5 md:gap-2">
             {link.badge && (
-              <span className="bg-pink-500 text-white text-[9px] md:text-[10px] font-bold px-1 md:px-1.5 py-0.5 rounded-full min-w-[18px] md:min-w-[20px] text-center">
+              <span className={cn(
+                "text-white text-[9px] md:text-[10px] font-bold px-1 md:px-1.5 py-0.5 rounded-full min-w-[18px] md:min-w-[20px] text-center",
+                link.href === '/aluno/competitions' ? 'bg-red-500' : 'bg-pink-500'
+              )}>
                 {link.badge}
               </span>
             )}
@@ -454,7 +459,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         )}
 
         {isCollapsed && link.badge && (
-          <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[9px] md:text-[10px] font-bold w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center">
+          <span className={cn(
+            "absolute -top-1 -right-1 text-white text-[9px] md:text-[10px] font-bold w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center",
+            link.href === '/aluno/competitions' ? 'bg-red-500' : 'bg-pink-500'
+          )}>
             {link.badge}
           </span>
         )}
