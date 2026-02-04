@@ -9,6 +9,7 @@ import { useAuth } from "./context/authContext";
 import Layout from "./components/layout/Layout";
 import FullscreenLayout from "./components/layout/FullscreenLayout";
 import { PrivateRoute } from "./components/PrivateRoute";
+import { RoleRoute } from "./components/layout/RoleRoute";
 
 // Lazy loading para reduzir o tamanho dos chunks
 const Index = React.lazy(() => import("./pages/Index"));
@@ -76,11 +77,7 @@ const QuestionarioList = React.lazy(() => import("./pages/QuestionarioList"));
 const QuestionarioRespond = React.lazy(() => import("./pages/QuestionarioRespond"));
 
 // Lazy loading para competições e torneios
-const Competicoes = React.lazy(() => import("./pages/Competicoes"));
 const TorneioExecucao = React.lazy(() => import("./pages/TorneioExecucao"));
-const CompeticoesAdmin = React.lazy(() => import("./pages/CompeticoesAdmin"));
-const CompeticaoExecucao = React.lazy(() => import("./pages/CompeticaoExecucao"));
-const CompeticaoResultados = React.lazy(() => import("./pages/CompeticaoResultados"));
 
 // Lazy loading para dashboards específicos
 const StudentDashboard = React.lazy(() => import("./pages/StudentDashboard"));
@@ -102,6 +99,9 @@ const AnswerSheetResults = React.lazy(() => import("./pages/AnswerSheetResults")
 const Olimpiadas = React.lazy(() => import("./pages/Olimpiadas"));
 const OlimpiadasStudent = React.lazy(() => import("./pages/OlimpiadasStudent"));
 const OlimpiadaStudent = React.lazy(() => import("./pages/OlimpiadaStudent"));
+const CoinHistory = React.lazy(() => import("./pages/CoinHistory"));
+const CoinsAdmin = React.lazy(() => import("./pages/CoinsAdmin"));
+const Competitions = React.lazy(() => import("./pages/Competitions"));
 
 // Loading component
 const LoadingSpinner = () => (
@@ -168,10 +168,7 @@ const App = () => {
               <Route path="/aluno/play-tv/:id" element={<PrivateRoute><PlayTvVideoView /></PrivateRoute>} />
               <Route path="/aluno/plantao-online" element={<PrivateRoute><PlantaoOnlineStudent /></PrivateRoute>} />
               <Route path="/aluno/certificados" element={<PrivateRoute><StudentCertificates /></PrivateRoute>} />
-              <Route path="/aluno/competicoes" element={<PrivateRoute><Competicoes /></PrivateRoute>} />
               <Route path="/aluno/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
-              <Route path="/aluno/competicao/:competitionId" element={<PrivateRoute><CompeticaoExecucao /></PrivateRoute>} />
-              <Route path="/aluno/competicoes/:competitionId/resultados" element={<PrivateRoute><CompeticaoResultados /></PrivateRoute>} />
               <Route path="/aluno/olimpiadas" element={<PrivateRoute><OlimpiadasStudent /></PrivateRoute>} />
               <Route path="/aluno/olimpiada/:id/fazer" element={<FullscreenLayout />}>
                 <Route index element={<PrivateRoute><OlimpiadaStudent /></PrivateRoute>} />
@@ -183,6 +180,7 @@ const App = () => {
               <Route path="/aluno/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/aluno/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
               <Route path="/aluno/configuracoes" element={<PrivateRoute><Settings /></PrivateRoute>} />
+              <Route path="/aluno/moedas/historico" element={<PrivateRoute><CoinHistory /></PrivateRoute>} />
             </Route>
 
             {/* Rota de avaliação em tela cheia para alunos */}
@@ -218,12 +216,9 @@ const App = () => {
               <Route path="/app/cartao-resposta" element={<PrivateRoute><AnswerSheetGenerator /></PrivateRoute>} />
               <Route path="/app/cartao-resposta/resultados/:gabaritoId" element={<PrivateRoute><AnswerSheetResults /></PrivateRoute>} />
               <Route path="/app/certificados" element={<PrivateRoute><Certificates /></PrivateRoute>} />
-              <Route path="/app/competicoes" element={<PrivateRoute><Competicoes /></PrivateRoute>} />
-              <Route path="/app/competicoes/admin" element={<PrivateRoute><CompeticoesAdmin /></PrivateRoute>} />
-              <Route path="/app/competicao/:competitionId" element={<PrivateRoute><CompeticaoExecucao /></PrivateRoute>} />
-              <Route path="/app/competicoes/:competitionId/resultados" element={<PrivateRoute><CompeticaoResultados /></PrivateRoute>} />
               <Route path="/app/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
               <Route path="/app/olimpiadas" element={<PrivateRoute><Olimpiadas /></PrivateRoute>} />
+              <Route path="/app/competitions" element={<PrivateRoute><RoleRoute allowed={["admin", "coordenador"]}><Competitions /></RoleRoute></PrivateRoute>} />
               <Route path="/app/olimpiada/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
               <Route path="/app/olimpiada-resultado/:testId/:studentId" element={<PrivateRoute><StudentResult /></PrivateRoute>} />
               <Route path="/app/city" element={<PrivateRoute><Cities /></PrivateRoute>} />
@@ -233,6 +228,7 @@ const App = () => {
               <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/app/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
               <Route path="/app/configuracoes" element={<PrivateRoute><Settings /></PrivateRoute>} />
+              <Route path="/app/moedas" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><CoinsAdmin /></RoleRoute></PrivateRoute>} />
 
               {/* Rotas de gerenciamento de questões */}
               <Route path="/app/cadastros/questao" element={<PrivateRoute><QuestionsPage /></PrivateRoute>} />
@@ -259,7 +255,6 @@ const App = () => {
               {/* Rotas de Relatórios */}
               <Route path="/app/relatorios/analise-avaliacoes" element={<PrivateRoute><AnaliseAvaliacoes /></PrivateRoute>} />
               <Route path="/app/relatorios/acerto-niveis" element={<PrivateRoute><AcertoNiveis /></PrivateRoute>} />
-              <Route path="/app/relatorios/relatorio-escolar" element={<PrivateRoute><RelatorioEscolar /></PrivateRoute>} />
             </Route>
 
             {/* Rota de avaliação em tela cheia para admin/professor */}

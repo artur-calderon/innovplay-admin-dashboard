@@ -444,7 +444,6 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                     }))
                   }))}
                   successThreshold={60}
-                  showCoins={showCoins}
                 />
                 <tbody>
                   {consolidatedStudents.map((aluno, studentIndex) => (

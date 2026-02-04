@@ -1026,7 +1026,7 @@ const StudentDashboard = () => {
                 value={selectedEvaluation || ''}
                 onChange={(e) => handleEvaluationChange(e.target.value)}
                 disabled={isLoadingEvaluations}
-                className="px-3 py-1 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-3 py-1.5 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
               >
                 {evaluations.map((evaluation) => (
                   <option key={evaluation.id} value={evaluation.id}>
@@ -1037,7 +1037,7 @@ const StudentDashboard = () => {
             </div>
           )}
           {selectedEvaluation && (
-            <Badge variant="outline" className="bg-green-100 text-green-800 px-2 sm:px-3 py-1 text-xs sm:text-sm">
+            <Badge variant="outline" className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700 px-2 sm:px-3 py-1 text-xs sm:text-sm">
               Avaliação Específica
             </Badge>
           )}

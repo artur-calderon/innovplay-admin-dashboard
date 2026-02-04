@@ -19,6 +19,8 @@ interface OlimpiadaResultsModalProps {
   isOpen: boolean;
   onClose: () => void;
   olimpiadaId: string;
+  /** Série/grade para cálculo de proficiência quando o relatório e getOlimpiada não trazem */
+  initialSerie?: string;
 }
 
 type StageGroup = "group1" | "group2";
@@ -43,6 +45,7 @@ export function OlimpiadaResultsModal({
   isOpen,
   onClose,
   olimpiadaId,
+  initialSerie,
 }: OlimpiadaResultsModalProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -58,7 +61,12 @@ export function OlimpiadaResultsModal({
   }, [isOpen, olimpiadaId]);
 
   // Função para mapear DetailedReport para NovaRespostaAPI
-  const mapDetailedReportToApiData = useCallback((report: any): NovaRespostaAPI => {
+  const mapDetailedReportToApiData = useCallback((
+    report: any, 
+    skillDescriptionMap?: Record<string, string>,
+    skillCodeMap?: Record<string, string>,
+    skillsByIndex?: Array<{ code: string; description: string }>
+  ): NovaRespostaAPI => {
     const alunos = report.alunos || [];
     const alunosConcluidos = alunos.filter((a: any) => a.status === 'concluida');
     
@@ -82,6 +90,80 @@ export function OlimpiadaResultsModal({
     const disciplinaStr = report.avaliacao?.disciplina || 'Multidisciplinar';
     const disciplinas = disciplinaStr.split(',').map((d: string) => d.trim());
 
+    // Série pode vir em campos diferentes do backend (serie, serie_nome, grade_name ou do primeiro aluno)
+    const serieFromReport =
+      report.avaliacao?.serie ??
+      report.avaliacao?.serie_nome ??
+      (report.avaliacao as any)?.grade_name ??
+      report.alunos?.[0]?.serie ??
+      '';
+
+    // Verificar se parece UUID (preferir não exibir como código, mas não esconder se for o único dado)
+    const looksLikeUuid = (s: string) =>
+      !s || s.length > 30 || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(s).trim());
+
+    // Remover chaves {} se o backend retornar UUID como "{uuid}" em vez de "uuid"
+    const cleanBraces = (s: string) => s.replace(/^\{|\}$/g, '');
+
+    // Coletar todos os valores possíveis da questão (backend pode usar nomes diferentes ou objeto aninhado)
+    const getQuestionSkillValues = (q: any) => {
+      const skillObj = q.skill ?? q.ability ?? q.habilidade_obj;
+      const code = cleanBraces(String(
+        q.codigo_habilidade ?? q.ability_code ?? q.skill_code ?? skillObj?.code ?? ''
+      ).trim());
+      const hab = cleanBraces(String(
+        q.habilidade ?? q.description ?? q.skill_description ?? skillObj?.description ?? ''
+      ).trim());
+      const skillId = cleanBraces(String(
+        q.skill_id ?? q.ability_id ?? q.habilidade_id ?? skillObj?.id ?? ''
+      ).trim()) || hab;
+      const questionId = String(q.id ?? '').trim();
+      return { code, hab, skillId, questionId };
+    };
+
+    // Resolver código da habilidade (exibido na tabela): preferir código real; senão map; senão qualquer valor disponível
+    const getSkillCode = (q: any) => {
+      const { code, hab, skillId, questionId } = getQuestionSkillValues(q);
+
+      if (code && !looksLikeUuid(code)) return code;
+
+      if (skillCodeMap && Object.keys(skillCodeMap).length > 0) {
+        const fromMap =
+          skillCodeMap[skillId] ||
+          skillCodeMap[hab] ||
+          skillCodeMap[questionId] ||
+          (code ? skillCodeMap[code] : '');
+        if (fromMap) return fromMap;
+      }
+
+      if (hab && hab.length <= 20 && !hab.includes('-')) return hab;
+      if (code) return code;
+      if (hab) return hab;
+      if (questionId) return questionId;
+      return '—';
+    };
+
+    // Resolver descrição da habilidade (tooltip): preferir descrição do map; senão qualquer texto disponível
+    const getSkillDescription = (q: any) => {
+      const { code, hab, skillId, questionId } = getQuestionSkillValues(q);
+
+      if (skillDescriptionMap && Object.keys(skillDescriptionMap).length > 0) {
+        const fromMap =
+          skillDescriptionMap[code] ||
+          skillDescriptionMap[skillId] ||
+          skillDescriptionMap[hab] ||
+          skillDescriptionMap[questionId];
+        if (fromMap) return fromMap;
+      }
+
+      if (hab && !looksLikeUuid(hab)) return hab;
+      if (code && !looksLikeUuid(code)) return code;
+      if (hab) return hab;
+      if (code) return code;
+      if (questionId) return questionId;
+      return '—';
+    };
+
     return {
       estatisticas_gerais: {
         tipo: 'avaliacao' as const,
@@ -97,7 +179,7 @@ export function OlimpiadaResultsModal({
         distribuicao_classificacao_geral: distribuicao,
         escola: report.avaliacao?.escola,
         municipio: report.avaliacao?.municipio,
-        serie: report.avaliacao?.serie,
+        serie: serieFromReport || undefined,
       },
       resultados_por_disciplina: disciplinas.map(disc => ({
         disciplina: disc,
@@ -107,15 +189,29 @@ export function OlimpiadaResultsModal({
       })),
       tabela_detalhada: {
         disciplinas: disciplinas.map((discNome: string, discIndex: number) => {
-          // Mapear questões para esta disciplina
-          // Como não há separação clara de questões por disciplina no DetailedReport,
-          // vamos incluir todas as questões para cada disciplina
-          const questoes = (report.questoes || []).map((q: any) => ({
-            numero: q.numero || 0,
-            habilidade: q.habilidade || '',
-            codigo_habilidade: q.codigo_habilidade || '',
-            question_id: q.id || ''
-          }));
+          // Mapear questões: codigo_habilidade = código exibido na tabela, habilidade = descrição tooltip
+          // Fallback por índice: skills da API podem vir na ordem das questões; quando faltar, usar último disponível
+          const questoes = (report.questoes || []).map((q: any, qIndex: number) => {
+            let codigo = getSkillCode(q);
+            let descricao = getSkillDescription(q);
+
+            const skillByIndex = skillsByIndex?.length
+              ? skillsByIndex[Math.min(qIndex, skillsByIndex.length - 1)]
+              : undefined;
+            if ((!codigo || codigo === '—') && skillByIndex?.code) {
+              codigo = skillByIndex.code;
+            }
+            if ((!descricao || descricao === '—') && skillByIndex?.description) {
+              descricao = skillByIndex.description;
+            }
+
+            return {
+              numero: q.numero ?? qIndex + 1,
+              habilidade: descricao || '—',
+              codigo_habilidade: codigo || '—',
+              question_id: String(q.id ?? q.numero ?? qIndex)
+            };
+          });
 
           // Mapear alunos com suas respostas por questão
           const alunosDisciplina = alunos.map((a: any) => {
@@ -203,10 +299,23 @@ export function OlimpiadaResultsModal({
     setError(null);
 
     try {
-      const individualStudentIds = await OlimpiadasApiService.getIndividualAppliedStudents(olimpiadaId);
+      // Chamadas em paralelo para reduzir tempo de carregamento; allSettled evita que falha em uma (ex.: getOlimpiada) quebre as outras
+      const [appliedResult, reportResult, skillsResult, olimpiadaResult] = await Promise.allSettled([
+        OlimpiadasApiService.getIndividualAppliedStudents(olimpiadaId),
+        EvaluationResultsApiService.getDetailedReport(olimpiadaId),
+        EvaluationResultsApiService.getSkillsByEvaluation(olimpiadaId),
+        OlimpiadasApiService.getOlimpiada(olimpiadaId),
+      ]);
+
+      const individualStudentIds: string[] =
+        appliedResult.status === 'fulfilled' ? appliedResult.value : [];
       const hasIndividualStudents = individualStudentIds.length > 0;
 
-      let detailedReport: any = await EvaluationResultsApiService.getDetailedReport(olimpiadaId);
+      if (reportResult.status === 'rejected') {
+        throw reportResult.reason ?? new Error('Falha ao carregar relatório detalhado.');
+      }
+      let detailedReport: any = reportResult.value;
+
       let alunosFiltrados: any[] = [];
 
       if (detailedReport?.alunos && Array.isArray(detailedReport.alunos)) {
@@ -285,8 +394,94 @@ export function OlimpiadaResultsModal({
         throw new Error('A olimpíada ainda não possui resultados disponíveis.');
       }
 
-      const filteredReport = { ...detailedReport, alunos: alunosFiltrados };
-      const mappedData = mapDetailedReportToApiData(filteredReport);
+      // Montar mapas de skills e lista por índice (API retorna na mesma ordem das questões)
+      let skillDescriptionMap: Record<string, string> = {};
+      let skillCodeMap: Record<string, string> = {};
+      let skillsByIndex: Array<{ code: string; description: string }> = [];
+      if (skillsResult.status === 'fulfilled' && skillsResult.value != null) {
+        const raw = skillsResult.value as unknown;
+        const fromObj = raw as Record<string, unknown>;
+        const skillsList: Array<{ id?: string | null; code?: string; description?: string }> = Array.isArray(raw)
+          ? raw
+          : (Array.isArray(fromObj.data) ? fromObj.data : null) ??
+            (Array.isArray(fromObj.skills) ? fromObj.skills : null) ??
+            (Array.isArray(fromObj.results) ? fromObj.results : null) ??
+            (Array.isArray(fromObj.items) ? fromObj.items : null) ??
+            [];
+
+        skillsList.forEach((s: { id?: string | null; code?: string; description?: string }) => {
+          if (s && typeof s === 'object') {
+            if (s.description) {
+              if (s.code) skillDescriptionMap[String(s.code)] = s.description;
+              if (s.id) skillDescriptionMap[String(s.id)] = s.description;
+            }
+            if (s.id != null && s.code) skillCodeMap[String(s.id)] = String(s.code);
+            if (s.code) skillCodeMap[String(s.code)] = String(s.code);
+          }
+        });
+        skillsByIndex = skillsList
+          .filter((s): s is Record<string, unknown> => s != null && typeof s === 'object')
+          .map((s) => ({
+            code: String((s as { code?: string }).code ?? ''),
+            description: String((s as { description?: string }).description ?? '')
+          }));
+      }
+
+      // Série: relatório → resultado de getOlimpiada do batch → initialSerie
+      let serieFromReport: string | undefined =
+        detailedReport.avaliacao?.serie ??
+        detailedReport.avaliacao?.serie_nome ??
+        (detailedReport.avaliacao as any)?.grade_name ??
+        detailedReport.alunos?.[0]?.serie;
+
+      if (!serieFromReport || !serieFromReport.trim()) {
+        const olimpiada = olimpiadaResult.status === 'fulfilled' ? olimpiadaResult.value : null;
+        const gradeName = olimpiada
+          ? (olimpiada as any).grade?.name ?? (olimpiada as any).serie
+          : undefined;
+        if (gradeName && String(gradeName).trim()) {
+          serieFromReport = String(gradeName).trim();
+        } else if (initialSerie && String(initialSerie).trim()) {
+          serieFromReport = String(initialSerie).trim();
+        }
+      }
+
+      // Município: relatório → resultado de getOlimpiada do batch
+      let municipioFromReport: string | undefined =
+        detailedReport.avaliacao?.municipio ??
+        detailedReport.alunos?.[0]?.municipio;
+
+      if (!municipioFromReport || !municipioFromReport.trim()) {
+        const olimpiada = olimpiadaResult.status === 'fulfilled' ? olimpiadaResult.value : null;
+        const municipioName = olimpiada
+          ? (olimpiada as any).municipalities?.[0]?.name ?? 
+            (olimpiada as any).municipality?.name ?? 
+            (olimpiada as any).municipio?.name ??
+            (olimpiada as any).municipio ??
+            (olimpiada as any).city?.name
+          : undefined;
+        
+        if (municipioName && String(municipioName).trim()) {
+          municipioFromReport = String(municipioName).trim();
+        }
+      }
+
+      // Relatório com alunos filtrados e série preenchida (para inferência de group1/group2)
+      const filteredReport = {
+        ...detailedReport,
+        alunos: alunosFiltrados,
+        avaliacao: {
+          ...detailedReport.avaliacao,
+          serie: serieFromReport || detailedReport.avaliacao?.serie,
+        },
+      };
+
+      const mappedData = mapDetailedReportToApiData(
+        filteredReport,
+        Object.keys(skillDescriptionMap).length > 0 ? skillDescriptionMap : undefined,
+        Object.keys(skillCodeMap).length > 0 ? skillCodeMap : undefined,
+        skillsByIndex.length > 0 ? skillsByIndex : undefined
+      );
       setApiData(mappedData);
 
       const resumo: EvaluationInfoSummary = {
@@ -298,8 +493,8 @@ export function OlimpiadaResultsModal({
         media_nota: mappedData.estatisticas_gerais.media_nota_geral || 0,
         media_proficiencia: mappedData.estatisticas_gerais.media_proficiencia_geral || 0,
         escola: detailedReport.avaliacao?.escola,
-        municipio: detailedReport.avaliacao?.municipio,
-        serie: detailedReport.avaliacao?.serie,
+        municipio: municipioFromReport,
+        serie: serieFromReport,
         disciplina: detailedReport.avaliacao?.disciplina,
         disciplinas: detailedReport.avaliacao?.disciplina ? [detailedReport.avaliacao.disciplina] : [],
       };
@@ -329,21 +524,26 @@ export function OlimpiadaResultsModal({
   // Função auxiliar para determinar se é matemática
   const isMath = useCallback((name?: string) => (name || "").toLowerCase().includes("matem"), []);
 
-  // Função para inferir grupo de série
+  // Função para inferir grupo de série (group1 = Anos Iniciais/EI/AI/EJA/Especial, group2 = Anos Finais/EM)
   const inferStageGroup = useCallback((): StageGroup => {
     const names: string[] = [
       apiData?.estatisticas_gerais?.serie,
       evaluationInfo?.serie,
+      apiData?.resultados_detalhados?.avaliacoes?.[0]?.serie,
+      apiData?.estatisticas_gerais?.nome,
+      evaluationInfo?.titulo,
     ]
       .filter(Boolean)
       .map((s) => (s as string).toLowerCase());
 
     const has = (re: RegExp) => names.some(n => re.test(n));
 
-    if (has(/infantil|eja|especial/)) return "group1";
+    // group1: Infantil, Anos Iniciais (1º-5º), EJA, Especial (inclui título da avaliação, ex: "Olimpíada Anos Iniciais")
+    if (has(/infantil|iniciais|eja|especial/)) return "group1";
     if (has(/\b(1º|1o|1°|1)\s*ano\b|\b(2º|2o|2°|2)\s*ano\b|\b(3º|3o|3°|3)\s*ano\b|\b(4º|4o|4°|4)\s*ano\b|\b(5º|5o|5°|5)\s*ano\b/) && !has(/m[eé]dio/)) {
       return "group1";
     }
+    // group2: Anos Finais, Ensino Médio
     return "group2";
   }, [apiData, evaluationInfo]);
 
@@ -352,6 +552,13 @@ export function OlimpiadaResultsModal({
     if (group === "group1") return isMath(discipline) ? 375 : 350;
     return isMath(discipline) ? 425 : 400;
   }, [isMath]);
+
+  // Valor máximo de proficiência para exibição (baseado em disciplina e série)
+  const maxProficiency = useMemo(() => {
+    const discipline = evaluationInfo?.disciplina || evaluationInfo?.disciplinas?.[0] || 'Outras';
+    const group = inferStageGroup();
+    return getMaxForDiscipline(discipline, group);
+  }, [evaluationInfo?.disciplina, evaluationInfo?.disciplinas, inferStageGroup, getMaxForDiscipline]);
 
   // Preparar dados para StudentRanking - MOVER ANTES DO handleExportResults
   const rankedStudents = useMemo(() => {
@@ -380,72 +587,322 @@ export function OlimpiadaResultsModal({
     window.open(`/app/olimpiada-resultado/${olimpiadaId}/${studentId}`, '_blank');
   }, [olimpiadaId]);
 
-  // Handler para exportar resultados
+  // Handler para exportar resultados em PDF (padrão AcertoNiveis/Evolution: capa, logo, rodapé)
   const handleExportResults = useCallback(async () => {
     try {
-      const XLSX = await import('xlsx');
-      const { saveAs } = await import('file-saver');
+      const { jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
 
       if (!apiData || !evaluationInfo) {
         toast({
           title: 'Nenhum dado para exportar',
-          description: 'Não há dados disponíveis para gerar a planilha',
+          description: 'Não há dados disponíveis para gerar o PDF',
           variant: 'destructive',
         });
         return;
       }
 
-      const worksheetData: (string | number)[][] = [
-        ['Resultados da Olimpíada'],
-        [''],
-        ['Olimpíada', evaluationInfo.titulo || ''],
-        ...(evaluationInfo.disciplinas && evaluationInfo.disciplinas.length > 0 ? [['Disciplinas', evaluationInfo.disciplinas.join(', ')]] : []),
-        ...(evaluationInfo.escola ? [['Escola', evaluationInfo.escola]] : []),
-        ...(evaluationInfo.serie ? [['Série', evaluationInfo.serie]] : []),
-        ...(evaluationInfo.municipio ? [['Município', evaluationInfo.municipio]] : []),
-        [''],
-        ['Estatísticas Gerais'],
-        ['Total de Alunos', evaluationInfo.total_alunos || 0],
-        ['Participantes', evaluationInfo.alunos_participantes || 0],
-        ['Ausentes', evaluationInfo.alunos_ausentes || 0],
-        ['Média de Notas', (evaluationInfo.media_nota || 0).toFixed(2)],
-        ['Média de Proficiência', (evaluationInfo.media_proficiencia || 0).toFixed(2)],
-        [''],
-        ['Ranking dos Alunos'],
-        ['Posição', 'Nome', 'Turma', 'Nota', 'Proficiência', 'Classificação'],
-        ...rankedStudents.map((student, index) => [
-          index + 1,
-          student.nome || '',
-          student.turma || '',
-          (student.nota || 0).toFixed(2),
-          (student.proficiencia || 0).toFixed(2),
-          student.classificacao || ''
-        ])
+      // Carregar logo (padrão AcertoNiveis)
+      let logoDataUrl = '';
+      let logoWidth = 0;
+      let logoHeight = 0;
+      try {
+        const logoPath = '/LOGO-1-menor.png';
+        const logoImg = new Image();
+        await new Promise<void>((resolve, reject) => {
+          logoImg.onload = () => resolve();
+          logoImg.onerror = reject;
+          logoImg.src = logoPath;
+        });
+        logoWidth = logoImg.width;
+        logoHeight = logoImg.height;
+        const response = await fetch(logoPath);
+        const blob = await response.blob();
+        logoDataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+      } catch {
+        // continuar sem logo
+      }
+
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      let pageWidth = doc.internal.pageSize.getWidth();
+      let pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 15;
+
+      const COLORS = {
+        primary: [124, 62, 237] as [number, number, number],
+        textDark: [31, 41, 55] as [number, number, number],
+        textGray: [107, 114, 128] as [number, number, number],
+        borderLight: [229, 231, 235] as [number, number, number],
+        bgLight: [250, 250, 250] as [number, number, number],
+        white: [255, 255, 255] as [number, number, number],
+      };
+
+      const trunc = (s: string, max: number) =>
+        (s || '').length > max ? (s || '').slice(0, max - 1) + '…' : (s || '');
+
+      // Capa inicial (padrão AcertoNiveis)
+      const addInitialCover = () => {
+        doc.setFillColor(...COLORS.white);
+        doc.rect(0, 0, pageWidth, pageHeight, 'F');
+        const centerX = pageWidth / 2;
+        let y = 20;
+
+        if (logoDataUrl && logoWidth > 0 && logoHeight > 0) {
+          const desiredLogoWidth = 50;
+          const desiredLogoHeight = (logoHeight * desiredLogoWidth) / logoWidth;
+          doc.addImage(logoDataUrl, 'PNG', centerX - desiredLogoWidth / 2, y, desiredLogoWidth, desiredLogoHeight);
+          y += desiredLogoHeight + 8;
+        } else {
+          doc.setFontSize(20);
+          doc.setTextColor(...COLORS.primary);
+          doc.setFont('helvetica', 'bold');
+          doc.text('AFIRME PLAY', centerX, y, { align: 'center' });
+          y += 15;
+        }
+        y += 8;
+
+        doc.setFontSize(14);
+        doc.setTextColor(...COLORS.primary);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${(evaluationInfo.municipio || 'MUNICÍPIO').toUpperCase()} - ALAGOAS`, centerX, y, { align: 'center' });
+        y += 8;
+        doc.setFontSize(11);
+        doc.setTextColor(...COLORS.textGray);
+        doc.setFont('helvetica', 'normal');
+        doc.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, y, { align: 'center' });
+        y += 18;
+
+        doc.setFontSize(24);
+        doc.setTextColor(...COLORS.textDark);
+        doc.setFont('helvetica', 'bold');
+        doc.text('RELATÓRIO DE RESULTADOS', centerX, y, { align: 'center' });
+        y += 12;
+        doc.setFontSize(18);
+        doc.text('OLIMPÍADA', centerX, y, { align: 'center' });
+        y += 20;
+
+        const cardWidth = pageWidth - 120;
+        const cardHeight = 72;
+        const cardX = (pageWidth - cardWidth) / 2;
+        if (y + cardHeight > pageHeight - 20) y = pageHeight - cardHeight - 20;
+
+        doc.setFillColor(...COLORS.bgLight);
+        doc.rect(cardX, y, cardWidth, cardHeight, 'F');
+        doc.setDrawColor(...COLORS.borderLight);
+        doc.setLineWidth(0.5);
+        doc.rect(cardX, y, cardWidth, cardHeight, 'S');
+
+        let cardY = y + 9;
+        doc.setFontSize(11);
+        doc.setTextColor(...COLORS.primary);
+        doc.setFont('helvetica', 'bold');
+        doc.text('INFORMAÇÕES DA OLIMPÍADA', centerX, cardY, { align: 'center' });
+        cardY += 9;
+
+        const leftColX = cardX + 12;
+        const labelWidth = 38;
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.primary);
+        doc.text('AVALIAÇÃO:', leftColX, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textDark);
+        const avLines = doc.splitTextToSize(evaluationInfo.titulo || 'N/A', cardWidth - labelWidth - 24);
+        doc.text(avLines, leftColX + labelWidth, cardY);
+        cardY += Math.max(5, avLines.length * 4);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.primary);
+        doc.text('DISCIPLINAS:', leftColX, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(evaluationInfo.disciplinas?.join(', ') || 'N/A', leftColX + labelWidth, cardY);
+        cardY += 5;
+
+        if (evaluationInfo.serie) {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...COLORS.primary);
+          doc.text('SÉRIE:', leftColX, cardY);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...COLORS.textDark);
+          doc.text(evaluationInfo.serie, leftColX + labelWidth, cardY);
+          cardY += 5;
+        }
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.primary);
+        doc.text('MUNICÍPIO:', leftColX, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(evaluationInfo.municipio || 'N/A', leftColX + labelWidth, cardY);
+        cardY += 5;
+        if (evaluationInfo.escola) {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...COLORS.primary);
+          doc.text('ESCOLA:', leftColX, cardY);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...COLORS.textDark);
+          doc.text(trunc(evaluationInfo.escola, 50), leftColX + labelWidth, cardY);
+          cardY += 5;
+        }
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.primary);
+        doc.text('DATA:', leftColX, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(new Date().toLocaleDateString('pt-BR'), leftColX + labelWidth, cardY);
+        cardY += 5;
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.primary);
+        doc.text('TOTAL DE ALUNOS:', leftColX, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(String(evaluationInfo.total_alunos ?? 0), leftColX + labelWidth, cardY);
+        cardY += 5;
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.primary);
+        doc.text('PARTICIPANTES:', leftColX, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(String(evaluationInfo.alunos_participantes ?? 0), leftColX + labelWidth, cardY);
+      };
+
+      addInitialCover();
+
+      doc.addPage('landscape');
+      pageWidth = doc.internal.pageSize.getWidth();
+      pageHeight = doc.internal.pageSize.getHeight();
+
+      // Rodapé em todas as páginas (padrão AcertoNiveis)
+      const addFooter = (pageNum: number) => {
+        const footerY = pageHeight - 10;
+        doc.setDrawColor(220, 220, 220);
+        doc.setLineWidth(0.3);
+        doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 100, 100);
+        doc.text('Afirme Play Soluções Educativas', margin, footerY);
+        doc.text(`Página ${pageNum}`, pageWidth / 2, footerY, { align: 'center' });
+        const dateTimeStr = new Date().toLocaleString('pt-BR', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: '2-digit', minute: '2-digit', second: '2-digit',
+        });
+        doc.text(dateTimeStr, pageWidth - margin, footerY, { align: 'right' });
+      };
+
+      // Cabeçalho da página de conteúdo
+      const contentTop = 35;
+      let y = contentTop;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(...COLORS.textDark);
+      doc.text(`PREFEITURA DE ${(evaluationInfo.municipio || 'MUNICÍPIO').toUpperCase()}`, pageWidth / 2, 18, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...COLORS.textGray);
+      doc.text(`Resultados da Olimpíada — ${trunc(evaluationInfo.titulo || 'Relatório', 60)}`, pageWidth / 2, 26, { align: 'center' });
+      doc.setDrawColor(...COLORS.borderLight);
+      doc.setLineWidth(0.3);
+      doc.line(margin, 30, pageWidth - margin, 30);
+
+      const dist = apiData.estatisticas_gerais?.distribuicao_classificacao_geral ?? apiData.estatisticas_gerais?.distribuicao_classificacao ?? {};
+      const totalPart = evaluationInfo.alunos_participantes || 1;
+      const pct = (n: number) => (totalPart > 0 ? ((n / totalPart) * 100).toFixed(1) : '0');
+      const distData = [
+        ['Abaixo do Básico', String(dist.abaixo_do_basico ?? 0), `${pct(dist.abaixo_do_basico ?? 0)}%`],
+        ['Básico', String(dist.basico ?? 0), `${pct(dist.basico ?? 0)}%`],
+        ['Adequado', String(dist.adequado ?? 0), `${pct(dist.adequado ?? 0)}%`],
+        ['Avançado', String(dist.avancado ?? 0), `${pct(dist.avancado ?? 0)}%`],
       ];
 
-      const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Resultados');
+      doc.setFontSize(12);
+      doc.setTextColor(...COLORS.primary);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Distribuição por nível de proficiência', margin, y);
+      y += 6;
 
-      const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      
-      const fileName = `olimpiada-${(evaluationInfo.titulo || 'resultado').replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.xlsx`;
-      saveAs(blob, fileName);
+      autoTable(doc, {
+        head: [['Nível', 'Quantidade', 'Percentual']],
+        body: distData,
+        startY: y,
+        theme: 'grid',
+        headStyles: { fillColor: COLORS.primary, textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: 10 },
+        bodyStyles: { halign: 'center', fontSize: 10 },
+        styles: { cellPadding: 4, font: 'helvetica', fontSize: 10 },
+        margin: { left: margin, right: margin },
+      });
+
+      y = ((doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY) + 12;
+      const contentBottom = pageHeight - 18;
+      if (y > contentBottom - 25) {
+        doc.addPage('landscape');
+        pageWidth = doc.internal.pageSize.getWidth();
+        pageHeight = doc.internal.pageSize.getHeight();
+        y = margin + 10;
+      }
+
+      doc.setFontSize(12);
+      doc.setTextColor(...COLORS.primary);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Ranking dos alunos', margin, y);
+      y += 6;
+
+      const rankingData = rankedStudents.map((student, index) => [
+        String(index + 1),
+        trunc(student.nome || '', 38),
+        trunc(student.turma || '', 18),
+        (student.nota ?? 0).toFixed(2),
+        (student.proficiencia ?? 0).toFixed(1),
+        trunc(student.classificacao || '', 20),
+      ]);
+
+      autoTable(doc, {
+        head: [['Pos.', 'Nome', 'Turma', 'Nota', 'Proficiência', 'Classificação']],
+        body: rankingData,
+        startY: y,
+        theme: 'grid',
+        showHead: 'everyPage',
+        headStyles: { fillColor: COLORS.primary, textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: 9 },
+        bodyStyles: { halign: 'center', fontSize: 9 },
+        styles: { cellPadding: 3, font: 'helvetica', fontSize: 9 },
+        columnStyles: {
+          0: { cellWidth: 'auto', halign: 'center', minCellWidth: 12 },
+          1: { cellWidth: 'auto', halign: 'left', minCellWidth: 40 },
+          2: { cellWidth: 'auto', halign: 'center', minCellWidth: 18 },
+          3: { cellWidth: 'auto', halign: 'center', minCellWidth: 15 },
+          4: { cellWidth: 'auto', halign: 'center', minCellWidth: 20 },
+          5: { cellWidth: 'auto', halign: 'center', minCellWidth: 30 },
+        },
+        margin: { left: margin, right: margin },
+        alternateRowStyles: { fillColor: [252, 252, 252] },
+      });
+
+      const totalPagesNum = (doc as unknown as { internal: { getNumberOfPages: () => number } }).internal.getNumberOfPages?.() ?? 1;
+      for (let p = 1; p <= totalPagesNum; p++) {
+        doc.setPage(p);
+        addFooter(p);
+      }
+
+      const fileName = `olimpiada-${(evaluationInfo.titulo || 'resultado').replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(fileName);
 
       toast({
         title: 'Exportação concluída',
-        description: 'Os resultados foram exportados com sucesso',
+        description: 'Os resultados foram exportados em PDF com sucesso',
       });
     } catch (error) {
-      console.error('Erro ao exportar:', error);
+      console.error('Erro ao exportar PDF:', error);
       toast({
         title: 'Erro na exportação',
-        description: 'Não foi possível exportar os resultados',
+        description: 'Não foi possível exportar os resultados em PDF',
         variant: 'destructive',
       });
     }
-  }, [apiData, evaluationInfo, rankedStudents, toast]);
+  }, [apiData, evaluationInfo, rankedStudents, maxProficiency, toast]);
 
   // Estatísticas completas para os cards
   const stats = useMemo(() => {
@@ -669,15 +1126,15 @@ export function OlimpiadaResultsModal({
                     <span className="text-4xl font-black text-blue-900 dark:text-blue-100">
                       {stats.averageProficiency.toFixed(0)}
                     </span>
-                    <span className="text-xl text-blue-700 dark:text-blue-300 font-bold">/425</span>
+                    <span className="text-xl text-blue-700 dark:text-blue-300 font-bold">/{maxProficiency}</span>
                   </div>
                   <div className="space-y-1.5">
                     <Progress 
-                      value={(stats.averageProficiency / 425) * 100}
+                      value={maxProficiency > 0 ? (stats.averageProficiency / maxProficiency) * 100 : 0}
                       className="h-2.5 bg-blue-200 dark:bg-blue-900/40"
                     />
                     <p className="text-xs font-medium text-blue-800 dark:text-blue-200">
-                      {((stats.averageProficiency / 425) * 100).toFixed(0)}% do máximo
+                      {maxProficiency > 0 ? ((stats.averageProficiency / maxProficiency) * 100).toFixed(0) : 0}% do máximo
                     </p>
                   </div>
                 </CardContent>
@@ -1072,7 +1529,7 @@ export function OlimpiadaResultsModal({
                 className="border-2 border-yellow-400 dark:border-yellow-600 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Download className="h-4 w-4 mr-2" />
-                Exportar em Excel
+                Exportar em PDF
               </Button>
               {rankedStudents.length > 0 && (
                 <Badge variant="secondary" className="px-3 py-1.5 text-xs font-medium">

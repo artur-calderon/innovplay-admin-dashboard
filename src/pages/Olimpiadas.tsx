@@ -103,6 +103,7 @@ export default function Olimpiadas() {
           const startDateTime = olimpiada.startDateTime || olimpiada.time_limit || appInfo.application;
           const endDateTime = olimpiada.endDateTime || olimpiada.end_time || appInfo.expiration;
 
+          const gradeName = olimpiada.grade?.name ?? olimpiada.serie;
           return {
             id: olimpiada.id,
             title: olimpiada.title,
@@ -122,6 +123,8 @@ export default function Olimpiadas() {
             applied_classes: olimpiada.applied_classes || [],
             is_applied: olimpiada.is_applied,
             is_active: olimpiada.is_active,
+            serie: gradeName && String(gradeName).trim() ? String(gradeName).trim() : null,
+            series: olimpiada.series ?? (gradeName ? [String(gradeName)] : undefined),
           };
         })
       );
@@ -1158,7 +1161,7 @@ export default function Olimpiadas() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {sortedOlimpiadas.map((olimpiada) => (
             <OlimpiadaCard
               key={olimpiada.id}
@@ -1191,6 +1194,7 @@ export default function Olimpiadas() {
             setSelectedOlimpiadaId(null);
           }}
           olimpiadaId={selectedOlimpiadaId}
+          initialSerie={olimpiadas.find((o) => o.id === selectedOlimpiadaId)?.serie ?? undefined}
         />
       )}
 
