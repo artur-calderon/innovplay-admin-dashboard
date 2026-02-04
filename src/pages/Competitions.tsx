@@ -1,8 +1,14 @@
+/**
+ * Lista de competições (admin/coordenador).
+ * Rota: /app/competitions
+ */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -34,8 +40,9 @@ import {
 import type { Competition, CompetitionFilters } from '@/types/competition-types';
 import { CompetitionCard } from '@/components/competitions/CompetitionCard';
 import { CreateCompetitionModal } from '@/components/competitions/CreateCompetitionModal';
-import { CompetitionDetailModal } from '@/components/competitions/CompetitionDetailModal';
 import { AddQuestionsModal } from '@/components/competitions/AddQuestionsModal';
+import { EditCompetitionApplicationModal } from '@/components/competitions/EditCompetitionApplicationModal';
+import { useAuth } from '@/context/authContext';
 
 interface SubjectOption {
   id: string;
@@ -48,42 +55,59 @@ const DEFAULT_FILTERS: CompetitionFilters = {
   level: 'all',
 };
 
+const DEBOUNCE_MS = 350;
+const PAGE_SIZE = 20;
+
+function canManageCompetitions(role: string): boolean {
+  const r = (role || '').toLowerCase();
+  return r === 'admin' || r === 'coordenador' || r === 'diretor' || r === 'tecadm';
+}
+
 export default function Competitions() {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const canManage = canManageCompetitions(user?.role ?? '');
+
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [filters, setFilters] = useState<CompetitionFilters>(DEFAULT_FILTERS);
+  const [debouncedFilters, setDebouncedFilters] = useState<CompetitionFilters>(DEFAULT_FILTERS);
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
-  const [detailId, setDetailId] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [addQuestionsId, setAddQuestionsId] = useState<string | null>(null);
+  const [editDatesId, setEditDatesId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
   const [publishId, setPublishId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedFilters(filters), DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [filters]);
 
   const hasActiveFilters =
     filters.status !== 'all' ||
     filters.subject_id !== 'all' ||
     filters.level !== 'all' ||
+    (filters.from_date ?? '').length > 0 ||
+    (filters.to_date ?? '').length > 0 ||
     searchTerm.length > 0;
-
-  const filteredCompetitions = useMemo(() => {
-    if (!searchTerm.trim()) return competitions;
-    const term = searchTerm.trim().toLowerCase();
-    return competitions.filter(
-      (c) => c.name?.toLowerCase().includes(term) || c.subject_name?.toLowerCase().includes(term)
-    );
-  }, [competitions, searchTerm]);
 
   const fetchCompetitions = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await getCompetitions(filters);
+      const params = { ...debouncedFilters, page, page_size: PAGE_SIZE };
+      const list = await getCompetitions(params);
       setCompetitions(Array.isArray(list) ? list : []);
+      setTotal(list?.length ?? 0);
     } catch (error) {
       console.error('Erro ao carregar competições:', error);
       toast({
@@ -92,36 +116,50 @@ export default function Competitions() {
         variant: 'destructive',
       });
       setCompetitions([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [filters, toast]);
+  }, [debouncedFilters, page, toast]);
 
   useEffect(() => {
     fetchCompetitions();
   }, [fetchCompetitions]);
 
+  const filteredCompetitions = useMemo(() => {
+    let list = competitions;
+    if (searchTerm.trim()) {
+      const term = searchTerm.trim().toLowerCase();
+      list = list.filter(
+        (c) => c.name?.toLowerCase().includes(term) || c.subject_name?.toLowerCase().includes(term)
+      );
+    }
+    if (debouncedFilters.from_date) {
+      const from = new Date(debouncedFilters.from_date).getTime();
+      list = list.filter((c) => c.application && new Date(c.application).getTime() >= from);
+    }
+    if (debouncedFilters.to_date) {
+      const to = new Date(debouncedFilters.to_date).getTime();
+      list = list.filter((c) => c.application && new Date(c.application).getTime() <= to);
+    }
+    return list;
+  }, [competitions, searchTerm, debouncedFilters.from_date, debouncedFilters.to_date]);
+
   useEffect(() => {
     let cancelled = false;
     api.get<SubjectOption[]>('/subjects').then((res) => {
-      if (!cancelled && Array.isArray(res.data)) {
-        setSubjects(res.data);
-      }
-    }).catch(() => {
-      if (!cancelled) setSubjects([]);
-    });
+      if (!cancelled && Array.isArray(res.data)) setSubjects(res.data);
+    }).catch(() => { if (!cancelled) setSubjects([]); });
     return () => { cancelled = true; };
   }, []);
 
-  const handleView = (id: string) => setDetailId(id);
+  const handleView = (id: string) => navigate(`/app/competitions/${id}`);
   const handleEdit = (id: string) => setEditId(id);
+  const handleEditDates = (id: string) => setEditDatesId(id);
   const handleAddQuestions = (id: string) => setAddQuestionsId(id);
   const handleDeleteClick = (id: string) => setDeleteId(id);
   const handleCancelClick = (id: string) => setCancelId(id);
   const handlePublishClick = (id: string) => setPublishId(id);
-
-  const canEdit = (c: Competition) =>
-    String(c.status).toLowerCase() === 'rascunho' || String(c.status).toLowerCase() === 'draft';
 
   const runAction = async (
     id: string,
@@ -136,8 +174,7 @@ export default function Competitions() {
       fetchCompetitions();
     } catch (err: unknown) {
       const msg =
-        (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data
-          ?.message ||
+        (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message ||
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
         errorMsg;
       toast({ title: 'Erro', description: msg, variant: 'destructive' });
@@ -148,12 +185,7 @@ export default function Competitions() {
 
   const confirmDelete = async () => {
     if (!deleteId) return;
-    await runAction(
-      deleteId,
-      () => deleteCompetition(deleteId),
-      'Competição excluída.',
-      'Não foi possível excluir a competição.'
-    );
+    await runAction(deleteId, () => deleteCompetition(deleteId), 'Competição excluída.', 'Não foi possível excluir.');
     setDeleteId(null);
   };
 
@@ -161,21 +193,17 @@ export default function Competitions() {
     if (!cancelId) return;
     await runAction(
       cancelId,
-      () => cancelCompetition(cancelId),
+      () => cancelCompetition(cancelId, cancelReason.trim() ? { reason: cancelReason } : undefined),
       'Competição cancelada.',
-      'Não foi possível cancelar a competição.'
+      'Não foi possível cancelar.'
     );
     setCancelId(null);
+    setCancelReason('');
   };
 
   const confirmPublish = async () => {
     if (!publishId) return;
-    await runAction(
-      publishId,
-      () => publishCompetition(publishId),
-      'Competição publicada.',
-      'Não foi possível publicar a competição.'
-    );
+    await runAction(publishId, () => publishCompetition(publishId), 'Competição publicada.', 'Não foi possível publicar.');
     setPublishId(null);
   };
 
@@ -183,10 +211,13 @@ export default function Competitions() {
     () => (addQuestionsId ? competitions.find((c) => c.id === addQuestionsId) : null),
     [addQuestionsId, competitions]
   );
-  const detailCompetition = useMemo(
-    () => (detailId ? competitions.find((c) => c.id === detailId) : null),
-    [detailId, competitions]
+  const competitionForDates = useMemo(
+    () => (editDatesId ? competitions.find((c) => c.id === editDatesId) : null),
+    [editDatesId, competitions]
   );
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const showPagination = total > PAGE_SIZE;
 
   return (
     <div className="container mx-auto space-y-6 py-6 px-4">
@@ -197,124 +228,92 @@ export default function Competitions() {
             Competições
           </h1>
           <p className="mt-1 text-muted-foreground">
-            Gerencie e crie competições para seus alunos.
+            Lista de competições (admin/coordenador).
           </p>
         </div>
-        <Button onClick={() => setModalOpen(true)} className="shrink-0">
-          <Plus className="mr-2 h-4 w-4" />
-          Nova Competição
-        </Button>
+        {canManage && (
+          <Button onClick={() => setModalOpen(true)} className="shrink-0">
+            <Plus className="mr-2 h-4 w-4" />
+            Nova Competição
+          </Button>
+        )}
       </div>
 
-      {/* Filtros e Busca — padrão Olimpíadas */}
       <Card>
         <CardContent className="space-y-4 p-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Buscar competições por nome ou disciplina..."
+              placeholder="Buscar por nome ou disciplina..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
             />
           </div>
-
           <div className="flex items-center justify-between">
             <Collapsible open={showFilters} onOpenChange={setShowFilters}>
               <CollapsibleTrigger asChild>
                 <Button variant="outline" size="sm">
                   <Filter className="mr-2 h-4 w-4" />
-                  Filtros Avançados
+                  Filtros
                   {hasActiveFilters && (
-                    <Badge
-                      variant="secondary"
-                      className="ml-2 flex h-5 w-5 items-center justify-center rounded-full p-0 text-xs"
-                    >
-                      {[
-                        filters.status !== 'all' ? 1 : 0,
-                        filters.subject_id !== 'all' ? 1 : 0,
-                        filters.level !== 'all' ? 1 : 0,
-                        searchTerm.length > 0 ? 1 : 0,
-                      ].reduce((a, b) => a + b, 0)}
+                    <Badge variant="secondary" className="ml-2 rounded-full px-1.5 text-xs">
+                      {[filters.status !== 'all', filters.subject_id !== 'all', filters.level !== 'all', (filters.from_date ?? '').length > 0, (filters.to_date ?? '').length > 0, searchTerm.length > 0].filter(Boolean).length}
                     </Badge>
                   )}
                 </Button>
               </CollapsibleTrigger>
               <CollapsibleContent className="mt-4 space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Status</Label>
-                    <Select
-                      value={filters.status}
-                      onValueChange={(value) => setFilters((f) => ({ ...f, status: value }))}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Todos os status" />
-                      </SelectTrigger>
+                    <Label>Status</Label>
+                    <Select value={filters.status} onValueChange={(v) => setFilters((f) => ({ ...f, status: v }))}>
+                      <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">Todos os status</SelectItem>
+                        <SelectItem value="all">Todas</SelectItem>
                         <SelectItem value="rascunho">Rascunho</SelectItem>
-                        <SelectItem value="aberta">Aberta</SelectItem>
                         <SelectItem value="draft">Rascunho (draft)</SelectItem>
-                        <SelectItem value="scheduled">Agendada</SelectItem>
+                        <SelectItem value="aberta">Abertas</SelectItem>
                         <SelectItem value="enrollment_open">Inscrições abertas</SelectItem>
                         <SelectItem value="active">Ativa</SelectItem>
-                        <SelectItem value="completed">Concluída</SelectItem>
-                        <SelectItem value="cancelled">Cancelada</SelectItem>
+                        <SelectItem value="completed">Encerradas</SelectItem>
+                        <SelectItem value="cancelled">Canceladas</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Disciplina</Label>
-                    <Select
-                      value={filters.subject_id}
-                      onValueChange={(value) => setFilters((f) => ({ ...f, subject_id: value }))}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Todas as disciplinas" />
-                      </SelectTrigger>
+                    <Label>Disciplina</Label>
+                    <Select value={filters.subject_id} onValueChange={(v) => setFilters((f) => ({ ...f, subject_id: v }))}>
+                      <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">Todas as disciplinas</SelectItem>
-                        {subjects.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.name}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="all">Todas</SelectItem>
+                        {subjects.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Nível</Label>
-                    <Select
-                      value={filters.level}
-                      onValueChange={(value) => setFilters((f) => ({ ...f, level: value }))}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Todos os níveis" />
-                      </SelectTrigger>
+                    <Label>Nível</Label>
+                    <Select value={filters.level} onValueChange={(v) => setFilters((f) => ({ ...f, level: v }))}>
+                      <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">Todos os níveis</SelectItem>
-                        <SelectItem value="1">Nível 1 (Ed. Infantil, Anos Iniciais, EJA, Ed. Especial)</SelectItem>
-                        <SelectItem value="2">Nível 2 (Anos Finais, Ensino Médio)</SelectItem>
+                        <SelectItem value="all">Todos</SelectItem>
+                        <SelectItem value="1">Nível 1</SelectItem>
+                        <SelectItem value="2">Nível 2</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Data aplicação (de)</Label>
+                    <Input type="date" value={filters.from_date ?? ''} onChange={(e) => setFilters((f) => ({ ...f, from_date: e.target.value || undefined }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Data aplicação (até)</Label>
+                    <Input type="date" value={filters.to_date ?? ''} onChange={(e) => setFilters((f) => ({ ...f, to_date: e.target.value || undefined }))} />
                   </div>
                 </div>
-
                 {hasActiveFilters && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setSearchTerm('');
-                      setFilters(DEFAULT_FILTERS);
-                    }}
-                    className="w-full sm:w-auto"
-                  >
-                    <X className="mr-2 h-4 w-4" />
-                    Limpar Filtros
+                  <Button variant="ghost" size="sm" onClick={() => { setSearchTerm(''); setFilters({ ...DEFAULT_FILTERS, from_date: undefined, to_date: undefined }); }}>
+                    <X className="mr-2 h-4 w-4" /> Limpar filtros
                   </Button>
                 )}
               </CollapsibleContent>
@@ -324,112 +323,107 @@ export default function Competitions() {
       </Card>
 
       {loading ? (
-        <Card>
-          <CardContent className="flex items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </CardContent>
-        </Card>
+        <Card><CardContent className="flex items-center justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></CardContent></Card>
       ) : filteredCompetitions.length === 0 ? (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <p className="text-muted-foreground">
-              {searchTerm || hasActiveFilters
-                ? 'Nenhuma competição encontrada com os filtros aplicados.'
-                : 'Nenhuma competição encontrada. Crie uma nova competição para começar.'}
-            </p>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="py-16 text-center text-muted-foreground">
+          {hasActiveFilters || searchTerm ? 'Nenhuma competição encontrada com os filtros.' : 'Nenhuma competição. Crie uma nova.'}
+        </CardContent></Card>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredCompetitions.map((comp) => (
-            <CompetitionCard
-              key={comp.id}
-              competition={comp}
-              onView={handleView}
-              onEdit={handleEdit}
-              onCancel={handleCancelClick}
-              onPublish={handlePublishClick}
-              onDelete={handleDeleteClick}
-              onAddQuestions={handleAddQuestions}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredCompetitions.map((comp) => (
+              <CompetitionCard
+                key={comp.id}
+                competition={comp}
+                onView={handleView}
+                onEdit={canManage ? handleEdit : undefined}
+                onEditDates={canManage ? handleEditDates : undefined}
+                onCancel={canManage ? handleCancelClick : undefined}
+                onPublish={canManage ? handlePublishClick : undefined}
+                onDelete={canManage ? handleDeleteClick : undefined}
+                onAddQuestions={canManage ? handleAddQuestions : undefined}
+              />
+            ))}
+          </div>
+          {showPagination && (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">Página {page} de {totalPages}</p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                  Anterior
+                </Button>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                  Próxima
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <CreateCompetitionModal
         open={modalOpen || !!editId}
         onClose={() => { setModalOpen(false); setEditId(null); }}
-        onSuccess={() => {
-          fetchCompetitions();
-          setModalOpen(false);
-          setEditId(null);
-        }}
+        onSuccess={() => { fetchCompetitions(); setModalOpen(false); setEditId(null); }}
         editId={editId}
-      />
-
-      <CompetitionDetailModal
-        competitionId={detailId}
-        open={!!detailId}
-        onClose={() => setDetailId(null)}
-        onEdit={(id) => { setDetailId(null); setEditId(id); }}
-        canEdit={!!(detailCompetition && canEdit(detailCompetition))}
       />
 
       <AddQuestionsModal
         competitionId={addQuestionsId}
         competitionName={competitionForQuestions?.name ?? ''}
+        competitionSubjectId={competitionForQuestions?.subject_id ?? null}
         open={!!addQuestionsId}
         onClose={() => setAddQuestionsId(null)}
         onSuccess={() => { fetchCompetitions(); setAddQuestionsId(null); }}
       />
 
-      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+      <EditCompetitionApplicationModal
+        competitionId={editDatesId}
+        competitionName={competitionForDates?.name ?? ''}
+        open={!!editDatesId}
+        onClose={() => setEditDatesId(null)}
+        onSuccess={() => { fetchCompetitions(); setEditDatesId(null); }}
+      />
+
+      <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir competição</AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja excluir esta competição? Esta ação não pode ser desfeita.
-            </AlertDialogDescription>
+            <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={actionLoading}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} disabled={actionLoading} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Excluir
-            </AlertDialogAction>
+            <AlertDialogAction disabled={actionLoading} className="bg-destructive text-destructive-foreground" onClick={confirmDelete}>Excluir</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={!!cancelId} onOpenChange={(open) => !open && setCancelId(null)}>
+      <AlertDialog open={!!cancelId} onOpenChange={(o) => { if (!o) { setCancelId(null); setCancelReason(''); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Cancelar competição</AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja cancelar esta competição?
-            </AlertDialogDescription>
+            <AlertDialogDescription>Tem certeza?</AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="py-2">
+            <Label className="text-sm">Motivo (opcional)</Label>
+            <Textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} rows={2} className="mt-1 resize-none" placeholder="Motivo do cancelamento" />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={actionLoading}>Voltar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmCancel} disabled={actionLoading} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Cancelar competição
-            </AlertDialogAction>
+            <AlertDialogAction disabled={actionLoading} className="bg-destructive text-destructive-foreground" onClick={confirmCancel}>Cancelar competição</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={!!publishId} onOpenChange={(open) => !open && setPublishId(null)}>
+      <AlertDialog open={!!publishId} onOpenChange={(o) => !o && setPublishId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Publicar competição</AlertDialogTitle>
-            <AlertDialogDescription>
-              Ao publicar, a competição deixará de ser rascunho e ficará aberta. Deseja continuar?
-            </AlertDialogDescription>
+            <AlertDialogDescription>A competição ficará aberta. Continuar?</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={actionLoading}>Voltar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmPublish} disabled={actionLoading}>
-              Publicar
-            </AlertDialogAction>
+            <AlertDialogAction disabled={actionLoading} onClick={confirmPublish}>Publicar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

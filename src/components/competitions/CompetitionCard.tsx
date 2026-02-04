@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   Calendar,
+  CalendarRange,
   CheckCircle2,
   Clock,
   Eye,
@@ -38,6 +39,7 @@ interface CompetitionCardProps {
   competition: Competition;
   onView?: (id: string) => void;
   onEdit?: (id: string) => void;
+  onEditDates?: (id: string) => void;
   onCancel?: (id: string) => void;
   onPublish?: (id: string) => void;
   onDelete?: (id: string) => void;
@@ -123,6 +125,7 @@ export function CompetitionCard({
   competition,
   onView,
   onEdit,
+  onEditDates,
   onCancel,
   onPublish,
   onDelete,
@@ -167,6 +170,12 @@ export function CompetitionCard({
             Aplicação: {formatDate(competition.application)}
           </p>
         )}
+        {competition.expiration && (
+          <p className="flex items-center gap-2 text-muted-foreground">
+            <CalendarRange className="h-3.5 w-3.5 shrink-0" />
+            Expiração: {formatDate(competition.expiration)}
+          </p>
+        )}
       </CardContent>
       <CardFooter className="flex items-center justify-between border-t pt-4">
         <div className="flex flex-wrap gap-2">
@@ -194,8 +203,14 @@ export function CompetitionCard({
               Questões
             </Button>
           )}
+          {onEditDates && draft && (
+            <Button variant="outline" size="sm" onClick={() => onEditDates(competition.id)}>
+              <CalendarRange className="mr-1 h-4 w-4" />
+              Datas
+            </Button>
+          )}
         </div>
-        {(onCancel || onDelete) && !cancelled && (
+        {(onCancel || onDelete) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon">
@@ -203,7 +218,7 @@ export function CompetitionCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {onDelete && draft && (
+              {onDelete && (draft || cancelled) && (
                 <DropdownMenuItem
                   className="text-destructive focus:bg-destructive/10 focus:text-destructive"
                   onClick={() => onDelete(competition.id)}
@@ -212,7 +227,7 @@ export function CompetitionCard({
                   Excluir
                 </DropdownMenuItem>
               )}
-              {onCancel && (
+              {onCancel && !draft && !cancelled && (
                 <DropdownMenuItem
                   className="text-destructive focus:bg-destructive/10 focus:text-destructive"
                   onClick={() => onCancel(competition.id)}

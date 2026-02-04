@@ -5,13 +5,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from '@/components/ui/dialog';
-import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -19,35 +16,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Steps } from '@/components/ui/steps';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { createCompetition, getCompetition, updateCompetition } from '@/services/competitionsApi';
-import type { CreateCompetitionFormData, CompetitionScope, CompetitionScopeFilter } from '@/types/competition-types';
+import { createCompetition, getCompetition, updateCompetition, addCompetitionQuestions, getCompetitionLevelOptions } from '@/services/competitionsApi';
+import type { CreateCompetitionFormData, CompetitionScope, CompetitionScopeFilter, QuestionRulesPayload } from '@/types/competition-types';
 import { api } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { parseISOToDatetimeLocal, convertDateTimeLocalToISONaive } from '@/utils/date';
-import { CalendarDays, CalendarRange, Clock, Loader2 } from 'lucide-react';
-
-const STEP_LABELS = [
-  'Informações básicas',
-  'Datas',
-  'Questões',
-  'Recompensas',
-  'Avançado',
-];
+import { CalendarDays, CalendarRange, Clock, Loader2, Shuffle, ListOrdered, Trophy, Book, Plus, Eye, Trash2 } from 'lucide-react';
+import { QuestionBank } from '@/components/evaluations/QuestionBank';
+import QuestionPreview from '@/components/evaluations/questions/QuestionPreview';
+import type { Question } from '@/components/evaluations/types';
 
 const STEP_DESCRIPTIONS: Record<number, string> = {
   1: 'Configure o nome, disciplina e nível da competição.',
-  2: 'Defina o período de inscrições e a data de aplicação.',
-  3: 'Configure o modo e as regras das questões (opcional).',
-  4: 'Defina recompensas por participação e ranking (opcional).',
-  5: 'Ajustes finais: critério de ranking, visibilidade e limite.',
+  2: 'Defina o período de inscrições (início e encerramento).',
+  3: 'Selecione as questões (manual ou aleatório).',
+  4: 'Defina as recompensas.',
 };
 
-const LEVEL_OPTIONS: { value: 1 | 2; label: string }[] = [
-  { value: 1, label: 'Nível 1 — Ed. Infantil, Anos Iniciais, EJA, Ed. Especial' },
-  { value: 2, label: 'Nível 2 — Anos Finais e Ensino Médio' },
+/** Fallback se a API de level-options falhar. */
+const LEVEL_OPTIONS_FALLBACK: { value: 1 | 2; label: string }[] = [
+  { value: 1, label: 'Educação Infantil, Anos Iniciais, Educação Especial, EJA' },
+  { value: 2, label: 'Anos Finais e Ensino Médio' },
 ];
 
 const SCOPE_OPTIONS: { value: CompetitionScope; label: string }[] = [
@@ -57,6 +50,38 @@ const SCOPE_OPTIONS: { value: CompetitionScope; label: string }[] = [
   { value: 'municipio', label: 'Município' },
 ];
 
+/** Dificuldades aceitas pelo backend (question_rules_validator / QuestionSelectionService). */
+const QUESTION_DIFFICULTIES = ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'] as const;
+
+function parseQuestionRules(json: string | undefined): { num_questions: number; difficulty_filter: string[] } {
+  if (!json?.trim()) return { num_questions: 10, difficulty_filter: [] };
+  try {
+    const raw = JSON.parse(json) as Record<string, unknown>;
+    const num = typeof raw.num_questions === 'number' ? raw.num_questions : 10;
+    let difficulty_filter: string[] = [];
+    if (raw.difficulty_filter != null) {
+      if (Array.isArray(raw.difficulty_filter)) difficulty_filter = raw.difficulty_filter as string[];
+      else if (typeof raw.difficulty_filter === 'object' && Array.isArray((raw.difficulty_filter as { levels?: unknown }).levels)) {
+        difficulty_filter = (raw.difficulty_filter as { levels: string[] }).levels;
+      }
+    }
+    return { num_questions: num, difficulty_filter };
+  } catch {
+    return { num_questions: 10, difficulty_filter: [] };
+  }
+}
+
+/** Regras para modo aleatório: apenas quantidade e dificuldade (nível/disciplina vêm do passo 1). Backend exige difficulty_filter como objeto { levels: string[] }. */
+function buildQuestionRulesJsonSimple(p: { num_questions: number; difficulty_filter: string[] }): string {
+  const payload: QuestionRulesPayload = {
+    num_questions: p.num_questions,
+    strategy: 'uniform',
+    allow_repeat: false,
+  };
+  if (p.difficulty_filter.length) payload.difficulty_filter = { levels: p.difficulty_filter };
+  return JSON.stringify(payload);
+}
+
 const initialFormData: CreateCompetitionFormData = {
   name: '',
   subject_id: '',
@@ -65,24 +90,11 @@ const initialFormData: CreateCompetitionFormData = {
   scope_filter: undefined,
   enrollment_start: '',
   enrollment_end: '',
-  application: '',
-  question_mode: '',
+  question_mode: 'manual',
   question_rules: '',
   reward_participation: '',
   reward_ranking: '',
-  ranking_criterion: '',
-  visibility: 'public',
-  limit: undefined,
 };
-
-function formatScopeFilterForInput(filter: CompetitionScopeFilter | null | undefined): string {
-  if (!filter || (Object.keys(filter).length === 0)) return '';
-  try {
-    return JSON.stringify(filter, null, 2);
-  } catch {
-    return '';
-  }
-}
 
 /** Campo de data/hora com botão para abrir o seletor nativo (mais fácil em mobile/desktop). */
 function DateTimeField({
@@ -167,6 +179,10 @@ export function CreateCompetitionModal({
   const [loading, setLoading] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
+  const [levelOptions, setLevelOptions] = useState<{ value: number; label: string }[]>(LEVEL_OPTIONS_FALLBACK);
+  const [selectedQuestions, setSelectedQuestions] = useState<Question[]>([]);
+  const [showQuestionBank, setShowQuestionBank] = useState(false);
+  const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null);
   const isEdit = Boolean(editId);
 
   useEffect(() => {
@@ -174,6 +190,9 @@ export function CreateCompetitionModal({
     setStep(1);
     setFormData(initialFormData);
     setErrors({});
+    setSelectedQuestions([]);
+    setShowQuestionBank(false);
+    setPreviewQuestion(null);
     if (editId) setLoadingEdit(true);
   }, [open, editId]);
 
@@ -185,10 +204,29 @@ export function CreateCompetitionModal({
   }, [open]);
 
   useEffect(() => {
+    if (!open) return;
+    getCompetitionLevelOptions()
+      .then((res) => {
+        if (res?.levels?.length) setLevelOptions(res.levels);
+      })
+      .catch(() => setLevelOptions(LEVEL_OPTIONS_FALLBACK));
+  }, [open]);
+
+  useEffect(() => {
     if (!open || !editId) return;
     setLoadingEdit(true);
     getCompetition(editId)
-      .then((c) => {
+      .then(async (c) => {
+        const questionRulesStr =
+          typeof c.question_rules === 'object' && c.question_rules != null
+            ? JSON.stringify(c.question_rules)
+            : (c.question_rules ?? '');
+        const participation =
+          c.reward_config?.participation_coins ?? c.reward_participation ?? '';
+        const ranking =
+          c.reward_config?.ranking_rewards?.[0] != null
+            ? String(c.reward_config.ranking_rewards[0].coins)
+            : (c.reward_ranking ?? '');
         setFormData({
           name: c.name ?? '',
           subject_id: c.subject_id ?? '',
@@ -197,15 +235,34 @@ export function CreateCompetitionModal({
           scope_filter: c.scope_filter ?? undefined,
           enrollment_start: parseISOToDatetimeLocal(c.enrollment_start),
           enrollment_end: parseISOToDatetimeLocal(c.enrollment_end),
-          application: parseISOToDatetimeLocal(c.application),
-          question_mode: c.question_mode ?? '',
-          question_rules: c.question_rules ?? '',
-          reward_participation: c.reward_participation ?? '',
-          reward_ranking: c.reward_ranking ?? '',
-          ranking_criterion: c.ranking_criterion ?? '',
-          visibility: c.visibility ?? 'public',
-          limit: c.limit,
+          question_mode: c.question_mode ?? 'manual',
+          question_rules: questionRulesStr,
+          reward_participation: participation,
+          reward_ranking: ranking,
         });
+        if (c.question_mode === 'manual' && c.question_ids?.length) {
+          try {
+            const list = await Promise.all(
+              (c.question_ids as string[]).map((id) =>
+                api.get(`/questions/${id}`).then((r) => r.data).catch(() => null)
+              )
+            );
+            const mapped = list.filter(Boolean).map((q: Record<string, unknown>) => ({
+              id: String(q.id),
+              title: String(q.title ?? ''),
+              text: String(q.text ?? q.formatted_text ?? ''),
+              type: 'multipleChoice' as const,
+              subjectId: String(q.subject_id ?? ''),
+              difficulty: String(q.difficulty_level ?? q.difficulty ?? ''),
+              value: Number(q.value ?? 1),
+              options: Array.isArray(q.alternatives) ? (q.alternatives as { text: string; isCorrect?: boolean }[]).map((alt) => ({ id: '', text: alt.text, isCorrect: Boolean(alt.isCorrect) })) : [],
+              created_by: String(q.created_by ?? ''),
+            })) as Question[];
+            setSelectedQuestions(mapped);
+          } catch {
+            // ignore
+          }
+        }
       })
       .catch(() => toast({ title: 'Erro ao carregar competição.', variant: 'destructive' }))
       .finally(() => setLoadingEdit(false));
@@ -216,14 +273,6 @@ export function CreateCompetitionModal({
 
     if (!formData.name?.trim()) newErrors.name = 'Nome é obrigatório';
     if (!formData.subject_id) newErrors.subject_id = 'Disciplina é obrigatória';
-
-    if (step >= 2) {
-      if (formData.enrollment_end && formData.application) {
-        if (new Date(formData.application) <= new Date(formData.enrollment_end)) {
-          newErrors.application = 'Data de aplicação deve ser após o fim da inscrição';
-        }
-      }
-    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -237,8 +286,47 @@ export function CreateCompetitionModal({
     if (payload.enrollment_end?.trim()) {
       payload.enrollment_end = convertDateTimeLocalToISONaive(payload.enrollment_end.trim()) || formData.enrollment_end;
     }
-    if (payload.application?.trim()) {
-      payload.application = convertDateTimeLocalToISONaive(payload.application.trim()) || formData.application;
+    // Backend exige application e expiration; definimos depois pelo botão "Datas" no card. Enviamos padrões para o create/update aceitar.
+    const toNaiveISO = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const h = String(d.getHours()).padStart(2, '0');
+      const min = String(d.getMinutes()).padStart(2, '0');
+      return `${y}-${m}-${day}T${h}:${min}:00`;
+    };
+    const enrollmentEndIso = payload.enrollment_end || (formData.enrollment_end?.trim() ? convertDateTimeLocalToISONaive(formData.enrollment_end.trim()) : null);
+    if (enrollmentEndIso) {
+      const endDate = new Date(enrollmentEndIso);
+      if (!payload.application?.trim()) {
+        const appDate = new Date(endDate.getTime() + 60 * 60 * 1000); // 1h após encerramento das inscrições
+        payload.application = toNaiveISO(appDate);
+      }
+      if (!payload.expiration?.trim()) {
+        const appDate = payload.application ? new Date(payload.application) : new Date(endDate.getTime() + 60 * 60 * 1000);
+        const expDate = new Date(appDate.getTime() + 24 * 60 * 60 * 1000); // 24h após aplicação
+        payload.expiration = toNaiveISO(expDate);
+      }
+    }
+    delete (payload as Record<string, unknown>).ranking_criterion;
+    delete (payload as Record<string, unknown>).visibility;
+    delete (payload as Record<string, unknown>).limit;
+    // API exige reward_config: { participation_coins, ranking_rewards: [{ position, coins }] }
+    const participationCoins = Number(formData.reward_participation) || 0;
+    const rankingCoins = Number(formData.reward_ranking) || 0;
+    (payload as Record<string, unknown>).reward_config = {
+      participation_coins: participationCoins,
+      ranking_rewards: [{ position: 1, coins: rankingCoins }],
+    };
+    delete (payload as Record<string, unknown>).reward_participation;
+    delete (payload as Record<string, unknown>).reward_ranking;
+    // Backend exige question_rules como objeto JSON, não string.
+    if (payload.question_rules?.trim()) {
+      try {
+        (payload as Record<string, unknown>).question_rules = JSON.parse(payload.question_rules) as unknown;
+      } catch {
+        // mantém string se parse falhar (evita quebrar)
+      }
     }
     return payload;
   };
@@ -250,12 +338,18 @@ export function CreateCompetitionModal({
     setLoading(true);
     try {
       const payload = buildPayloadWithISODates();
+      let competitionId: string;
       if (isEdit && editId) {
         await updateCompetition(editId, payload);
+        competitionId = editId;
         toast({ title: 'Competição atualizada com sucesso.' });
       } else {
-        await createCompetition(payload);
+        const created = await createCompetition(payload);
+        competitionId = created.id;
         toast({ title: 'Competição criada com sucesso.' });
+      }
+      if (formData.question_mode === 'manual' && selectedQuestions.length > 0) {
+        await addCompetitionQuestions(competitionId, selectedQuestions.map((q) => q.id));
       }
       onSuccess();
       onClose();
@@ -281,95 +375,32 @@ export function CreateCompetitionModal({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent
-        className={cn(
-          'flex flex-col gap-0 overflow-hidden m-0',
-          // Mobile: tela cheia, safe areas
-          'h-dvh w-full max-w-none rounded-2xl border-0 p-0 pt-[max(0.5rem,env(safe-area-inset-top))]',
-          'left-0 top-0 right-0 bottom-0 translate-x-0 translate-y-0',
-          // sm: modal centralizado, margem e altura alta
-          'sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-[90vh] sm:max-h-[90vh] sm:w-[calc(100vw-2rem)] sm:max-w-2xl sm:rounded-2xl sm:border sm:pt-0',
-          // md: mais largo
-          'md:max-w-3xl md:w-[calc(100vw-3rem)]',
-          // lg: ainda mais largo
-          'lg:max-w-4xl lg:h-[92vh] lg:max-h-[92vh]',
-          // xl e 2xl: máximo aproveitamento
-          'xl:max-w-[min(1280px,94vw)] xl:h-[95vh] xl:max-h-[95vh]',
-          '2xl:max-w-[min(1400px,96vw)] 2xl:h-[96vh] 2xl:max-h-[96vh]'
-        )}
+        className="max-w-4xl max-h-[90vh] flex flex-col"
         aria-describedby={open ? 'create-competition-desc' : undefined}
       >
-        <DialogHeader
-          className={cn(
-            'shrink-0 space-y-1 pr-8',
-            'px-4 pt-4 xs:px-5 sm:px-6 sm:pt-6 md:px-6 lg:px-8'
-          )}
-        >
-          <DialogTitle className="text-base xs:text-lg sm:text-xl lg:text-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Trophy className="h-5 w-5 text-primary" />
             {isEdit ? 'Editar Competição' : 'Nova Competição'}
           </DialogTitle>
-          <DialogDescription
-            id="create-competition-desc"
-            className="line-clamp-2 text-xs xs:text-sm sm:text-sm"
-          >
+          <DialogDescription id="create-competition-desc">
             {STEP_DESCRIPTIONS[step]}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Mobile: stepper compacto */}
-        <div className="shrink-0 px-4 pt-2 xs:px-5 md:hidden">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-              Etapa {step} de 5
-            </span>
-            <div className="flex flex-1 min-w-0 gap-1">
-              {STEP_LABELS.map((_, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    'h-1.5 flex-1 min-w-0 rounded-full transition-colors',
-                    i < step ? 'bg-primary' : 'bg-muted'
-                  )}
-                />
-              ))}
-            </div>
-          </div>
-          <p className="mt-1.5 text-sm font-medium text-foreground">
-            {STEP_LABELS[step - 1]}
-          </p>
-        </div>
-
-        {/* Tablet/Desktop: stepper completo */}
-        <div className="hidden shrink-0 pt-4 md:block md:px-6 lg:px-8">
-          <Steps steps={STEP_LABELS} currentStep={step - 1} />
-          <p className="mt-2 text-center text-xs text-muted-foreground">
-            Etapa {step} de 5
-          </p>
-        </div>
-
-        <Separator className="mt-3 sm:mt-4" />
-
         {loadingEdit ? (
-          <div className="flex items-center justify-center py-12">
+          <div className="flex items-center justify-center py-12 flex-1">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : (
-        <ScrollArea
-          className={cn(
-            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden',
-            'px-4 py-3 xs:px-5 sm:min-h-[220px] sm:px-6 sm:py-4 md:px-6 md:py-4 lg:px-8 lg:py-5'
-          )}
-        >
-          <div className="space-y-4 pb-4 xs:space-y-4 sm:space-y-5 md:space-y-6 lg:space-y-6">
+          <div className="space-y-6 flex-1 overflow-y-auto pr-1">
             {step === 1 && (
-              <section className="space-y-3 xs:space-y-4 sm:space-y-4">
-                <h3 className="text-sm font-semibold text-foreground xs:text-base">
-                  Dados básicos
-                </h3>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Nome da competição *</Label>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Nome da competição *</Label>
                     <Input
                       id="name"
                       value={formData.name}
@@ -377,12 +408,12 @@ export function CreateCompetitionModal({
                       placeholder="Ex.: Olimpíada de Matemática 2025"
                       className="w-full min-w-0"
                     />
-                    {errors.name && (
-                      <p className="text-sm text-destructive">{errors.name}</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Disciplina *</Label>
+                  {errors.name && (
+                    <p className="text-sm text-destructive">{errors.name}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Disciplina *</Label>
                     <Select
                       value={formData.subject_id}
                       onValueChange={(value) => update({ subject_id: value })}
@@ -398,13 +429,13 @@ export function CreateCompetitionModal({
                         ))}
                       </SelectContent>
                     </Select>
-                    {errors.subject_id && (
-                      <p className="text-sm text-destructive">{errors.subject_id}</p>
-                    )}
-                  </div>
-                  <div className="grid gap-4 grid-cols-1 xs:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="level">Nível *</Label>
+                  {errors.subject_id && (
+                    <p className="text-sm text-destructive">{errors.subject_id}</p>
+                  )}
+                </div>
+                <div className="grid gap-4 grid-cols-1 xs:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="level">Nível *</Label>
                       <Select
                         value={String(formData.level)}
                         onValueChange={(value) => update({ level: value === '1' ? 1 : 2 })}
@@ -413,165 +444,268 @@ export function CreateCompetitionModal({
                           <SelectValue placeholder="Selecione o nível" />
                         </SelectTrigger>
                         <SelectContent>
-                          {LEVEL_OPTIONS.map((opt) => (
+                          {levelOptions.map((opt) => (
                             <SelectItem key={opt.value} value={String(opt.value)}>
                               {opt.label}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Define quais etapas de ensino podem receber a competição (uso na Etapa 3).
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="scope">Escopo (opcional)</Label>
-                      <Select
-                        value={formData.scope ?? '__none__'}
-                        onValueChange={(value) => update({ scope: value === '__none__' ? undefined : (value as CompetitionScope) })}
-                      >
-                        <SelectTrigger id="scope" className="w-full min-w-0">
-                          <SelectValue placeholder="Selecione o escopo" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Nenhum</SelectItem>
-                          {SCOPE_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Quem pode ver/inscrever: individual, turma, escola ou município (uso na Etapa 3).
-                      </p>
-                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Define quais etapas de ensino podem receber a competição (uso na Etapa 3).
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="scope">Escopo (opcional)</Label>
+                    <Select
+                      value={formData.scope ?? '__none__'}
+                      onValueChange={(value) => update({ scope: value === '__none__' ? undefined : (value as CompetitionScope) })}
+                    >
+                      <SelectTrigger id="scope" className="w-full min-w-0">
+                        <SelectValue placeholder="Selecione o escopo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Nenhum</SelectItem>
+                        {SCOPE_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Quem pode ver/inscrever: individual, turma, escola ou município.
+                    </p>
                   </div>
                 </div>
-              </section>
+              </div>
             )}
 
             {step === 2 && (
-              <section className="space-y-4">
-                <h3 className="text-sm font-semibold text-foreground xs:text-base">
-                  Período de inscrições e aplicação
-                </h3>
+              <div className="space-y-4">
                 <p className="text-xs text-muted-foreground">
-                  Mesmo padrão de aplicar avaliação/olimpíada: datas em horário local, armazenadas em ISO 8601.
+                  Datas em horário local (armazenadas em ISO 8601). Aplicação e expiração podem ser definidas depois pelo botão &quot;Datas&quot; no card da competição.
                 </p>
-
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <DateTimeField
-                      id="enrollment_start"
-                      value={formData.enrollment_start}
-                      onChange={(v) => update({ enrollment_start: v })}
-                      label={
-                        <span className="flex items-center gap-2">
-                          <CalendarDays className="h-4 w-4" />
-                          Data e Hora de Início das Inscrições *
-                        </span>
-                      }
-                      description="Quando as inscrições serão abertas"
-                      aria-label="Data e hora de início das inscrições"
-                    />
-                    <DateTimeField
-                      id="enrollment_end"
-                      value={formData.enrollment_end}
-                      onChange={(v) => update({ enrollment_end: v })}
-                      label={
-                        <span className="flex items-center gap-2">
-                          <Clock className="h-4 w-4" />
-                          Data e Hora de Término das Inscrições *
-                        </span>
-                      }
-                      description="Último momento para se inscrever"
-                      aria-label="Data e hora de término das inscrições"
-                    />
-                  </div>
-
-                  <div>
-                    <DateTimeField
-                      id="application"
-                      value={formData.application}
-                      onChange={(v) => update({ application: v })}
-                      label={
-                        <span className="flex items-center gap-2">
-                          <CalendarDays className="h-4 w-4" />
-                          Data e Hora de Aplicação *
-                        </span>
-                      }
-                      description="Quando a prova será aplicada (deve ser após o fim das inscrições)"
-                      aria-label="Data e hora de aplicação"
-                    />
-                    {errors.application && (
-                      <p className="text-sm text-destructive mt-1">{errors.application}</p>
-                    )}
-                  </div>
-
-                  {/* Resumo do período — mesmo padrão visual de Olimpiadas (amarelo) / StartEvaluationModal (roxo) */}
-                  {(formData.enrollment_start || formData.enrollment_end || formData.application) && (
-                    <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                        <span className="text-sm font-medium text-blue-800 dark:text-blue-300">
-                          Período configurado
-                        </span>
-                      </div>
-                      <div className="text-xs text-blue-700 dark:text-blue-400 space-y-1">
-                        {formData.enrollment_start && (
-                          <p>• <strong>Início das inscrições:</strong> {new Date(formData.enrollment_start).toLocaleString('pt-BR')}</p>
-                        )}
-                        {formData.enrollment_end && (
-                          <p>• <strong>Término das inscrições:</strong> {new Date(formData.enrollment_end).toLocaleString('pt-BR')}</p>
-                        )}
-                        {formData.application && (
-                          <p>• <strong>Aplicação:</strong> {new Date(formData.application).toLocaleString('pt-BR')}</p>
-                        )}
-                        <p>• <strong>Timezone:</strong> {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
-                      </div>
-                    </div>
-                  )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <DateTimeField
+                    id="enrollment_start"
+                    value={formData.enrollment_start}
+                    onChange={(v) => update({ enrollment_start: v })}
+                    label={
+                      <span className="flex items-center gap-2">
+                        <CalendarDays className="h-4 w-4" />
+                        Início das inscrições *
+                      </span>
+                    }
+                    description="Quando as inscrições serão abertas"
+                    aria-label="Data e hora de início das inscrições"
+                  />
+                  <DateTimeField
+                    id="enrollment_end"
+                    value={formData.enrollment_end}
+                    onChange={(v) => update({ enrollment_end: v })}
+                    label={
+                      <span className="flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        Encerramento das inscrições *
+                      </span>
+                    }
+                    description="Último momento para se inscrever"
+                    aria-label="Data e hora de término das inscrições"
+                  />
                 </div>
-              </section>
+                {(formData.enrollment_start || formData.enrollment_end) && (
+                  <div className="bg-muted/50 border rounded-lg p-4">
+                    <div className="text-sm space-y-1">
+                      {formData.enrollment_start && (
+                        <p><strong>Início:</strong> {new Date(formData.enrollment_start).toLocaleString('pt-BR')}</p>
+                      )}
+                      {formData.enrollment_end && (
+                        <p><strong>Encerramento:</strong> {new Date(formData.enrollment_end).toLocaleString('pt-BR')}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
             {step === 3 && (
-              <section className="space-y-4">
-                <h3 className="text-sm font-semibold text-foreground xs:text-base">
-                  Questões (opcional)
-                </h3>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="question_mode">Modo de questões</Label>
-                    <Input
-                      id="question_mode"
-                      value={formData.question_mode ?? ''}
-                      onChange={(e) => update({ question_mode: e.target.value })}
-                      placeholder="Ex.: aleatório, fixo"
-                      className="w-full min-w-0"
-                    />
+              <div className="space-y-4">
+                <RadioGroup
+                  value={formData.question_mode === 'auto_random' ? 'auto_random' : 'manual'}
+                  onValueChange={(v) => {
+                    if (v === 'auto_random') {
+                      const rules = parseQuestionRules(formData.question_rules);
+                      update({
+                        question_mode: 'auto_random',
+                        question_rules: buildQuestionRulesJsonSimple({
+                          num_questions: rules.num_questions,
+                          difficulty_filter: rules.difficulty_filter,
+                        }),
+                      });
+                    } else {
+                      update({ question_mode: 'manual', question_rules: '' });
+                    }
+                  }}
+                  className="flex flex-col gap-3"
+                >
+                  <div className="flex items-center gap-2 rounded-lg border p-4 hover:bg-muted/50">
+                    <RadioGroupItem value="manual" id="mode-manual" />
+                    <Label htmlFor="mode-manual" className="flex items-center gap-2 cursor-pointer flex-1">
+                      <ListOrdered className="h-4 w-4" />
+                      Manual — selecionar questões no banco
+                    </Label>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="question_rules">Regras das questões</Label>
-                    <Textarea
-                      id="question_rules"
-                      value={formData.question_rules ?? ''}
-                      onChange={(e) => update({ question_rules: e.target.value })}
-                      placeholder="Descreva as regras aplicáveis às questões..."
-                      rows={3}
-                      className="resize-none w-full min-w-0 max-w-full"
-                    />
+                  <div className="flex items-center gap-2 rounded-lg border p-4 hover:bg-muted/50">
+                    <RadioGroupItem value="auto_random" id="mode-auto" />
+                    <Label htmlFor="mode-auto" className="flex items-center gap-2 cursor-pointer flex-1">
+                      <Shuffle className="h-4 w-4" />
+                      Aleatório — sortear por quantidade e dificuldade (usa disciplina e nível já definidos)
+                    </Label>
                   </div>
-                </div>
-              </section>
+                </RadioGroup>
+
+                {formData.question_mode === 'manual' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">Questões da competição</h3>
+                      <span className="text-sm text-muted-foreground">
+                        Total: {selectedQuestions.length} questão(ões)
+                      </span>
+                    </div>
+                    {!formData.subject_id ? (
+                      <p className="text-sm text-muted-foreground rounded-lg border p-3 bg-muted/20">
+                        Selecione a disciplina no passo 1 para abrir o banco de questões.
+                      </p>
+                    ) : (
+                      <>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowQuestionBank(true)}
+                          className="border-primary text-primary hover:bg-primary/10"
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Banco de Questões
+                        </Button>
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {selectedQuestions.length === 0 ? (
+                            <div className="text-center py-6 text-muted-foreground border rounded-lg border-dashed">
+                              <Book className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                              <p className="text-sm">Nenhuma questão selecionada</p>
+                              <p className="text-xs">Use o botão acima para adicionar questões</p>
+                            </div>
+                          ) : (
+                            selectedQuestions.map((q, index) => (
+                              <Card key={q.id}>
+                                <CardContent className="p-3 flex items-center justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="secondary">#{index + 1}</Badge>
+                                      <span className="text-sm font-medium truncate">
+                                        {q.title || `Questão ${index + 1}`}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                                      {q.text || 'Sem texto'}
+                                    </p>
+                                  </div>
+                                  <div className="flex gap-1 shrink-0">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => setPreviewQuestion(q)}
+                                      title="Ver"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => {
+                                        setSelectedQuestions((prev) => prev.filter((x) => x.id !== q.id));
+                                        toast({ title: 'Questão removida' });
+                                      }}
+                                      title="Remover"
+                                      className="text-destructive hover:text-destructive"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            ))
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {formData.question_mode === 'auto_random' && (() => {
+                  const rules = parseQuestionRules(formData.question_rules);
+                  const numQuestions = rules.num_questions;
+                  const difficultyFilter = rules.difficulty_filter;
+
+                  const setRules = (partial: { num_questions?: number; difficulty_filter?: string[] }) => {
+                    const next = {
+                      num_questions: partial.num_questions ?? numQuestions,
+                      difficulty_filter: partial.difficulty_filter ?? difficultyFilter,
+                    };
+                    update({ question_rules: buildQuestionRulesJsonSimple(next) });
+                  };
+                  const toggleDifficulty = (d: string) => {
+                    const next = difficultyFilter.includes(d)
+                      ? difficultyFilter.filter((x) => x !== d)
+                      : [...difficultyFilter, d];
+                    setRules({ difficulty_filter: next });
+                  };
+
+                  return (
+                    <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
+                      <div className="flex items-center justify-between rounded-md bg-primary/10 border border-primary/20 px-3 py-2">
+                        <span className="text-sm font-medium">Configuração selecionada (modo aleatório)</span>
+                        <span className="text-sm text-muted-foreground">
+                          {numQuestions} questão(ões)
+                          {difficultyFilter.length > 0 ? ` · ${difficultyFilter.join(', ')}` : ' · Todas as dificuldades'}
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="num_questions">Quantidade de questões</Label>
+                        <Input
+                          id="num_questions"
+                          type="number"
+                          min={1}
+                          value={numQuestions}
+                          onChange={(e) => setRules({ num_questions: Number(e.target.value) || 1 })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Dificuldade (opcional)</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {QUESTION_DIFFICULTIES.map((d) => (
+                            <label key={d} className="flex items-center gap-2 cursor-pointer">
+                              <Checkbox
+                                checked={difficultyFilter.includes(d)}
+                                onCheckedChange={() => toggleDifficulty(d)}
+                              />
+                              <span className="text-sm">{d}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          O sorteio usa a disciplina e o nível já definidos no passo 1.
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
             )}
 
             {step === 4 && (
-              <section className="space-y-4">
-                <h3 className="text-sm font-semibold text-foreground xs:text-base">
-                  Recompensas (opcional)
-                </h3>
+              <div className="space-y-4">
                 <div className="grid gap-4 grid-cols-1 xs:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="reward_participation">Por participação</Label>
@@ -594,127 +728,73 @@ export function CreateCompetitionModal({
                     />
                   </div>
                 </div>
-              </section>
-            )}
-
-            {step === 5 && (
-              <section className="space-y-4">
-                <h3 className="text-sm font-semibold text-foreground xs:text-base">
-                  Opções avançadas
-                </h3>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="ranking_criterion">Critério de ranking (opcional)</Label>
-                    <Input
-                      id="ranking_criterion"
-                      value={formData.ranking_criterion ?? ''}
-                      onChange={(e) => update({ ranking_criterion: e.target.value })}
-                      placeholder="Ex.: maior pontuação"
-                      className="w-full min-w-0"
-                    />
-                  </div>
-                  <div className="grid gap-4 grid-cols-1 xs:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Visibilidade</Label>
-                      <Select
-                        value={formData.visibility ?? 'public'}
-                        onValueChange={(value) => update({ visibility: value })}
-                      >
-                        <SelectTrigger className="w-full min-w-0">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="public">Pública</SelectItem>
-                          <SelectItem value="private">Privada</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="limit">Limite de participantes</Label>
-                      <Input
-                        id="limit"
-                        type="number"
-                        min={0}
-                        value={formData.limit ?? ''}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          update({ limit: v === '' ? undefined : Number(v) });
-                        }}
-                        placeholder="Ilimitado"
-                        className="w-full min-w-0"
-                      />
-                    </div>
-                  </div>
-                  {(formData.scope === 'turma' || formData.scope === 'escola' || formData.scope === 'municipio') && (
-                    <div className="space-y-2">
-                      <Label htmlFor="scope_filter">Filtro de escopo (opcional)</Label>
-                      <Textarea
-                        id="scope_filter"
-                        value={formatScopeFilterForInput(formData.scope_filter)}
-                        onChange={(e) => {
-                          const raw = e.target.value.trim();
-                          if (!raw) {
-                            update({ scope_filter: undefined });
-                            return;
-                          }
-                          try {
-                            const parsed = JSON.parse(raw) as CompetitionScopeFilter;
-                            if (typeof parsed === 'object' && parsed !== null) {
-                              update({
-                                scope_filter: {
-                                  class_ids: Array.isArray(parsed.class_ids) ? parsed.class_ids : undefined,
-                                  school_ids: Array.isArray(parsed.school_ids) ? parsed.school_ids : undefined,
-                                  municipality_ids: Array.isArray(parsed.municipality_ids) ? parsed.municipality_ids : undefined,
-                                },
-                              });
-                            }
-                          } catch {
-                            // mantém o anterior se JSON inválido
-                          }
-                        }}
-                        placeholder='{"class_ids": [], "school_ids": [], "municipality_ids": []}'
-                        rows={4}
-                        className="font-mono text-xs resize-none w-full min-w-0 max-w-full"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        JSON com class_ids, school_ids e/ou municipality_ids conforme o escopo. Hoje só é armazenado; a Etapa 3 usará para filtrar quem vê/inscreve.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </section>
+              </div>
             )}
           </div>
-        </ScrollArea>
         )}
 
-        <Separator className="shrink-0" />
-
-        <DialogFooter
-          className={cn(
-            'shrink-0 flex flex-col-reverse gap-2',
-            'px-4 py-3 xs:px-5 sm:flex-row sm:justify-end sm:px-6 sm:py-4 md:px-6 lg:px-8 lg:py-4',
-            '[&>button]:w-full sm:[&>button]:w-auto [&>button]:min-h-10 xs:[&>button]:min-h-11',
-            'pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4'
-          )}
-        >
-          {step > 1 && (
-            <Button type="button" variant="outline" onClick={() => setStep(step - 1)}>
-              Voltar
+        {!loadingEdit && (
+          <div className="flex justify-between pt-4 mt-4 border-t shrink-0">
+            <Button variant="outline" onClick={step > 1 ? () => setStep(step - 1) : onClose}>
+              {step > 1 ? 'Voltar' : 'Cancelar'}
             </Button>
-          )}
-          {step < 5 ? (
-            <Button type="button" onClick={() => setStep(step + 1)}>
-              Próximo
-            </Button>
-          ) : (
-            <Button onClick={handleSubmit} disabled={loading || loadingEdit}>
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isEdit ? 'Salvar alterações' : 'Criar Competição'}
-            </Button>
-          )}
-        </DialogFooter>
+            <div className="flex gap-2">
+              {step < 4 ? (
+                <Button onClick={() => setStep(step + 1)}>Próximo</Button>
+              ) : (
+                <Button onClick={handleSubmit} disabled={loading}>
+                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isEdit ? 'Salvar alterações' : 'Criar Competição'}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
+
+    <Dialog open={showQuestionBank} onOpenChange={setShowQuestionBank}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Banco de Questões</DialogTitle>
+            <DialogDescription>
+              Selecione questões para adicionar à competição
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <QuestionBank
+              embedded
+              open={showQuestionBank}
+              subjectId={formData.subject_id || null}
+              onQuestionSelected={(question) => {
+                if (selectedQuestions.some((q) => q.id === question.id)) {
+                  toast({ title: 'Questão já adicionada', variant: 'destructive' });
+                  return;
+                }
+                const withSubject = { ...question, subjectId: formData.subject_id || question.subjectId };
+                setSelectedQuestions((prev) => [...prev, withSubject]);
+                toast({ title: 'Questão adicionada' });
+              }}
+              onClose={() => setShowQuestionBank(false)}
+            />
+          </div>
+        </DialogContent>
+    </Dialog>
+
+    <Dialog open={!!previewQuestion} onOpenChange={() => setPreviewQuestion(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Visualizar Questão</DialogTitle>
+            <DialogDescription>Prévia em modo somente leitura.</DialogDescription>
+          </DialogHeader>
+          {previewQuestion && (
+            <QuestionPreview
+              question={previewQuestion}
+              onClose={() => setPreviewQuestion(null)}
+            />
+          )}
+        </DialogContent>
+    </Dialog>
+    </>
   );
 }
