@@ -58,7 +58,7 @@ import { useUnreadAvisos } from "@/hooks/useUnreadAvisos";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getRoleDisplayName } from "@/lib/constants";
 import { AvatarPreview } from "@/components/profile/AvatarPreview";
-import { CoinBalance } from "@/components/Coins/CoinBalance";
+import { CoinBalance } from "@/components/coins/CoinBalance";
 
 type SidebarLink = {
   icon: React.ElementType;

@@ -10,7 +10,7 @@ import {
   getApiErrorMessage,
   type CoinTransaction,
 } from '@/services/coinsApi';
-import { CoinBalance } from '@/components/Coins/CoinBalance';
+import { CoinBalance } from '@/components/coins/CoinBalance';
 import { getUserHierarchyContext } from '@/utils/userHierarchy';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
