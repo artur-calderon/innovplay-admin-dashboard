@@ -797,6 +797,13 @@ const FormRegistration = () => {
     payload.selectedGrades = selectedGrades.length > 0 ? selectedGrades : [];
     payload.selectedClasses = selectedClasses.length > 0 ? selectedClasses : [];
 
+    // Adicionar filtros com escopo hierárquico comum
+    payload.filters = {
+      estado: selectedState,           // Do filtro de navegação
+      municipio: selectedMunicipality  // Do filtro de navegação
+      // NÃO colocar escola/série/turma (pois podem ser múltiplas)
+    };
+
     // Campos padrão
     payload.isActive = true;
 
