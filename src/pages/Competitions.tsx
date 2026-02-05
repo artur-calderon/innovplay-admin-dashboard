@@ -307,7 +307,7 @@ export default function Competitions() {
                         <SelectItem value="aberta">Abertas</SelectItem>
                         <SelectItem value="enrollment_open">Inscrições abertas</SelectItem>
                         <SelectItem value="active">Ativa</SelectItem>
-                        <SelectItem value="completed">Encerradas</SelectItem>
+                        <SelectItem value="completed">Finalizadas</SelectItem>
                         <SelectItem value="cancelled">Canceladas</SelectItem>
                       </SelectContent>
                     </Select>

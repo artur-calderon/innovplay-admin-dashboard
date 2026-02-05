@@ -104,6 +104,12 @@ export interface Competition {
   is_finished?: boolean;
   /** Presente em GET /competitions/available e GET /competitions/:id/details */
   is_enrolled?: boolean;
+  /** Status da prova do aluno: not_started | in_progress | completed (opcional no backend). Backend pode enviar 'finalizada' ou 'concluída'. */
+  attempt_status?: 'not_started' | 'in_progress' | 'completed' | 'finalizada' | 'finalizado' | 'concluída' | 'concluido';
+  /** Data/hora em que o aluno iniciou a prova (para tempo decorrido). */
+  attempt_started_at?: string;
+  /** Data/hora em que o aluno finalizou a prova. Se presente, considera prova concluída mesmo sem attempt_status. */
+  attempt_completed_at?: string;
 }
 
 export interface CompetitionFilters {

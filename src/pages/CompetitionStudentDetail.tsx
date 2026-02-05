@@ -1,6 +1,7 @@
 /**
  * Detalhes da competição para o estudante (ver + inscrever-se).
  * Rota: /aluno/competitions/:id
+ * Layout gamificado: hero com CTA claro, resumo visual, só informações relevantes.
  */
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -20,18 +21,21 @@ import {
   Medal,
   Users,
   Award,
+  AlertCircle,
+  Timer,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
-import { getCompetitionDetails, unenrollCompetition } from '@/services/competitionsApi';
+import { getCompetitionDetails, unenrollCompetition, startCompetition } from '@/services/competitionsApi';
 import type { Competition } from '@/types/competition-types';
 import { EnrollConfirmationModal } from '@/components/competitions/EnrollConfirmationModal';
 import { EnrollmentStatusBadge, type EnrollmentStatus } from '@/components/competitions/EnrollmentStatusBadge';
 import { SlotsProgress } from '@/components/competitions/SlotsProgress';
-import { CompetitionTimeline } from '@/components/competitions/CompetitionTimeline';
 import { Countdown } from '@/components/competitions/Countdown';
+import { CompetitionRanking } from '@/components/competitions/CompetitionRanking';
 import { formatCompetitionLevel } from '@/utils/competitionLevel';
+import { getSubjectColors } from '@/utils/competitionSubjectColors';
 
 function formatDate(value: string | undefined): string {
   if (!value) return '—';
@@ -89,6 +93,7 @@ export default function CompetitionStudentDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [unenrolling, setUnenrolling] = useState(false);
+  const [startingProva, setStartingProva] = useState(false);
   const [enrollModalOpen, setEnrollModalOpen] = useState(false);
 
   useEffect(() => {
@@ -153,9 +158,82 @@ export default function CompetitionStudentDetail() {
     }
   };
 
-  const handleFazerProva = () => {
-    if (!id) return;
-    navigate(`/aluno/competitions/${id}/fazer`);
+  /** Status da prova do aluno: não iniciada, em andamento ou finalizada. Considera concluída se attempt_completed_at existir ou attempt_status for completed/finalizada/concluída. */
+  const rawAttemptStatus = (competition?.attempt_status ?? 'not_started') as string;
+  const hasCompletedAt = Boolean(competition?.attempt_completed_at);
+  const isCompletedStatus = ['completed', 'finalizada', 'finalizado', 'concluída', 'concluido'].includes(rawAttemptStatus.toLowerCase());
+  const attemptStatus = hasCompletedAt || isCompletedStatus ? 'completed' : (rawAttemptStatus === 'in_progress' ? 'in_progress' : 'not_started');
+  const testId = competition?.test_id;
+  const attemptStartedAt = competition?.attempt_started_at;
+
+  /** Tempo decorrido desde o início da prova (para "Continuar prova"). */
+  const elapsedTimeText = (() => {
+    if (!attemptStartedAt) return null;
+    try {
+      const start = new Date(attemptStartedAt).getTime();
+      const now = Date.now();
+      const diffMs = now - start;
+      const minutes = Math.floor(diffMs / 60000);
+      const hours = Math.floor(minutes / 60);
+      if (hours > 0) return `${hours}h ${minutes % 60}min`;
+      return `${minutes} min`;
+    } catch {
+      return null;
+    }
+  })();
+
+  const participationCoins = Number(
+    competition?.reward_config?.participation_coins ?? competition?.reward_participation ?? 50
+  );
+  const rankingVisibility = (competition?.ranking_visibility ?? '').toLowerCase();
+  const showRankingRealtime = rankingVisibility === 'realtime' && (inApplication || ended);
+
+  const handleIniciarProva = async () => {
+    if (!id || !competition) return;
+    setStartingProva(true);
+    try {
+      const res = await startCompetition(id);
+      const tid = res.test_id;
+      if (!tid) {
+        toast({ title: 'Erro', description: 'Não foi possível obter a prova.', variant: 'destructive' });
+        return;
+      }
+      setCompetition((prev) => prev ? { ...prev, attempt_status: 'in_progress', attempt_started_at: new Date().toISOString(), test_id: tid } : null);
+      navigate(`/aluno/avaliacao/${tid}/fazer`, {
+        state: {
+          fromCompetition: true,
+          competitionId: id,
+          competitionName: competition.name,
+          participationCoins: Number.isNaN(participationCoins) ? 50 : participationCoins,
+          rankingVisibility,
+          showRankingButton: showRankingRealtime,
+        },
+      });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Não foi possível iniciar a prova.';
+      toast({ title: 'Erro', description: msg, variant: 'destructive' });
+    } finally {
+      setStartingProva(false);
+    }
+  };
+
+  const handleContinuarProva = () => {
+    if (!testId || !id || !competition) return;
+    navigate(`/aluno/avaliacao/${testId}/fazer`, {
+      state: {
+        fromCompetition: true,
+        competitionId: id,
+        competitionName: competition.name,
+        participationCoins: Number.isNaN(participationCoins) ? 50 : participationCoins,
+        rankingVisibility,
+        showRankingButton: showRankingRealtime,
+      },
+    });
+  };
+
+  const handleVerResultado = () => {
+    if (!testId) return;
+    navigate(`/aluno/avaliacao/${testId}/resultado`);
   };
 
   if (loading) {
@@ -185,216 +263,288 @@ export default function CompetitionStudentDetail() {
     competition.selected_question_ids ?? competition.question_ids ?? [];
   const totalQuestions = selectedQuestionIds.length;
 
-  const rankingVisibility = (competition.ranking_visibility ?? '').toLowerCase();
-  const showRankingRealtime = rankingVisibility === 'realtime' && inApplication;
   const showRankingFinal = rankingVisibility === 'final' && ended;
+
+  /** Badge de status da prova (padrão StudentEvaluations/OlimpiadasStudent). */
+  const getProofStatusBadge = () => {
+    if (!isEnrolled) return null;
+    if (attemptStatus === 'completed') {
+      return (
+        <Badge variant="secondary" className="flex items-center gap-1 bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200">
+          <CheckCircle className="h-3 w-3" />
+          Concluída
+        </Badge>
+      );
+    }
+    if (ended) {
+      return (
+        <Badge variant="destructive" className="flex items-center gap-1">
+          <AlertCircle className="h-3 w-3" />
+          Expirada
+        </Badge>
+      );
+    }
+    if (!inApplication && competition.application) {
+      return (
+        <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-700">
+          <Calendar className="h-3 w-3" />
+          Agendada
+        </Badge>
+      );
+    }
+    if (attemptStatus === 'in_progress') {
+      return (
+        <Badge variant="secondary" className="flex items-center gap-1">
+          <Timer className="h-3 w-3" />
+          Em andamento
+        </Badge>
+      );
+    }
+    if (inApplication) {
+      return (
+        <Badge variant="outline" className="flex items-center gap-1">
+          <Calendar className="h-3 w-3" />
+          Disponível
+        </Badge>
+      );
+    }
+    return null;
+  };
+
+  const subjectColors = getSubjectColors(competition.subject_id ?? '', competition.subject_name);
+  const hasRewards =
+    competition.reward_config?.participation_coins != null ||
+    competition.reward_participation != null ||
+    (competition.reward_config?.ranking_rewards?.length ?? 0) > 0;
 
   return (
     <div className="container mx-auto space-y-6 py-6 px-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <Button variant="ghost" onClick={() => navigate('/aluno/competitions')} className="mb-2 -ml-2">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Voltar às competições
-          </Button>
-          <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight">
-            <Trophy className="h-7 w-7 text-primary" />
-            {competition.name}
-          </h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">
-              {competition.subject_name ?? competition.subject_id} · {formatCompetitionLevel(competition.level)}
-            </Badge>
-            <EnrollmentStatusBadge status={enrollmentStatus} />
-          </div>
-        </div>
-        <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
-          {!isEnrolled && (
-            <div className="flex flex-col items-end gap-1">
-              <Button
-                onClick={() => setEnrollModalOpen(true)}
-                size="lg"
-                disabled={!canEnroll(competition)}
-              >
-                <UserPlus className="mr-2 h-4 w-4" />
-                Inscrever-se
+      {/* Hero gamificado + CTA único */}
+      <Card className={`overflow-hidden border-l-4 ${subjectColors.border} ${subjectColors.bg}`}>
+        <CardContent className="p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <Button variant="ghost" size="sm" onClick={() => navigate('/aluno/competitions')} className="mb-2 -ml-2 text-muted-foreground">
+                <ArrowLeft className="mr-2 h-4 w-4" /> Voltar às competições
               </Button>
-              {!canEnroll(competition) && !ended && (
-                <p className="max-w-xs text-right text-xs text-muted-foreground">
-                  {enrollmentNotStarted
-                    ? 'As inscrições ainda não começaram.'
-                    : enrollmentEnded || isFull
-                    ? isFull
-                      ? 'Vagas esgotadas.'
-                      : 'Período de inscrição encerrado.'
-                    : 'Inscrições indisponíveis no momento.'}
+              <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight">
+                <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${subjectColors.badge}`}>
+                  <Trophy className={`h-6 w-6 ${subjectColors.accent}`} />
+                </span>
+                {competition.name}
+              </h1>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Badge variant="secondary" className={subjectColors.badge}>
+                  {competition.subject_name ?? competition.subject_id}
+                </Badge>
+                <Badge variant="outline">{formatCompetitionLevel(competition.level)}</Badge>
+                <EnrollmentStatusBadge status={enrollmentStatus} />
+                {getProofStatusBadge()}
+              </div>
+              {competition.description && (
+                <p className="mt-2 text-sm text-muted-foreground line-clamp-2 max-w-xl">
+                  {competition.description}
                 </p>
               )}
             </div>
-          )}
-          {isEnrolled && (
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {canUnenroll(competition) ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleUnenroll}
-                  disabled={unenrolling}
-                >
-                  {unenrolling ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : null}
-                  Cancelar inscrição
-                </Button>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Não é mais possível cancelar a inscrição após o início da prova.
-                </p>
+            <div className="flex flex-col items-stretch sm:items-end gap-2 shrink-0">
+              {!isEnrolled && (
+                <>
+                  <Button
+                    size="lg"
+                    className="min-w-[180px] bg-primary hover:bg-primary/90"
+                    onClick={() => setEnrollModalOpen(true)}
+                    disabled={!canEnroll(competition)}
+                  >
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Inscrever-se
+                  </Button>
+                  {!canEnroll(competition) && !ended && (
+                    <p className="text-xs text-muted-foreground text-right max-w-[200px]">
+                      {enrollmentNotStarted
+                        ? 'Inscrições em breve.'
+                        : isFull
+                          ? 'Vagas esgotadas.'
+                          : enrollmentEnded
+                            ? 'Inscrições encerradas.'
+                            : 'Indisponível.'}
+                    </p>
+                  )}
+                </>
               )}
-              {inApplication ? (
-                <Button size="lg" onClick={handleFazerProva}>
-                  <Award className="mr-2 h-4 w-4" />
-                  Fazer prova
-                </Button>
-              ) : (
-                <Button size="lg" disabled>
-                  <Award className="mr-2 h-4 w-4" />
-                  Prova ainda não começou
-                </Button>
+              {isEnrolled && (
+                <div className="flex flex-col gap-2">
+                  {attemptStatus === 'completed' && (
+                    <Button size="lg" onClick={handleVerResultado} className="bg-emerald-600 hover:bg-emerald-700">
+                      <CheckCircle className="mr-2 h-4 w-4" />
+                      Ver resultado
+                    </Button>
+                  )}
+                  {attemptStatus === 'in_progress' && testId && (inApplication || ended) && (
+                    <Button size="lg" onClick={ended ? handleVerResultado : handleContinuarProva}>
+                      <Clock className="mr-2 h-4 w-4" />
+                      {ended ? 'Ver resultado' : `Continuar prova${elapsedTimeText ? ` (${elapsedTimeText})` : ''}`}
+                    </Button>
+                  )}
+                  {inApplication && attemptStatus !== 'completed' && attemptStatus !== 'in_progress' && (
+                    <Button size="lg" onClick={handleIniciarProva} disabled={startingProva}>
+                      {startingProva ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Award className="mr-2 h-4 w-4" />}
+                      {' '}Iniciar prova
+                    </Button>
+                  )}
+                  {!inApplication && !ended && attemptStatus !== 'completed' && attemptStatus !== 'in_progress' && (
+                    <Button size="lg" disabled>
+                      <Calendar className="mr-2 h-4 w-4" />
+                      Prova ainda não começou
+                    </Button>
+                  )}
+                  {ended && attemptStatus !== 'completed' && attemptStatus !== 'in_progress' && (
+                    <Button size="lg" disabled className="opacity-70">
+                      <AlertCircle className="mr-2 h-4 w-4" />
+                      Prova finalizada
+                    </Button>
+                  )}
+                  {canUnenroll(competition) && (
+                    <Button variant="ghost" size="sm" onClick={handleUnenroll} disabled={unenrolling} className="text-muted-foreground">
+                      {unenrolling ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
+                      Cancelar inscrição
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
-          )}
-          {!isEnrolled && ended && (
-            <p className="text-xs text-muted-foreground">
-              Competição encerrada.
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div className="flex justify-end">
-        {!isEnrolled && inEnrollment && competition.enrollment_end && !ended && (
-          <Countdown targetDate={competition.enrollment_end} label="Inscrição fecha" />
-        )}
-        {isEnrolled && !inApplication && competition.application && !ended && (
-          <Countdown targetDate={competition.application} label="Prova começa" />
-        )}
-      </div>
-
-      {/* Sobre a competição */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Sobre a competição</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {competition.description && (
-            <p className="text-sm text-muted-foreground">{competition.description}</p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">{competition.subject_name ?? competition.subject_id}</Badge>
-            <Badge variant="secondary">{formatCompetitionLevel(competition.level)}</Badge>
           </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <BookOpen className="h-4 w-4 shrink-0" />
-            <span>
-              {totalQuestions}{' '}
-              {totalQuestions === 1 ? 'questão' : 'questões'}
-              {competition.question_mode && ` · Modo: ${competition.question_mode}`}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Cronograma */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Calendar className="h-5 w-5" /> Cronograma
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <CompetitionTimeline
-            enrollmentStart={competition.enrollment_start}
-            enrollmentEnd={competition.enrollment_end}
-            application={competition.application}
-            expiration={competition.expiration}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Recompensas */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Coins className="h-5 w-5" /> Recompensas
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {(competition.reward_config?.participation_coins != null ||
-            competition.reward_participation != null) && (
-            <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-4">
-              <Coins className="h-8 w-8 text-amber-500 shrink-0" />
-              <p className="font-medium">
-                Você ganha{' '}
-                {String(competition.reward_config?.participation_coins ?? competition.reward_participation)}{' '}
-                moedas só por participar.
-              </p>
-            </div>
-          )}
-          {(competition.reward_config?.ranking_rewards?.length ?? 0) > 0 && (
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Prêmios por colocação</p>
-              <ul className="flex flex-wrap gap-3">
-                {competition.reward_config!.ranking_rewards!.slice(0, 3).map((r) => (
-                  <li key={r.position} className="flex items-center gap-2 rounded-lg border px-3 py-2">
-                    <Medal className="h-5 w-5 text-amber-500" />
-                    <span>{r.position}º → {r.coins} moedas</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {!competition.reward_config?.participation_coins &&
-            !competition.reward_participation &&
-            (!competition.reward_config?.ranking_rewards?.length) && (
-              <p className="text-sm text-muted-foreground">
-                Esta competição não oferece moedas de recompensa.
-              </p>
+          {/* Countdown em destaque */}
+          <div className="mt-4 flex flex-wrap gap-4">
+            {!isEnrolled && inEnrollment && competition.enrollment_end && !ended && (
+              <Countdown targetDate={competition.enrollment_end} label="Inscrição fecha" />
             )}
+            {isEnrolled && !inApplication && competition.application && !ended && (
+              <Countdown targetDate={competition.application} label="Prova começa" />
+            )}
+            {isEnrolled && inApplication && competition.expiration && !ended && (
+              <Countdown targetDate={competition.expiration} label="Prova termina" />
+            )}
+          </div>
         </CardContent>
       </Card>
 
-      {/* Vagas */}
+      {/* Resumo: datas, questões, recompensas, vagas — tudo em um card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Resumo</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <Calendar className="h-5 w-5 shrink-0 text-muted-foreground" />
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Inscrições</p>
+                <p className="text-sm font-medium">
+                  {competition.enrollment_start
+                    ? format(new Date(competition.enrollment_start), 'dd/MM', { locale: ptBR })
+                    : '—'}
+                  {' → '}
+                  {competition.enrollment_end
+                    ? format(new Date(competition.enrollment_end), 'dd/MM', { locale: ptBR })
+                    : '—'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <Clock className="h-5 w-5 shrink-0 text-muted-foreground" />
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Prova</p>
+                <p className="text-sm font-medium">
+                  {competition.application
+                    ? format(new Date(competition.application), "dd/MM 'às' HH:mm", { locale: ptBR })
+                    : '—'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <BookOpen className="h-5 w-5 shrink-0 text-muted-foreground" />
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Questões</p>
+                <p className="text-sm font-medium">
+                  {totalQuestions} {totalQuestions === 1 ? 'questão' : 'questões'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <Coins className="h-5 w-5 shrink-0 text-amber-500" />
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Recompensas</p>
+                {hasRewards ? (
+                  <p className="text-sm font-medium">
+                    {participationCoins} moedas por participar
+                    {(competition.reward_config?.ranking_rewards?.length ?? 0) > 0 && (
+                      <> · Pódio com mais moedas</>
+                    )}
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Sem recompensas em moedas</p>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
+              <Users className="h-4 w-4" /> Vagas
+            </p>
+            <SlotsProgress enrolledCount={enrolledCount} maxParticipants={maxParticipants} />
+          </div>
+          {(competition.reward_config?.ranking_rewards?.length ?? 0) > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {competition.reward_config!.ranking_rewards!.slice(0, 5).map((r) => (
+                <Badge key={r.position} variant="secondary" className="gap-1">
+                  <Medal className="h-3.5 w-3.5 text-amber-500" />
+                  {r.position}º: {r.coins} moedas
+                </Badge>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Ranking — só quando disponível */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
-            <Users className="h-5 w-5" /> Vagas
+            <Trophy className="h-5 w-5" /> Ranking
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <SlotsProgress enrolledCount={enrolledCount} maxParticipants={maxParticipants} />
-        </CardContent>
-      </Card>
-
-      {/* Ranking */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Ranking</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {showRankingRealtime && (
-            <p className="text-sm text-muted-foreground">
-              Ranking ao vivo (em breve).
-            </p>
-          )}
-          {showRankingFinal && (
-            <p className="text-sm text-muted-foreground">
-              Ranking final (em breve).
-            </p>
-          )}
-          {!showRankingRealtime && !showRankingFinal && (
-            <p className="text-sm text-muted-foreground">
-              Ranking será divulgado após o término.
-            </p>
+          {(showRankingRealtime || showRankingFinal) ? (
+            <>
+              <CompetitionRanking
+                competitionId={id!}
+                competitionName={competition.name}
+                rankingVisibility={rankingVisibility}
+                rewardConfig={competition.reward_config ?? undefined}
+                isRealtime={showRankingRealtime}
+                inline
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={() => navigate(`/aluno/competitions/${id}/ranking`)}
+              >
+                <Trophy className="mr-2 h-4 w-4" />
+                Ver ranking completo
+              </Button>
+            </>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                O ranking será divulgado após o término da competição.
+              </p>
+              {competition.expiration && !ended && (
+                <Countdown targetDate={competition.expiration} label="Competição termina" />
+              )}
+            </div>
           )}
         </CardContent>
       </Card>
