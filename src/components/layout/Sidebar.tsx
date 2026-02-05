@@ -673,7 +673,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div className="rounded-lg border border-[#E5D5EA] dark:border-white/10 bg-white/80 dark:bg-white/5 px-2 py-1.5">
-                      <CoinBalance size="small" showLabel={false} />
+                      <CoinBalance studentId={user.id} size="small" showLabel={false} />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="right">

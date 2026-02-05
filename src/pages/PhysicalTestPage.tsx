@@ -959,7 +959,9 @@ export default function PhysicalTestPage() {
         const remainingQuestions = testTotalQuestions - totalQuestionsNeeded;
         if (remainingQuestions > 0) {
           warnings.push(
-            `ℹ️ Com a configuração atual, restarão ${remainingQuestions} questão(ões) sem distribuir nos blocos. ` +
+            `ℹ️ Com a configuração atual, restarão ${remainingQuestions} ` +
+            (remainingQuestions === 1 ? 'questão' : 'questões') +
+            ' sem distribuir nos blocos. ' +
             `Considere ajustar a quantidade de blocos ou questões por bloco para aproveitar todas as questões.`
           );
         }

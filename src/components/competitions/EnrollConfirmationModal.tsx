@@ -11,7 +11,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Calendar, Clock, Coins, Loader2, Trophy } from 'lucide-react';
+import { Calendar, Clock, Coins, Loader2, Trophy, Users } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
@@ -39,6 +39,24 @@ function formatRewardsSummary(c: Competition): string {
     parts.push(`Ranking: ${c.reward_ranking} moedas`);
   }
   return parts.length ? parts.join(' · ') : '—';
+}
+
+function formatSlotsSummary(c: Competition): { line: string; remainingText: string | null } {
+  const max = c.max_participants ?? c.limit;
+  const enrolled = c.enrolled_count ?? 0;
+
+  if (max == null || max <= 0) {
+    return {
+      line: 'Essa competição tem vagas ilimitadas.',
+      remainingText: null,
+    };
+  }
+
+  const remaining = Math.max(max - enrolled, 0);
+  return {
+    line: `Vagas: ${enrolled} de ${max} já preenchidas.`,
+    remainingText: `Restam ${remaining} vaga${remaining === 1 ? '' : 's'}, confirme sua inscrição para garantir seu lugar.`,
+  };
 }
 
 export interface EnrollConfirmationModalProps {
@@ -89,10 +107,13 @@ export function EnrollConfirmationModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-primary" />
-            Confirmar inscrição
+            Confirmar inscrição na competição
           </DialogTitle>
           <DialogDescription>
-            Deseja se inscrever na competição {competition?.name ?? '—'}?
+            Você está se inscrevendo em:{' '}
+            <span className="font-semibold text-foreground">
+              {competition?.name ?? '—'}
+            </span>
           </DialogDescription>
         </DialogHeader>
 
@@ -103,18 +124,83 @@ export function EnrollConfirmationModal({
             </p>
             <div className="flex items-center gap-2 text-muted-foreground">
               <Calendar className="h-4 w-4 shrink-0" />
-              <span>Inscrição: {formatDate(competition.enrollment_start)} até {formatDate(competition.enrollment_end)}</span>
+              <span>
+                Inscrições até {formatDate(competition.enrollment_end)}
+              </span>
             </div>
             {competition.application && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Clock className="h-4 w-4 shrink-0" />
-                <span>Aplicação: {formatDate(competition.application)}</span>
+                <span>
+                  Prova: {formatDate(competition.application)} →{' '}
+                  {formatDate(competition.expiration)}
+                </span>
               </div>
             )}
             <div className="flex items-center gap-2 text-muted-foreground">
               <Coins className="h-4 w-4 shrink-0" />
               <span>{formatRewardsSummary(competition)}</span>
             </div>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Users className="h-4 w-4 shrink-0" />
+              {(() => {
+                const { line } = formatSlotsSummary(competition);
+                return <span>{line}</span>;
+              })()}
+            </div>
+
+            {(() => {
+              const part = competition.reward_config?.participation_coins ?? competition.reward_participation;
+              const hasParticipation = part != null && part !== '';
+              const rank = competition.reward_config?.ranking_rewards;
+              const hasRanking = !!rank?.length;
+
+              if (!hasParticipation && !hasRanking) return null;
+
+              return (
+                <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                  {hasParticipation && (
+                    <p>
+                      Você ganha{' '}
+                      <span className="font-semibold">
+                        {String(part)} moedas ao participar.
+                      </span>
+                    </p>
+                  )}
+                  {hasRanking && (
+                    <p>
+                      Além disso, os melhores colocados ganham moedas extras.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+
+            {(() => {
+              const { remainingText } = formatSlotsSummary(competition);
+              if (!remainingText) return null;
+              return (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {remainingText}
+                </p>
+              );
+            })()}
+
+            <p className="mt-3 text-xs text-muted-foreground">
+              <span className="font-semibold">
+                Você vai se inscrever na competição {competition.name};
+              </span>{' '}
+              inscrições até {formatDate(competition.enrollment_end)}, prova em{' '}
+              {formatDate(competition.application)} →{' '}
+              {formatDate(competition.expiration)}
+              {competition.reward_config?.participation_coins != null ||
+              competition.reward_participation != null
+                ? `, e ganhará ${
+                    competition.reward_config?.participation_coins ??
+                    competition.reward_participation
+                  } moedas ao participar.`
+                : '.'}
+            </p>
           </div>
         )}
 

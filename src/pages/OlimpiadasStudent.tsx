@@ -291,7 +291,9 @@ export default function OlimpiadasStudent() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-orange-800 dark:text-orange-200">
-              Você tem {activeSessions.length} sessão(ões) ativa(s) que podem estar impedindo o início de novas avaliações ou olimpíadas.
+              Você tem {activeSessions.length}{' '}
+              {activeSessions.length === 1 ? 'sessão ativa' : 'sessões ativas'} que podem
+              estar impedindo o início de novas avaliações ou olimpíadas.
             </p>
             <div className="space-y-2">
               {activeSessions.map((session) => (

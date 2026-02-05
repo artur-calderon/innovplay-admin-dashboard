@@ -34,16 +34,17 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { Competition, CompetitionStatus } from '@/types/competition-types';
+import { formatCompetitionLevel } from '@/utils/competitionLevel';
 
 interface CompetitionCardProps {
   competition: Competition;
   onView?: (id: string) => void;
   onEdit?: (id: string) => void;
-  onEditDates?: (id: string) => void;
   onCancel?: (id: string) => void;
-  onPublish?: (id: string) => void;
   onDelete?: (id: string) => void;
   onAddQuestions?: (id: string) => void;
+  /** Fluxo unificado: abre modal para agendar inscrição/prova e publicar. */
+  onScheduleAndPublish?: (id: string) => void;
   className?: string;
 }
 
@@ -125,11 +126,10 @@ export function CompetitionCard({
   competition,
   onView,
   onEdit,
-  onEditDates,
   onCancel,
-  onPublish,
   onDelete,
   onAddQuestions,
+  onScheduleAndPublish,
   className,
 }: CompetitionCardProps) {
   const statusConfig = getStatusConfig(competition.status);
@@ -149,7 +149,7 @@ export function CompetitionCard({
             <span className="truncate">{competition.name}</span>
           </CardTitle>
           <CardDescription>
-            {competition.subject_name ?? competition.subject_id} · Nível {competition.level}
+            {competition.subject_name ?? competition.subject_id} · {formatCompetitionLevel(competition.level)}
           </CardDescription>
         </div>
         <Badge variant="secondary" className={cn('shrink-0 border font-medium', statusConfig.className)}>
@@ -191,22 +191,20 @@ export function CompetitionCard({
               Editar
             </Button>
           )}
-          {onPublish && draft && (
-            <Button size="sm" onClick={() => onPublish(competition.id)}>
+          {onScheduleAndPublish && draft && (
+            <Button
+              size="sm"
+              onClick={() => onScheduleAndPublish(competition.id)}
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+            >
               <Send className="mr-1 h-4 w-4" />
-              Publicar
+              Aplicação
             </Button>
           )}
           {onAddQuestions && canAddQuestions && draft && (
             <Button variant="outline" size="sm" onClick={() => onAddQuestions(competition.id)}>
               <ListPlus className="mr-1 h-4 w-4" />
               Questões
-            </Button>
-          )}
-          {onEditDates && draft && (
-            <Button variant="outline" size="sm" onClick={() => onEditDates(competition.id)}>
-              <CalendarRange className="mr-1 h-4 w-4" />
-              Datas
             </Button>
           )}
         </div>

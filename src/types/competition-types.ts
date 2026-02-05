@@ -93,7 +93,10 @@ export interface Competition {
   created_by?: string;
   created_at?: string;
   updated_at?: string;
+  /** IDs de questões associadas diretamente à competição (modo manual ou legado). */
   question_ids?: string[];
+  /** IDs de questões sorteadas a partir de test_id (modo auto_random). */
+  selected_question_ids?: string[];
   enrolled_count?: number;
   available_slots?: number;
   is_enrollment_open?: boolean;

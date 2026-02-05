@@ -105,7 +105,10 @@ export default function ProfessorNotifications() {
               id: "pending-corrections",
               type: "info",
               title: "Correções pendentes",
-              message: `Você tem ${pendingCorrections.length} avaliação(ões) aguardando correção`,
+              message:
+                pendingCorrections.length === 1
+                  ? 'Você tem 1 avaliação aguardando correção'
+                  : `Você tem ${pendingCorrections.length} avaliações aguardando correção`,
               created_at: new Date().toISOString(),
               is_read: false,
               action_url: "/app/avaliacoes?status=pending",

@@ -650,7 +650,10 @@ export default function AnswerSheetGenerator() {
         if (clearedCount > 0) {
           toast({
             title: 'Respostas removidas',
-            description: `${clearedCount} questão(ões) tiveram a resposta removida pois a alternativa não está mais disponível.`,
+            description:
+              clearedCount === 1
+                ? '1 questão teve a resposta removida pois a alternativa não está mais disponível.'
+                : `${clearedCount} questões tiveram a resposta removida pois a alternativa não está mais disponível.`,
             variant: 'default',
           });
         }
@@ -741,7 +744,10 @@ export default function AnswerSheetGenerator() {
       if (clearedCount > 0) {
         toast({
           title: 'Respostas removidas',
-          description: `${clearedCount} questão(ões) tiveram a resposta removida pois não está mais disponível.`,
+          description:
+            clearedCount === 1
+              ? '1 questão teve a resposta removida pois não está mais disponível.'
+              : `${clearedCount} questões tiveram a resposta removida pois não está mais disponível.`,
           variant: 'default',
         });
       }
@@ -961,7 +967,9 @@ export default function AnswerSheetGenerator() {
         const remainingQuestions = totalQuestoes - totalQuestionsNeeded;
         if (remainingQuestions > 0) {
           warnings.push(
-            `ℹ️ Com a configuração atual, restarão ${remainingQuestions} questão(ões) sem distribuir nos blocos. ` +
+            `ℹ️ Com a configuração atual, restarão ${remainingQuestions} ` +
+            (remainingQuestions === 1 ? 'questão' : 'questões') +
+            ' sem distribuir nos blocos. ' +
             `Considere ajustar a quantidade de blocos ou questões por bloco para aproveitar todas as questões.`
           );
         }
@@ -2151,7 +2159,9 @@ export default function AnswerSheetGenerator() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium">
-                      Gabarito ({totalQuestoes} questão(ões))
+                      Gabarito (
+                      {totalQuestoes}{' '}
+                      {totalQuestoes === 1 ? 'questão' : 'questões'})
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Selecione a alternativa correta para cada número de questão. As alternativas disponíveis podem ser personalizadas acima.

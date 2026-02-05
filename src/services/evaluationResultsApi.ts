@@ -1638,8 +1638,13 @@ export class EvaluationResultsApiService {
       });
       const avaliacoes = response.avaliacoes || [];
       return avaliacoes.filter((evaluation: any) => {
-        const type = evaluation.type || evaluation.tipo;
-        return type !== 'OLIMPIADA';
+        const type = (evaluation.type || evaluation.tipo || '').toUpperCase();
+        // Excluir olimpíadas, competições e avaliações sem tipo (têm suas próprias interfaces)
+        return type !== '' && 
+               type !== 'OLIMPIADAS' && 
+               type !== 'OLIMPIADA' && 
+               type !== 'COMPETICAO' && 
+               type !== 'COMPETIÇÃO';
       });
     } catch (error) {
       console.error('Erro ao buscar avaliações para filtros:', error);

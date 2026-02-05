@@ -31,10 +31,9 @@ import QuestionPreview from '@/components/evaluations/questions/QuestionPreview'
 import type { Question } from '@/components/evaluations/types';
 
 const STEP_DESCRIPTIONS: Record<number, string> = {
-  1: 'Configure o nome, disciplina e nível da competição.',
-  2: 'Defina o período de inscrições (início e encerramento).',
-  3: 'Selecione as questões (manual ou aleatório).',
-  4: 'Defina as recompensas.',
+  1: 'Configure o nome, disciplina, nível, escopo e vagas da competição.',
+  2: 'Selecione as questões (manual ou aleatório).',
+  3: 'Defina as recompensas. Depois, use o botão de aplicação no card para escolher o período da prova e abrir para os alunos.',
 };
 
 /** Fallback se a API de level-options falhar. */
@@ -92,8 +91,9 @@ const initialFormData: CreateCompetitionFormData = {
   enrollment_end: '',
   question_mode: 'manual',
   question_rules: '',
-  reward_participation: '',
-  reward_ranking: '',
+  // valores padrão numéricos para recompensas
+  reward_participation: '25',
+  reward_ranking: '100',
 };
 
 /** Campo de data/hora com botão para abrir o seletor nativo (mais fácil em mobile/desktop). */
@@ -235,6 +235,8 @@ export function CreateCompetitionModal({
           scope_filter: c.scope_filter ?? undefined,
           enrollment_start: parseISOToDatetimeLocal(c.enrollment_start),
           enrollment_end: parseISOToDatetimeLocal(c.enrollment_end),
+          // usa max_participants quando existir; fallback para limit legado
+          limit: c.max_participants ?? c.limit ?? undefined,
           question_mode: c.question_mode ?? 'manual',
           question_rules: questionRulesStr,
           reward_participation: participation,
@@ -280,13 +282,46 @@ export function CreateCompetitionModal({
 
   const buildPayloadWithISODates = () => {
     const payload = { ...formData };
+
+    const now = new Date();
+    const fiveMinutesMs = 5 * 60 * 1000;
+    const oneHourMs = 60 * 60 * 1000;
+
+    // Definição de inscrições:
+    // - Se já houver valores (caso edição), respeita e converte.
+    // - Se não houver, usa padrões: início = agora + 5min, fim = agora + 1h.
     if (payload.enrollment_start?.trim()) {
-      payload.enrollment_start = convertDateTimeLocalToISONaive(payload.enrollment_start.trim()) || formData.enrollment_start;
+      payload.enrollment_start =
+        convertDateTimeLocalToISONaive(payload.enrollment_start.trim()) ||
+        formData.enrollment_start;
+    } else {
+      const start = new Date(now.getTime() + fiveMinutesMs);
+      payload.enrollment_start = convertDateTimeLocalToISONaive(
+        `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(
+          start.getDate(),
+        ).padStart(2, '0')}T${String(start.getHours()).padStart(2, '0')}:${String(
+          start.getMinutes(),
+        ).padStart(2, '0')}`,
+      );
     }
+
     if (payload.enrollment_end?.trim()) {
-      payload.enrollment_end = convertDateTimeLocalToISONaive(payload.enrollment_end.trim()) || formData.enrollment_end;
+      payload.enrollment_end =
+        convertDateTimeLocalToISONaive(payload.enrollment_end.trim()) ||
+        formData.enrollment_end;
+    } else {
+      const end = new Date(now.getTime() + oneHourMs);
+      payload.enrollment_end = convertDateTimeLocalToISONaive(
+        `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(
+          end.getDate(),
+        ).padStart(2, '0')}T${String(end.getHours()).padStart(2, '0')}:${String(
+          end.getMinutes(),
+        ).padStart(2, '0')}`,
+      );
     }
-    // Backend exige application e expiration; definimos depois pelo botão "Datas" no card. Enviamos padrões para o create/update aceitar.
+
+    // Backend exige application e expiration; na prática, o período final da prova será ajustado
+    // no fluxo de aplicação do card. Aqui apenas garantimos valores coerentes de default.
     const toNaiveISO = (d: Date) => {
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -310,6 +345,13 @@ export function CreateCompetitionModal({
     }
     delete (payload as Record<string, unknown>).ranking_criterion;
     delete (payload as Record<string, unknown>).visibility;
+    // mapear limit (campo do formulário) para max_participants na API; vazio ou 0 = ilimitado
+    const rawLimit = formData.limit;
+    const maxParticipants =
+      rawLimit != null && !Number.isNaN(rawLimit) && Number(rawLimit) > 0
+        ? Number(rawLimit)
+        : undefined;
+    (payload as Record<string, unknown>).max_participants = maxParticipants;
     delete (payload as Record<string, unknown>).limit;
     // API exige reward_config: { participation_coins, ranking_rewards: [{ position, coins }] }
     const participationCoins = Number(formData.reward_participation) || 0;
@@ -338,6 +380,15 @@ export function CreateCompetitionModal({
     setLoading(true);
     try {
       const payload = buildPayloadWithISODates();
+      if (process.env.NODE_ENV !== 'production') {
+        // Log detalhado do payload enviado ao backend na criação/edição da competição
+        console.log(
+          '[Competitions] Enviando payload para %s /competitions%s:',
+          isEdit ? 'PUT' : 'POST',
+          isEdit && editId ? `/${editId}` : '',
+          JSON.stringify(payload, null, 2),
+        );
+      }
       let competitionId: string;
       if (isEdit && editId) {
         await updateCompetition(editId, payload);
@@ -477,59 +528,33 @@ export function CreateCompetitionModal({
                       Quem pode ver/inscrever: individual, turma, escola ou município.
                     </p>
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="max_participants">
+                      Quantidade máxima de vagas (opcional)
+                    </Label>
+                    <Input
+                      id="max_participants"
+                      type="number"
+                      min={1}
+                      value={formData.limit != null ? String(formData.limit) : ''}
+                      onChange={(e) => {
+                        const v = e.target.value.trim();
+                        update({
+                          limit: v === '' ? undefined : Number(v),
+                        });
+                      }}
+                      placeholder="Deixe em branco para vagas ilimitadas"
+                      className="w-full min-w-0"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Se não preencher este campo, a competição terá vagas ilimitadas.
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
 
             {step === 2 && (
-              <div className="space-y-4">
-                <p className="text-xs text-muted-foreground">
-                  Datas em horário local (armazenadas em ISO 8601). Aplicação e expiração podem ser definidas depois pelo botão &quot;Datas&quot; no card da competição.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <DateTimeField
-                    id="enrollment_start"
-                    value={formData.enrollment_start}
-                    onChange={(v) => update({ enrollment_start: v })}
-                    label={
-                      <span className="flex items-center gap-2">
-                        <CalendarDays className="h-4 w-4" />
-                        Início das inscrições *
-                      </span>
-                    }
-                    description="Quando as inscrições serão abertas"
-                    aria-label="Data e hora de início das inscrições"
-                  />
-                  <DateTimeField
-                    id="enrollment_end"
-                    value={formData.enrollment_end}
-                    onChange={(v) => update({ enrollment_end: v })}
-                    label={
-                      <span className="flex items-center gap-2">
-                        <Clock className="h-4 w-4" />
-                        Encerramento das inscrições *
-                      </span>
-                    }
-                    description="Último momento para se inscrever"
-                    aria-label="Data e hora de término das inscrições"
-                  />
-                </div>
-                {(formData.enrollment_start || formData.enrollment_end) && (
-                  <div className="bg-muted/50 border rounded-lg p-4">
-                    <div className="text-sm space-y-1">
-                      {formData.enrollment_start && (
-                        <p><strong>Início:</strong> {new Date(formData.enrollment_start).toLocaleString('pt-BR')}</p>
-                      )}
-                      {formData.enrollment_end && (
-                        <p><strong>Encerramento:</strong> {new Date(formData.enrollment_end).toLocaleString('pt-BR')}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {step === 3 && (
               <div className="space-y-4">
                 <RadioGroup
                   value={formData.question_mode === 'auto_random' ? 'auto_random' : 'manual'}
@@ -570,7 +595,8 @@ export function CreateCompetitionModal({
                     <div className="flex items-center justify-between">
                       <h3 className="text-lg font-semibold">Questões da competição</h3>
                       <span className="text-sm text-muted-foreground">
-                        Total: {selectedQuestions.length} questão(ões)
+                        Total: {selectedQuestions.length}{' '}
+                        {selectedQuestions.length === 1 ? 'questão' : 'questões'}
                       </span>
                     </div>
                     {!formData.subject_id ? (
@@ -667,7 +693,8 @@ export function CreateCompetitionModal({
                       <div className="flex items-center justify-between rounded-md bg-primary/10 border border-primary/20 px-3 py-2">
                         <span className="text-sm font-medium">Configuração selecionada (modo aleatório)</span>
                         <span className="text-sm text-muted-foreground">
-                          {numQuestions} questão(ões)
+                          {numQuestions}{' '}
+                          {numQuestions === 1 ? 'questão' : 'questões'}
                           {difficultyFilter.length > 0 ? ` · ${difficultyFilter.join(', ')}` : ' · Todas as dificuldades'}
                         </span>
                       </div>
@@ -704,28 +731,52 @@ export function CreateCompetitionModal({
               </div>
             )}
 
-            {step === 4 && (
+            {step === 3 && (
               <div className="space-y-4">
                 <div className="grid gap-4 grid-cols-1 xs:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="reward_participation">Por participação</Label>
                     <Input
                       id="reward_participation"
+                      type="number"
+                      min={0}
+                      step={1}
                       value={formData.reward_participation ?? ''}
-                      onChange={(e) => update({ reward_participation: e.target.value })}
-                      placeholder="Ex.: pontos, moedas"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        // permite vazio ou número inteiro não negativo
+                        if (v === '' || /^[0-9]+$/.test(v)) {
+                          update({ reward_participation: v });
+                        }
+                      }}
+                      placeholder="Ex.: 25"
                       className="w-full min-w-0"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Quantidade de moedas que cada participante recebe (padrão: 25).
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="reward_ranking">Por ranking</Label>
                     <Input
                       id="reward_ranking"
+                      type="number"
+                      min={0}
+                      step={1}
                       value={formData.reward_ranking ?? ''}
-                      onChange={(e) => update({ reward_ranking: e.target.value })}
-                      placeholder="Ex.: pontos por posição"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === '' || /^[0-9]+$/.test(v)) {
+                          update({ reward_ranking: v });
+                        }
+                      }}
+                      placeholder="Ex.: 100"
                       className="w-full min-w-0"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Quantidade de moedas para o primeiro colocado (padrão: 100). Os demais podem ser
+                      configurados depois no backend se necessário.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -739,7 +790,7 @@ export function CreateCompetitionModal({
               {step > 1 ? 'Voltar' : 'Cancelar'}
             </Button>
             <div className="flex gap-2">
-              {step < 4 ? (
+              {step < 3 ? (
                 <Button onClick={() => setStep(step + 1)}>Próximo</Button>
               ) : (
                 <Button onClick={handleSubmit} disabled={loading}>

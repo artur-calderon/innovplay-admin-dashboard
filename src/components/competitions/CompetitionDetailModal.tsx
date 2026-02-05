@@ -150,7 +150,12 @@ export function CompetitionDetailModal({
                     <BookOpen className="h-3.5 w-3.5" /> Questões
                   </p>
                   {competition.question_mode && (
-                    <p className="text-sm"><strong>Modo:</strong> {competition.question_mode}</p>
+                    <p className="text-sm">
+                      <strong>Modo:</strong>{' '}
+                      {competition.question_mode === 'auto_random'
+                        ? 'Aleatório'
+                        : competition.question_mode}
+                    </p>
                   )}
                   {competition.question_rules && (
                     <p className="text-sm whitespace-pre-wrap">
@@ -159,20 +164,48 @@ export function CompetitionDetailModal({
                         : JSON.stringify(competition.question_rules, null, 2)}
                     </p>
                   )}
-                  {competition.question_mode === 'auto_random' && competition.question_rules != null && (
-                    <p className="text-sm text-muted-foreground">
-                      {(() => {
-                        const r = typeof competition.question_rules === 'object' ? competition.question_rules : (() => { try { return JSON.parse(competition.question_rules as string); } catch { return null; } })();
-                        const n = (r as { num_questions?: number } | null)?.num_questions;
-                        return n != null ? `${n} questão(ões) sorteadas aleatoriamente` : null;
-                      })()}
-                    </p>
-                  )}
-                  {competition.question_ids && competition.question_ids.length > 0 && (
-                    <p className="text-sm text-muted-foreground">
-                      {competition.question_ids.length} questão(ões) vinculada(s)
-                    </p>
-                  )}
+                  {competition.question_mode === 'auto_random' &&
+                    (competition.question_rules != null ||
+                      (competition.selected_question_ids?.length ?? 0) > 0) && (
+                      <p className="text-sm text-muted-foreground">
+                        {(() => {
+                          const r =
+                            typeof competition.question_rules === 'object'
+                              ? competition.question_rules
+                              : (() => {
+                                  try {
+                                    return JSON.parse(competition.question_rules as string);
+                                  } catch {
+                                    return null;
+                                  }
+                                })();
+                          const explicit =
+                            (r as { num_questions?: number } | null)?.num_questions ?? undefined;
+                          const selected = competition.selected_question_ids?.length;
+                          const n =
+                            (typeof selected === 'number' && selected > 0 ? selected : explicit) ??
+                            0;
+                          if (n <= 0) return 'Nenhuma questão sorteada';
+                          if (n === 1) return '1 questão sorteada aleatoriamente';
+                          return `${n} questões sorteadas aleatoriamente`;
+                        })()}
+                      </p>
+                    )}
+                  {(() => {
+                    const ids =
+                      competition.selected_question_ids ?? competition.question_ids ?? [];
+                    if (!ids.length) return null;
+                    if (ids.length === 1) {
+                      return (
+                        <p className="text-sm text-muted-foreground">1 questão vinculada</p>
+                      );
+                    }
+                    return (
+                      <p className="text-sm text-muted-foreground">
+                        {ids.length} questões vinculadas
+                      </p>
+                    );
+                  })()}
                 </div>
               )}
 

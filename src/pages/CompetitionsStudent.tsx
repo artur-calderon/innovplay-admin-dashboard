@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Trophy, Calendar, Clock, Loader2, Eye, UserPlus, Coins, XCircle } from 'lucide-react';
+import { Trophy, Calendar, Clock, Loader2, Eye, UserPlus, Coins, XCircle, Award } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getAvailableCompetitions, unenrollCompetition } from '@/services/competitionsApi';
 import type { Competition } from '@/types/competition-types';
@@ -23,6 +23,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { api } from '@/lib/api';
 import { EnrollConfirmationModal } from '@/components/competitions/EnrollConfirmationModal';
+import { formatCompetitionLevel } from '@/utils/competitionLevel';
 
 const OPEN_STATUSES = ['aberta', 'enrollment_open', 'active', 'scheduled'];
 
@@ -71,10 +72,8 @@ function isEnrolled(c: Competition): boolean {
 function isEnded(c: Competition): boolean {
   const s = String(c.status).toLowerCase();
   if (s === 'completed' || s === 'cancelled' || s === 'cancelada') return true;
-  if (c.enrollment_end && new Date(c.enrollment_end).getTime() < Date.now()) {
-    if (c.application && new Date(c.application).getTime() < Date.now()) return true;
-  }
-  if (c.application && new Date(c.application).getTime() < Date.now()) return true;
+  if (c.expiration && new Date(c.expiration).getTime() < Date.now()) return true;
+  if (c.application && new Date(c.application).getTime() < Date.now() && !c.expiration) return true;
   return false;
 }
 
@@ -87,9 +86,10 @@ function canUnenroll(c: Competition): boolean {
 
 function formatSlots(c: Competition): string {
   const max = c.max_participants ?? c.limit;
-  if (max == null || max <= 0) return '∞';
+  if (max == null || max <= 0) return 'Vagas ilimitadas';
   const enrolled = c.enrolled_count ?? 0;
-  return `${enrolled}/${max}`;
+  const remaining = Math.max(max - enrolled, 0);
+  return `${enrolled} de ${max} (restam ${remaining})`;
 }
 
 function formatRewardsShort(c: Competition): string {
@@ -112,6 +112,7 @@ export default function CompetitionsStudent() {
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [loading, setLoading] = useState(true);
   const [subjectFilter, setSubjectFilter] = useState<string>('all');
+  const [levelFilter, setLevelFilter] = useState<'all' | '1' | '2'>('all');
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
   const [enrollModalOpen, setEnrollModalOpen] = useState(false);
   const [enrollCompetitionSelected, setEnrollCompetitionSelected] = useState<Competition | null>(null);
@@ -148,9 +149,15 @@ export default function CompetitionsStudent() {
   }, []);
 
   const filteredBySubject = useMemo(() => {
-    if (subjectFilter === 'all') return competitions;
-    return competitions.filter((c) => c.subject_id === subjectFilter);
-  }, [competitions, subjectFilter]);
+    let list = competitions;
+    if (subjectFilter !== 'all') {
+      list = list.filter((c) => c.subject_id === subjectFilter);
+    }
+    if (levelFilter !== 'all') {
+      list = list.filter((c) => String(c.level) === levelFilter);
+    }
+    return list;
+  }, [competitions, subjectFilter, levelFilter]);
 
   const { abertas, proximas, minhasInscricoes, encerradas } = useMemo(() => {
     const a: Competition[] = [];
@@ -194,7 +201,50 @@ export default function CompetitionsStudent() {
 
   const slotsFull = (c: Competition) => !hasSlots(c) && !c.is_enrolled;
 
-  function CompetitionCardList({ list }: { list: Competition[] }) {
+  function getExamStatus(comp: Competition): { title: string; subtitle: string | null } {
+    const now = Date.now();
+    const appStart = comp.application ? new Date(comp.application).getTime() : null;
+    const expiration = comp.expiration ? new Date(comp.expiration).getTime() : null;
+
+    if (appStart == null) {
+      return {
+        title: 'Prova sem data definida',
+        subtitle: null,
+      };
+    }
+
+    if (expiration != null && now > expiration) {
+      return {
+        title: 'Prova encerrada',
+        subtitle: `Prova encerrou em ${formatDate(comp.expiration)}`,
+      };
+    }
+
+    if (now >= appStart && (expiration == null || now <= expiration)) {
+      return {
+        title: 'Prova em aplicação',
+        subtitle: comp.expiration
+          ? `Prova encerra em ${formatDate(comp.expiration)}`
+          : null,
+      };
+    }
+
+    if (now < appStart) {
+      return {
+        title: 'Aguardando início da prova',
+        subtitle: `Prova começa em ${formatDate(comp.application)}`,
+      };
+    }
+
+    return {
+      title: 'Prova encerrada',
+      subtitle: comp.expiration
+        ? `Prova encerrou em ${formatDate(comp.expiration)}`
+        : null,
+    };
+  }
+
+  function CompetitionCardList({ list, variant }: { list: Competition[]; variant?: 'default' | 'my_enrollments' }) {
     return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {list.map((comp) => (
@@ -204,19 +254,19 @@ export default function CompetitionsStudent() {
                 <div className="min-w-0 flex-1">
                   <h3 className="font-semibold truncate">{comp.name}</h3>
                   <p className="text-sm text-muted-foreground">
-                    {comp.subject_name ?? comp.subject_id} · Nível {comp.level}
+                    {comp.subject_name ?? comp.subject_id} · {formatCompetitionLevel(comp.level)}
                   </p>
                 </div>
               </div>
               <div className="mt-3 space-y-1 text-sm text-muted-foreground">
                 <p className="flex items-center gap-2">
                   <Calendar className="h-3.5 w-3.5 shrink-0" />
-                  Inscrição: {formatDate(comp.enrollment_start)} – {formatDate(comp.enrollment_end)}
+                  Inscrição: {formatDate(comp.enrollment_start)} → {formatDate(comp.enrollment_end)}
                 </p>
                 {comp.application && (
                   <p className="flex items-center gap-2">
                     <Clock className="h-3.5 w-3.5 shrink-0" />
-                    Aplicação: {formatDate(comp.application)}
+                    Prova: {formatDate(comp.application)} → {formatDate(comp.expiration)}
                   </p>
                 )}
                 <p className="flex items-center gap-2">
@@ -226,6 +276,19 @@ export default function CompetitionsStudent() {
                   <Coins className="h-3.5 w-3.5 shrink-0" />
                   {formatRewardsShort(comp)}
                 </p>
+                {variant === 'my_enrollments' && (
+                  (() => {
+                    const status = getExamStatus(comp);
+                    return (
+                      <div className="mt-1 space-y-0.5">
+                        <p className="font-medium text-foreground">{status.title}</p>
+                        {status.subtitle && (
+                          <p className="text-xs text-muted-foreground">{status.subtitle}</p>
+                        )}
+                      </div>
+                    );
+                  })()
+                )}
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <Button
@@ -264,6 +327,41 @@ export default function CompetitionsStudent() {
                     Inscrever-se
                   </Button>
                 )}
+                {variant === 'my_enrollments' && comp.is_enrolled && (
+                  (() => {
+                    const now = Date.now();
+                    const appStart = comp.application ? new Date(comp.application).getTime() : null;
+                    const expiration = comp.expiration ? new Date(comp.expiration).getTime() : null;
+                    const inExam =
+                      appStart != null &&
+                      now >= appStart &&
+                      (expiration == null || now <= expiration);
+
+                    if (!inExam) {
+                      return (
+                        <Button size="sm" disabled>
+                          <Award className="mr-1 h-4 w-4" />
+                          Prova ainda não começou
+                        </Button>
+                      );
+                    }
+
+                    return (
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          toast({
+                            title: 'Em breve',
+                            description: 'Fluxo de prova ainda não disponível.',
+                          })
+                        }
+                      >
+                        <Award className="mr-1 h-4 w-4" />
+                        Fazer prova
+                      </Button>
+                    );
+                  })()
+                )}
               </div>
             </CardContent>
           </Card>
@@ -292,17 +390,29 @@ export default function CompetitionsStudent() {
             Veja as competições, inscreva-se e acompanhe suas inscrições.
           </p>
         </div>
-        <Select value={subjectFilter} onValueChange={setSubjectFilter}>
-          <SelectTrigger className="w-full sm:w-[220px]">
-            <SelectValue placeholder="Todas as disciplinas" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas as disciplinas</SelectItem>
-            {subjects.map((s) => (
-              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
+          <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+            <SelectTrigger className="w-full sm:w-[220px]">
+              <SelectValue placeholder="Todas as disciplinas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as disciplinas</SelectItem>
+              {subjects.map((s) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={levelFilter} onValueChange={(v) => setLevelFilter(v as 'all' | '1' | '2')}>
+            <SelectTrigger className="w-full sm:w-[220px]">
+              <SelectValue placeholder="Todos os níveis" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os níveis</SelectItem>
+              <SelectItem value="1">{formatCompetitionLevel(1)}</SelectItem>
+              <SelectItem value="2">{formatCompetitionLevel(2)}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Tabs defaultValue="abertas" className="space-y-4">
@@ -328,7 +438,11 @@ export default function CompetitionsStudent() {
               {proximas.length === 0 ? emptyMessage : <CompetitionCardList list={proximas} />}
             </TabsContent>
             <TabsContent value="minhas" className="mt-4">
-              {minhasInscricoes.length === 0 ? emptyMessage : <CompetitionCardList list={minhasInscricoes} />}
+              {minhasInscricoes.length === 0 ? (
+                emptyMessage
+              ) : (
+                <CompetitionCardList list={minhasInscricoes} variant="my_enrollments" />
+              )}
             </TabsContent>
             <TabsContent value="encerradas" className="mt-4">
               {encerradas.length === 0 ? emptyMessage : <CompetitionCardList list={encerradas} />}
