@@ -116,6 +116,8 @@ export function CompetitionRanking({
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<number | null>(null);
+  const [timeSinceUpdate, setTimeSinceUpdate] = useState<string>('');
 
   const fetchRanking = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -137,6 +139,10 @@ export function CompetitionRanking({
       const firstThree = res.entries.filter((e) => e.position >= 1 && e.position <= 3);
       if (firstThree.length > 0) {
         setTop3((prev) => (prev.length >= 3 ? prev : firstThree));
+      }
+      // Atualizar timestamp da última atualização
+      if (isRealtime) {
+        setLastUpdateTime(Date.now());
       }
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
@@ -161,6 +167,33 @@ export function CompetitionRanking({
     const interval = setInterval(() => fetchRanking(true), POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [isRealtime, competitionId, fetchRanking]);
+
+  // Atualizar contador de tempo desde última atualização
+  useEffect(() => {
+    if (!isRealtime || !lastUpdateTime) {
+      setTimeSinceUpdate('');
+      return;
+    }
+
+    const updateTimeSince = () => {
+      const now = Date.now();
+      const diffSeconds = Math.floor((now - lastUpdateTime) / 1000);
+      
+      if (diffSeconds < 60) {
+        setTimeSinceUpdate(`${diffSeconds}s`);
+      } else if (diffSeconds < 3600) {
+        const minutes = Math.floor(diffSeconds / 60);
+        setTimeSinceUpdate(`${minutes}min`);
+      } else {
+        const hours = Math.floor(diffSeconds / 3600);
+        setTimeSinceUpdate(`${hours}h`);
+      }
+    };
+
+    updateTimeSince();
+    const interval = setInterval(updateTimeSince, 1000);
+    return () => clearInterval(interval);
+  }, [isRealtime, lastUpdateTime]);
 
   const podiumOrder: (1 | 2 | 3)[] = [2, 1, 3]; // 2º à esquerda, 1º centro, 3º à direita
   const listEntries = data?.entries ?? [];
@@ -193,19 +226,26 @@ export function CompetitionRanking({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <h2 className="text-xl font-bold">Ranking - {competitionName}</h2>
           {isRealtime && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fetchRanking(true)}
-              disabled={refreshing}
-            >
-              {refreshing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4 mr-1" />
+            <div className="flex items-center gap-2">
+              {timeSinceUpdate && (
+                <Badge variant="outline" className="text-xs">
+                  Última atualização: há {timeSinceUpdate}
+                </Badge>
               )}
-              Atualizar ranking
-            </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchRanking(true)}
+                disabled={refreshing}
+              >
+                {refreshing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                )}
+                Atualizar ranking
+              </Button>
+            </div>
           )}
         </div>
       )}
