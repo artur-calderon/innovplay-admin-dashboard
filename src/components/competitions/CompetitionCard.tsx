@@ -35,7 +35,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { Competition, CompetitionStatus } from '@/types/competition-types';
 import { formatCompetitionLevel } from '@/utils/competitionLevel';
-import { CompetitionCountdown } from '@/components/Competitions/CompetitionCountdown';
+import { CompetitionCountdown } from '@/components/competitions/CompetitionCountdown';
 
 interface CompetitionCardProps {
   competition: Competition;

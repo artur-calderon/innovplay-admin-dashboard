@@ -33,7 +33,7 @@ import { api } from '@/lib/api';
 import { EnrollConfirmationModal } from '@/components/competitions/EnrollConfirmationModal';
 import { formatCompetitionLevel } from '@/utils/competitionLevel';
 import { getSubjectColors } from '@/utils/competitionSubjectColors';
-import { CompetitionCountdown } from '@/components/Competitions/CompetitionCountdown';
+import { CompetitionCountdown } from '@/components/competitions/CompetitionCountdown';
 
 const OPEN_STATUSES = ['aberta', 'enrollment_open', 'active', 'scheduled'];
 
