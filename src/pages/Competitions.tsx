@@ -31,10 +31,10 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, Loader2, Filter, Trophy, Search, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
+import { formatCompetitionLevel } from '@/utils/competitionLevel';
 import {
   getCompetitions,
   deleteCompetition,
-  publishCompetition,
   cancelCompetition,
 } from '@/services/competitionsApi';
 import type { Competition, CompetitionFilters } from '@/types/competition-types';
@@ -57,6 +57,36 @@ const DEFAULT_FILTERS: CompetitionFilters = {
 
 const DEBOUNCE_MS = 350;
 const PAGE_SIZE = 20;
+
+/**
+ * Validação mínima dos campos de competição usados nesta tela
+ * antes de seguir para renderização/ações.
+ */
+function isValidCompetitionListItem(raw: unknown): raw is Competition {
+  if (!raw || typeof raw !== 'object') return false;
+  const c = raw as Competition;
+
+  if (typeof c.id !== 'string') return false;
+  if (typeof c.name !== 'string') return false;
+  if (typeof c.subject_id !== 'string') return false;
+  if (typeof c.level !== 'number') return false;
+  if (typeof c.status !== 'string') return false;
+
+  if (c.subject_name != null && typeof c.subject_name !== 'string') return false;
+
+  const dateFields: (keyof Competition)[] = [
+    'enrollment_start',
+    'enrollment_end',
+    'application',
+    'expiration',
+  ];
+  for (const field of dateFields) {
+    const value = c[field];
+    if (value != null && typeof value !== 'string') return false;
+  }
+
+  return true;
+}
 
 function canManageCompetitions(role: string): boolean {
   const r = (role || '').toLowerCase();
@@ -81,11 +111,10 @@ export default function Competitions() {
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [addQuestionsId, setAddQuestionsId] = useState<string | null>(null);
-  const [editDatesId, setEditDatesId] = useState<string | null>(null);
+  const [schedulePublishId, setSchedulePublishId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
-  const [publishId, setPublishId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
@@ -106,8 +135,17 @@ export default function Competitions() {
     try {
       const params = { ...debouncedFilters, page, page_size: PAGE_SIZE };
       const list = await getCompetitions(params);
-      setCompetitions(Array.isArray(list) ? list : []);
-      setTotal(list?.length ?? 0);
+      const rawList = Array.isArray(list) ? list : [];
+      const safeList = rawList.filter(isValidCompetitionListItem);
+
+      if (safeList.length !== rawList.length) {
+        console.warn(
+          '[Competitions] Alguns itens de competição foram descartados por falha de validação de campos esperados.',
+        );
+      }
+
+      setCompetitions(safeList);
+      setTotal(safeList.length);
     } catch (error) {
       console.error('Erro ao carregar competições:', error);
       toast({
@@ -155,11 +193,10 @@ export default function Competitions() {
 
   const handleView = (id: string) => navigate(`/app/competitions/${id}`);
   const handleEdit = (id: string) => setEditId(id);
-  const handleEditDates = (id: string) => setEditDatesId(id);
+  const handleScheduleAndPublish = (id: string) => setSchedulePublishId(id);
   const handleAddQuestions = (id: string) => setAddQuestionsId(id);
   const handleDeleteClick = (id: string) => setDeleteId(id);
   const handleCancelClick = (id: string) => setCancelId(id);
-  const handlePublishClick = (id: string) => setPublishId(id);
 
   const runAction = async (
     id: string,
@@ -201,19 +238,13 @@ export default function Competitions() {
     setCancelReason('');
   };
 
-  const confirmPublish = async () => {
-    if (!publishId) return;
-    await runAction(publishId, () => publishCompetition(publishId), 'Competição publicada.', 'Não foi possível publicar.');
-    setPublishId(null);
-  };
-
   const competitionForQuestions = useMemo(
     () => (addQuestionsId ? competitions.find((c) => c.id === addQuestionsId) : null),
     [addQuestionsId, competitions]
   );
-  const competitionForDates = useMemo(
-    () => (editDatesId ? competitions.find((c) => c.id === editDatesId) : null),
-    [editDatesId, competitions]
+  const competitionForSchedule = useMemo(
+    () => (schedulePublishId ? competitions.find((c) => c.id === schedulePublishId) : null),
+    [schedulePublishId, competitions]
   );
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -228,7 +259,7 @@ export default function Competitions() {
             Competições
           </h1>
           <p className="mt-1 text-muted-foreground">
-            Lista de competições (admin/coordenador).
+            Lista de competições cadastradas.
           </p>
         </div>
         {canManage && (
@@ -276,7 +307,7 @@ export default function Competitions() {
                         <SelectItem value="aberta">Abertas</SelectItem>
                         <SelectItem value="enrollment_open">Inscrições abertas</SelectItem>
                         <SelectItem value="active">Ativa</SelectItem>
-                        <SelectItem value="completed">Encerradas</SelectItem>
+                        <SelectItem value="completed">Finalizadas</SelectItem>
                         <SelectItem value="cancelled">Canceladas</SelectItem>
                       </SelectContent>
                     </Select>
@@ -297,8 +328,8 @@ export default function Competitions() {
                       <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Todos</SelectItem>
-                        <SelectItem value="1">Nível 1</SelectItem>
-                        <SelectItem value="2">Nível 2</SelectItem>
+                        <SelectItem value="1">{formatCompetitionLevel(1)}</SelectItem>
+                        <SelectItem value="2">{formatCompetitionLevel(2)}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -337,11 +368,10 @@ export default function Competitions() {
                 competition={comp}
                 onView={handleView}
                 onEdit={canManage ? handleEdit : undefined}
-                onEditDates={canManage ? handleEditDates : undefined}
                 onCancel={canManage ? handleCancelClick : undefined}
-                onPublish={canManage ? handlePublishClick : undefined}
                 onDelete={canManage ? handleDeleteClick : undefined}
                 onAddQuestions={canManage ? handleAddQuestions : undefined}
+                onScheduleAndPublish={canManage ? handleScheduleAndPublish : undefined}
               />
             ))}
           </div>
@@ -378,11 +408,11 @@ export default function Competitions() {
       />
 
       <EditCompetitionApplicationModal
-        competitionId={editDatesId}
-        competitionName={competitionForDates?.name ?? ''}
-        open={!!editDatesId}
-        onClose={() => setEditDatesId(null)}
-        onSuccess={() => { fetchCompetitions(); setEditDatesId(null); }}
+        competitionId={schedulePublishId}
+        competitionName={competitionForSchedule?.name ?? ''}
+        open={!!schedulePublishId}
+        onClose={() => setSchedulePublishId(null)}
+        onSuccess={() => { fetchCompetitions(); setSchedulePublishId(null); }}
       />
 
       <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
@@ -415,18 +445,6 @@ export default function Competitions() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={!!publishId} onOpenChange={(o) => !o && setPublishId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Publicar competição</AlertDialogTitle>
-            <AlertDialogDescription>A competição ficará aberta. Continuar?</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={actionLoading}>Voltar</AlertDialogCancel>
-            <AlertDialogAction disabled={actionLoading} onClick={confirmPublish}>Publicar</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

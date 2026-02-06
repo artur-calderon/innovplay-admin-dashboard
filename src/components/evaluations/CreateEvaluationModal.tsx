@@ -832,7 +832,10 @@ export function CreateEvaluationModal({
     if (invalidQuestions.length > 0) {
       toast({
         title: 'Erro de Validação',
-        description: `${invalidQuestions.length} questão(ões): ${ERROR_MESSAGES.INVALID_QUESTIONS}`,
+        description:
+          invalidQuestions.length === 1
+            ? `1 questão: ${ERROR_MESSAGES.INVALID_QUESTIONS}`
+            : `${invalidQuestions.length} questões: ${ERROR_MESSAGES.INVALID_QUESTIONS}`,
         variant: 'destructive',
       });
       return;
@@ -2145,7 +2148,10 @@ export function CreateEvaluationModal({
                   <div>
                     <h3 className="text-lg font-semibold">Questões da Avaliação</h3>
                     <p className="text-sm text-muted-foreground">
-                      Total: {allQuestions.length} questão(ões) selecionada(s)
+                      Total: {allQuestions.length}{' '}
+                      {allQuestions.length === 1
+                        ? 'questão selecionada'
+                        : 'questões selecionadas'}
                     </p>
                   </div>
                 </div>
@@ -2198,7 +2204,8 @@ export function CreateEvaluationModal({
                                 <Book className="h-5 w-5" />
                                 <h3 className="text-lg font-medium">{subject.name}</h3>
                                 <Badge variant="outline">
-                                  {subjectQuestions.length} questão(ões)
+                                  {subjectQuestions.length}{' '}
+                                  {subjectQuestions.length === 1 ? 'questão' : 'questões'}
                                 </Badge>
                               </div>
                               <div className="flex gap-2">

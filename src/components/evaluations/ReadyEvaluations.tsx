@@ -338,7 +338,10 @@ const EvaluationsTable = ({
       {selectedIds.length > 0 && (
         <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-950/30 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
           <span className="text-sm text-blue-800 dark:text-blue-400">
-            {selectedIds.length} avaliação(ões) selecionada(s)
+            {selectedIds.length}{' '}
+            {selectedIds.length === 1
+              ? 'avaliação selecionada'
+              : 'avaliações selecionadas'}
           </span>
           <div className="flex gap-2">
             <Button
@@ -377,7 +380,7 @@ const EvaluationsTable = ({
                         : showMyEvaluations 
                           ? evaluations.length 
                           : pagination?.total || 0
-                      } avaliação(ões) encontrada(s)
+                      } {total === 1 ? 'avaliação encontrada' : 'avaliações encontradas'}
                     </span>
                   )}
                 </div>
@@ -1017,7 +1020,10 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
 
       toast({
         title: "Exportação concluída!",
-        description: `Arquivo Excel gerado com sucesso para ${selectedIds.length} avaliação(ões).`,
+        description:
+          selectedIds.length === 1
+            ? 'Arquivo Excel gerado com sucesso para 1 avaliação.'
+            : `Arquivo Excel gerado com sucesso para ${selectedIds.length} avaliações.`,
       });
     } catch (error: any) {
       console.error('Erro ao exportar para Excel:', error);

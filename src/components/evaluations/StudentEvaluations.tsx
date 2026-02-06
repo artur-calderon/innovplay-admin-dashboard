@@ -358,9 +358,13 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
           console.warn('Dados de avaliação incompletos:', testData);
           return false;
         }
-        // Excluir olimpíadas
-        const type = testData.type || '';
-        if (type === 'OLIMPIADA') {
+        // Excluir olimpíadas, competições e avaliações sem tipo (têm suas próprias interfaces)
+        const type = (testData.type || '').toUpperCase();
+        if (!testData.type || 
+            type === 'OLIMPIADAS' || 
+            type === 'OLIMPIADA' || 
+            type === 'COMPETICAO' || 
+            type === 'COMPETIÇÃO') {
           return false;
         }
         // ✅ NOVO: Incluir todas as avaliações, não apenas as não concluídas
@@ -966,7 +970,9 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-orange-800 dark:text-orange-200">
-              Você tem {activeSessions.length} sessão(ões) ativa(s) que podem estar impedindo o início de novas avaliações ou olimpíadas.
+              Você tem {activeSessions.length}{' '}
+              {activeSessions.length === 1 ? 'sessão ativa' : 'sessões ativas'} que podem
+              estar impedindo o início de novas avaliações ou olimpíadas.
             </p>
             <div className="space-y-2">
               {activeSessions.map((session) => (

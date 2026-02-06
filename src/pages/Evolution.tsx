@@ -950,7 +950,10 @@ export default function Evolution() {
                     Avaliações Selecionadas
                   </DialogTitle>
                   <DialogDescription>
-                    {selectedEvaluationsForComparison.length} de {MAX_EVALUATIONS} avaliação(ões) selecionada(s) para comparação
+                    {selectedEvaluationsForComparison.length} de {MAX_EVALUATIONS}{' '}
+                    {selectedEvaluationsForComparison.length === 1
+                      ? 'avaliação selecionada para comparação'
+                      : 'avaliações selecionadas para comparação'}
                     {selectedEvaluationsForComparison.length >= MAX_EVALUATIONS && (
                       <span className="block mt-1 text-amber-600 dark:text-amber-400 text-xs">
                         Limite máximo atingido. Remova uma avaliação para adicionar outra.
@@ -1162,7 +1165,10 @@ export default function Evolution() {
 
                     toast({
                       title: "Excel exportado com sucesso!",
-                      description: `Arquivo gerado com sucesso para ${selectedEvaluationsForComparison.length} avaliação(ões).`,
+                      description:
+                        selectedEvaluationsForComparison.length === 1
+                          ? 'Arquivo gerado com sucesso para 1 avaliação.'
+                          : `Arquivo gerado com sucesso para ${selectedEvaluationsForComparison.length} avaliações.`,
                     });
                   } catch (error: any) {
                     console.error('Erro ao exportar Excel:', error);

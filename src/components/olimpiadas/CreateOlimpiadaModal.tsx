@@ -855,7 +855,10 @@ export function CreateOlimpiadaModal({
                   <div>
                     <h3 className="text-lg font-semibold">Questões da Olimpíada</h3>
                     <p className="text-sm text-muted-foreground">
-                      Total: {selectedQuestions.length} questão(ões) selecionada(s)
+                      Total: {selectedQuestions.length}{' '}
+                      {selectedQuestions.length === 1
+                        ? 'questão selecionada'
+                        : 'questões selecionadas'}
                     </p>
                   </div>
                 </div>
@@ -885,7 +888,8 @@ export function CreateOlimpiadaModal({
                               <Book className="h-5 w-5 text-yellow-600" />
                               <h3 className="text-lg font-medium">{subject.name}</h3>
                               <Badge variant="outline" className="bg-yellow-50 dark:bg-yellow-950/20 border-yellow-300 dark:border-yellow-700">
-                                {subjectQuestions.length} questão(ões)
+                                {subjectQuestions.length}{' '}
+                                {subjectQuestions.length === 1 ? 'questão' : 'questões'}
                               </Badge>
                             </div>
                             <div className="flex gap-2">

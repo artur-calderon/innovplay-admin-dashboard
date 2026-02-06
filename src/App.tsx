@@ -105,6 +105,8 @@ const CompetitionList = React.lazy(() => import("./pages/Competitions"));
 const CompetitionDetails = React.lazy(() => import("./pages/CompetitionDetails"));
 const CompetitionsStudent = React.lazy(() => import("./pages/CompetitionsStudent"));
 const CompetitionStudentDetail = React.lazy(() => import("./pages/CompetitionStudentDetail"));
+const CompetitionTest = React.lazy(() => import("./pages/CompetitionTest"));
+const CompetitionRankingPage = React.lazy(() => import("./pages/CompetitionRanking"));
 
 // Loading component
 const LoadingSpinner = () => (
@@ -186,7 +188,9 @@ const App = () => {
               <Route path="/aluno/moedas/historico" element={<PrivateRoute><CoinHistory /></PrivateRoute>} />
               <Route path="/aluno/competitions" element={<PrivateRoute><CompetitionsStudent /></PrivateRoute>} />
               <Route path="/aluno/competitions/:id" element={<PrivateRoute><CompetitionStudentDetail /></PrivateRoute>} />
-              <Route path="/aluno/competitions/:id/fazer" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/aluno/competitions/:id/fazer" element={<PrivateRoute><CompetitionTest /></PrivateRoute>} />
+              <Route path="/aluno/competitions/:id/test" element={<PrivateRoute><CompetitionTest /></PrivateRoute>} />
+              <Route path="/aluno/competitions/:id/ranking" element={<PrivateRoute><CompetitionRankingPage /></PrivateRoute>} />
             </Route>
 
             {/* Rota de avaliação em tela cheia para alunos */}

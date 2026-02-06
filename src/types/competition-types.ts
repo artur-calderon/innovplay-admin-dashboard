@@ -93,7 +93,10 @@ export interface Competition {
   created_by?: string;
   created_at?: string;
   updated_at?: string;
+  /** IDs de questões associadas diretamente à competição (modo manual ou legado). */
   question_ids?: string[];
+  /** IDs de questões sorteadas a partir de test_id (modo auto_random). */
+  selected_question_ids?: string[];
   enrolled_count?: number;
   available_slots?: number;
   is_enrollment_open?: boolean;
@@ -101,6 +104,12 @@ export interface Competition {
   is_finished?: boolean;
   /** Presente em GET /competitions/available e GET /competitions/:id/details */
   is_enrolled?: boolean;
+  /** Status da prova do aluno: not_started | in_progress | completed (opcional no backend). Backend pode enviar 'finalizada' ou 'concluída'. */
+  attempt_status?: 'not_started' | 'in_progress' | 'completed' | 'finalizada' | 'finalizado' | 'concluída' | 'concluido';
+  /** Data/hora em que o aluno iniciou a prova (para tempo decorrido). */
+  attempt_started_at?: string;
+  /** Data/hora em que o aluno finalizou a prova. Se presente, considera prova concluída mesmo sem attempt_status. */
+  attempt_completed_at?: string;
 }
 
 export interface CompetitionFilters {

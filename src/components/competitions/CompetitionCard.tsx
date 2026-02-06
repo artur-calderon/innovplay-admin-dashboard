@@ -34,16 +34,17 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { Competition, CompetitionStatus } from '@/types/competition-types';
+import { formatCompetitionLevel } from '@/utils/competitionLevel';
 
 interface CompetitionCardProps {
   competition: Competition;
   onView?: (id: string) => void;
   onEdit?: (id: string) => void;
-  onEditDates?: (id: string) => void;
   onCancel?: (id: string) => void;
-  onPublish?: (id: string) => void;
   onDelete?: (id: string) => void;
   onAddQuestions?: (id: string) => void;
+  /** Fluxo unificado: abre modal para agendar inscrição/prova e publicar. */
+  onScheduleAndPublish?: (id: string) => void;
   className?: string;
 }
 
@@ -52,8 +53,16 @@ function isDraft(status: CompetitionStatus): boolean {
   return s === 'draft' || s === 'rascunho';
 }
 
-function getStatusConfig(status: CompetitionStatus) {
+const finalizadaConfig = {
+  label: 'Finalizada',
+  className: 'bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-950/50 dark:text-violet-200 dark:border-violet-800',
+  icon: CheckCircle2,
+};
+
+function getStatusConfig(status: CompetitionStatus, competition?: { expiration?: string } | null) {
   const s = String(status).toLowerCase();
+  const applicationEnded = competition?.expiration ? new Date(competition.expiration).getTime() < Date.now() : false;
+  if (s === 'completed' || s === 'encerrada' || applicationEnded) return finalizadaConfig;
   if (s === 'draft' || s === 'rascunho')
     return {
       label: 'Rascunho',
@@ -86,11 +95,7 @@ function getStatusConfig(status: CompetitionStatus) {
         icon: Play,
       };
     case 'completed':
-      return {
-        label: 'Concluída',
-        className: 'bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-950/50 dark:text-violet-200 dark:border-violet-800',
-        icon: CheckCircle2,
-      };
+      return finalizadaConfig;
     case 'cancelled':
       return {
         label: 'Cancelada',
@@ -125,14 +130,13 @@ export function CompetitionCard({
   competition,
   onView,
   onEdit,
-  onEditDates,
   onCancel,
-  onPublish,
   onDelete,
   onAddQuestions,
+  onScheduleAndPublish,
   className,
 }: CompetitionCardProps) {
-  const statusConfig = getStatusConfig(competition.status);
+  const statusConfig = getStatusConfig(competition.status, competition);
   const StatusIcon = statusConfig.icon;
   const draft = isDraft(competition.status);
   const cancelled = String(competition.status).toLowerCase() === 'cancelled' || String(competition.status).toLowerCase() === 'cancelada';
@@ -149,7 +153,7 @@ export function CompetitionCard({
             <span className="truncate">{competition.name}</span>
           </CardTitle>
           <CardDescription>
-            {competition.subject_name ?? competition.subject_id} · Nível {competition.level}
+            {competition.subject_name ?? competition.subject_id} · {formatCompetitionLevel(competition.level)}
           </CardDescription>
         </div>
         <Badge variant="secondary" className={cn('shrink-0 border font-medium', statusConfig.className)}>
@@ -191,10 +195,14 @@ export function CompetitionCard({
               Editar
             </Button>
           )}
-          {onPublish && draft && (
-            <Button size="sm" onClick={() => onPublish(competition.id)}>
+          {onScheduleAndPublish && draft && (
+            <Button
+              size="sm"
+              onClick={() => onScheduleAndPublish(competition.id)}
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+            >
               <Send className="mr-1 h-4 w-4" />
-              Publicar
+              Aplicação
             </Button>
           )}
           {onAddQuestions && canAddQuestions && draft && (
@@ -203,14 +211,8 @@ export function CompetitionCard({
               Questões
             </Button>
           )}
-          {onEditDates && draft && (
-            <Button variant="outline" size="sm" onClick={() => onEditDates(competition.id)}>
-              <CalendarRange className="mr-1 h-4 w-4" />
-              Datas
-            </Button>
-          )}
         </div>
-        {(onCancel || onDelete) && (
+        {onDelete && (draft || cancelled) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon">
@@ -218,24 +220,13 @@ export function CompetitionCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {onDelete && (draft || cancelled) && (
-                <DropdownMenuItem
-                  className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-                  onClick={() => onDelete(competition.id)}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Excluir
-                </DropdownMenuItem>
-              )}
-              {onCancel && !draft && !cancelled && (
-                <DropdownMenuItem
-                  className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-                  onClick={() => onCancel(competition.id)}
-                >
-                  <XCircle className="mr-2 h-4 w-4" />
-                  Cancelar competição
-                </DropdownMenuItem>
-              )}
+              <DropdownMenuItem
+                className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                onClick={() => onDelete(competition.id)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Excluir
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
