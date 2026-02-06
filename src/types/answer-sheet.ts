@@ -79,22 +79,29 @@ export interface Student {
 export interface Gabarito {
   id: string;
   test_id: string | null;
-  class_id: string;
-  class_name: string;
-  num_questions: number;
-  use_blocks: boolean;
+  class_id?: string;
+  class_name?: string;
+  num_questions?: number;
+  use_blocks?: boolean;
   title: string;
   school_name: string;
-  municipality: string;
-  state: string;
-  grade_name: string;
-  institution: string;
+  municipality?: string;
+  state?: string;
+  grade_name?: string;
+  institution?: string;
   created_at: string;
-  created_by: string;
-  creator_name: string;
+  created_by?: string;
+  creator_name?: string;
   // Novos campos para batch
   is_batch?: boolean;
   batch_id?: string | null;
+  // Formato lista (GET /gabaritos): escopo escola/série — classes_count só turmas que geraram PDF
+  scope_type?: 'class' | 'grade' | 'school';
+  classes_count?: number;
+  students_count?: number;
+  generation_status?: string;
+  can_download?: boolean;
+  minio_url?: string;
 }
 
 export interface GabaritosResponse {
@@ -131,6 +138,12 @@ export interface GenerateResponseData {
   polling_url: string;
 }
 
+/** Turma pulada na geração (ex.: sem alunos cadastrados) */
+export interface SkippedClass {
+  class_name: string;
+  grade_name: string;
+}
+
 export interface TaskStatusResult {
   success: boolean;
   scope: 'class' | 'grade' | 'school';
@@ -140,11 +153,23 @@ export interface TaskStatusResult {
   total_students: number;
   total_pdfs: number;
   minio_url: string;
-  download_size_bytes: number;
+  download_size_bytes?: number;
   classes: BatchClass[];
+  /** Turmas puladas (ex.: sem alunos) — mensagens legíveis em warnings */
+  skipped_classes?: SkippedClass[];
   // Campos antigos (quando scope === 'class')
   sheets?: any[];
   generated_sheets?: number;
+}
+
+/** Resposta da rota GET /task/<task_id>/status */
+export interface TaskStatusResponse {
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  message?: string;
+  task_id: string;
+  warnings?: string[];
+  result?: TaskStatusResult;
+  error?: string;
 }
 
 export interface BatchDownloadResponse {

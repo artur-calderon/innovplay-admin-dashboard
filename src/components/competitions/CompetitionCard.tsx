@@ -61,7 +61,14 @@ const finalizadaConfig = {
 };
 
 function getStatusConfig(status: CompetitionStatus, competition?: { expiration?: string; application?: string } | null) {
+function getStatusConfig(status: CompetitionStatus, competition?: { expiration?: string; application?: string } | null) {
   const s = String(status).toLowerCase();
+  const now = Date.now();
+  // Só considerar finalizada se expiration passou E application também já passou (prova começou e terminou)
+  const applicationStarted = competition?.application ? new Date(competition.application).getTime() <= now : false;
+  const applicationEnded = competition?.expiration ? new Date(competition.expiration).getTime() < now : false;
+  const isActuallyFinished = applicationStarted && applicationEnded;
+  if (s === 'completed' || s === 'encerrada' || isActuallyFinished) return finalizadaConfig;
   const now = Date.now();
   // Só considerar finalizada se expiration passou E application também já passou (prova começou e terminou)
   const applicationStarted = competition?.application ? new Date(competition.application).getTime() <= now : false;
@@ -179,6 +186,17 @@ export function CompetitionCard({
               variant="secondary"
             />
           </div>
+          <div className="flex flex-col gap-1">
+            <p className="flex items-center gap-2 text-muted-foreground">
+              <Calendar className="h-3.5 w-3.5 shrink-0" />
+              Inscrição até: {formatDate(competition.enrollment_end)}
+            </p>
+            <CompetitionCountdown
+              targetDate={competition.enrollment_end}
+              label="Inscrição fecha em"
+              variant="secondary"
+            />
+          </div>
         )}
         {competition.application && (
           <div className="flex flex-col gap-1">
@@ -192,8 +210,30 @@ export function CompetitionCard({
               variant="secondary"
             />
           </div>
+          <div className="flex flex-col gap-1">
+            <p className="flex items-center gap-2 text-muted-foreground">
+              <Clock className="h-3.5 w-3.5 shrink-0" />
+              Aplicação: {formatDate(competition.application)}
+            </p>
+            <CompetitionCountdown
+              targetDate={competition.application}
+              label="Prova abre em"
+              variant="secondary"
+            />
+          </div>
         )}
         {competition.expiration && (
+          <div className="flex flex-col gap-1">
+            <p className="flex items-center gap-2 text-muted-foreground">
+              <CalendarRange className="h-3.5 w-3.5 shrink-0" />
+              Expiração: {formatDate(competition.expiration)}
+            </p>
+            <CompetitionCountdown
+              targetDate={competition.expiration}
+              label="Prova fecha em"
+              variant="secondary"
+            />
+          </div>
           <div className="flex flex-col gap-1">
             <p className="flex items-center gap-2 text-muted-foreground">
               <CalendarRange className="h-3.5 w-3.5 shrink-0" />
