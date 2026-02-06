@@ -601,11 +601,14 @@ const StudentDashboard = () => {
     // Mapear os dados da nova API para o formato esperado (com proteção contra null/undefined)
     const mappedEvaluations = mapCompletedToEvaluations(completedData);
 
-    // Remover olimpíadas da lista de avaliações usadas no dashboard do aluno
+    // Remover olimpíadas e competições da lista de avaliações usadas no dashboard do aluno
     const filteredEvaluations = mappedEvaluations.filter((evaluation) => {
       const type = evaluation.type?.toLowerCase() ?? '';
       // Considera qualquer tipo que contenha "olimpi" (olimpíada, olimpiada, etc.) como olimpíada
-      return !type.includes('olimpi');
+      const isOlimpiada = type.includes('olimpi');
+      // Considera qualquer tipo que contenha "compet" (competição, competicao, etc.) como competição
+      const isCompeticao = type.includes('compet');
+      return !isOlimpiada && !isCompeticao;
     });
     
     console.log('📊 Avaliações mapeadas (sem olimpíadas):', filteredEvaluations);

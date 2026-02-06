@@ -26,7 +26,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { Loader2, ArrowLeft, Calendar, Clock, Trophy, BookOpen, Coins, Users, Award, Pencil, Send, Trash2, XCircle, UserCheck, Flag, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, ArrowLeft, Calendar, Clock, Trophy, BookOpen, Coins, Users, Award, Pencil, Send, Trash2, XCircle, UserCheck, Flag, ChevronDown, ChevronUp, BarChart3 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
@@ -59,11 +59,14 @@ import { api } from '@/lib/api';
 
 const FINALIZADA_STYLE = 'bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-200';
 
-function getStatusConfig(status: CompetitionStatus, competition?: { expiration?: string } | null) {
+function getStatusConfig(status: CompetitionStatus, competition?: { expiration?: string; application?: string } | null) {
   const s = String(status).toLowerCase();
   const now = Date.now();
+  // Só considerar finalizada se expiration passou E application também já passou (prova começou e terminou)
+  const applicationStarted = competition?.application ? new Date(competition.application).getTime() <= now : false;
   const applicationEnded = competition?.expiration ? new Date(competition.expiration).getTime() < now : false;
-  if (s === 'completed' || s === 'encerrada' || applicationEnded) {
+  const isActuallyFinished = applicationStarted && applicationEnded;
+  if (s === 'completed' || s === 'encerrada' || isActuallyFinished) {
     return { label: 'Finalizada', className: FINALIZADA_STYLE };
   }
   if (s === 'draft' || s === 'rascunho') return { label: 'Rascunho', className: 'bg-muted text-muted-foreground' };
@@ -265,15 +268,18 @@ export default function CompetitionDetails() {
 
   const statusConfig = competition ? getStatusConfig(competition.status, competition) : null;
   const s = competition ? String(competition.status).toLowerCase() : '';
-  const applicationEnded = competition?.expiration ? new Date(competition.expiration).getTime() < Date.now() : false;
+  const now = Date.now();
+  const applicationStarted = competition?.application ? new Date(competition.application).getTime() <= now : false;
+  const applicationEnded = competition?.expiration ? new Date(competition.expiration).getTime() < now : false;
+  const isActuallyFinished = applicationStarted && applicationEnded;
   const isDraft = competition && (s === 'rascunho' || s === 'draft');
   const isCancelled = competition && (s === 'cancelada' || s === 'cancelled');
   const isAberta = competition && (s === 'aberta' || s === 'enrollment_open' || s === 'active');
-  const isCompleted = competition && (s === 'completed' || s === 'encerrada' || applicationEnded);
+  const isCompleted = competition && (s === 'completed' || s === 'encerrada' || isActuallyFinished);
   const isEncerrada = competition && (s === 'completed' || s === 'encerrada');
   const isOpenOrActive = competition && (s === 'aberta' || s === 'enrollment_open' || s === 'active' || s === 'em_andamento');
   /** Botão "Finalizar competição": data de expiração já passou e competição ainda aberta/em andamento. */
-  const canFinalize = isOpenOrActive && !!applicationEnded;
+  const canFinalize = isOpenOrActive && isActuallyFinished;
   /** Só pode excluir direto em rascunho ou já cancelada; aberta/finalizada precisa cancelar antes. */
   const canDeleteDirectly = isDraft || isCancelled;
   /** Cancelar competição desabilitado na UI (não exibir no card). */
@@ -427,6 +433,11 @@ export default function CompetitionDetails() {
               {canFinalize && (
                 <Button size="sm" onClick={handleFinalize} disabled={actionLoading}>
                   <Flag className="mr-2 h-4 w-4" /> Finalizar
+                </Button>
+              )}
+              {isCompleted && (
+                <Button variant="outline" size="sm" onClick={() => navigate(`/app/competitions/${id}/analytics`)}>
+                  <BarChart3 className="mr-2 h-4 w-4" /> Analytics
                 </Button>
               )}
               {canCancel && (
