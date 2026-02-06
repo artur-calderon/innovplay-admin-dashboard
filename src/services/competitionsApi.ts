@@ -369,3 +369,43 @@ export async function finalizeCompetition(competitionId: string): Promise<{ mess
   const { data } = await api.post<{ message?: string }>(`/competitions/${competitionId}/finalize`);
   return data ?? {};
 }
+
+/** Dados de analytics da competição (espelho do backend) */
+export interface CompetitionAnalytics {
+  /** Taxa de inscrição (%) */
+  enrollment_rate: number;
+  /** Taxa de participação (%) */
+  participation_rate: number;
+  /** Detalhes de inscrição */
+  enrollment: {
+    eligible_students: number;
+    enrolled_students: number;
+    rate: number;
+  };
+  /** Detalhes de participação */
+  participation: {
+    enrolled_students: number;
+    participated_students: number;
+    rate: number;
+  };
+  /** Médias agregadas */
+  averages: {
+    grade: number | null;
+    duration_minutes: number | null;
+    correct_answers: number | null;
+    proficiency: number | null;
+  };
+  /** Distribuição de notas em faixas */
+  grade_distribution: {
+    range: string;
+    count: number;
+  }[];
+  /** Top 10 alunos no ranking da competição */
+  top_10: CompetitionRankingEntry[];
+}
+
+/** Buscar analytics da competição (sem fallback; toda a lógica vem do backend) */
+export async function getCompetitionAnalytics(competitionId: string): Promise<CompetitionAnalytics> {
+  const { data } = await api.get<CompetitionAnalytics>(`/competitions/${competitionId}/analytics`);
+  return data;
+}

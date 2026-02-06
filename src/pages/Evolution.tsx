@@ -476,16 +476,37 @@ export default function Evolution() {
               const detailedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 100, filters);
               
               if (detailedResponse?.resultados_detalhados?.avaliacoes) {
-                // Filtrar apenas avaliações com status concluída/finalizada E excluir olimpíadas
+                // Filtrar apenas avaliações com status concluída/finalizada
+                // e excluir olimpíadas e competições
                 const evaluationsWithResults = detailedResponse.resultados_detalhados.avaliacoes
                   .filter(evaluation => {
+                    const rawType = (evaluation.type || evaluation.tipo || '').toString().toUpperCase();
+                    const title = (evaluation.titulo || evaluation.title || '').toString().toUpperCase();
+
                     // Excluir olimpíadas
-                    const type = evaluation.type || evaluation.tipo;
-                    const title = evaluation.titulo || evaluation.title || '';
-                    const isOlimpiada = type === 'OLIMPIADA' || 
-                                       title.includes('[OLIMPÍADA]') || 
-                                       title.toUpperCase().includes('OLIMPÍADA');
+                    const isOlimpiada =
+                      rawType === 'OLIMPIADA' ||
+                      rawType === 'OLIMPÍADA' ||
+                      title.includes('[OLIMPÍADA]') ||
+                      title.includes('OLIMPIADA') ||
+                      title.includes('OLIMPÍADA');
+
                     if (isOlimpiada) {
+                      console.log(`⚠️ Removendo avaliação ${evaluation.id} do tipo OLIMPIADA da tela de evolução`);
+                      return false;
+                    }
+
+                    // Excluir competições
+                    const isCompeticao =
+                      rawType === 'COMPETICAO' ||
+                      rawType === 'COMPETIÇÃO' ||
+                      rawType.includes('COMPET') ||
+                      title.includes('COMPETICAO') ||
+                      title.includes('COMPETIÇÃO') ||
+                      title.includes('COMPET');
+
+                    if (isCompeticao) {
+                      console.log(`⚠️ Removendo avaliação ${evaluation.id} do tipo COMPETICAO da tela de evolução`);
                       return false;
                     }
                     

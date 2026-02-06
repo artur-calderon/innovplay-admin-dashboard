@@ -60,6 +60,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { getRoleDisplayName } from "@/lib/constants";
 import { AvatarPreview } from "@/components/profile/AvatarPreview";
 import { CoinBalance } from "@/components/coins/CoinBalance";
+import { NotificationBell } from "@/components/Notifications/NotificationBell";
 
 type SidebarLink = {
   icon: React.ElementType;
@@ -665,6 +666,15 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           </div>
         </div>
 
+        {/* Notificações */}
+        {!isCollapsed && !isMobile && user.id && (
+          <div className="px-2 pb-1 md:px-3">
+            <div className="flex justify-center">
+              <NotificationBell />
+            </div>
+          </div>
+        )}
+        
         {/* Coin balance (aluno) + User Info */}
         {!isCollapsed && !isMobile && user.role === 'aluno' && (
           <div className="px-2 pb-1 md:px-3">
