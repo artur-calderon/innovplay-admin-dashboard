@@ -373,16 +373,18 @@ const EvaluationsTable = ({
               <TableCaption className="caption-top text-left p-6 pb-0">
                 <div className="flex items-center justify-between">
                   <span>Lista de avaliações disponíveis</span>
-                  {!isLoading && (
-                    <span className="text-sm text-muted-foreground">
-                      {searchTerm 
-                        ? filteredEvaluations.length 
-                        : showMyEvaluations 
-                          ? evaluations.length 
-                          : pagination?.total || 0
-                      } {total === 1 ? 'avaliação encontrada' : 'avaliações encontradas'}
-                    </span>
-                  )}
+                  {!isLoading && (() => {
+                    const total = searchTerm 
+                      ? filteredEvaluations.length 
+                      : showMyEvaluations 
+                        ? evaluations.length 
+                        : pagination?.total || 0;
+                    return (
+                      <span className="text-sm text-muted-foreground">
+                        {total} {total === 1 ? 'avaliação encontrada' : 'avaliações encontradas'}
+                      </span>
+                    );
+                  })()}
                 </div>
               </TableCaption>
               <TableHeader>
