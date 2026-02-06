@@ -24,15 +24,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Trophy, Calendar, Clock, Loader2, Eye, UserPlus, Coins, XCircle, Award, CheckCircle, AlertCircle, Timer, Sparkles, Swords, UserCheck, Filter, ChevronDown, ChevronUp } from 'lucide-react';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Trophy, Calendar, Clock, Loader2, Eye, UserPlus, Coins, XCircle, Award, CheckCircle, AlertCircle, Timer, Sparkles, Swords, UserCheck, Filter, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getAvailableCompetitions, unenrollCompetition, startCompetition } from '@/services/competitionsApi';
 import type { Competition } from '@/types/competition-types';
@@ -143,12 +134,6 @@ export default function CompetitionsStudent() {
   const [onlyWithSlots, setOnlyWithSlots] = useState(false);
   const [dateFilter, setDateFilter] = useState<'all' | 'next-week' | 'next-2-weeks' | 'next-month'>('all');
   const [filtersOpen, setFiltersOpen] = useState(false);
-  
-  // Filtros avançados
-  const [minCoinsFilter, setMinCoinsFilter] = useState<string>('');
-  const [onlyWithSlots, setOnlyWithSlots] = useState(false);
-  const [dateFilter, setDateFilter] = useState<'all' | 'next-week' | 'next-2-weeks' | 'next-month'>('all');
-  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const fetchCompetitions = useCallback(async () => {
     setLoading(true);
@@ -184,13 +169,9 @@ export default function CompetitionsStudent() {
     let list = competitions;
     
     // Filtro por disciplina
-    
-    // Filtro por disciplina
     if (subjectFilter !== 'all') {
       list = list.filter((c) => c.subject_id === subjectFilter);
     }
-    
-    // Filtro por nível
     
     // Filtro por nível
     if (levelFilter !== 'all') {
@@ -248,60 +229,7 @@ export default function CompetitionsStudent() {
       });
     }
     
-    
-    // Filtro por recompensas (moedas mínimas)
-    if (minCoinsFilter) {
-      const minCoins = Number.parseInt(minCoinsFilter, 10);
-      if (!Number.isNaN(minCoins) && minCoins > 0) {
-        list = list.filter((c) => {
-          const participationCoins = Number(c.reward_config?.participation_coins ?? c.reward_participation ?? 0);
-          const rankingRewards = c.reward_config?.ranking_rewards ?? [];
-          const maxRankingCoins = rankingRewards.length > 0 
-            ? Math.max(...rankingRewards.map(r => r.coins))
-            : 0;
-          return participationCoins >= minCoins || maxRankingCoins >= minCoins;
-        });
-      }
-    }
-    
-    // Filtro por vagas disponíveis
-    if (onlyWithSlots) {
-      list = list.filter((c) => hasSlots(c));
-    }
-    
-    // Filtro por data
-    if (dateFilter !== 'all') {
-      const now = Date.now();
-      let daysAhead = 0;
-      switch (dateFilter) {
-        case 'next-week':
-          daysAhead = 7;
-          break;
-        case 'next-2-weeks':
-          daysAhead = 14;
-          break;
-        case 'next-month':
-          daysAhead = 30;
-          break;
-      }
-      const futureDate = now + (daysAhead * 24 * 60 * 60 * 1000);
-      
-      list = list.filter((c) => {
-        // Verificar se alguma data relevante está dentro do período
-        const enrollmentStart = c.enrollment_start ? new Date(c.enrollment_start).getTime() : null;
-        const enrollmentEnd = c.enrollment_end ? new Date(c.enrollment_end).getTime() : null;
-        const application = c.application ? new Date(c.application).getTime() : null;
-        
-        return (
-          (enrollmentStart != null && enrollmentStart <= futureDate) ||
-          (enrollmentEnd != null && enrollmentEnd <= futureDate) ||
-          (application != null && application <= futureDate)
-        );
-      });
-    }
-    
     return list;
-  }, [competitions, subjectFilter, levelFilter, minCoinsFilter, onlyWithSlots, dateFilter]);
   }, [competitions, subjectFilter, levelFilter, minCoinsFilter, onlyWithSlots, dateFilter]);
 
   const { abertas, proximas, minhasInscricoes, encerradas } = useMemo(() => {
@@ -540,33 +468,6 @@ export default function CompetitionsStudent() {
                 />
               </div>
             )}
-            {comp.enrollment_end && !ended && (
-              <div className="mt-1">
-                <CompetitionCountdown
-                  targetDate={comp.enrollment_end}
-                  label="Inscrição fecha em"
-                  variant="secondary"
-                />
-              </div>
-            )}
-            {comp.application && !ended && (
-              <div className="mt-1">
-                <CompetitionCountdown
-                  targetDate={comp.application}
-                  label="Prova abre em"
-                  variant="secondary"
-                />
-              </div>
-            )}
-            {comp.expiration && !ended && (
-              <div className="mt-1">
-                <CompetitionCountdown
-                  targetDate={comp.expiration}
-                  label="Prova fecha em"
-                  variant="secondary"
-                />
-              </div>
-            )}
             <p className="flex items-center gap-2">
               <Coins className="h-3.5 w-3.5 shrink-0" />
               {formatRewardsShort(comp)}
@@ -654,38 +555,7 @@ export default function CompetitionsStudent() {
                 />
               </div>
             )}
-            {comp.enrollment_end && (
-              <div className="mt-1">
-                <CompetitionCountdown
-                  targetDate={comp.enrollment_end}
-                  label="Inscrição fecha em"
-                  variant="secondary"
-                />
-              </div>
-            )}
             {comp.application && (
-              <>
-                <p className="flex items-center gap-2">
-                  <Clock className="h-3.5 w-3.5 shrink-0" />
-                  Prova: {formatDate(comp.application)} → {formatDate(comp.expiration)}
-                </p>
-                <div className="mt-1">
-                  <CompetitionCountdown
-                    targetDate={comp.application}
-                    label="Prova abre em"
-                    variant="secondary"
-                  />
-                </div>
-              </>
-            )}
-            {comp.expiration && (
-              <div className="mt-1">
-                <CompetitionCountdown
-                  targetDate={comp.expiration}
-                  label="Prova fecha em"
-                  variant="secondary"
-                />
-              </div>
               <>
                 <p className="flex items-center gap-2">
                   <Clock className="h-3.5 w-3.5 shrink-0" />
