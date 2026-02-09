@@ -1640,11 +1640,11 @@ export class EvaluationResultsApiService {
       return avaliacoes.filter((evaluation: any) => {
         const raw = (evaluation.type ?? evaluation.tipo ?? '').toString().trim();
         const type = raw.toUpperCase();
-        // Excluir olimpíadas e competições
+        // Excluir olimpíadas e competições (relatórios e filtros: apenas avaliações/simulados)
         if (type === 'OLIMPIADAS' || type === 'OLIMPIADA' || type.includes('OLIMPI')) return false;
         if (type === 'COMPETICAO' || type === 'COMPETIÇÃO' || type.includes('COMPET')) return false;
-        // Incluir apenas tipo AVALIACAO ou sem tipo (backend pode não enviar type para avaliações normais)
-        return type === '' || type === 'AVALIACAO';
+        // Incluir apenas AVALIACAO, SIMULADO ou sem tipo
+        return type === '' || type === 'AVALIACAO' || type === 'SIMULADO';
       });
     } catch (error) {
       console.error('Erro ao buscar avaliações para filtros:', error);
