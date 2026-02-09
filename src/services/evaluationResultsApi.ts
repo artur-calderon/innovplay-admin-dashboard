@@ -1638,13 +1638,13 @@ export class EvaluationResultsApiService {
       });
       const avaliacoes = response.avaliacoes || [];
       return avaliacoes.filter((evaluation: any) => {
-        const type = (evaluation.type || evaluation.tipo || '').toUpperCase();
-        // Excluir olimpíadas, competições e avaliações sem tipo (têm suas próprias interfaces)
-        return type !== '' && 
-               type !== 'OLIMPIADAS' && 
-               type !== 'OLIMPIADA' && 
-               type !== 'COMPETICAO' && 
-               type !== 'COMPETIÇÃO';
+        const raw = (evaluation.type ?? evaluation.tipo ?? '').toString().trim();
+        const type = raw.toUpperCase();
+        // Excluir olimpíadas e competições
+        if (type === 'OLIMPIADAS' || type === 'OLIMPIADA' || type.includes('OLIMPI')) return false;
+        if (type === 'COMPETICAO' || type === 'COMPETIÇÃO' || type.includes('COMPET')) return false;
+        // Incluir apenas tipo AVALIACAO ou sem tipo (backend pode não enviar type para avaliações normais)
+        return type === '' || type === 'AVALIACAO';
       });
     } catch (error) {
       console.error('Erro ao buscar avaliações para filtros:', error);
