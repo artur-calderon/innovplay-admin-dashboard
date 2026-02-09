@@ -417,7 +417,8 @@ export function useEvaluationsManager() {
   };
 }
 
-// Hook específico para estatísticas de avaliações
+// Hook específico para estatísticas de avaliações (apenas AVALIACAO/SIMULADO; não contabiliza competições nem olimpíadas)
+const EVALUATION_STATS_URL = '/evaluations/stats?types=AVALIACAO,SIMULADO';
 export function useEvaluationStats() {
   return useCache<{
     total: number;
@@ -430,7 +431,7 @@ export function useEvaluationStats() {
     by_model: Record<string, number>;
     by_status: Record<string, number>;
     last_sync: string;
-  }>('/evaluations/stats', {
+  }>(EVALUATION_STATS_URL, {
     staleTime: 60 * 1000 // 1 minuto
   });
 }

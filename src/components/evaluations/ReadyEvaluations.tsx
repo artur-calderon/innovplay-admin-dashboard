@@ -656,11 +656,9 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   });
 
   // ✅ CORREÇÃO: Preparar parâmetros de forma estável antes de chamar useEvaluations
-  // para garantir que os hooks sejam sempre chamados na mesma ordem
-  // Usar valores individuais dos filtros em vez do objeto inteiro para evitar mudanças desnecessárias
+  // Página de avaliações: apenas AVALIACAO e SIMULADO (não buscar competições nem olimpíadas)
   const evaluationParams = useMemo(() => ({
     // Quando showMyEvaluations é true, buscar todas as avaliações (sem paginação no backend)
-    // para aplicar paginação local após filtrar
     ...(showMyEvaluations && user?.id 
       ? { 
           page: 1, 
@@ -672,8 +670,12 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
           per_page: itemsPerPage 
         }
     ),
+    // Restringir a apenas avaliações (backend pode usar types ou type)
+    ...(filters.type === 'all'
+      ? { types: 'AVALIACAO,SIMULADO' }
+      : filters.type !== 'all' && { type: filters.type }
+    ),
     ...(filters.subject !== 'all' && { subject_id: filters.subject }),
-    ...(filters.type !== 'all' && { type: filters.type }),
     ...(filters.model !== 'all' && { model: filters.model }),
     ...(filters.grade !== 'all' && { grade_id: filters.grade })
   }), [showMyEvaluations, user?.id, currentPage, itemsPerPage, filters.subject, filters.type, filters.model, filters.grade]);
@@ -695,22 +697,18 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   // ✅ Preparar dados das avaliações com verificações de segurança
   const rawEvaluations = Array.isArray(evaluationsData?.data) ? evaluationsData.data : [];
   
-  // ✅ Filtrar avaliações ativas (não deletadas/arquivadas) E excluir olimpíadas
+  // ✅ Filtrar: apenas avaliações (AVALIACAO/SIMULADO); excluir competições e olimpíadas; ativas
   const allEvaluations = rawEvaluations
     .filter((evaluation: Record<string, unknown>) => {
-      // Verificar se tem propriedades básicas de Evaluation
-      if (!evaluation || typeof evaluation !== 'object' || !evaluation.id) {
-        return false;
-      }
-      
-      // Excluir olimpíadas
-      const type = evaluation.type as string;
-      const isOlimpiada = type === 'OLIMPIADA';
-      if (isOlimpiada) {
-        return false;
-      }
-      
-      // Verificar se não está deletada/arquivada
+      if (!evaluation || typeof evaluation !== 'object' || !evaluation.id) return false;
+
+      const rawType = (evaluation.type ?? evaluation.tipo ?? '').toString().trim().toUpperCase();
+      // Excluir olimpíadas e competições (não contabilizar nem mostrar)
+      if (rawType === 'OLIMPIADA' || rawType === 'OLIMPIADAS' || rawType.includes('OLIMPI')) return false;
+      if (rawType === 'COMPETICAO' || rawType === 'COMPETIÇÃO' || rawType.includes('COMPET')) return false;
+      // Incluir apenas avaliação e simulado
+      if (rawType !== '' && rawType !== 'AVALIACAO' && rawType !== 'SIMULADO') return false;
+
       const deletedAt = evaluation.deleted_at;
       const archived = evaluation.archived;
       const isActive = evaluation.is_active;

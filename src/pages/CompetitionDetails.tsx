@@ -280,8 +280,8 @@ export default function CompetitionDetails() {
   const isOpenOrActive = competition && (s === 'aberta' || s === 'enrollment_open' || s === 'active' || s === 'em_andamento');
   /** Botão "Finalizar competição": data de expiração já passou e competição ainda aberta/em andamento. */
   const canFinalize = isOpenOrActive && isActuallyFinished;
-  /** Só pode excluir direto em rascunho ou já cancelada; aberta/finalizada precisa cancelar antes. */
-  const canDeleteDirectly = isDraft || isCancelled;
+  /** Pode excluir direto em rascunho, cancelada ou já finalizada. */
+  const canDeleteDirectly = isDraft || isCancelled || isCompleted;
   /** Cancelar competição desabilitado na UI (não exibir no card). */
   const canCancel = false;
   const canEdit = isDraft || isAberta;
