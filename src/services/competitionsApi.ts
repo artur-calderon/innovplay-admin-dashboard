@@ -11,6 +11,11 @@ export interface CompetitionLevelOptionsResponse {
   levels: { value: number; label: string }[];
 }
 
+/** Resposta de GET /competitions/allowed-scopes (escopos permitidos para o usuário logado). */
+export interface AllowedCompetitionScopesResponse {
+  allowed_scopes: string[];
+}
+
 /**
  * Serviço de API para Competições.
  * GET /competitions — retorna array direto (não { competitions: [...] })
@@ -19,6 +24,16 @@ export interface CompetitionLevelOptionsResponse {
 export async function getCompetitionLevelOptions(): Promise<CompetitionLevelOptionsResponse> {
   const { data } = await api.get<CompetitionLevelOptionsResponse>('/competitions/level-options');
   return data ?? { levels: [] };
+}
+
+/** Escopos de competição que o usuário logado pode usar (por role: admin, tec adm, diretor, coordenador, professor). */
+export async function getAllowedCompetitionScopes(): Promise<string[]> {
+  try {
+    const { data } = await api.get<AllowedCompetitionScopesResponse>('/competitions/allowed-scopes');
+    return Array.isArray(data?.allowed_scopes) ? data.allowed_scopes : ['individual'];
+  } catch {
+    return ['individual'];
+  }
 }
 
 export async function getCompetitions(
