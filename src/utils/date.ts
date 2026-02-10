@@ -1,3 +1,46 @@
+/**
+ * Converte string ISO 8601 do backend para valor do input datetime-local (YYYY-MM-DDTHH:mm).
+ * Aceita formato com ou sem fração de segundos e com ou sem timezone (Z ou ±HH:mm).
+ */
+export function parseISOToDatetimeLocal(iso: string | undefined | null): string {
+  if (iso == null || String(iso).trim() === '') return '';
+  const s = String(iso).trim();
+  try {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${day}T${h}:${min}`;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Converte datetime-local (YYYY-MM-DDTHH:mm) para ISO 8601 no padrão do backend.
+ * Retorna "YYYY-MM-DDTHH:mm:00" (naive), alinhado a valor.isoformat().
+ */
+export function convertDateTimeLocalToISONaive(dateTimeString: string): string {
+  if (!dateTimeString?.trim()) return '';
+  const parsed = dateTimeString.trim().split('T');
+  if (parsed.length !== 2) return '';
+  const [datePart, timePart] = parsed;
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hour, minute] = timePart.split(':').map(Number);
+  if ([year, month, day, hour, minute].some(Number.isNaN)) return '';
+  const d = new Date(year, month - 1, day, hour, minute ?? 0, 0, 0);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dayStr = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${dayStr}T${h}:${min}:00`;
+}
+
 // Gera ISO com offset local (+/-HH:MM) a partir de um Date
 export function toLocalOffsetISO(date: Date): string {
   const pad = (value: number) => String(Math.floor(Math.abs(value))).padStart(2, '0');

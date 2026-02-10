@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -73,8 +74,8 @@ interface Filters {
 }
 
 interface QuestionBankProps {
-  open: boolean;
-  onClose: () => void;
+  open?: boolean;
+  onClose?: () => void;
   subjectId: string | null;
   onQuestionSelected: (question: Question) => void;
   onCreateEvaluation?: (evaluation: {
@@ -87,6 +88,8 @@ interface QuestionBankProps {
   gradeName?: string;
   subjects?: Subject[];
   selectedSubjectId?: string;
+  /** Quando true, renderiza só o conteúdo (sem Dialog), para ser usado dentro de outro modal. */
+  embedded?: boolean;
 }
 
 const DIFFICULTIES = ["Abaixo do Básico", "Básico", "Adequado", "Avançado"];
@@ -214,14 +217,15 @@ function shouldIncludeQuestionForEJA(
 }
 
 export function QuestionBank({
-  open,
-  onClose,
+  open = true,
+  onClose = () => {},
   subjectId,
   onQuestionSelected,
   gradeId,
   gradeName,
   subjects: propsSubjects,
   selectedSubjectId,
+  embedded = false,
 }: QuestionBankProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -243,6 +247,21 @@ export function QuestionBank({
 
   const [erro, setErro] = useState<string | null>(null);
 
+  // [QuestionBank] Log para debug: props ao abrir
+  useEffect(() => {
+    if (open) {
+      const selectedFromList = propsSubjects?.find((s) => String(s.id) === String(subjectId));
+      console.log("[QuestionBank] props ao abrir:", {
+        open,
+        subjectId,
+        selectedSubjectId,
+        filtersSubject: filters.subject,
+        selectedSubjectName: selectedFromList?.name,
+        subjectsFromModal: propsSubjects?.map((s) => ({ id: s.id, name: s.name })),
+      });
+    }
+  }, [open, subjectId, selectedSubjectId, propsSubjects]);
+
   // Atualizar filtro quando subjectId mudar
   useEffect(() => {
     if (subjectId) {
@@ -250,21 +269,23 @@ export function QuestionBank({
     }
   }, [subjectId]);
 
+  const isActive = open || embedded;
+
   useEffect(() => {
-    if (open) {
+    if (isActive) {
       fetchQuestions();
       fetchSubjects();
       fetchGrades();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [isActive]);
 
   useEffect(() => {
-    if (open) {
+    if (isActive) {
       fetchQuestions();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, subjectId, open]);
+  }, [filters, subjectId, isActive]);
 
   const fetchQuestions = async () => {
     try {
@@ -342,7 +363,7 @@ export function QuestionBank({
           title: apiQuestion.title || "",
           type: getQuestionType(apiQuestion.question_type),
           difficulty: mapDifficulty(apiQuestion.difficulty_level || apiQuestion.difficulty),
-          subjectId: apiQuestion.subject_id || "",
+          subjectId: apiQuestion.subject_id || apiQuestion.subject?.id || "",
           subject: apiQuestion.subject ? {
             id: apiQuestion.subject.id,
             name: apiQuestion.subject.name
@@ -367,6 +388,21 @@ export function QuestionBank({
           secondStatement: apiQuestion.second_statement || "",
         };
         return question;
+      });
+
+      // [QuestionBank] Log para debug: resposta da API e disciplina filtrada
+      const sample = convertedQuestions.slice(0, 3).map((q) => ({
+        id: q.id,
+        subjectId: q.subjectId,
+        "subject?.id": q.subject?.id,
+        "subject?.name": q.subject?.name,
+      }));
+      console.log("[QuestionBank] fetchQuestions:", {
+        rawLength: questionsData.length,
+        convertedLength: convertedQuestions.length,
+        subjectIdProp: subjectId,
+        filtersSubject: filters.subject,
+        sampleQuestions: sample,
       });
 
       setQuestions(convertedQuestions);
@@ -426,13 +462,18 @@ export function QuestionBank({
     }
   };
 
-  // Filtrar questões
+  // Filtrar questões (subjectMatch: compara por subject.id e subjectId, com String() para evitar tipo diferente)
   const filteredQuestions = useMemo(() => {
-    return (questions || []).filter((question) => {
+    const subjectMatch = (q: Question, id: string) =>
+      !id || id === "all" ||
+      (q.subject && String(q.subject.id) === String(id)) ||
+      String(q.subjectId) === String(id);
+
+    const filtered = (questions || []).filter((question) => {
       const matchesSearch = (question.text || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
                            (question.title || "").toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesSubjectId = !subjectId || (question.subject && question.subject.id === subjectId);
-      const matchesSubject = !filters.subject || filters.subject === "all" || (question.subject && question.subject.id === filters.subject);
+      const matchesSubjectId = subjectMatch(question, subjectId);
+      const matchesSubject = subjectMatch(question, filters.subject);
       const matchesGrade = !filters.grade || filters.grade === "all" || (question.grade && question.grade.id === filters.grade);
       const matchesDifficulty = !filters.difficulty || filters.difficulty === "all" || question.difficulty === filters.difficulty;
       const matchesType = !filters.type || filters.type === "all" || question.type === filters.type;
@@ -446,6 +487,25 @@ export function QuestionBank({
       
       return matchesSearch && matchesSubjectId && matchesSubject && matchesGrade && matchesDifficulty && matchesType;
     });
+
+    // [QuestionBank] Log para debug: filtro por disciplina
+    const sampleForLog = (questions || []).slice(0, 5).map((q) => ({
+      id: q.id?.slice(0, 8),
+      "subject?.id": q.subject?.id,
+      subjectId: q.subjectId,
+      "subject?.name": q.subject?.name,
+      matchById: subjectMatch(q, subjectId),
+      matchByFilter: subjectMatch(q, filters.subject),
+    }));
+    console.log("[QuestionBank] filter:", {
+      subjectId,
+      filtersSubject: filters.subject,
+      totalQuestions: (questions || []).length,
+      filteredCount: filtered.length,
+      sampleCheck: sampleForLog,
+    });
+
+    return filtered;
   }, [questions, searchTerm, subjectId, filters, gradeId, gradeName, grades]);
 
   // Paginação
@@ -521,17 +581,16 @@ export function QuestionBank({
     return <div className="text-red-600 p-4">Erro: Dados inválidos.</div>;
   }
 
-  return (
+  const innerContent = (
     <>
-      <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent 
-          className="max-w-7xl max-h-[90vh] w-[95vw] overflow-y-auto"
-        >
-          <DialogHeader>
+          <DialogHeader className={embedded ? "pb-2" : undefined}>
             <DialogTitle className="flex items-center gap-2">
               <Book className="h-5 w-5" />
               Banco de Questões
             </DialogTitle>
+            <DialogDescription>
+              Pesquise e selecione questões para adicionar. Use os filtros para refinar a lista.
+            </DialogDescription>
           </DialogHeader>
 
           {/* Filtros e Pesquisa */}
@@ -865,14 +924,29 @@ export function QuestionBank({
               )}
             </>
           )}
-        </DialogContent>
-      </Dialog>
+        </>
+  );
+
+  return (
+    <>
+      {embedded ? (
+        <div className="max-w-7xl max-h-[75vh] w-full overflow-y-auto space-y-4">
+          {innerContent}
+        </div>
+      ) : (
+        <Dialog open={open} onOpenChange={onClose}>
+          <DialogContent className="max-w-7xl max-h-[90vh] w-[95vw] overflow-y-auto">
+            {innerContent}
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Modal de Visualização da Questão */}
       <Dialog open={!!viewQuestion} onOpenChange={() => setViewQuestion(null)}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Visualizar Questão</DialogTitle>
+            <DialogDescription>Visualização em modo somente leitura.</DialogDescription>
           </DialogHeader>
           {viewQuestion && (
             <QuestionPreview question={viewQuestion} />

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -130,6 +130,10 @@ export default function StartEvaluationModal({
   const [evaluationClasses, setEvaluationClasses] = useState<EvaluationClass[]>([]);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // Refs para abrir o seletor nativo de data/hora via botão
+  const startInputRef = useRef<HTMLInputElement | null>(null);
+  const endInputRef = useRef<HTMLInputElement | null>(null);
 
   const form = useForm<StartEvaluationFormValues>({
     resolver: zodResolver(startEvaluationSchema),
@@ -566,12 +570,35 @@ export default function StartEvaluationModal({
                   name="startDateTime"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <CalendarDays className="h-4 w-4" />
-                        Data e Hora de Início *
+                      <FormLabel className="flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-2">
+                          <CalendarDays className="h-4 w-4" />
+                          Data e Hora de Início *
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          onClick={() => {
+                            const el = startInputRef.current;
+                            // Tentar abrir o seletor nativo; se não existir, apenas focar
+                            // @ts-expect-error showPicker pode não existir em todos os navegadores
+                            if (el?.showPicker) el.showPicker();
+                            else el?.focus();
+                          }}
+                        >
+                          Selecionar
+                        </Button>
                       </FormLabel>
                       <FormControl>
-                        <Input type="datetime-local" {...field} />
+                        <Input
+                          type="datetime-local"
+                          {...field}
+                          ref={(el) => {
+                            field.ref(el);
+                            startInputRef.current = el;
+                          }}
+                        />
                       </FormControl>
                       <FormDescription>
                         Quando a avaliação ficará disponível para os alunos
@@ -586,12 +613,34 @@ export default function StartEvaluationModal({
                   name="endDateTime"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <Clock className="h-4 w-4" />
-                        Data e Hora de Término *
+                      <FormLabel className="flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-2">
+                          <Clock className="h-4 w-4" />
+                          Data e Hora de Término *
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          onClick={() => {
+                            const el = endInputRef.current;
+                            // @ts-expect-error showPicker pode não existir em todos os navegadores
+                            if (el?.showPicker) el.showPicker();
+                            else el?.focus();
+                          }}
+                        >
+                          Selecionar
+                        </Button>
                       </FormLabel>
                       <FormControl>
-                        <Input type="datetime-local" {...field} />
+                        <Input
+                          type="datetime-local"
+                          {...field}
+                          ref={(el) => {
+                            field.ref(el);
+                            endInputRef.current = el;
+                          }}
+                        />
                       </FormControl>
                       <FormDescription>
                         Quando a avaliação será encerrada automaticamente

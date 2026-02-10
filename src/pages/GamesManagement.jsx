@@ -19,7 +19,9 @@ import {
     Link,
     User,
     Globe,
-    Search
+    Search,
+    School,
+    BookOpen
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useAuth } from '@/context/authContext';
@@ -39,6 +41,7 @@ const DISCIPLINAS = [
     'Artes',
     'Educação Física',
     'Inglês',
+    'Ensino Religioso',
 ];
 
 const GamesManagement = () => {
@@ -56,6 +59,15 @@ const GamesManagement = () => {
     const [activeTab, setActiveTab] = useState('my_games'); // 'my_games' ou 'all_games'
     const [editError, setEditError] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
+    
+    // Estados para filtros de visualização
+    const [selectedState, setSelectedState] = useState('all');
+    const [selectedGrade, setSelectedGrade] = useState('all');
+    const [selectedSubject, setSelectedSubject] = useState('all');
+    const [states, setStates] = useState([]);
+    const [grades, setGrades] = useState([]);
+    const [subjects, setSubjects] = useState([]);
+    const [isLoadingFilters, setIsLoadingFilters] = useState(false);
     
     // Estados para edição de turmas
     const [editingClasses, setEditingClasses] = useState([]);
@@ -81,18 +93,85 @@ const GamesManagement = () => {
     // Verificar se o usuário pode criar jogos
     const canCreateGames = ['admin', 'tecadm', 'professor', 'diretor', 'coordenador'].includes(user?.role);
 
+    // Carregar opções de filtros
+    const loadFilterOptions = async () => {
+        try {
+            setIsLoadingFilters(true);
+            const [statesRes, gradesRes, subjectsRes] = await Promise.all([
+                EvaluationResultsApiService.getFilterStates().catch(() => []),
+                api.get('/grades/').catch(() => ({ data: [] })),
+                api.get('/subjects').catch(() => ({ data: [] })),
+            ]);
+
+            setStates((statesRes || []).map(state => ({
+                id: state.id,
+                name: state.nome
+            })));
+            setGrades(gradesRes.data || []);
+            setSubjects(subjectsRes.data || []);
+        } catch (error) {
+            console.error('Erro ao carregar opções de filtro:', error);
+        } finally {
+            setIsLoadingFilters(false);
+        }
+    };
+
+    // Carregar opções de filtros ao montar componente
+    useEffect(() => {
+        loadFilterOptions();
+    }, []);
+
     // Buscar jogos
     const fetchGames = async (showMyGames = true) => {
         try {
             setIsLoading(true);
             
-            // Se showMyGames=true, usar parâmetro my_games=true
+            // Construir parâmetros de filtro
             const params = showMyGames ? { my_games: 'true' } : {};
+            if (selectedState !== 'all') {
+                params.state = selectedState;
+            }
+            if (selectedGrade !== 'all') {
+                params.grade = selectedGrade;
+            }
+            if (selectedSubject !== 'all') {
+                params.subject = selectedSubject;
+            }
+            
             const response = await api.get('/games', { params });
             
             // Buscar jogos da estrutura correta da API
             const gamesData = response.data.jogos || [];
-            setGames(gamesData);
+            
+            // Aplicar filtros no frontend caso a API não suporte
+            let filteredGames = gamesData;
+            if (selectedState !== 'all' || selectedGrade !== 'all' || selectedSubject !== 'all') {
+                filteredGames = gamesData.filter(game => {
+                    // Filtrar por disciplina (subject)
+                    // Pode ser string (do array DISCIPLINAS) ou ID (da API)
+                    if (selectedSubject !== 'all') {
+                        const gameSubject = game.subject;
+                        const selectedSubjectObj = subjects.find(s => s.id === selectedSubject);
+                        const selectedSubjectName = selectedSubjectObj?.name || 
+                                                   selectedSubjectObj?.nome ||
+                                                   selectedSubject;
+                        // Comparar tanto por ID quanto por nome (case-insensitive)
+                        const gameSubjectLower = gameSubject?.toLowerCase();
+                        const selectedSubjectLower = selectedSubjectName?.toLowerCase();
+                        if (gameSubject !== selectedSubject && 
+                            gameSubject !== selectedSubjectName &&
+                            gameSubjectLower !== selectedSubjectLower) {
+                            return false;
+                        }
+                    }
+                    // Nota: Filtros de estado e série podem precisar de dados adicionais do jogo
+                    // que podem não estar disponíveis na resposta atual
+                    // Se a API não suportar esses filtros, eles serão aplicados no backend
+                    return true;
+                });
+            }
+            
+            setGames(filteredGames);
         } catch (error) {
             console.error('Erro ao buscar jogos:', error);
             toast.error('Erro ao carregar os jogos');
@@ -105,7 +184,8 @@ const GamesManagement = () => {
     useEffect(() => {
         // Por padrão, mostrar apenas os jogos do usuário
         fetchGames(activeTab === 'my_games');
-    }, [activeTab]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, selectedState, selectedGrade, selectedSubject]);
 
     // Verificar se o usuário pode editar/excluir um jogo
     const canEditGame = (game) => {
@@ -464,7 +544,10 @@ const GamesManagement = () => {
         <div className="container mx-auto py-6 space-y-6">
             <div className="flex justify-between items-center">
                 <div>
-                    <h2 className="text-2xl font-bold">Gerenciamento de Jogos</h2>
+                    <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+                        <Gamepad2 className="w-8 h-8 text-blue-600" />
+                        Gerenciamento de Jogos
+                    </h2>
                     <p className="text-muted-foreground">
                         {activeTab === 'my_games' 
                             ? 'Gerencie os jogos que você criou' 
@@ -506,6 +589,88 @@ const GamesManagement = () => {
                 </Tabs>
             )}
 
+            {/* Filtros */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <School className="h-5 w-5" />
+                        Filtros
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Estado</label>
+                            <Select
+                                value={selectedState}
+                                onValueChange={setSelectedState}
+                                disabled={isLoadingFilters}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Todos os estados" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos os estados</SelectItem>
+                                    {states.map((state) => (
+                                        <SelectItem key={state.id} value={state.id}>
+                                            {state.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Série</label>
+                            <Select
+                                value={selectedGrade}
+                                onValueChange={setSelectedGrade}
+                                disabled={isLoadingFilters}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Todas as séries" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todas as séries</SelectItem>
+                                    {grades.map((grade) => (
+                                        <SelectItem key={grade.id} value={grade.id}>
+                                            {grade.name || grade.nome}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Disciplina</label>
+                            <Select
+                                value={selectedSubject}
+                                onValueChange={setSelectedSubject}
+                                disabled={isLoadingFilters}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Todas as disciplinas" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todas as disciplinas</SelectItem>
+                                    {subjects.map((subject) => (
+                                        <SelectItem key={subject.id} value={subject.id}>
+                                            {subject.name || subject.nome}
+                                        </SelectItem>
+                                    ))}
+                                    {/* Fallback para disciplinas hardcoded caso API não retorne */}
+                                    {subjects.length === 0 && DISCIPLINAS.map((disciplina) => (
+                                        <SelectItem key={disciplina} value={disciplina}>
+                                            {disciplina}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
             {/* Campo de Busca */}
             <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
@@ -545,91 +710,113 @@ const GamesManagement = () => {
                         </p>
                     </CardContent>
                 </Card>
-            ) : (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {filterGamesByName(games).map((game) => {
-                        const canEdit = canEditGame(game);
-                        return (
-                            <Card key={game.id} className="hover:shadow-md transition-shadow">
-                                <CardHeader>
-                                    <div className="flex justify-between items-start">
-                                        <CardTitle className="text-lg line-clamp-2">{game.title}</CardTitle>
-                                        <Badge variant="secondary">{game.subject}</Badge>
-                                    </div>
-                                    {activeTab === 'all_games' && game.userId !== user.id && (
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                            Criado por outro usuário
-                                        </p>
-                                    )}
-                                    {/* Mostrar turmas vinculadas */}
-                                    {game.classes && Array.isArray(game.classes) && game.classes.length > 0 && (
-                                        <div className="mt-2">
-                                            <p className="text-xs text-muted-foreground mb-1">
-                                                Vinculado a:
-                                            </p>
-                                            <div className="flex flex-wrap gap-1">
-                                                {game.classes.map((classItem) => (
-                                                    <Badge key={classItem.id} variant="outline" className="text-xs">
-                                                        {classItem.name || classItem.nome || `Turma ${classItem.id}`}
-                                                    </Badge>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="aspect-video bg-muted rounded-lg overflow-hidden">
-                                        {game.thumbnail ? (
-                                            <img
-                                                src={game.thumbnail}
-                                                alt={game.title}
-                                                className="w-full h-full object-cover"
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center">
-                                                <Gamepad2 className="w-8 h-8 text-muted-foreground" />
-                                            </div>
-                                        )}
-                                    </div>
+            ) : (() => {
+                // Agrupar jogos por disciplina
+                const filteredGames = filterGamesByName(games);
+                const gamesBySubject = filteredGames.reduce((acc, game) => {
+                    const subjectName = game.subject || 'Sem disciplina';
+                    if (!acc[subjectName]) {
+                        acc[subjectName] = [];
+                    }
+                    acc[subjectName].push(game);
+                    return acc;
+                }, {});
 
-                                    <div className="flex gap-2">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => openGame(game.id)}
-                                            className="flex-1"
-                                        >
-                                            <ExternalLink className="w-4 h-4 mr-1" />
-                                            Jogar
-                                        </Button>
-                                        {canEdit && (
-                                            <>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => openEditModal(game)}
-                                                    title="Editar jogo"
-                                                >
-                                                    <Edit className="w-4 h-4" />
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => openDeleteModal(game)}
-                                                    className="text-destructive hover:text-destructive"
-                                                    title="Excluir jogo"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </Button>
-                                            </>
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        );
-                    })}
-                </div>
-            )}
+                return (
+                    <div className="space-y-8">
+                        {Object.entries(gamesBySubject).map(([subjectName, subjectGames]) => (
+                            <div key={subjectName} className="space-y-4">
+                                <h3 className="text-xl font-semibold text-foreground flex items-center gap-2">
+                                    <BookOpen className="w-5 h-5 text-blue-600" />
+                                    {subjectName}
+                                </h3>
+                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                    {subjectGames.map((game) => {
+                                        const canEdit = canEditGame(game);
+                                        return (
+                                            <Card key={game.id} className="hover:shadow-md transition-shadow">
+                                                <CardHeader>
+                                                    <div className="flex justify-between items-start">
+                                                        <CardTitle className="text-lg line-clamp-2">{game.title}</CardTitle>
+                                                    </div>
+                                                    {activeTab === 'all_games' && game.userId !== user.id && (
+                                                        <p className="text-xs text-muted-foreground mt-1">
+                                                            Criado por outro usuário
+                                                        </p>
+                                                    )}
+                                                    {/* Mostrar turmas vinculadas */}
+                                                    {game.classes && Array.isArray(game.classes) && game.classes.length > 0 && (
+                                                        <div className="mt-2">
+                                                            <p className="text-xs text-muted-foreground mb-1">
+                                                                Vinculado a:
+                                                            </p>
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {game.classes.map((classItem) => (
+                                                                    <Badge key={classItem.id} variant="outline" className="text-xs">
+                                                                        {classItem.name || classItem.nome || `Turma ${classItem.id}`}
+                                                                    </Badge>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </CardHeader>
+                                                <CardContent className="space-y-4">
+                                                    <div className="aspect-video bg-muted rounded-lg overflow-hidden">
+                                                        {game.thumbnail ? (
+                                                            <img
+                                                                src={game.thumbnail}
+                                                                alt={game.title}
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center">
+                                                                <Gamepad2 className="w-8 h-8 text-muted-foreground" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex gap-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => openGame(game.id)}
+                                                            className="flex-1"
+                                                        >
+                                                            <ExternalLink className="w-4 h-4 mr-1" />
+                                                            Jogar
+                                                        </Button>
+                                                        {canEdit && (
+                                                            <>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    onClick={() => openEditModal(game)}
+                                                                    title="Editar jogo"
+                                                                >
+                                                                    <Edit className="w-4 h-4" />
+                                                                </Button>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    onClick={() => openDeleteModal(game)}
+                                                                    className="text-destructive hover:text-destructive"
+                                                                    title="Excluir jogo"
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </Button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                );
+            })()}
 
             {/* Modal de Edição */}
             <Dialog open={!!editingGame} onOpenChange={() => {

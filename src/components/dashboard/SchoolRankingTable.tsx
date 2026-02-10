@@ -33,23 +33,86 @@ export default function SchoolRankingTable() {
           },
         });
 
-        const data = response.data;
+        // Verificar diferentes estruturas de resposta
+        const data = response.data?.data || response.data?.schools || response.data;
+        
+        // Log para debug (remover depois)
+        if (data && Array.isArray(data) && data.length > 0) {
+          console.log('📊 Estrutura de dados da escola (primeira):', JSON.stringify(data[0], null, 2));
+        }
 
         if (Array.isArray(data) && data.length > 0) {
           const rankingsArray = data
-            .map((school: any) => ({
-              position: 0,
-              schoolName: school.name || "Escola sem nome",
-              municipality: school.city?.name || school.city_name || "Não informado",
-              averageScore: Number(school.average_score ?? school.avg_score ?? 0),
-              completionRate: Number(
-                school.completion_rate ?? school.completion_percentage ?? 0,
-              ),
-              totalStudents: Number(school.students_count ?? school.total_students ?? 0),
-              totalEvaluations: Number(
-                school.evaluations_count ?? school.total_evaluations ?? 0,
-              ),
-            }))
+            .map((school: any) => {
+              // Tentar múltiplos nomes de campos para média
+              const averageScore = Number(
+                school.average_score ?? 
+                school.avg_score ?? 
+                school.media_nota ?? 
+                school.average_grade ?? 
+                school.media_score ??
+                school.media_nota_geral ??
+                school.stats?.average_score ??
+                school.stats?.avg_score ??
+                school.stats?.media_nota ??
+                school.stats?.media_nota_geral ??
+                school.statistics?.average_score ??
+                school.statistics?.media_nota ??
+                school.evaluation_stats?.average_score ??
+                school.evaluation_stats?.media_nota ??
+                0
+              );
+
+              // Tentar múltiplos nomes de campos para taxa de conclusão
+              let completionRate = Number(
+                school.completion_rate ?? 
+                school.completion_percentage ?? 
+                school.taxa_conclusao ??
+                school.taxa_conclusao_percentual ??
+                school.stats?.completion_rate ??
+                school.stats?.completion_percentage ??
+                school.stats?.taxa_conclusao ??
+                school.statistics?.completion_rate ??
+                school.statistics?.completion_percentage ??
+                school.evaluation_stats?.completion_rate ??
+                school.evaluation_stats?.completion_percentage ??
+                0
+              );
+
+              // Se não encontrou, calcular a partir de dados disponíveis
+              if (completionRate === 0 || isNaN(completionRate)) {
+                const completedStudents = Number(
+                  school.completed_students ?? 
+                  school.students_completed ?? 
+                  school.stats?.completed_students ??
+                  school.statistics?.completed_students ??
+                  0
+                );
+                const totalStudents = Number(
+                  school.total_students ?? 
+                  school.students_count ?? 
+                  school.stats?.total_students ??
+                  school.statistics?.total_students ??
+                  0
+                );
+                
+                if (totalStudents > 0) {
+                  completionRate = (completedStudents / totalStudents) * 100;
+                }
+              }
+
+              return {
+                position: 0,
+                schoolName: school.name || "Escola sem nome",
+                municipality: school.city?.name || school.city_name || "Não informado",
+                averageScore: isNaN(averageScore) ? 0 : averageScore,
+                completionRate: isNaN(completionRate) ? 0 : completionRate,
+                totalStudents: Number(school.students_count ?? school.total_students ?? school.students?.length ?? 0),
+                totalEvaluations: Number(
+                  school.evaluations_count ?? school.total_evaluations ?? school.evaluations?.length ?? 0,
+                ),
+              };
+            })
             .filter((school) => school.schoolName !== "Escola sem nome")
             .sort((a, b) => {
               if (b.averageScore !== a.averageScore) {
@@ -217,7 +280,7 @@ export default function SchoolRankingTable() {
                 {/* Média de Pontuação */}
                 <div className="text-center">
                   <div className={`text-sm font-semibold px-2 py-1 rounded-full ${getPerformanceColor(school.averageScore)}`}>
-                    {school.averageScore.toFixed(1)}
+                    {school.averageScore > 0 ? school.averageScore.toFixed(1) : '0.0'}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Média</p>
                 </div>
@@ -226,7 +289,9 @@ export default function SchoolRankingTable() {
                 <div className="text-center">
                   <div className="flex items-center gap-1">
                     <TrendingUp className="h-3 w-3 text-green-500" />
-                    <span className="text-sm font-medium">{school.completionRate.toFixed(1)}%</span>
+                    <span className="text-sm font-medium">
+                      {isNaN(school.completionRate) ? '0.0' : school.completionRate.toFixed(1)}%
+                    </span>
                   </div>
                   <p className="text-xs text-muted-foreground">Conclusão</p>
                 </div>

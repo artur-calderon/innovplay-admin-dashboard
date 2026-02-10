@@ -67,6 +67,7 @@ export class CertificatesApiService {
           const data = response.data;
           // O endpoint retorna em resultados_detalhados.avaliacoes
           if (data?.resultados_detalhados?.avaliacoes && Array.isArray(data.resultados_detalhados.avaliacoes)) {
+            // Incluir todas as avaliações (incluindo olimpíadas) para certificados
             evaluations = data.resultados_detalhados.avaliacoes;
             
             // Extrair avaliações únicas do objeto evaluation dentro de cada resultado
@@ -118,25 +119,55 @@ export class CertificatesApiService {
         const evaluationObj = evaluation.test || evaluation.evaluation || evaluation;
         const evaluationId = evaluation.id || evaluation.test_id || evaluationObj?.id;
         
-        // Contar alunos aprovados (nota >= 6) se disponível
-        // Nota: isso pode precisar ser calculado no backend ou buscado separadamente
-        let approvedCount = 0;
-        if (evaluation.approved_students_count !== undefined) {
-          approvedCount = evaluation.approved_students_count;
-        } else if (evaluation.alunos_participantes !== undefined && evaluation.media_nota !== undefined) {
-          // Estimativa: se média de nota é alta, pode ter muitos aprovados
-          // Mas isso é apenas uma estimativa - o ideal seria buscar do backend
-          approvedCount = 0; // Será calculado quando necessário
-        }
+        // Extrair total de alunos participantes de múltiplas fontes possíveis
+        const totalStudents = 
+          evaluation.total_students || 
+          evaluation.total_alunos || 
+          evaluation.alunos_participantes ||
+          evaluation.studentCount ||
+          evaluation.studentsCount ||
+          evaluation.participants_count ||
+          evaluation.totalParticipants ||
+          evaluationObj?.total_students ||
+          evaluationObj?.total_alunos ||
+          evaluationObj?.alunos_participantes ||
+          evaluationObj?.studentCount ||
+          evaluationObj?.studentsCount ||
+          0;
+        
+        // Extrair created_by da avaliação
+        const createdBy = evaluation.created_by || evaluation.createdBy || evaluationObj?.created_by || evaluationObj?.createdBy;
+        
+        // Extrair tipo da avaliação (AVALIACAO ou OLIMPIADA)
+        const evaluationType = evaluation.type || evaluation.tipo || evaluationObj?.type || evaluationObj?.tipo || 'AVALIACAO';
+        
+        // Extrair data de aplicação de múltiplas fontes possíveis
+        const appliedAt = 
+          evaluation.applied_at || 
+          evaluation.data_aplicacao ||
+          evaluation.createdAt ||                          // Campo padrão do /test/
+          evaluation.startDateTime ||                      // Campo de olimpíadas
+          evaluation.application_info?.application ||      // Campo de aplicação de olimpíadas
+          evaluationObj?.createdAt ||                      // Campo do objeto de avaliação
+          evaluationObj?.created_at ||
+          evaluationObj?.startDateTime ||
+          evaluationObj?.application_info?.application ||
+          evaluation.created_at ||
+          null;
         
         return {
           id: evaluationId,
           title: evaluation.title || evaluation.titulo || evaluationObj?.title || 'Avaliação sem título',
           subject: evaluation.subject?.name || evaluation.subject_rel?.name || evaluation.disciplina || evaluationObj?.subject_rel?.name || 'Disciplina não informada',
-          applied_at: evaluation.applied_at || evaluation.data_aplicacao || evaluationObj?.created_at || evaluation.created_at,
-          approved_students_count: approvedCount,
-          total_students_count: evaluation.total_students || evaluation.total_alunos || evaluation.alunos_participantes || 0,
-          certificate_status: evaluation.certificate_status || 'none'
+          applied_at: appliedAt,
+          approved_students_count: 0, // Será calculado quando necessário via endpoint específico
+          total_students_count: totalStudents,
+          certificate_status: evaluation.certificate_status || 'none',
+          created_by: createdBy ? {
+            id: createdBy.id || createdBy._id || '',
+            name: createdBy.name || createdBy.nome || ''
+          } : undefined,
+          type: evaluationType
         };
       });
     } catch (error: any) {
@@ -149,57 +180,32 @@ export class CertificatesApiService {
 
   /**
    * Buscar alunos aprovados (nota >= 6) de uma avaliação
+   * Usa o endpoint /certificates/approved-students/{evaluation_id}
    */
   static async getApprovedStudents(evaluationId: string): Promise<ApprovedStudent[]> {
     try {
-      // Usar o endpoint correto que retorna alunos de uma avaliação
-      const response = await api.get(`/evaluation-results/alunos`, {
-        params: {
-          avaliacao_id: evaluationId
-        }
-      });
+      const response = await api.get(`/certificates/approved-students/${evaluationId}`);
       
-      const result = response.data;
-      // O endpoint retorna em "data" (não "alunos")
-      const students = result?.data || result?.alunos || [];
+      // O endpoint retorna um array direto de alunos aprovados
+      const students = Array.isArray(response.data) ? response.data : [];
       
-      console.log('Alunos retornados do endpoint:', students.length);
-      if (students.length > 0) {
-        console.log('Primeiro aluno (exemplo):', JSON.stringify(students[0], null, 2));
-      }
+      console.log('Alunos aprovados retornados do endpoint:', students.length);
       
-      // Filtrar apenas alunos com nota >= 6 E que completaram a avaliação
-      // Converter nota para número antes de comparar
-      const approvedStudents = students
-        .filter((student: any) => {
-          // Verificar se o aluno completou a avaliação
-          const status = student.status || student.status_geral;
-          if (status !== 'concluida' && status !== 'concluída') {
-            console.log(`Aluno ${student.nome || student.name}: não completou a avaliação (status: ${status})`);
-            return false;
-          }
-          
-          // Obter nota em diferentes formatos possíveis
-          const grade = Number(student.grade || student.nota || student.score || 0);
-          const isApproved = grade >= 6;
-          
-          console.log(`Aluno ${student.nome || student.name}: nota=${grade}, aprovado=${isApproved}`);
-          return isApproved;
-        })
-        .map((student: any) => ({
-          id: student.id || student.student_id,
-          name: student.name || student.nome || 'Aluno sem nome',
-          grade: Number(student.grade || student.nota || student.score || 0),
-          class_name: student.class_name || student.turma || student.class?.name || 'N/A',
-          certificate_id: student.certificate_id,
-          certificate_status: student.certificate_status || 'pending'
-        }));
-      
-      console.log('Alunos aprovados (nota >= 6):', approvedStudents.length);
-      
-      return approvedStudents;
+      // Mapear para o formato esperado
+      return students.map((student: any) => ({
+        id: student.id || student.student_id,
+        name: student.name || student.nome || 'Aluno sem nome',
+        grade: Number(student.grade || student.nota || student.score || 0),
+        class_name: student.class_name || student.turma || student.class?.name || 'N/A',
+        certificate_id: student.certificate_id,
+        certificate_status: student.certificate_status || 'pending'
+      }));
     } catch (error: any) {
       console.error('Erro ao buscar alunos aprovados:', error);
+      if (error?.response?.status === 404) {
+        console.log('Avaliação não encontrada ou sem alunos aprovados');
+        return [];
+      }
       console.error('Detalhes do erro:', error.response?.data || error.message);
       return [];
     }
@@ -207,7 +213,7 @@ export class CertificatesApiService {
 
   /**
    * Buscar template de certificado de uma avaliação
-   * Nota: Por enquanto retorna null se não existir - o template será criado localmente
+   * Retorna null se não existir (comportamento esperado)
    */
   static async getCertificateTemplate(evaluationId: string): Promise<CertificateTemplate | null> {
     try {
@@ -226,43 +232,58 @@ export class CertificatesApiService {
 
   /**
    * Salvar ou atualizar template de certificado
-   * Nota: Por enquanto apenas armazena localmente - backend pode ser implementado depois
+   * Se o template tiver id, atualiza; caso contrário, cria novo
    */
   static async saveCertificateTemplate(template: CertificateTemplate): Promise<CertificateTemplate> {
     try {
-      // Tentar salvar no backend se o endpoint existir
       const response = await api.post('/certificates/template', template);
       return response.data;
     } catch (error: any) {
-      // Se o endpoint não existir, apenas retornar o template (será armazenado localmente)
-      if (error?.response?.status === 404) {
-        console.log('Endpoint de certificados não implementado - template será armazenado localmente');
-        return template;
-      }
       console.error('Erro ao salvar template de certificado:', error);
-      // Mesmo assim, retornar o template para não quebrar o fluxo
+      // Se for erro de validação, lançar o erro
+      if (error?.response?.status === 400) {
+        throw new Error(error.response?.data?.erro || 'Erro ao salvar template');
+      }
+      // Para outros erros, retornar o template original para não quebrar o fluxo
       return template;
     }
   }
 
   /**
    * Aprovar e enviar certificados para alunos
-   * Nota: Por enquanto apenas simula aprovação - backend pode ser implementado depois
+   * Pode aprovar todos os aprovados (apenas evaluation_id) ou alunos específicos (evaluation_id + student_ids)
    */
-  static async approveCertificates(request: CertificateApprovalRequest): Promise<{ success: boolean; message: string }> {
+  static async approveCertificates(
+    evaluationId: string, 
+    studentIds?: string[]
+  ): Promise<{ 
+    success: boolean; 
+    message: string;
+    certificates_issued?: number;
+    certificates_updated?: number;
+    total_processed?: number;
+    errors?: string[];
+  }> {
     try {
-      const response = await api.post('/certificates/approve', request);
+      const requestBody: { evaluation_id: string; student_ids?: string[] } = {
+        evaluation_id: evaluationId
+      };
+      
+      // Se studentIds for fornecido, incluir no body
+      if (studentIds && studentIds.length > 0) {
+        requestBody.student_ids = studentIds;
+      }
+      
+      const response = await api.post('/certificates/approve', requestBody);
       return response.data;
     } catch (error: any) {
-      // Se o endpoint não existir, simular sucesso para não quebrar o fluxo
-      if (error?.response?.status === 404) {
-        console.log('Endpoint de aprovação não implementado - simulando sucesso');
-        return {
-          success: true,
-          message: `Certificados preparados para ${request.student_ids.length} alunos (aguardando implementação do backend)`
-        };
-      }
       console.error('Erro ao aprovar certificados:', error);
+      
+      // Se for erro de validação, lançar erro com mensagem
+      if (error?.response?.status === 400) {
+        throw new Error(error.response?.data?.erro || 'Erro ao aprovar certificados');
+      }
+      
       throw error;
     }
   }

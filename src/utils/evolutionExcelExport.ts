@@ -625,7 +625,11 @@ function createSummarySheet(
     data.push(['Melhor Resultado', formatNumber(melhorNota), 'Melhor desempenho']);
     data.push(['Pior Resultado', formatNumber(piorNota), 'Pior desempenho']);
     data.push(['Variação Total', formatPercent(variacaoTotal), variacaoTotal > 0 ? '↑ Melhoria' : variacaoTotal < 0 ? '↓ Queda' : '→ Estável']);
-    data.push(['Total de Avaliações', etapas.length.toString(), `${etapas.length} avaliação(ões) comparada(s)`]);
+    const label =
+      etapas.length === 1
+        ? '1 avaliação comparada'
+        : `${etapas.length} avaliações comparadas`;
+    data.push(['Total de Avaliações', etapas.length.toString(), label]);
   }
   
   data.push([]);

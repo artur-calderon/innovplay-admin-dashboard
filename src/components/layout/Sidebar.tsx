@@ -45,7 +45,8 @@ import {
   MapPin,
   Sparkles,
   Medal,
-  Star
+  Star,
+  Coins
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useMemo } from "react";
@@ -54,9 +55,12 @@ import { useAuth } from "@/context/authContext";
 import { Button } from "@/components/ui/button";
 import { useGamesCount } from "@/hooks/useGamesCount";
 import { useUnreadAvisos } from "@/hooks/useUnreadAvisos";
+import { useOpenCompetitionsCount } from "@/hooks/useOpenCompetitionsCount";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getRoleDisplayName } from "@/lib/constants";
 import { AvatarPreview } from "@/components/profile/AvatarPreview";
+import { CoinBalance } from "@/components/coins/CoinBalance";
+import { NotificationBell } from "@/components/Notifications/NotificationBell";
 
 type SidebarLink = {
   icon: React.ElementType;
@@ -96,6 +100,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   const { logout, user } = useAuth();
   useGamesCount();
   const { getUnreadCount } = useUnreadAvisos();
+  const openCompetitionsCount = useOpenCompetitionsCount();
 
   useEffect(() => {
     const loadAvisoIds = async () => {
@@ -244,6 +249,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
         },
         { icon: Calculator, label: "Calculadora SAEB", href: "/app/calculadora-saeb", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+        { icon: Coins, label: "Administração de moedas", href: "/app/moedas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: Target, label: "Cálculo de Metas", href: "/app/calculo-metas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
@@ -274,17 +280,9 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
       links: [
         { icon: Award, label: "Certificados", href: `${user.role === 'aluno' ? "/aluno/certificados" : "/app/certificados"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
-        { icon: Trophy, label: "Competições", href: "/aluno/competicoes", role: ["aluno"] },
-        { 
-          icon: Trophy, 
-          label: "Competições", 
-          role: ["admin", "professor", "diretor", "coordenador", "tecadm"],
-          children: [
-            { icon: Trophy, label: "Ver Competições", href: "/app/competicoes", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-            { icon: Settings, label: "Gerenciar", href: "/app/competicoes/admin", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-          ]
-        },
         { icon: Sparkles, label: "Olimpíadas", href: `${user.role === 'aluno' ? "/aluno/olimpiadas" : "/app/olimpiadas"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
+        { icon: Trophy, label: "Competições", href: `${user.role === 'aluno' ? "/aluno/competitions" : "/app/competitions"}`, role: ["admin", "coordenador", "diretor", "tecadm", "aluno"], badge: user.role === 'aluno' && openCompetitionsCount > 0 ? String(openCompetitionsCount) : undefined },
+        { icon: Coins, label: "Histórico de Moedas", href: "/aluno/moedas/historico", role: ["aluno"] },
       ]
     },
     {
@@ -441,7 +439,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         {!isCollapsed && (
           <div className="flex items-center gap-1.5 md:gap-2">
             {link.badge && (
-              <span className="bg-pink-500 text-white text-[9px] md:text-[10px] font-bold px-1 md:px-1.5 py-0.5 rounded-full min-w-[18px] md:min-w-[20px] text-center">
+              <span className={cn(
+                "text-white text-[9px] md:text-[10px] font-bold px-1 md:px-1.5 py-0.5 rounded-full min-w-[18px] md:min-w-[20px] text-center",
+                link.href === '/aluno/competitions' ? 'bg-red-500' : 'bg-pink-500'
+              )}>
                 {link.badge}
               </span>
             )}
@@ -459,7 +460,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         )}
 
         {isCollapsed && link.badge && (
-          <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[9px] md:text-[10px] font-bold w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center">
+          <span className={cn(
+            "absolute -top-1 -right-1 text-white text-[9px] md:text-[10px] font-bold w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center",
+            link.href === '/aluno/competitions' ? 'bg-red-500' : 'bg-pink-500'
+          )}>
             {link.badge}
           </span>
         )}
@@ -662,7 +666,34 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           </div>
         </div>
 
-        {/* User Info */}
+        {/* Notificações */}
+        {!isCollapsed && !isMobile && user.id && (
+          <div className="px-2 pb-1 md:px-3">
+            <div className="flex justify-center">
+              <NotificationBell />
+            </div>
+          </div>
+        )}
+        
+        {/* Coin balance (aluno) + User Info */}
+        {!isCollapsed && !isMobile && user.role === 'aluno' && (
+          <div className="px-2 pb-1 md:px-3">
+            <Link to="/aluno/moedas/historico" className="block">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="rounded-lg border border-[#E5D5EA] dark:border-white/10 bg-white/80 dark:bg-white/5 px-2 py-1.5">
+                      <CoinBalance studentId={user.id} size="small" showLabel={false} />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p>Ver histórico</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </Link>
+          </div>
+        )}
         {!isCollapsed && !isMobile && <UserInfo />}
 
         {/* Navigation */}

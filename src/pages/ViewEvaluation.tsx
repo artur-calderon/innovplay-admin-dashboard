@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import { OlimpiadasApiService } from "@/services/olimpiadasApi";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -87,6 +88,7 @@ export default function ViewEvaluation() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showStartEvaluationModal, setShowStartEvaluationModal] = useState(false);
+  const [individualStudentNamesMap, setIndividualStudentNamesMap] = useState<Record<string, string>>({});
   
   // Estados para mapeamento de habilidades
   const [skillsMapping, setSkillsMapping] = useState<Record<string, string>>({});
@@ -101,15 +103,100 @@ export default function ViewEvaluation() {
     const fetchEvaluation = async () => {
       if (!id) return;
       try {
-        const response = await api.get(`/test/${id}`);
-        console.log("Resposta da API:", response.data);
-        console.log("Campo secondStatement nas questões:", response.data.questions?.map(q => ({
-          id: q.id,
-          secondStatement: q.secondStatement,
-          text: q.text,
-          formattedText: q.formattedText
-        })));
-        setEvaluation(response.data);
+        // Buscar base para identificar se é olimpíada
+        const baseResponse = await api.get(`/test/${id}`);
+        const base = baseResponse.data;
+
+        const isOlimpiadaFromBase =
+          base?.type === "OLIMPIADA" ||
+          base?.title?.includes("[OLIMPÍADA]") ||
+          base?.title?.toUpperCase?.().includes("OLIMPÍADA");
+
+        // Para olimpíada: usar serviço que enriquece selected_students/aplicação individual
+        const data = isOlimpiadaFromBase ? await OlimpiadasApiService.getOlimpiada(id) : base;
+
+        console.log("Resposta da API:", data);
+        console.log(
+          "Campo secondStatement nas questões:",
+          data.questions?.map((q: any) => ({
+            id: q.id,
+            secondStatement: q.secondStatement,
+            text: q.text,
+            formattedText: q.formattedText,
+          }))
+        );
+        setEvaluation(data);
+
+        // ✅ Se houver aplicação individual, buscar nomes dos alunos para exibir no detalhe
+        if (isOlimpiadaFromBase && Array.isArray((data as any).selected_students) && (data as any).selected_students.length > 0) {
+          try {
+            const selectedIds: string[] = (data as any).selected_students.map((s: any) => String(s));
+            const namesMap: Record<string, string> = {};
+            
+            // Tentar buscar do relatório detalhado primeiro (pode ter alunos que já fizeram)
+            try {
+              const detailedReport = await EvaluationResultsApiService.getDetailedReport(id);
+              if (detailedReport?.alunos) {
+                selectedIds.forEach((studentId) => {
+                  const student = detailedReport.alunos.find(
+                    (s: any) => String(s.id || s.student_id || "") === String(studentId)
+                  );
+                  if (student) {
+                    namesMap[studentId] = (student as any)?.nome || (student as any)?.name || studentId;
+                  }
+                });
+              }
+            } catch (err) {
+              // Continuar com método alternativo
+            }
+            
+            // Para alunos que não foram encontrados, buscar das turmas da olimpíada
+            const missingIds = selectedIds.filter((id) => !namesMap[id]);
+            if (missingIds.length > 0 && data.classes && Array.isArray(data.classes) && data.classes.length > 0) {
+              for (const classItem of data.classes) {
+                if (missingIds.length === 0) break;
+                try {
+                  const classId = typeof classItem === 'object' && classItem !== null && 'id' in classItem 
+                    ? classItem.id 
+                    : String(classItem);
+                  const response = await api.get(`/students/classes/${classId}`);
+                  const students = Array.isArray(response.data) 
+                    ? response.data 
+                    : (response.data?.alunos || response.data?.students || []);
+                  
+                  missingIds.forEach((studentId) => {
+                    const student = students.find(
+                      (s: any) => String(s.id || s.student_id || "") === String(studentId)
+                    );
+                    if (student) {
+                      namesMap[studentId] = String(student.name || student.nome || studentId);
+                    }
+                  });
+                } catch (err) {
+                  // Continuar para próxima turma
+                }
+              }
+            }
+            
+            // Fallback: usar ID para alunos não encontrados
+            selectedIds.forEach((studentId) => {
+              if (!namesMap[studentId]) {
+                namesMap[studentId] = studentId;
+              }
+            });
+            
+            setIndividualStudentNamesMap(namesMap);
+          } catch (err) {
+            console.warn('Erro ao buscar nomes dos alunos:', err);
+            // fallback: manter IDs
+            const selectedIds: string[] = (data as any).selected_students.map((s: any) => String(s));
+            const fallbackMap: Record<string, string> = {};
+            selectedIds.forEach((sid) => (fallbackMap[sid] = sid));
+            setIndividualStudentNamesMap(fallbackMap);
+          }
+        } else {
+          setIndividualStudentNamesMap({});
+        }
         
         // Buscar skills da avaliação para mapeamento
         try {
@@ -167,7 +254,24 @@ export default function ViewEvaluation() {
     fetchEvaluation();
   }, [id, toast]);
 
+  // Função auxiliar para verificar se é uma olimpíada
+  const isOlimpiada = () => {
+    return evaluation?.type === 'OLIMPIADA' || 
+           evaluation?.title?.includes('[OLIMPÍADA]') ||
+           evaluation?.title?.toUpperCase().includes('OLIMPÍADA');
+  };
+
+  // Função auxiliar para navegar de volta baseado no tipo
+  const navigateBack = () => {
+    if (isOlimpiada()) {
+      navigate("/app/olimpiadas");
+    } else {
+      navigate("/app/avaliacoes");
+    }
+  };
+
   const handleEdit = () => {
+    // Para olimpíadas, ainda usar a rota de edição de avaliação (mesma estrutura)
     navigate(`/app/avaliacao/${id}/editar`);
   };
 
@@ -190,12 +294,61 @@ export default function ViewEvaluation() {
         description: SUCCESS_MESSAGES.EVALUATION_DELETED,
       });
 
-      navigate("/app/avaliacoes");
-    } catch (error) {
-      console.error("Erro ao excluir avaliação:", error);
+      navigateBack();
+    } catch (error: unknown) {
+      const apiError = error as { 
+        message?: string; 
+        response?: { 
+          status?: number; 
+          data?: { 
+            error?: string;
+            details?: string;
+          } 
+        } 
+      };
+      
+      console.error("❌ Erro detalhado ao excluir:", {
+        error,
+        message: apiError.message,
+        response: apiError.response,
+        status: apiError.response?.status,
+        data: apiError.response?.data
+      });
+
+      let errorMessage = ERROR_MESSAGES.EVALUATION_DELETE_FAILED;
+
+      if (apiError.response?.status === 404) {
+        errorMessage = ERROR_MESSAGES.DATA_NOT_FOUND;
+      } else if (apiError.response?.status === 403) {
+        errorMessage = ERROR_MESSAGES.FORBIDDEN;
+      } else if (apiError.response?.status === 401) {
+        errorMessage = ERROR_MESSAGES.UNAUTHORIZED;
+      } else if (apiError.response?.status === 500) {
+        // Erro interno do servidor - pode ser problema de banco de dados
+        const errorData = apiError.response?.data as { error?: string; details?: string };
+        const errorDetails = errorData?.details || '';
+        const errorText = errorData?.error || '';
+        
+        // Verificar se é erro de tabela não existente (especificamente competition_results)
+        if (errorDetails.includes('does not exist') || 
+            errorDetails.includes('relation') || 
+            errorDetails.includes('competition_results') ||
+            errorText.includes('competition_results')) {
+          errorMessage = 'Erro no banco de dados. Entre em contato com o suporte técnico.';
+        } else if (errorData?.error) {
+          errorMessage = errorData.error;
+        } else {
+          errorMessage = 'Erro interno do servidor. Tente novamente mais tarde.';
+        }
+      } else if (apiError.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
+      } else if (apiError.message) {
+        errorMessage = apiError.message;
+      }
+
       toast({
         title: "Erro",
-        description: ERROR_MESSAGES.EVALUATION_DELETE_FAILED,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -205,7 +358,7 @@ export default function ViewEvaluation() {
   };
 
   const handleBack = () => {
-    navigate("/app/avaliacoes");
+    navigateBack();
   };
 
   const handleStartEvaluation = () => {
@@ -267,7 +420,7 @@ export default function ViewEvaluation() {
 
       toast({
         title: SUCCESS_MESSAGES.EVALUATION_APPLIED,
-        description: `A avaliação "${evaluation.title}" foi aplicada para ${classIds.length} turma(s) e ficará disponível no horário configurado.`,
+        description: `A ${entityName} "${evaluation.title}" foi aplicada para ${classIds.length} turma(s) e ficará disponível no horário configurado.`,
       });
 
       setShowStartEvaluationModal(false);
@@ -469,15 +622,22 @@ export default function ViewEvaluation() {
     );
   }
 
+  // Verificar se é uma olimpíada para adaptar textos (mesmo que evaluation seja null, podemos verificar pelo ID na URL)
+  // Para o caso de evaluation null, assumir que não é olimpíada (padrão)
+  const isOlimpiadaType = evaluation ? isOlimpiada() : false;
+  const entityName = isOlimpiadaType ? 'olimpíada' : 'avaliação';
+  const entityNameCapitalized = isOlimpiadaType ? 'Olimpíada' : 'Avaliação';
+  const entityNamePlural = isOlimpiadaType ? 'Olimpíadas' : 'Avaliações';
+
   if (!evaluation) {
     return (
       <div className="container mx-auto px-2 md:px-4 py-4 md:py-6">
         <div className="text-center py-12">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Avaliação não encontrada</h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">A avaliação que você está procurando não foi encontrada.</p>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">{entityNameCapitalized} não encontrada</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">A {entityName} que você está procurando não foi encontrada.</p>
           <Button onClick={handleBack}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Voltar para Avaliações
+            Voltar para {entityNamePlural}
           </Button>
         </div>
       </div>
@@ -489,8 +649,14 @@ export default function ViewEvaluation() {
   const subjectsCount = getEvaluationSubjectsCount(evaluation);
   const municipalitiesCount = evaluation.municipalities_count || evaluation.municipalities?.length || 0;
   const schoolsCount = evaluation.schools_count || evaluation.schools?.length || 0;
-  const totalStudents = evaluation.total_students || 0;
+  const hasIndividualSelected =
+    Array.isArray((evaluation as any).selected_students) &&
+    (evaluation as any).selected_students.length > 0;
+  const totalStudents = hasIndividualSelected
+    ? (evaluation as any).selected_students.length
+    : (evaluation.total_students || 0);
   const appliedClassesCount = evaluation.applied_classes_count || 0;
+  const isAppliedForDisplay = Boolean((evaluation as any).is_applied) || hasIndividualSelected;
 
   return (
     <div className="container mx-auto px-2 md:px-4 py-4 md:py-6 space-y-6">
@@ -499,7 +665,7 @@ export default function ViewEvaluation() {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink onClick={handleBack} className="cursor-pointer">
-              Avaliações
+              {entityNamePlural}
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
@@ -525,7 +691,7 @@ export default function ViewEvaluation() {
           </div>
           <h1 className="text-xl md:text-2xl font-bold dark:text-gray-100">{evaluation.title}</h1>
           <p className="text-muted-foreground">
-            Visualize os detalhes e questões da avaliação
+            Visualize os detalhes e questões da {entityName}
           </p>
         </div>
         
@@ -534,10 +700,13 @@ export default function ViewEvaluation() {
             variant="default" 
             size="sm" 
             onClick={handleStartEvaluation}
-            className="bg-green-600 hover:bg-green-700 text-white"
+            className={isOlimpiadaType 
+              ? "bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white" 
+              : "bg-green-600 hover:bg-green-700 text-white"
+            }
           >
             <Play className="h-4 w-4 mr-2" />
-            Aplicar Avaliação
+            {isOlimpiadaType ? 'Aplicar Olimpíada' : 'Aplicar Avaliação'}
           </Button>
           <Button variant="outline" size="sm" onClick={handleEdit}>
             <Pencil className="h-4 w-4 mr-2" />
@@ -582,9 +751,7 @@ export default function ViewEvaluation() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600 dark:text-green-400">{totalStudents}</div>
-            <p className="text-xs text-muted-foreground">
-              {appliedClassesCount > 0 ? `Em ${appliedClassesCount} turmas` : 'Prova entregue'}
-            </p>
+            <p className="text-xs text-muted-foreground">Total de alunos</p>
           </CardContent>
         </Card>
         
@@ -706,20 +873,20 @@ export default function ViewEvaluation() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
-              Aplicação da Prova
+              Aplicação da {entityNameCapitalized}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Status de Aplicação */}
             <div className="flex items-center gap-3 mb-4">
                              <Badge 
-                 variant={evaluation.is_applied ? "default" : "secondary"}
-                 className={evaluation.is_applied 
+                 variant={isAppliedForDisplay ? "default" : "secondary"}
+                 className={isAppliedForDisplay 
                    ? "bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800" 
                    : "bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800"
                  }
                >
-                 {evaluation.is_applied ? "✅ Aplicada" : "❌ Não aplicada"}
+                 {isAppliedForDisplay ? "✅ Aplicada" : "❌ Não aplicada"}
                </Badge>
               {evaluation.status && (
                 <Badge variant="outline" className="text-xs">
@@ -729,12 +896,12 @@ export default function ViewEvaluation() {
             </div>
 
             {/* Informações de aplicação */}
-            {evaluation.is_applied && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
+            {evaluation.is_applied && !hasIndividualSelected && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
               <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
                   <span className="font-semibold text-green-800 dark:text-green-300">
-                    {totalStudents} alunos receberam a prova
+                    {totalStudents} alunos receberam a {entityName}
                   </span>
                 </div>
                 <p className="text-sm text-green-700 dark:text-green-400 mb-4">
@@ -780,13 +947,47 @@ export default function ViewEvaluation() {
               </div>
             )}
 
+            {/* ✅ Aplicação individual (alunos) */}
+            {hasIndividualSelected && (
+              <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  <span className="font-semibold text-green-800 dark:text-green-300">
+                    Aplicada para {totalStudents} aluno{totalStudents === 1 ? "" : "s"} (individual)
+                  </span>
+                </div>
+                <p className="text-sm text-green-700 dark:text-green-400">
+                  Esta {entityName} foi enviada apenas para alunos selecionados (sem distribuição por turma).
+                </p>
+
+                {/* Lista de alunos selecionados (mostrar nome) */}
+                <div className="mt-3">
+                  <label className="text-sm font-medium text-green-700 dark:text-green-400 mb-2 block">
+                    Aluno(s) selecionado(s):
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {((evaluation as any).selected_students as string[]).map((studentId) => (
+                      <Badge
+                        key={studentId}
+                        variant="outline"
+                        className="text-xs bg-white/80 dark:bg-card/80 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800"
+                        title={studentId}
+                      >
+                        {individualStudentNamesMap[String(studentId)] || String(studentId).slice(0, 8) + "…"}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Turmas pendentes */}
-            {!evaluation.is_applied && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
+            {!evaluation.is_applied && !hasIndividualSelected && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
               <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Users className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
                   <span className="font-semibold text-yellow-800 dark:text-yellow-300">
-                    {totalStudents} alunos agendados para receber a prova
+                    {totalStudents} alunos agendados para receber a {entityName}
                   </span>
                 </div>
                 <p className="text-sm text-yellow-700 dark:text-yellow-400 mb-4">
@@ -822,7 +1023,7 @@ export default function ViewEvaluation() {
             )}
 
             {/* Quando não há turmas aplicadas ou agendadas */}
-            {(!evaluation.applied_classes || evaluation.applied_classes.length === 0) && (
+            {(!evaluation.applied_classes || evaluation.applied_classes.length === 0) && !hasIndividualSelected && (
               <div className="bg-gray-50 dark:bg-muted/50 border border-gray-200 dark:border-gray-800 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Users className="h-5 w-5 text-gray-500 dark:text-gray-400" />
@@ -831,7 +1032,7 @@ export default function ViewEvaluation() {
                   </span>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Esta avaliação ainda não foi agendada para nenhuma turma.
+                  Esta {entityName} ainda não foi agendada para nenhuma turma.
                 </p>
               </div>
             )}
@@ -944,7 +1145,7 @@ export default function ViewEvaluation() {
                       IDs das turmas: {evaluation.classes.join(', ')}
                     </p>
                     <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-2">
-                      Detalhes completos das turmas serão exibidos após a aplicação da avaliação.
+                      Detalhes completos das turmas serão exibidos após a aplicação da {entityName}.
                     </p>
                   </div>
                 );
@@ -959,7 +1160,7 @@ export default function ViewEvaluation() {
                       </span>
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Esta avaliação ainda não foi associada a nenhuma turma.
+                      Esta {entityName} ainda não foi associada a nenhuma turma.
                     </p>
                   </div>
                 );
@@ -976,7 +1177,7 @@ export default function ViewEvaluation() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                Questões da Avaliação
+                Questões da {entityNameCapitalized}
               </CardTitle>
             </CardHeader>
             <CardContent className="text-center py-12">
@@ -989,7 +1190,7 @@ export default function ViewEvaluation() {
                     Nenhuma questão encontrada
                   </h3>
                   <p className="text-gray-600 dark:text-gray-400 mb-4">
-                    Esta avaliação ainda não possui questões cadastradas.
+                    Esta {entityName} ainda não possui questões cadastradas.
                   </p>
                   <Button onClick={handleEdit} variant="outline">
                     <Pencil className="h-4 w-4 mr-2" />
@@ -1218,7 +1419,7 @@ export default function ViewEvaluation() {
         )}
       </div>
 
-      {/* Modal de Aplicar Avaliação */}
+      {/* Modal de Aplicar {entityNameCapitalized} */}
       <StartEvaluationModal
         isOpen={showStartEvaluationModal}
         onClose={() => setShowStartEvaluationModal(false)}
@@ -1232,7 +1433,7 @@ export default function ViewEvaluation() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir a avaliação "{evaluation?.title}"?
+              Tem certeza que deseja excluir a {entityName} "{evaluation?.title}"?
               Esta ação não pode ser desfeita e todas as questões associadas serão perdidas.
             </AlertDialogDescription>
           </AlertDialogHeader>

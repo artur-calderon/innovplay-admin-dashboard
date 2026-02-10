@@ -11,7 +11,8 @@ import {
   CheckCircle,
   Circle,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  FileText
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { questionsAlunoJovem, questionsAlunoVelho, professorQuestions, diretorQuestions } from '../data';
@@ -171,8 +172,11 @@ const FormView = () => {
           Voltar
         </Button>
         <div className="flex-1">
-          <h1 className="text-3xl font-bold text-gray-900">{formData.title}</h1>
-          <p className="text-gray-600 mt-1">{formData.description}</p>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <FileText className="w-8 h-8 text-blue-600" />
+            {formData.title}
+          </h1>
+          <p className="text-muted-foreground mt-1">{formData.description}</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={formData.isActive ? "default" : "secondary"}>
@@ -202,16 +206,16 @@ const FormView = () => {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <h4 className="font-medium text-gray-900">Tipo</h4>
-              <p className="text-sm text-gray-600">Aluno (Jovem)</p>
+              <h4 className="font-medium text-foreground">Tipo</h4>
+              <p className="text-sm text-muted-foreground">Aluno (Jovem)</p>
             </div>
             <div>
-              <h4 className="font-medium text-gray-900">Total de Questões</h4>
-              <p className="text-sm text-gray-600">{formData.questions.length}</p>
+              <h4 className="font-medium text-foreground">Total de Questões</h4>
+              <p className="text-sm text-muted-foreground">{formData.questions.length}</p>
             </div>
             <div>
-              <h4 className="font-medium text-gray-900">Status</h4>
-              <p className="text-sm text-gray-600">
+              <h4 className="font-medium text-foreground">Status</h4>
+              <p className="text-sm text-muted-foreground">
                 {formData.isActive ? 'Ativo' : 'Inativo'}
               </p>
             </div>

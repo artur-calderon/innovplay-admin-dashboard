@@ -61,6 +61,13 @@ const colors = {
   etapa1: '#fb923c', // laranja
   etapa2: '#a855f7', // roxo
   etapa3: '#22c55e', // verde
+  etapa4: '#3b82f6', // azul
+  etapa5: '#f59e0b', // amarelo
+  etapa6: '#ec4899', // rosa
+  etapa7: '#14b8a6', // turquesa
+  etapa8: '#8b5cf6', // roxo claro
+  etapa9: '#f97316', // laranja escuro
+  etapa10: '#06b6d4', // ciano
   up: '#16a34a',
   down: '#ef4444',
   flat: '#6b7280',
@@ -102,19 +109,33 @@ function mergeByName(rows: EvolutionData[]): EvolutionData[] {
   for (const r of rows) {
     const key = (r?.name || 'Geral').trim();
     const cur = map.get(key) || { name: key };
-    map.set(key, {
-      name: key,
-      etapa1: safe(r.etapa1) ?? cur.etapa1,
-      etapa2: safe(r.etapa2) ?? cur.etapa2,
-      etapa3: safe(r.etapa3) ?? cur.etapa3,
-      variacao_1_2: safe(r.variacao_1_2) ?? cur.variacao_1_2,
-      variacao_2_3: safe(r.variacao_2_3) ?? cur.variacao_2_3,
-    });
+    const merged: any = { name: key };
+    
+    // Mesclar todas as etapas dinamicamente (até 10)
+    for (let i = 1; i <= 10; i++) {
+      const etapaKey = `etapa${i}` as keyof typeof r;
+      merged[etapaKey] = safe((r as any)[etapaKey]) ?? (cur as any)[etapaKey];
+    }
+    
+    // Mesclar todas as variações dinamicamente (até 9: 1→2, 2→3, ..., 9→10)
+    for (let i = 1; i <= 9; i++) {
+      const variacaoKey = `variacao_${i}_${i + 1}` as keyof typeof r;
+      merged[variacaoKey] = safe((r as any)[variacaoKey]) ?? (cur as any)[variacaoKey];
+    }
+    
+    map.set(key, merged);
   }
-  // completa variações que não vieram calculadas
+  
+  // Completa variações que não vieram calculadas (dinamicamente)
   for (const v of map.values()) {
-    if (v.variacao_1_2 === undefined) v.variacao_1_2 = pct(v.etapa1, v.etapa2);
-    if (v.variacao_2_3 === undefined) v.variacao_2_3 = pct(v.etapa2, v.etapa3);
+    for (let i = 1; i <= 9; i++) {
+      const variacaoKey = `variacao_${i}_${i + 1}` as keyof typeof v;
+      if ((v as any)[variacaoKey] === undefined) {
+        const etapa1Key = `etapa${i}` as keyof typeof v;
+        const etapa2Key = `etapa${i + 1}` as keyof typeof v;
+        (v as any)[variacaoKey] = pct((v as any)[etapa1Key], (v as any)[etapa2Key]);
+      }
+    }
   }
   return [...map.values()];
 }
@@ -132,7 +153,15 @@ function domainFor(metric: Metric, rows: EvolutionData[]): [number, number] {
   if (metric === 'approval') return [0, 100];
 
   // proficiência: calcula automaticamente com folga
-  const vals = rows.flatMap(r => [r.etapa1, r.etapa2, r.etapa3].map(safe).filter(v => v !== undefined)) as number[];
+  // Coletar valores de todas as etapas dinamicamente (até 10)
+  const vals = rows.flatMap(r => {
+    const etapaValues: (number | undefined)[] = [];
+    for (let i = 1; i <= 10; i++) {
+      const etapaKey = `etapa${i}` as keyof typeof r;
+      etapaValues.push(safe((r as any)[etapaKey]));
+    }
+    return etapaValues.filter(v => v !== undefined);
+  }) as number[];
   const max = vals.length ? Math.max(...vals) : 10;
   // arredonda pra cima (múltiplos de 25) pra ficar elegante
   const ceilTo = (n: number, step: number) => Math.ceil(n / step) * step;
@@ -207,43 +236,36 @@ export function EvolutionChart({
     merged.forEach((r) => {
       // Verificar se a disciplina tem dados válidos em TODAS as avaliações que estão sendo comparadas
       // Considerar null/undefined como inválido, mas 0 pode ser um valor válido
-      const hasValidDataInAllEvaluations = (
-        (!evaluationNames[0] || safe(r.etapa1) !== undefined) &&
-        (!evaluationNames[1] || safe(r.etapa2) !== undefined) &&
-        (!evaluationNames[2] || safe(r.etapa3) !== undefined)
-      );
+      // Verificar dinamicamente para todas as avaliações (até 10)
+      const hasValidDataInAllEvaluations = evaluationNames.every((_, index) => {
+        const etapaKey = `etapa${index + 1}` as keyof typeof r;
+        return !evaluationNames[index] || safe((r as any)[etapaKey]) !== undefined;
+      });
       
       // Se não tem dados válidos em todas as avaliações, pular esta disciplina
       if (!hasValidDataInAllEvaluations) {
         console.log(`🔍 Disciplina "${r.name}" não tem dados válidos em todas as avaliações, removendo do gráfico`);
-        console.log(`🔍 Dados da disciplina:`, {
-          etapa1: r.etapa1,
-          etapa2: r.etapa2,
-          etapa3: r.etapa3,
-          evaluationNames
-        });
         return;
       }
       
       const item: Record<string, unknown> = { name: r.name };
       
-      // Adicionar apenas as avaliações que existem E têm dados válidos
-      if (evaluationNames[0] && safe(r.etapa1) !== undefined) {
-        item[evaluationNames[0]] = safe(r.etapa1);
-      }
-      if (evaluationNames[1] && safe(r.etapa2) !== undefined) {
-        item[evaluationNames[1]] = safe(r.etapa2);
-      }
-      if (evaluationNames[2] && safe(r.etapa3) !== undefined) {
-        item[evaluationNames[2]] = safe(r.etapa3);
-      }
+      // Adicionar dinamicamente todas as avaliações que existem E têm dados válidos
+      evaluationNames.forEach((evalName, index) => {
+        const etapaKey = `etapa${index + 1}` as keyof typeof r;
+        const etapaValue = safe((r as any)[etapaKey]);
+        if (etapaValue !== undefined) {
+          item[evalName] = etapaValue;
+        }
+      });
       
-      // Adicionar variações se existirem
-      if (r.variacao_1_2 !== undefined && r.variacao_1_2 !== null) {
-        item['Variação 1→2'] = safe(r.variacao_1_2);
-      }
-      if (r.variacao_2_3 !== undefined && r.variacao_2_3 !== null) {
-        item['Variação 2→3'] = safe(r.variacao_2_3);
+      // Adicionar variações dinamicamente (até 9 variações: 1→2, 2→3, ..., 9→10)
+      for (let i = 1; i < evaluationNames.length; i++) {
+        const variacaoKey = `variacao_${i}_${i + 1}` as keyof typeof r;
+        const variacaoValue = (r as any)[variacaoKey];
+        if (variacaoValue !== undefined && variacaoValue !== null) {
+          item[`Variação ${i}→${i + 1}`] = safe(variacaoValue);
+        }
       }
       
       data.push(item);
@@ -265,51 +287,62 @@ export function EvolutionChart({
     
     // Verificar se a disciplina tem dados válidos em TODAS as avaliações para poder calcular variações
     // Considerar null/undefined como inválido, mas 0 pode ser um valor válido
-    const hasValidDataInAllEvaluations = (
-      (!evaluationNames[0] || safe(r.etapa1) !== undefined) &&
-      (!evaluationNames[1] || safe(r.etapa2) !== undefined) &&
-      (!evaluationNames[2] || safe(r.etapa3) !== undefined)
-    );
+    // Verificar dinamicamente para todas as avaliações (até 10)
+    const hasValidDataInAllEvaluations = evaluationNames.every((_, index) => {
+      const etapaKey = `etapa${index + 1}` as keyof typeof r;
+      return !evaluationNames[index] || safe((r as any)[etapaKey]) !== undefined;
+    });
     
     // Se não tem dados válidos em todas as avaliações, retornar array vazio
     if (!hasValidDataInAllEvaluations) {
       console.log(`🔍 Disciplina "${r.name}" não tem dados válidos em todas as avaliações, removendo do gráfico de variações`);
-      console.log(`🔍 Dados da disciplina para variações:`, {
-        etapa1: r.etapa1,
-        etapa2: r.etapa2,
-        etapa3: r.etapa3,
-        variacao_1_2: r.variacao_1_2,
-        variacao_2_3: r.variacao_2_3,
-        evaluationNames
-      });
       return [];
     }
     
     const data: Record<string, unknown>[] = [];
     
-    // Ponto 1: Primeira avaliação (baseline = 0%) - só incluir se tiver dados válidos
-    if (evaluationNames[0] && safe(r.etapa1) !== undefined) {
-      data.push({
-        name: evaluationNames[0],
-        variacao: 0
-      });
-    }
-    
-    // Ponto 2: Segunda avaliação (variação 1→2) - só incluir se tiver dados válidos
-    if (evaluationNames[1] && safe(r.etapa2) !== undefined && r.variacao_1_2 !== undefined && r.variacao_1_2 !== null) {
-      data.push({
-        name: evaluationNames[1],
-        variacao: safe(r.variacao_1_2)
-      });
-    }
-    
-    // Ponto 3: Terceira avaliação (variação 2→3) - só incluir se tiver dados válidos
-    if (evaluationNames[2] && safe(r.etapa3) !== undefined && r.variacao_2_3 !== undefined && r.variacao_2_3 !== null) {
-      data.push({
-        name: evaluationNames[2],
-        variacao: safe(r.variacao_2_3)
-      });
-    }
+    // Adicionar dinamicamente todas as avaliações com suas variações
+    evaluationNames.forEach((evalName, index) => {
+      const etapaKey = `etapa${index + 1}` as keyof typeof r;
+      const etapaValue = safe((r as any)[etapaKey]);
+      
+      if (etapaValue !== undefined) {
+        let variacao = 0;
+        
+        // Se não é a primeira avaliação, calcular ou buscar variação
+        if (index > 0) {
+          const variacaoKey = `variacao_${index}_${index + 1}` as keyof typeof r;
+          const variacaoValue = safe((r as any)[variacaoKey]);
+          
+          if (variacaoValue !== undefined) {
+            variacao = variacaoValue;
+          } else {
+            // Calcular variação manualmente se não existir
+            const prevEtapaKey = `etapa${index}` as keyof typeof r;
+            const prevValue = safe((r as any)[prevEtapaKey]);
+            if (prevValue !== undefined && prevValue > 0) {
+              variacao = ((etapaValue - prevValue) / prevValue) * 100;
+              // Validar variação calculada (limitar valores extremos)
+              if (Math.abs(variacao) > 1000) {
+                console.warn(`⚠️ Variação calculada extrema: ${variacao}% entre etapa ${index} e ${index + 1}. Limitando a ±1000%`);
+                variacao = variacao > 0 ? 1000 : -1000;
+              }
+            }
+          }
+          
+          // Validar variação obtida do backend também
+          if (variacao !== 0 && Math.abs(variacao) > 1000) {
+            console.warn(`⚠️ Variação do backend extrema: ${variacao}% entre etapa ${index} e ${index + 1}. Limitando a ±1000%`);
+            variacao = variacao > 0 ? 1000 : -1000;
+          }
+        }
+        
+        data.push({
+          name: evalName,
+          variacao: variacao
+        });
+      }
+    });
     
     console.log('🔍 variationChartData filtrado:', data);
     return data;
@@ -463,64 +496,34 @@ export function EvolutionChart({
                       }}
                     />
 
-                    {/* Barras com labels modernos - primeira coluna sempre no início */}
-                    <Bar 
-                      yAxisId="left" 
-                      dataKey={evaluationNames[0] || '1ª Etapa'} 
-                      name={evaluationNames[0] || '1ª Etapa'} 
-                      fill={colors.etapa1} 
-                      radius={8}
-                      stackId="a"
-                    >
-                      {chartData.map((_, i) => <Cell key={`b1-${i}`} fill={colors.etapa1} />)}
-                      <LabelList
-                        position="top"
-                        offset={12}
-                        className="fill-foreground"
-                        fontSize={12}
-                        formatter={(value: number) => value ? value.toFixed(1) : ''}
-                      />
-                    </Bar>
-                    
-                    {evaluationNames[1] && (
-                      <Bar 
-                        yAxisId="left" 
-                        dataKey={evaluationNames[1]} 
-                        name={evaluationNames[1]} 
-                        fill={colors.etapa2} 
-                        radius={8}
-                        stackId="b"
-                      >
-                        {chartData.map((_, i) => <Cell key={`b2-${i}`} fill={colors.etapa2} />)}
-                        <LabelList
-                          position="top"
-                          offset={12}
-                          className="fill-foreground"
-                          fontSize={12}
-                          formatter={(value: number) => value ? value.toFixed(1) : ''}
-                        />
-                      </Bar>
-                    )}
-                    
-                    {evaluationNames[2] && (
-                      <Bar 
-                        yAxisId="left" 
-                        dataKey={evaluationNames[2]} 
-                        name={evaluationNames[2]} 
-                        fill={colors.etapa3} 
-                        radius={8}
-                        stackId="c"
-                      >
-                        {chartData.map((_, i) => <Cell key={`b3-${i}`} fill={colors.etapa3} />)}
-                        <LabelList
-                          position="top"
-                          offset={12}
-                          className="fill-foreground"
-                          fontSize={12}
-                          formatter={(value: number) => value ? value.toFixed(1) : ''}
-                        />
-                      </Bar>
-                    )}
+                    {/* Barras com labels modernos - renderizar dinamicamente para todas as avaliações */}
+                    {evaluationNames.map((evalName, index) => {
+                      const colorKeys = ['etapa1', 'etapa2', 'etapa3', 'etapa4', 'etapa5', 'etapa6', 'etapa7', 'etapa8', 'etapa9', 'etapa10'] as const;
+                      const colorKey = colorKeys[index] || 'etapa1';
+                      const stackIds = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
+                      const stackId = stackIds[index] || 'a';
+                      
+                      return (
+                        <Bar 
+                          key={`bar-${index}`}
+                          yAxisId="left" 
+                          dataKey={evalName} 
+                          name={evalName} 
+                          fill={colors[colorKey]} 
+                          radius={8}
+                          stackId={stackId}
+                        >
+                          {chartData.map((_, i) => <Cell key={`b${index}-${i}`} fill={colors[colorKey]} />)}
+                          <LabelList
+                            position="top"
+                            offset={12}
+                            className="fill-foreground"
+                            fontSize={12}
+                            formatter={(value: number) => value ? value.toFixed(1) : ''}
+                          />
+                        </Bar>
+                      );
+                    })}
 
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -709,90 +712,53 @@ export function EvolutionChart({
                   }}
                 />
 
-                {/* Barras com labels modernos - primeira coluna sempre no início */}
-                <Bar 
-                  yAxisId="left" 
-                  dataKey={evaluationNames[0] || '1ª Etapa'} 
-                  name={evaluationNames[0] || '1ª Etapa'} 
-                  fill={colors.etapa1} 
-                  radius={8}
-                  stackId="a"
-                >
-                  {chartData.map((_, i) => <Cell key={`b1-${i}`} fill={colors.etapa1} />)}
-                  <LabelList
-                    position="top"
-                    offset={12}
-                    className="fill-foreground"
-                    fontSize={12}
-                    formatter={(value: number) => value ? value.toFixed(1) : ''}
-                  />
-                </Bar>
-                
-                {evaluationNames[1] && (
-                  <Bar 
-                    yAxisId="left" 
-                    dataKey={evaluationNames[1]} 
-                    name={evaluationNames[1]} 
-                    fill={colors.etapa2} 
-                    radius={8}
-                    stackId="b"
-                  >
-                    {chartData.map((_, i) => <Cell key={`b2-${i}`} fill={colors.etapa2} />)}
-                    <LabelList
-                      position="top"
-                      offset={12}
-                      className="fill-foreground"
-                      fontSize={12}
-                      formatter={(value: number) => value ? value.toFixed(1) : ''}
-                    />
-                  </Bar>
-                )}
-                
-                {evaluationNames[2] && (
-                  <Bar 
-                    yAxisId="left" 
-                    dataKey={evaluationNames[2]} 
-                    name={evaluationNames[2]} 
-                    fill={colors.etapa3} 
-                    radius={8}
-                    stackId="c"
-                  >
-                    {chartData.map((_, i) => <Cell key={`b3-${i}`} fill={colors.etapa3} />)}
-                    <LabelList
-                      position="top"
-                      offset={12}
-                      className="fill-foreground"
-                      fontSize={12}
-                      formatter={(value: number) => value ? value.toFixed(1) : ''}
-                    />
-                  </Bar>
-                )}
+                {/* Barras com labels modernos - renderizar dinamicamente para todas as avaliações */}
+                {evaluationNames.map((evalName, index) => {
+                  const colorKeys = ['etapa1', 'etapa2', 'etapa3', 'etapa4', 'etapa5', 'etapa6', 'etapa7', 'etapa8', 'etapa9', 'etapa10'] as const;
+                  const colorKey = colorKeys[index] || 'etapa1';
+                  const stackIds = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
+                  const stackId = stackIds[index] || 'a';
+                  
+                  return (
+                    <Bar 
+                      key={`bar-${index}`}
+                      yAxisId="left" 
+                      dataKey={evalName} 
+                      name={evalName} 
+                      fill={colors[colorKey]} 
+                      radius={8}
+                      stackId={stackId}
+                    >
+                      {chartData.map((_, i) => <Cell key={`b${index}-${i}`} fill={colors[colorKey]} />)}
+                      <LabelList
+                        position="top"
+                        offset={12}
+                        className="fill-foreground"
+                        fontSize={12}
+                        formatter={(value: number) => value ? value.toFixed(1) : ''}
+                      />
+                    </Bar>
+                  );
+                })}
 
               </ComposedChart>
             </ResponsiveContainer>
           </div>
         )}
 
-        {/* Legenda enxuta */}
+        {/* Legenda enxuta - renderizar dinamicamente para todas as avaliações */}
         <div className="mt-4 flex flex-wrap gap-4 text-sm">
-          {evaluationNames[0] && (
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded" style={{ backgroundColor: colors.etapa1 }} />
-              {evaluationNames[0]}
-            </div>
-          )}
-          {evaluationNames[1] && (
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded" style={{ backgroundColor: colors.etapa2 }} />
-              {evaluationNames[1]}
-            </div>
-          )}
-          {evaluationNames[2] && (
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded" style={{ backgroundColor: colors.etapa3 }} />
-              {evaluationNames[2]}
-            </div>
-          )}
+          {evaluationNames.map((evalName, index) => {
+            const colorKeys = ['etapa1', 'etapa2', 'etapa3', 'etapa4', 'etapa5', 'etapa6', 'etapa7', 'etapa8', 'etapa9', 'etapa10'] as const;
+            const colorKey = colorKeys[index] || 'etapa1';
+            
+            return (
+              <div key={`legend-${index}`} className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded" style={{ backgroundColor: colors[colorKey] }} />
+                {evalName}
+              </div>
+            );
+          })}
         </div>
       </CardContent>
     </Card>

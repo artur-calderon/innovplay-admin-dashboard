@@ -118,6 +118,7 @@ interface GeneratedForm {
   generated_at?: string;
   corrected_at?: string | null;
   processed_at?: string | null;
+  answer_sheet_sent_at?: string | null;
 }
 
 export default function PhysicalTestPage() {
@@ -135,6 +136,8 @@ export default function PhysicalTestPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [correctionProgress, setCorrectionProgress] = useState(0);
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Estados para configuração de blocos
   const [useBlocks, setUseBlocks] = useState(false);
@@ -186,6 +189,15 @@ export default function PhysicalTestPage() {
       loadTestData();
     }
   }, [id]);
+
+  // Cleanup do polling interval ao desmontar componente
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, []);
 
   const loadTestData = async () => {
     try {
@@ -277,72 +289,216 @@ export default function PhysicalTestPage() {
     }
   };
 
+  const startPolling = (taskId: string) => {
+    if (!id) return;
+
+    setCorrectionProgress(20);
+
+    // Limpar intervalo anterior se existir
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+
+    // Iniciar polling a cada 3 segundos
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        const response = await api.get(`/physical-tests/task/${taskId}/status`);
+        const data = response.data;
+
+        console.log("📊 Status do polling:", data.status);
+
+        // Atualizar progresso visual
+        if (data.status === 'processing') {
+          setCorrectionProgress(prev => Math.min(prev + 5, 80));
+        }
+
+        // SUCESSO: parar polling e exibir resultado
+        if (data.status === 'completed') {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+
+          setCorrectionProgress(100);
+          setIsGenerating(false);
+
+          // Processar resultado
+          const result = data.result;
+
+          // Mapear form_id para id para compatibilidade
+          const mappedForms = (result.forms || []).map((form: any) => ({
+            ...form,
+            id: form.form_id || form.id,
+            created_at: form.created_at || new Date().toISOString(),
+            updated_at: form.created_at || new Date().toISOString(),
+            status: 'gerado',
+            answer_sheet_sent_at: form.answer_sheet_sent_at || null
+          }));
+
+          setGeneratedForms(mappedForms);
+
+          toast({
+            title: "✅ Avaliações geradas com sucesso!",
+            description: `${result.generated_forms || result.forms?.length || 0} avaliações foram geradas para ${result.total_students} alunos.`,
+          });
+
+          setCorrectionProgress(0);
+        }
+
+        // ERRO: parar polling e exibir erro
+        if (data.status === 'failed') {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+
+          setIsGenerating(false);
+          setCorrectionProgress(0);
+
+          toast({
+            title: "❌ Erro ao gerar formulários",
+            description: data.error || "Erro desconhecido ao gerar avaliações",
+            variant: "destructive",
+          });
+        }
+
+        // RETRYING: mostrar mensagem
+        if (data.status === 'retrying') {
+          toast({
+            title: "🔄 Tentando novamente...",
+            description: `Erro detectado. Tentativa ${data.retry_count || 1}/2...`,
+          });
+        }
+
+      } catch (error: any) {
+        console.error("Erro ao verificar status da geração:", error);
+
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+
+        setIsGenerating(false);
+        setCorrectionProgress(0);
+
+        toast({
+          title: "Erro",
+          description: "Erro ao verificar status da geração. Tente novamente.",
+          variant: "destructive",
+        });
+      }
+    }, 3000); // Polling a cada 3 segundos
+
+    // Timeout de segurança (15 minutos)
+    setTimeout(() => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+
+      if (isGenerating) {
+        setIsGenerating(false);
+        setCorrectionProgress(0);
+
+        toast({
+          title: "⚠️ Timeout",
+          description: "A geração está demorando mais do que o esperado. Por favor, verifique o status manualmente ou tente novamente.",
+          variant: "destructive",
+        });
+      }
+    }, 15 * 60 * 1000); // 15 minutos
+  };
+
   const handleGenerateForms = async () => {
     if (!id) return;
 
     try {
       setIsGenerating(true);
-      setCorrectionProgress(0);
+      setCorrectionProgress(10);
       setShowGenerateDialog(false); // Fechar dialog ao iniciar geração
 
-      // Simular progresso
-      const progressInterval = setInterval(() => {
-        setCorrectionProgress(prev => Math.min(prev + 10, 90));
-      }, 200);
-
-      // Preparar payload com parâmetros de blocos
-      const payload: any = {};
+      // Preparar payload com parâmetros de blocos no formato esperado pelo backend
+      const payload: any = {
+        force_regenerate: false // Adicionar parâmetro force_regenerate
+      };
 
       if (separateBySubject) {
-        // Se separar por disciplina, enviar apenas essa opção
-        payload.use_blocks = true;
-        payload.separate_by_subject = true;
+        // Se separar por disciplina, enviar blocks_config com separate_by_subject
+        payload.blocks_config = {
+          use_blocks: true,
+          separate_by_subject: true
+        };
       } else if (useBlocks) {
         // Se usar blocos normais, enviar configurações de blocos
-        payload.use_blocks = true;
-        payload.num_blocks = numBlocks;
-        payload.questions_per_block = questionsPerBlock;
-        payload.separate_by_subject = false;
+        payload.blocks_config = {
+          use_blocks: true,
+          num_blocks: numBlocks,
+          questions_per_block: questionsPerBlock,
+          separate_by_subject: false
+        };
+      } else {
+        // Se não usar blocos, enviar blocks_config com use_blocks: false
+        payload.blocks_config = {
+          use_blocks: false
+        };
       }
 
       // Adicionar use_hybrid ao payload
       payload.use_hybrid = true;
 
+      // 1. DISPARAR GERAÇÃO (retorna imediatamente com 202)
       const response = await api.post(`/physical-tests/test/${id}/generate-forms`, payload, {
         headers: {
           'Content-Type': 'application/json',
         },
       });
 
-      clearInterval(progressInterval);
-      setCorrectionProgress(100);
+      // Verificar se a resposta é 202 Accepted (assíncrono)
+      if (response.status === 202) {
+        const data = response.data;
+        setTaskId(data.task_id);
 
-      // Mapear form_id para id para compatibilidade
-      const mappedForms = (response.data.forms || []).map((form: any) => ({
-        ...form,
-        id: form.form_id || form.id, // Mapear form_id para id (ou usar id se já existir)
-        created_at: form.created_at || new Date().toISOString(), // Usar created_at da API ou adicionar timestamp
-        updated_at: form.created_at || new Date().toISOString(), // Usar created_at como updated_at se não existir
-        status: 'gerado', // Definir status como gerado
-        answer_sheet_sent_at: form.answer_sheet_sent_at || null // Preservar campo de envio se existir
-      }));
-      setGeneratedForms(mappedForms);
+        toast({
+          title: "⏳ Geração iniciada",
+          description: "Os formulários estão sendo gerados em background. Isso pode levar alguns minutos.",
+        });
 
-      toast({
-        title: "Avaliações geradas!",
-        description: `${response.data.generated_forms || response.data.forms?.length || 0} avaliações foram geradas com sucesso.`,
-      });
+        // 2. INICIAR POLLING
+        startPolling(data.task_id);
+      } else {
+        // Resposta síncrona (fallback para compatibilidade)
+        setCorrectionProgress(100);
+
+        const mappedForms = (response.data.forms || []).map((form: any) => ({
+          ...form,
+          id: form.form_id || form.id,
+          created_at: form.created_at || new Date().toISOString(),
+          updated_at: form.created_at || new Date().toISOString(),
+          status: 'gerado',
+          answer_sheet_sent_at: form.answer_sheet_sent_at || null
+        }));
+        setGeneratedForms(mappedForms);
+
+        toast({
+          title: "Avaliações geradas!",
+          description: `${response.data.generated_forms || response.data.forms?.length || 0} avaliações foram geradas com sucesso.`,
+        });
+
+        setIsGenerating(false);
+        setCorrectionProgress(0);
+      }
 
     } catch (error: any) {
       console.error("Erro ao gerar formulários:", error);
-      toast({
-        title: "Erro",
-        description: error.response?.data?.error || "Erro ao gerar avaliações",
-        variant: "destructive",
-      });
-    } finally {
+
       setIsGenerating(false);
       setCorrectionProgress(0);
+
+      toast({
+        title: "Erro",
+        description: error.response?.data?.error || "Erro ao iniciar geração de avaliações",
+        variant: "destructive",
+      });
     }
   };
 
@@ -359,31 +515,6 @@ export default function PhysicalTestPage() {
 
       console.log("📸 Imagem selecionada:", file.name);
     }
-  };
-
-  // Função auxiliar para formatar mensagens de erro da correção
-  const formatCorrectionError = (error: any): string => {
-    const errorData = error.response?.data;
-    
-    if (!errorData) {
-      return "Não foi possível processar a correção. Tente novamente.";
-    }
-
-    // Extrair mensagem de erro
-    const errorMessage = errorData.error || "Erro desconhecido na correção";
-    
-    // Adicionar informação do sistema se disponível
-    const system = errorData.system;
-    if (system) {
-      const systemLabels: Record<string, string> = {
-        ai: "Sistema de IA",
-        old: "Sistema Antigo",
-        new_orm: "Sistema OMR"
-      };
-      return `${errorMessage} (${systemLabels[system] || system})`;
-    }
-
-    return errorMessage;
   };
 
   const handleProcessCorrection = async () => {
@@ -429,24 +560,12 @@ export default function PhysicalTestPage() {
 
     } catch (error: any) {
       console.error("Erro ao processar correção:", error);
-      
-      const errorMessage = formatCorrectionError(error);
-      const statusCode = error.response?.status;
-      
-      // Determinar título baseado no status
-      let title = "Erro";
-      if (statusCode === 401 || statusCode === 403) {
-        title = "Erro de Autorização";
-      } else if (statusCode === 404) {
-        title = "Prova não encontrada";
-      } else if (statusCode === 400) {
-        title = "Erro de Validação";
-      } else if (statusCode === 500) {
-        title = "Erro do Sistema";
-      }
+
+      // Exibir erro exatamente como vem do backend
+      const errorMessage = error.response?.data?.error || error.message || "Não foi possível processar a correção. Tente novamente.";
 
       toast({
-        title,
+        title: "Erro",
         description: errorMessage,
         variant: "destructive",
       });
@@ -487,7 +606,7 @@ export default function PhysicalTestPage() {
     );
 
     setBatchImages(prev => [...prev, ...newImages]);
-    
+
     // Limpar input para permitir selecionar os mesmos arquivos novamente
     if (batchFileInputRef.current) {
       batchFileInputRef.current.value = '';
@@ -508,7 +627,7 @@ export default function PhysicalTestPage() {
     try {
       // Converter imagens para base64
       const base64Images = batchImages.map(img => img.preview);
-      
+
       // Iniciar correção em lote
       await startBatchCorrection(id, base64Images);
     } catch (error) {
@@ -526,29 +645,47 @@ export default function PhysicalTestPage() {
 
   const handleDownloadForm = async (form: GeneratedForm) => {
     try {
-      const response = await api.get(`/physical-tests/test/${id}/download/${form.id}`, {
-        responseType: 'blob'
-      });
+      // A nova rota retorna JSON com uma URL pré-assinada do MinIO
+      const response = await api.get(`/physical-tests/test/${id}/download/${form.id}`);
 
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Avaliacao_${form.student_name.replace(/\s+/g, '_')}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const { download_url, expires_in } = response.data || {};
+
+      if (!download_url) {
+        throw new Error("URL de download não disponível");
+      }
+
+      // Abrir o PDF em uma nova aba/janela usando a URL pré-assinada
+      window.open(download_url, '_blank');
 
       toast({
         title: "Download iniciado",
-        description: "O arquivo PDF está sendo baixado.",
+        description: `O arquivo PDF foi aberto em uma nova aba. Link expira em ${expires_in || "1 hora"}.`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao baixar formulário:", error);
+
+      let description = "Não foi possível baixar o formulário.";
+
+      if (error.response) {
+        const status = error.response.status;
+        const backendError = error.response.data?.error;
+
+        if (status === 404) {
+          description = backendError || "Formulário não encontrado ou URL do PDF não encontrada.";
+        } else if (status === 400) {
+          description = backendError || "Erro de formato de URL de download.";
+        } else if (status === 500) {
+          description = backendError || "Erro ao gerar URL de download.";
+        } else if (backendError) {
+          description = backendError;
+        }
+      } else if (error.message) {
+        description = error.message;
+      }
+
       toast({
         title: "Erro",
-        description: "Não foi possível baixar o formulário.",
+        description,
         variant: "destructive",
       });
     }
@@ -558,36 +695,39 @@ export default function PhysicalTestPage() {
     if (!id) return;
 
     try {
-      const response = await api.get(`/physical-tests/test/${id}/download-all`, {
-        responseType: 'blob'
-      });
+      // 1. Solicitar URL de download (JSON response com URL pré-assinada do MinIO)
+      const response = await api.get(`/physical-tests/test/${id}/download-all`);
 
-      const blob = new Blob([response.data], { type: 'application/zip' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
+      // 2. Verificar se retornou URL de download
+      if (response.data.download_url) {
+        // 3. Redirecionar para URL pré-assinada (download direto do MinIO)
+        window.location.href = response.data.download_url;
 
-      // Nome do arquivo com timestamp
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-      const testTitle = testStatus?.test_title?.replace(/\s+/g, '_') || 'Avaliacao';
-      link.download = `Avaliacoes_${testTitle}_${timestamp}.zip`;
-
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      toast({
-        title: "Download iniciado",
-        description: "O arquivo ZIP está sendo baixado.",
-      });
-    } catch (error) {
+        toast({
+          title: "Download iniciado",
+          description: `O arquivo ZIP está sendo baixado. Link expira em ${response.data.expires_in || '1 hora'}.`,
+        });
+      } else {
+        throw new Error('URL de download não disponível');
+      }
+    } catch (error: any) {
       console.error("Erro ao baixar todos os formulários:", error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível baixar os formulários.",
-        variant: "destructive",
-      });
+      
+      // Tratar erro específico: ZIP ainda não gerado
+      if (error.response?.data?.status === 'not_generated') {
+        toast({
+          title: "Aviso",
+          description: "O ZIP ainda não foi gerado. Aguarde a conclusão da geração dos formulários.",
+          variant: "destructive",
+        });
+      } else {
+        // Outros erros
+        toast({
+          title: "Erro",
+          description: error.response?.data?.error || "Não foi possível baixar os formulários.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -819,7 +959,9 @@ export default function PhysicalTestPage() {
         const remainingQuestions = testTotalQuestions - totalQuestionsNeeded;
         if (remainingQuestions > 0) {
           warnings.push(
-            `ℹ️ Com a configuração atual, restarão ${remainingQuestions} questão(ões) sem distribuir nos blocos. ` +
+            `ℹ️ Com a configuração atual, restarão ${remainingQuestions} ` +
+            (remainingQuestions === 1 ? 'questão' : 'questões') +
+            ' sem distribuir nos blocos. ' +
             `Considere ajustar a quantidade de blocos ou questões por bloco para aproveitar todas as questões.`
           );
         }
@@ -1126,7 +1268,10 @@ export default function PhysicalTestPage() {
                           <div className="space-y-2">
                             <Progress value={correctionProgress} className="w-full" />
                             <p className="text-sm text-muted-foreground text-center">
-                              Gerando avaliações... {correctionProgress}%
+                              ⏳ Gerando formulários PDF em background... {correctionProgress}%
+                            </p>
+                            <p className="text-xs text-muted-foreground text-center">
+                              Isso pode levar alguns minutos. Não feche esta página.
                             </p>
                           </div>
                         )}
@@ -1166,8 +1311,14 @@ export default function PhysicalTestPage() {
             </CardHeader>
             <CardContent>
               {isGenerating && (
-                <div className="mb-4">
+                <div className="mb-4 space-y-2">
                   <Progress value={correctionProgress} className="w-full" />
+                  <p className="text-sm text-muted-foreground text-center">
+                    ⏳ Gerando formulários PDF em background... {correctionProgress}%
+                  </p>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Isso pode levar alguns minutos. Não feche esta página.
+                  </p>
                 </div>
               )}
 
@@ -1357,7 +1508,7 @@ export default function PhysicalTestPage() {
                 Processe múltiplas provas de uma vez. Selecione várias imagens de gabaritos preenchidos
                 e o sistema irá corrigir todas automaticamente.
               </p>
-              
+
               <Dialog open={showBatchCorrectionDialog} onOpenChange={(open) => {
                 if (!open && !isBatchProcessing) {
                   handleCloseBatchDialog();
@@ -1494,12 +1645,11 @@ export default function PhysicalTestPage() {
                             {Object.entries(batchProgress.items || {}).map(([index, item]) => (
                               <div
                                 key={index}
-                                className={`flex items-center justify-between p-2 rounded text-sm ${
-                                  item.status === 'pending' ? 'bg-gray-100' :
-                                  item.status === 'processing' ? 'bg-yellow-50 border border-yellow-200' :
-                                  item.status === 'done' ? 'bg-green-50 border border-green-200' :
-                                  'bg-red-50 border border-red-200'
-                                }`}
+                                className={`flex items-center justify-between p-2 rounded text-sm ${item.status === 'pending' ? 'bg-gray-100' :
+                                    item.status === 'processing' ? 'bg-yellow-50 border border-yellow-200' :
+                                      item.status === 'done' ? 'bg-green-50 border border-green-200' :
+                                        'bg-red-50 border border-red-200'
+                                  }`}
                               >
                                 <span className="flex items-center gap-2">
                                   {item.status === 'pending' && <Clock className="h-4 w-4 text-gray-400" />}

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -183,7 +183,7 @@ const ClassificationBadge = ({ classification }: { classification: string }) => 
       case 'abaixo do básico':
         return 'bg-red-100 text-red-800 border-red-200';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-muted text-foreground border-border';
     }
   };
 
@@ -196,9 +196,19 @@ const ClassificationBadge = ({ classification }: { classification: string }) => 
 };
 
 export default function StudentResult() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id?: string; testId?: string; studentId?: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
+
+  // Modo admin: /app/olimpiada-resultado/:testId/:studentId (mesma rota/API que o aluno vê)
+  const isAdminView = Boolean(params.testId && params.studentId);
+  const testId = params.testId ?? params.id;
+  const studentId = params.studentId ?? user?.id ?? null;
+  const id = testId ?? undefined;
+
+  // Detectar se é uma olimpíada pela URL
+  const isOlimpiada = location.pathname.includes('/olimpiada/') || isAdminView;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -257,10 +267,54 @@ export default function StudentResult() {
 
   // Função auxiliar para buscar resultados
   const fetchResults = async (): Promise<{ found: boolean; hasResults: boolean }> => {
-    if (!id || !user?.id) return { found: false, hasResults: false };
+    if (!testId || !studentId) return { found: false, hasResults: false };
 
     try {
-      // Buscar avaliações da turma do aluno (autenticado)
+      // Modo admin: mesma rota que o aluno usa — GET /evaluation-results/<test_id>/student/<student_id>/results
+      if (isAdminView) {
+        const detailed = await EvaluationResultsApiService.getStudentDetailedResults(String(testId), String(studentId));
+        if (!detailed) {
+          return { found: true, hasResults: false };
+        }
+        let testTitle = "Olimpíada";
+        try {
+          const testResp = await api.get(`/test/${testId}`);
+          if (testResp.data?.title) testTitle = testResp.data.title.replace(/\[OLIMPÍADA\]\s?/gi, "").trim() || testTitle;
+        } catch (_) {}
+        setTest({
+          test_id: testId,
+          title: testTitle,
+          availability: { is_available: true, status: "completed" as const },
+          student_status: { has_completed: true, status: "finalizada", can_start: false, score: detailed.score_percentage, grade: detailed.grade },
+        } as MyClassTestItem);
+        setGrade(typeof detailed.grade === "number" ? detailed.grade : null);
+        setScorePct(typeof detailed.score_percentage === "number" ? detailed.score_percentage : null);
+        setProficiency(typeof detailed.proficiencia === "number" ? detailed.proficiencia : null);
+        setClassification(detailed.classificacao ?? null);
+        setCorrectAnswers(typeof detailed.correct_answers === "number" ? detailed.correct_answers : null);
+        setTotalQuestions(typeof detailed.total_questions === "number" ? detailed.total_questions : null);
+        setEvaluationData({
+          success: true,
+          data: {
+            user_id: studentId,
+            student_id: studentId,
+            student_name: detailed.student_name ?? "Aluno",
+            evaluation_id: testId,
+            evaluation_name: testTitle,
+            grade: detailed.grade ?? 0,
+            proficiency: detailed.proficiencia ?? 0,
+            classification: detailed.classificacao ?? "",
+            correct_answers: detailed.correct_answers ?? 0,
+            total_questions: detailed.total_questions ?? 0,
+            score_percentage: detailed.score_percentage ?? 0,
+            rankings: { school: { position: 0, total_students: 0, ranking: [] }, class: { position: 0, total_students: 0, ranking: [] }, municipality: { position: 0, total_students: 0, ranking: [] } },
+          },
+          message: "",
+        });
+        return { found: true, hasResults: true };
+      }
+
+      // Modo aluno: buscar avaliações da turma do aluno (autenticado)
       const resp = await api.get("/test/my-class/tests");
       const tests: MyClassTestItem[] = resp.data?.tests || [];
       const found = tests.find(t => String(t.test_id) === String(id)) || null;
@@ -271,17 +325,14 @@ export default function StudentResult() {
 
       setTest(found);
 
-      // Verificar se o aluno completou a avaliação
       const hasCompleted = found.student_status?.has_completed;
-
       if (!hasCompleted) {
         return { found: true, hasResults: false };
       }
 
-      // Tentar usar nova API primeiro
       try {
         console.log('🔄 Tentando buscar dados via nova API...');
-        const apiData = await fetchEvaluationGrades(String(user.id), String(id));
+        const apiData = await fetchEvaluationGrades(String(user!.id), String(id));
         
         if (apiData.success && apiData.data) {
           console.log('✅ Dados obtidos via nova API:', apiData.data);
@@ -445,7 +496,7 @@ export default function StudentResult() {
       }
     };
     load();
-  }, [id, user?.id]);
+  }, [testId, studentId, isAdminView, id, user?.id]);
 
   // Polling automático para verificar resultados quando completado mas sem nota
   useEffect(() => {
@@ -538,20 +589,37 @@ export default function StudentResult() {
   const passedGood = (gradeRounded ?? (scoreRounded != null ? scoreRounded / 10 : 0)) >= 7;
 
   // Usar título da avaliação de test ou evaluationData
-  const evaluationTitle = test?.title || evaluationData?.data?.evaluation_name || "Resultado da Avaliação";
+  const evaluationTitle = test?.title || evaluationData?.data?.evaluation_name || (isOlimpiada ? "Resultado da Olimpíada" : "Resultado da Avaliação");
+  
+  // Títulos e navegação: admin (olimpiada-resultado/:testId/:studentId) vs aluno
+  const pageTitle = isAdminView
+    ? "Resultado do Aluno - Olimpíada"
+    : isOlimpiada
+      ? "Resultado da Olimpíada"
+      : "Resultado da Avaliação";
+  const backButtonText = isAdminView ? "Voltar às Olimpíadas" : isOlimpiada ? "Voltar às Olimpíadas" : "Voltar às Avaliações";
+  const backButtonPath = isAdminView ? "/app/olimpiadas" : isOlimpiada ? "/aluno/olimpiadas" : "/aluno/avaliacoes";
+  const myItemsButtonText = isAdminView ? "Voltar às Olimpíadas" : isOlimpiada ? "Minhas Olimpíadas" : "Minhas Avaliações";
+  const myItemsButtonPath = isAdminView ? "/app/olimpiadas" : isOlimpiada ? "/aluno/olimpiadas" : "/aluno/avaliacoes";
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold dark:text-gray-100">Resultado da Avaliação</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <BarChart3 className="w-8 h-8 text-blue-600" />
+            {pageTitle}
+          </h1>
           <p className="text-muted-foreground">{evaluationTitle}</p>
         </div>
-        <Button variant="ghost" onClick={() => navigate("/aluno/avaliacoes")}>Minhas Avaliações</Button>
+        <Button variant="ghost" onClick={() => navigate(myItemsButtonPath)}>{myItemsButtonText}</Button>
       </div>
 
       <Card className="overflow-hidden">
-        <CardHeader className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white">
+        <CardHeader className={isOlimpiada 
+          ? "bg-gradient-to-r from-yellow-600 via-amber-600 to-orange-600 text-white"
+          : "bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white"
+        }>
           <div className="flex items-center justify-between">
             <CardTitle className="text-xl">Seu desempenho</CardTitle>
             {locked ? (
@@ -571,14 +639,14 @@ export default function StudentResult() {
         <CardContent className="p-6">
           {locked ? (
             <div className="flex flex-col items-center justify-center text-center py-8">
-              <Lock className="h-10 w-10 text-gray-500 mb-3" />
+              <Lock className="h-10 w-10 text-muted-foreground mb-3" />
               <p className="text-gray-700 mb-1">Complete a avaliação para ver seus resultados.</p>
-              <p className="text-gray-600 flex items-center gap-2">
+              <p className="text-muted-foreground flex items-center gap-2">
                 <Clock className="h-4 w-4" />
                 Resultados disponíveis após finalizar a avaliação
               </p>
               <div className="mt-6">
-                <Button onClick={() => navigate("/aluno/avaliacoes")} className="bg-gray-800 hover:bg-gray-900">Voltar às Avaliações</Button>
+                <Button onClick={() => navigate(backButtonPath)} className="bg-primary hover:bg-primary/90">{backButtonText}</Button>
               </div>
             </div>
           ) : (
@@ -588,16 +656,24 @@ export default function StudentResult() {
                 {/* Nota Circular - Elemento Principal */}
                 <div className="lg:col-span-1 flex justify-center">
                   <div className="relative flex items-center justify-center">
-                    <div className="absolute -z-10 h-56 w-56 rounded-full bg-gradient-to-tr from-purple-200 via-pink-200 to-yellow-100 blur-2xl" />
-                    <div className="relative h-48 w-48 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 p-1">
+                    <div className={`absolute -z-10 h-56 w-56 rounded-full blur-2xl ${
+                      isOlimpiada 
+                        ? "bg-gradient-to-tr from-yellow-200 via-amber-200 to-orange-100" 
+                        : "bg-gradient-to-tr from-purple-200 via-pink-200 to-yellow-100"
+                    }`} />
+                    <div className={`relative h-48 w-48 rounded-full p-1 ${
+                      isOlimpiada 
+                        ? "bg-gradient-to-br from-yellow-600 to-amber-600" 
+                        : "bg-gradient-to-br from-indigo-600 to-purple-600"
+                    }`}>
                       <div className="h-full w-full rounded-full bg-white flex flex-col items-center justify-center">
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Sua Nota</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Sua Nota</div>
                         <div className={`text-5xl font-extrabold ${passedGood ? "text-green-600" : "text-orange-600"}`}>
                           {gradeRounded != null ? (Math.ceil(gradeRounded * 10) / 10).toString().replace('.', ',') : "-"}
                         </div>
-                        <div className="text-xs text-gray-500">de 10</div>
+                        <div className="text-xs text-muted-foreground">de 10</div>
                         {scoreRounded != null && (
-                          <div className="mt-2 text-sm text-gray-600">({scoreRounded}% acertos)</div>
+                          <div className="mt-2 text-sm text-muted-foreground">({scoreRounded}% acertos)</div>
                         )}
                       </div>
                     </div>
@@ -686,13 +762,13 @@ export default function StudentResult() {
 
                   {/* Informações adicionais */}
                   {endDate && (
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-muted-foreground">
                       Prazo da avaliação: {format(parseISO(endDate.toISOString()), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                     </div>
                   )}
                   
                   <div>
-                    <Button variant="outline" onClick={() => navigate("/aluno/avaliacoes")}>Voltar às avaliações</Button>
+                    <Button variant="outline" onClick={() => navigate(backButtonPath)}>{backButtonText}</Button>
                   </div>
                 </div>
               </div>

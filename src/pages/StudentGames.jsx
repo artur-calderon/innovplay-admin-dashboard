@@ -29,6 +29,7 @@ const DISCIPLINAS = [
     'Artes',
     'Educação Física',
     'Inglês',
+    'Ensino Religioso',
 ];
 
 const StudentGames = () => {
@@ -254,7 +255,10 @@ const StudentGames = () => {
     return (
         <div className="container mx-auto py-6 space-y-6">
             <div>
-                <h2 className="text-2xl font-bold">Meus Jogos</h2>
+                <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+                    <Gamepad2 className="w-8 h-8 text-blue-600" />
+                    Meus Jogos
+                </h2>
                 <p className="text-muted-foreground">Jogue e aprenda com seus jogos educativos</p>
             </div>
 

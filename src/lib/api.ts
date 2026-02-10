@@ -10,8 +10,6 @@ export const api = axios.create({
         'Content-Type': 'application/json',
         'Accept': 'application/json'
     },
-    // ✅ CORRIGIDO: Timeout inicial menor para requisições rápidas
-
     withCredentials: false
 })
 
@@ -62,11 +60,31 @@ api.interceptors.response.use(
             // ✅ CORRIGIDO: Preservar erro original para endpoints críticos
             // Endpoints que precisam de tratamento específico de erro
             const url = error.config?.url || '';
-            const criticalEndpoints = ['/student-answers/submit', '/student-answers/save-partial'];
+            const criticalEndpoints = ['/student-answers/submit', '/student-answers/save-partial', '/answer-sheets/correct-new'];
+            
+            // Se o erro tem uma mensagem específica no campo 'error', preservar o erro original
+            if (error.response?.data?.error) {
+                // Preservar o erro original com response para tratamento específico
+                return Promise.reject(error);
+            }
             
             if (criticalEndpoints.some(endpoint => url.includes(endpoint))) {
                 // Preservar o erro original com response para tratamento específico
                 return Promise.reject(error);
+            }
+            
+            // Detectar erros de conexão com o banco de dados
+            const errorDetails = error.response?.data?.details || '';
+            const isDatabaseError = 
+                errorDetails.includes('psycopg2.OperationalError') ||
+                errorDetails.includes('server closed the connection') ||
+                errorDetails.includes('connection unexpectedly') ||
+                errorDetails.includes('connection pool') ||
+                errorDetails.includes('too many connections');
+            
+            if (isDatabaseError) {
+                console.error('Erro de conexão com o banco de dados:', errorDetails);
+                throw new Error('Erro de conexão com o banco de dados. O servidor pode estar sobrecarregado. Tente novamente em alguns instantes.')
             }
             
             // Para outros endpoints, lançar erro genérico

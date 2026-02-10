@@ -437,7 +437,10 @@ export default function QuestionBank({
       if (invalidQuestions.length > 0) {
         toast({
           title: "Erro",
-          description: `${invalidQuestions.length} questão(ões) não pertencem à disciplina selecionada`,
+          description:
+            invalidQuestions.length === 1
+              ? '1 questão não pertence à disciplina selecionada'
+              : `${invalidQuestions.length} questões não pertencem à disciplina selecionada`,
           variant: "destructive",
         });
         return;

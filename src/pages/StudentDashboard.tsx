@@ -20,6 +20,7 @@ interface StudentEvaluation {
   serie: string;
   escola: string;
   turma?: string;
+  type?: string;
 }
 
 // Interface para dados específicos de uma avaliação
@@ -571,14 +572,18 @@ const StudentDashboard = () => {
     console.log('🔄 Mapeando dados completados para formato de avaliações...');
     console.log('📊 Dados da API:', apiData);
     
-    return apiData.evaluations.map(evaluation => ({
+    const evaluations = apiData?.evaluations ?? [];
+    if (!Array.isArray(evaluations)) return [];
+
+    return evaluations.map(evaluation => ({
       id: evaluation.test_id,
-      titulo: evaluation.title,
-      disciplina: evaluation.subject.name,
-      data_aplicacao: evaluation.application_info.application,
-      serie: evaluation.grade.name,
-      escola: apiData.student.name,
-      turma: evaluation.grade.name
+      titulo: evaluation.title ?? '—',
+      disciplina: evaluation.subject?.name ?? '—',
+      data_aplicacao: evaluation.application_info?.application ?? '—',
+      serie: evaluation.grade?.name ?? '—',
+      escola: apiData?.student?.name ?? '—',
+      turma: evaluation.grade?.name ?? '—',
+      type: evaluation.type
     }));
   };
 
@@ -588,16 +593,26 @@ const StudentDashboard = () => {
     const response = await api.get(`/test/student/completed`);
     console.log('📊 Resposta completa da API:', response.data);
     
-    const completedData: StudentCompletedResponse = response.data;
+    const completedData: StudentCompletedResponse = response.data ?? {};
     console.log('📊 Dados completados:', completedData);
     console.log('📊 Total de avaliações completadas:', completedData.total_completed);
     console.log('📊 Avaliações retornadas:', completedData.returned_count);
-    
-    // Mapear os dados da nova API para o formato esperado
+
+    // Mapear os dados da nova API para o formato esperado (com proteção contra null/undefined)
     const mappedEvaluations = mapCompletedToEvaluations(completedData);
+
+    // Remover olimpíadas e competições da lista de avaliações usadas no dashboard do aluno
+    const filteredEvaluations = mappedEvaluations.filter((evaluation) => {
+      const type = evaluation.type?.toLowerCase() ?? '';
+      // Considera qualquer tipo que contenha "olimpi" (olimpíada, olimpiada, etc.) como olimpíada
+      const isOlimpiada = type.includes('olimpi');
+      // Considera qualquer tipo que contenha "compet" (competição, competicao, etc.) como competição
+      const isCompeticao = type.includes('compet');
+      return !isOlimpiada && !isCompeticao;
+    });
     
-    console.log('📊 Avaliações mapeadas:', mappedEvaluations);
-    return mappedEvaluations;
+    console.log('📊 Avaliações mapeadas (sem olimpíadas):', filteredEvaluations);
+    return filteredEvaluations;
   }, []);
 
   // Função para buscar dados específicos de uma avaliação
@@ -616,10 +631,11 @@ const StudentDashboard = () => {
     
     // Primeiro buscar avaliações completadas para validar
     const completedResponse = await api.get(`/test/student/completed`);
-    const completedData: StudentCompletedResponse = completedResponse.data;
+    const completedData: StudentCompletedResponse = completedResponse.data ?? {};
+    const evaluationsList = completedData.evaluations ?? [];
     
     // Filtrar apenas as avaliações solicitadas que existem nas completadas
-    const availableTestIds = completedData.evaluations
+    const availableTestIds = evaluationsList
       .map(evaluation => evaluation.test_id)
       .filter(id => testIds.includes(id));
     
@@ -737,6 +753,19 @@ const StudentDashboard = () => {
       return;
     }
     
+    // Impedir carregamento de olimpíadas na avaliação específica do dashboard
+    const evaluation = evaluations.find(e => e.id === evaluationId);
+    if (evaluation) {
+      const type = evaluation.type?.toLowerCase() ?? '';
+      if (type.includes('olimpi')) {
+        console.log('⚠️ Ignorando carregamento de avaliação do tipo olimpíada no dashboard do aluno:', {
+          evaluationId,
+          type: evaluation.type,
+        });
+        return;
+      }
+    }
+
     // Validação: garantir que o evaluationId corresponde ao selectedEvaluation
     if (evaluationId !== selectedEvaluation) {
       console.warn('⚠️ Tentativa de carregar avaliação diferente da selecionada:', {
@@ -897,18 +926,33 @@ const StudentDashboard = () => {
 
   // Função para carregar dados de comparação
   const loadComparisonData = useCallback(async () => {
-    if (!user?.id || evaluations.length < 2) {
-      console.log('⚠️ Dados insuficientes para comparação:', { userId: user?.id, evaluationsCount: evaluations.length });
-      return;
-    }
-    
     try {
+      if (!user?.id) {
+        console.log('⚠️ Usuário não encontrado para comparação');
+        return;
+      }
+
+      // Filtrar avaliações que não são de olimpíadas
+      const evaluationsForComparison = evaluations.filter((evaluation) => {
+        const type = evaluation.type?.toLowerCase() ?? '';
+        // Considera qualquer tipo que contenha "olimpi" (olimpíada, olimpiada, etc.) como olimpíada
+        return !type.includes('olimpi');
+      });
+
+      if (evaluationsForComparison.length < 2) {
+        console.log('⚠️ Avaliações suficientes para comparação apenas sem olimpíadas:', {
+          totalEvaluations: evaluations.length,
+          evaluationsForComparison: evaluationsForComparison.length,
+        });
+        return;
+      }
+
       setIsLoadingComparison(true);
       console.log('🔍 Carregando dados de comparação...');
       
       // Pegar os IDs das avaliações disponíveis
-      const testIds = evaluations.map(evaluation => evaluation.id);
-      console.log('📊 IDs das avaliações para comparação:', testIds);
+      const testIds = evaluationsForComparison.map(evaluation => evaluation.id);
+      console.log('📊 IDs das avaliações para comparação (sem olimpíadas):', testIds);
       
       const comparisonResponse = await fetchStudentComparison(user.id, testIds);
       setComparisonData(comparisonResponse);
@@ -975,8 +1019,8 @@ const StudentDashboard = () => {
             <User className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 truncate">Olá, {user?.name || "Aluno"}!</h1>
-            <p className="text-sm sm:text-base text-gray-600">Painel do Aluno</p>
+            <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-foreground truncate">Olá, {user?.name || "Aluno"}!</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">Painel do Aluno</p>
           </div>
         </div>
         
@@ -984,12 +1028,12 @@ const StudentDashboard = () => {
         <div className="flex items-center gap-2 flex-shrink-0">
           {evaluations.length > 0 && (
             <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">Avaliação:</label>
+              <label className="text-sm font-medium text-foreground">Avaliação:</label>
               <select
                 value={selectedEvaluation || ''}
                 onChange={(e) => handleEvaluationChange(e.target.value)}
                 disabled={isLoadingEvaluations}
-                className="px-3 py-1 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-3 py-1.5 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
               >
                 {evaluations.map((evaluation) => (
                   <option key={evaluation.id} value={evaluation.id}>
@@ -1000,7 +1044,7 @@ const StudentDashboard = () => {
             </div>
           )}
           {selectedEvaluation && (
-            <Badge variant="outline" className="bg-green-100 text-green-800 px-2 sm:px-3 py-1 text-xs sm:text-sm">
+            <Badge variant="outline" className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700 px-2 sm:px-3 py-1 text-xs sm:text-sm">
               Avaliação Específica
             </Badge>
           )}

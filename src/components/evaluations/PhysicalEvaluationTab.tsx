@@ -172,8 +172,18 @@ export default function PhysicalEvaluationTab() {
       const evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(1, 100, filters);
       
       if (evaluationsResponse && evaluationsResponse.resultados_detalhados?.avaliacoes) {
-        // Filtrar avaliações baseado na seleção específica
+        // Filtrar avaliações baseado na seleção específica E excluir olimpíadas
         const filteredEvaluations = evaluationsResponse.resultados_detalhados.avaliacoes.filter(evaluation => {
+          // Excluir olimpíadas
+          const type = evaluation.type || evaluation.tipo;
+          const title = evaluation.titulo || evaluation.title || '';
+          const isOlimpiada = type === 'OLIMPIADA' || 
+                             title.includes('[OLIMPÍADA]') || 
+                             title.toUpperCase().includes('OLIMPÍADA');
+          if (isOlimpiada) {
+            return false;
+          }
+          
           const matchesSearch = !searchTerm || evaluation.titulo.toLowerCase().includes(searchTerm.toLowerCase());
           
           // Se uma avaliação específica foi selecionada, mostrar ela independente do status

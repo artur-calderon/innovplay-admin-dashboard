@@ -82,6 +82,8 @@ const QuestionarioRespond = () => {
     const questionId = question.id;
     const response = responses[questionId];
     const questionType = question.type || question.tipo;
+    const subQuestions = question.subQuestions || question.subPerguntas || [];
+    const hasSubQuestions = subQuestions.length > 0;
     
     if (response === undefined || response === null || response === '') {
       return false;
@@ -89,6 +91,17 @@ const QuestionarioRespond = () => {
     
     // Para questões de matriz/múltipla escolha
     if (typeof response === 'object' && !Array.isArray(response)) {
+      // ✅ Se a questão tem subperguntas, verificar se todas foram respondidas
+      // (qualquer valor é válido, incluindo todas "Não")
+      if (hasSubQuestions) {
+        // Verificar se todas as subperguntas têm resposta
+        return subQuestions.every(subQ => {
+          const subResponse = response[subQ.id];
+          return subResponse !== undefined && subResponse !== null && subResponse !== '';
+        });
+      }
+      
+      // Se não tem subperguntas, usar lógica original
       if (questionType === 'multipla_escolha') {
         // Para múltipla escolha, verificar se pelo menos uma opção é "Sim"
         const hasAtLeastOneYes = Object.values(response).some(value => value === 'Sim');
@@ -99,6 +112,56 @@ const QuestionarioRespond = () => {
       }
     }
     
+    return true;
+  }, [responses]);
+
+  // ✅ Função para verificar se todas as subperguntas foram respondidas
+  const areAllSubQuestionsAnswered = useCallback((question: Question): boolean => {
+    const subQuestions = question.subQuestions || question.subPerguntas || [];
+    
+    // Se não tem subperguntas, considerar como completo
+    if (subQuestions.length === 0) {
+      return true;
+    }
+    
+    const questionId = question.id;
+    const response = responses[questionId];
+    const questionType = question.type || question.tipo;
+    
+    // Se não há resposta ou não é um objeto, não está completo
+    if (!response || typeof response !== 'object' || Array.isArray(response)) {
+      return false;
+    }
+    
+    // Verificar cada subpergunta individualmente
+    for (const subQ of subQuestions) {
+      const subResponse = response[subQ.id];
+      
+      // Se a subpergunta não tem resposta, não está completo
+      if (subResponse === undefined || subResponse === null) {
+        return false;
+      }
+      
+      // Validações específicas por tipo de questão
+      if (questionType === 'matriz_selecao' || questionType === 'matriz_selecao_complexa') {
+        // Para matriz de seleção, resposta não pode ser string vazia
+        if (subResponse === '') {
+          return false;
+        }
+      }
+      
+      // Para matriz_slider, verificar se é um número válido
+      if (questionType === 'matriz_slider') {
+        if (typeof subResponse !== 'number' || isNaN(subResponse)) {
+          return false;
+        }
+      }
+      
+      // Para multipla_escolha, qualquer valor (incluindo "Não") é válido
+      // desde que não seja undefined/null
+    }
+    
+    // Todas as subperguntas foram respondidas
     return true;
   }, [responses]);
 
@@ -237,22 +300,38 @@ const QuestionarioRespond = () => {
   };
 
   // ✅ Função auxiliar para limpar respostas de múltipla escolha que tenham todas as subperguntas como "Não"
+  // ✅ CORREÇÃO: Questões obrigatórias NUNCA são removidas, mesmo se todas as respostas forem "Não"
   const cleanMultipleChoiceResponses = (responsesToClean: Record<string, any>): Record<string, any> => {
     const cleaned = { ...responsesToClean };
     
+    if (!questionario) return cleaned;
+    
+    // Criar mapa de questões para acesso rápido
+    const questionsMap = new Map(questionario.questions.map(q => [q.id, q]));
+    
     Object.keys(cleaned).forEach(questionId => {
-      const question = questionario?.questions.find(q => q.id === questionId);
-      const questionType = question?.type || question?.tipo;
+      const question = questionsMap.get(questionId);
+      if (!question) return;
+      
+      const questionType = question.type || question.tipo;
+      const isRequired = question.required !== undefined 
+        ? question.required 
+        : (question.obrigatoria !== undefined ? question.obrigatoria : false);
       const response = cleaned[questionId];
       
+      // ✅ Questões obrigatórias NUNCA são removidas
+      if (isRequired) {
+        return; // Continuar para próxima questão
+      }
+      
+      // Questões não obrigatórias: remover se todas forem "Não"
       if (questionType === 'multipla_escolha' && 
           typeof response === 'object' && 
           !Array.isArray(response) &&
           Object.keys(response).length > 0) {
-        // Se todas as subperguntas são "Não", remover a resposta (não enviar)
         const allNo = Object.values(response).every(value => value === 'Não');
         if (allNo) {
-          console.log(`🗑️ Removendo resposta de múltipla escolha ${questionId} - todas as subperguntas são "Não"`);
+          console.log(`🗑️ Removendo resposta de múltipla escolha ${questionId} - todas as subperguntas são "Não" (não obrigatória)`);
           delete cleaned[questionId];
         }
       }
@@ -262,18 +341,32 @@ const QuestionarioRespond = () => {
   };
 
   // ✅ Função para achatar respostas de matriz (subperguntas) para o formato esperado pelo backend
+  // ✅ Garante que questões obrigatórias sempre são processadas corretamente
   const flattenMatrixResponses = (responsesToFlatten: Record<string, any>): Record<string, any> => {
     const flattened: Record<string, any> = {};
     
+    if (!questionario) return flattened;
+    
+    // Criar mapa de questões para acesso rápido
+    const questionsMap = new Map(questionario.questions.map(q => [q.id, q]));
+    
     Object.entries(responsesToFlatten).forEach(([questionId, response]) => {
-      const question = questionario?.questions.find(q => q.id === questionId);
+      const question = questionsMap.get(questionId);
+      
+      if (!question) {
+        // Se não encontrou a questão, manter como está (questão simples)
+        flattened[questionId] = response;
+        return;
+      }
+      
       // Verificar tanto subQuestions quanto subPerguntas (para compatibilidade)
-      const subQuestions = question?.subQuestions || question?.subPerguntas || [];
+      const subQuestions = question.subQuestions || question.subPerguntas || [];
       const hasSubQuestions = subQuestions.length > 0;
       
       // Se é uma questão com subperguntas (matriz), achatar as subperguntas para o nível raiz
       if (hasSubQuestions && typeof response === 'object' && !Array.isArray(response)) {
         // Para questões de matriz, colocar cada subpergunta no nível raiz
+        // ✅ Garante que todas as subperguntas são enviadas, mesmo se todas forem "Não"
         Object.entries(response).forEach(([subQuestionId, subResponse]) => {
           flattened[subQuestionId] = subResponse;
         });
@@ -390,18 +483,49 @@ const QuestionarioRespond = () => {
       ? currentQuestion.required 
       : (currentQuestion.obrigatoria !== undefined ? currentQuestion.obrigatoria : false);
     
-    // Validar se a questão foi respondida (se for obrigatória)
-    if (isRequired && !isQuestionAnswered(currentQuestion)) {
+    // ✅ Verificar se a questão tem subperguntas e se todas foram respondidas
+    const subQuestions = currentQuestion.subQuestions || currentQuestion.subPerguntas || [];
+    const hasSubQuestions = subQuestions.length > 0;
+    
+    if (hasSubQuestions && !areAllSubQuestionsAnswered(currentQuestion)) {
       setValidationErrors(prev => ({
         ...prev,
-        [currentQuestion.id]: 'Esta questão é obrigatória'
+        [currentQuestion.id]: 'Todas as subperguntas devem ser respondidas'
       }));
       toast({
-        title: "Questão obrigatória não respondida",
-        description: "Por favor, responda esta questão antes de continuar.",
+        title: "Subperguntas não respondidas",
+        description: "Por favor, responda todas as subperguntas antes de continuar.",
         variant: "destructive",
       });
       return;
+    }
+    
+    // ✅ Validar se a questão foi respondida (se for obrigatória)
+    // Para questões com subperguntas, se todas foram respondidas, considerar como respondida
+    // (mesmo que todas sejam "Não")
+    if (isRequired) {
+      const isAnswered = hasSubQuestions 
+        ? areAllSubQuestionsAnswered(currentQuestion) // Se tem subperguntas, verificar se todas foram respondidas
+        : isQuestionAnswered(currentQuestion); // Se não tem, usar validação normal
+      
+      if (!isAnswered) {
+        setValidationErrors(prev => ({
+          ...prev,
+          [currentQuestion.id]: hasSubQuestions 
+            ? 'Todas as subperguntas devem ser respondidas'
+            : 'Esta questão é obrigatória'
+        }));
+        toast({
+          title: hasSubQuestions 
+            ? "Subperguntas não respondidas"
+            : "Questão obrigatória não respondida",
+          description: hasSubQuestions
+            ? "Por favor, responda todas as subperguntas antes de continuar."
+            : "Por favor, responda esta questão antes de continuar.",
+          variant: "destructive",
+        });
+        return;
+      }
     }
     
     // Salvar antes de avançar
@@ -450,6 +574,8 @@ const QuestionarioRespond = () => {
       if (isRequired) {
         const questionId = question.id;
         const response = responses[questionId];
+        const subQuestions = question.subQuestions || question.subPerguntas || [];
+        const hasSubQuestions = subQuestions.length > 0;
         
         // Verificar dependências
         if (question.dependsOn) {
@@ -463,33 +589,36 @@ const QuestionarioRespond = () => {
           }
         }
         
-        // Verificar se a resposta está vazia
+        // ✅ CORREÇÃO: Usar a mesma lógica da navegação
+        // Se a questão tem subperguntas, verificar se todas foram respondidas
+        // (qualquer valor é válido, incluindo todas "Não")
         let isEmpty = false;
-        const questionType = question.type || question.tipo;
         
-        if (response === undefined || response === null || response === '') {
-          isEmpty = true;
-        } else if (typeof response === 'object' && !Array.isArray(response)) {
-          // Para questões de múltipla escolha, verificar se pelo menos uma opção foi marcada como "Sim"
-          if (questionType === 'multipla_escolha') {
-            // Verificar se pelo menos uma subpergunta tem valor "Sim"
-            const hasAtLeastOneYes = Object.values(response).some(value => value === 'Sim');
-            isEmpty = !hasAtLeastOneYes;
-            
-            // ✅ ADICIONAR: Se todas as subperguntas são "Não", considerar como vazio
-            // Isso evita enviar um objeto com todas as respostas como "Não" para o backend
-            const allNo = Object.keys(response).length > 0 && Object.values(response).every(value => value === 'Não');
-            if (allNo) {
-              isEmpty = true;
+        if (hasSubQuestions) {
+          // Para questões com subperguntas, verificar se todas foram respondidas
+          isEmpty = !areAllSubQuestionsAnswered(question);
+        } else {
+          // Para questões sem subperguntas, usar validação normal
+          const questionType = question.type || question.tipo;
+          
+          if (response === undefined || response === null || response === '') {
+            isEmpty = true;
+          } else if (typeof response === 'object' && !Array.isArray(response)) {
+            // Para questões de múltipla escolha sem subperguntas, verificar se pelo menos uma opção foi marcada como "Sim"
+            if (questionType === 'multipla_escolha') {
+              const hasAtLeastOneYes = Object.values(response).some(value => value === 'Sim');
+              isEmpty = !hasAtLeastOneYes;
+            } else {
+              // Para outras matrizes, verificar se pelo menos uma resposta foi dada
+              isEmpty = Object.keys(response).length === 0;
             }
-          } else {
-            // Para outras matrizes, verificar se pelo menos uma subpergunta foi respondida
-            isEmpty = Object.keys(response).length === 0;
           }
         }
         
         if (isEmpty) {
-          errors[questionId] = 'Esta questão é obrigatória';
+          errors[questionId] = hasSubQuestions 
+            ? 'Todas as subperguntas devem ser respondidas'
+            : 'Esta questão é obrigatória';
         }
       }
     });
@@ -634,7 +763,7 @@ const QuestionarioRespond = () => {
         className={`w-full max-w-3xl mx-auto ${hasError ? 'border-red-500' : ''}`}
       >
         <div className="mb-6">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+          <h2 className="text-2xl font-semibold text-foreground mb-2">
             {questionText}
           </h2>
           {isRequired && (
@@ -657,7 +786,7 @@ const QuestionarioRespond = () => {
                     className={`flex items-center gap-4 cursor-pointer p-4 rounded-lg border-2 transition-all ${
                       currentResponse === option 
                         ? 'bg-blue-50 border-blue-500 shadow-sm' 
-                        : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:bg-opacity-50'
+                        : 'bg-card border-border hover:border-blue-300 hover:bg-blue-50 hover:bg-opacity-50'
                     }`}
                   >
                     <input
@@ -668,7 +797,7 @@ const QuestionarioRespond = () => {
                       onChange={(e) => handleResponseChange(questionId, e.target.value)}
                       className="w-5 h-5 text-blue-600 focus:ring-blue-500 focus:ring-2"
                     />
-                    <span className={`text-base ${currentResponse === option ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>
+                    <span className={`text-base ${currentResponse === option ? 'text-foreground font-medium' : 'text-foreground'}`}>
                       {option}
                     </span>
                   </label>
@@ -679,12 +808,12 @@ const QuestionarioRespond = () => {
             {/* Múltipla Escolha - Tabela */}
             {(questionType === 'multipla_escolha') && (
               <div className="mt-6 overflow-x-auto">
-                <table className="w-full border-collapse bg-white rounded-lg shadow-sm">
+                <table className="w-full border-collapse bg-card rounded-lg shadow-sm">
                   <thead>
-                    <tr className="bg-gray-50 border-b-2 border-gray-200">
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Item</th>
+                    <tr className="bg-muted border-b-2 border-border">
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Item</th>
                       {options.map((option: string, optIndex: number) => (
-                        <th key={optIndex} className="px-6 py-4 text-center text-sm font-semibold text-gray-900">
+                        <th key={optIndex} className="px-6 py-4 text-center text-sm font-semibold text-foreground">
                           {option}
                         </th>
                       ))}
@@ -692,19 +821,21 @@ const QuestionarioRespond = () => {
                   </thead>
                   <tbody>
                     {subQuestions.map((subQ: SubQuestion, subIndex: number) => {
-                      const subResponse = currentResponse?.[subQ.id] || 'Não';
+                      // ✅ CORREÇÃO: Não definir valor padrão - deixar undefined se não houver resposta salva
+                      const subResponse = currentResponse?.[subQ.id];
                       return (
                         <tr 
                           key={subQ.id} 
-                          className={`border-b border-gray-200 hover:bg-gray-50 transition-colors ${
-                            subIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                          className={`border-b border-border hover:bg-muted transition-colors ${
+                            subIndex % 2 === 0 ? 'bg-card' : 'bg-muted/50'
                           }`}
                         >
-                          <td className="px-6 py-4 text-base text-gray-900 font-medium">
+                          <td className="px-6 py-4 text-base text-foreground font-medium">
                             {subQ.text || subQ.texto}
                           </td>
                           {options.map((option: string, optIndex: number) => {
-                            const isSelected = subResponse === option;
+                            // ✅ CORREÇÃO: Só marcar se houver resposta salva e ela corresponder à opção
+                            const isSelected = subResponse !== undefined && subResponse === option;
                             return (
                               <td key={optIndex} className="px-6 py-4 text-center">
                                 <label className="flex items-center justify-center cursor-pointer">
@@ -731,12 +862,12 @@ const QuestionarioRespond = () => {
             {/* Matriz de Seleção - Tabela */}
             {(questionType === 'matriz_selecao') && (
               <div className="mt-6 overflow-x-auto">
-                <table className="w-full border-collapse bg-white rounded-lg shadow-sm">
+                <table className="w-full border-collapse bg-card rounded-lg shadow-sm">
                   <thead>
-                    <tr className="bg-gray-50 border-b-2 border-gray-200">
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Item</th>
+                    <tr className="bg-muted border-b-2 border-border">
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Item</th>
                       {options.map((option: string, optIndex: number) => (
-                        <th key={optIndex} className="px-6 py-4 text-center text-sm font-semibold text-gray-900">
+                        <th key={optIndex} className="px-6 py-4 text-center text-sm font-semibold text-foreground">
                           {option}
                         </th>
                       ))}
@@ -744,21 +875,23 @@ const QuestionarioRespond = () => {
                   </thead>
                   <tbody>
                     {subQuestions.map((subQ: SubQuestion, subIndex: number) => {
+                      // ✅ CORREÇÃO: Não definir valor padrão - deixar undefined se não houver resposta salva
                       const subResponse = (currentResponse && typeof currentResponse === 'object' && !Array.isArray(currentResponse))
-                        ? (currentResponse[subQ.id] || '')
-                        : '';
+                        ? currentResponse[subQ.id]
+                        : undefined;
                       return (
                         <tr 
                           key={subQ.id} 
-                          className={`border-b border-gray-200 hover:bg-gray-50 transition-colors ${
-                            subIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                          className={`border-b border-border hover:bg-muted transition-colors ${
+                            subIndex % 2 === 0 ? 'bg-card' : 'bg-muted/50'
                           }`}
                         >
-                          <td className="px-6 py-4 text-base text-gray-900 font-medium">
+                          <td className="px-6 py-4 text-base text-foreground font-medium">
                             {subQ.text || subQ.texto}
                           </td>
                           {options.map((option: string, optIndex: number) => {
-                            const isSelected = subResponse === option;
+                            // ✅ CORREÇÃO: Só marcar se houver resposta salva e ela corresponder à opção
+                            const isSelected = subResponse !== undefined && subResponse === option;
                             return (
                               <td key={optIndex} className="px-6 py-4 text-center">
                                 <label className="flex items-center justify-center cursor-pointer">
@@ -791,7 +924,7 @@ const QuestionarioRespond = () => {
                     : '';
                   return (
                     <div key={subQ.id}>
-                      <p className="text-base font-medium text-gray-900 mb-3">
+                      <p className="text-base font-medium text-foreground mb-3">
                         {subQ.text || subQ.texto}
                       </p>
                       <div className="space-y-3">
@@ -803,7 +936,7 @@ const QuestionarioRespond = () => {
                               className={`flex items-center gap-4 cursor-pointer p-4 rounded-lg border-2 transition-all ${
                                 isSelected 
                                   ? 'bg-blue-50 border-blue-500 shadow-sm' 
-                                  : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:bg-opacity-50'
+                                  : 'bg-card border-border hover:border-blue-300 hover:bg-blue-50 hover:bg-opacity-50'
                               }`}
                             >
                               <input
@@ -814,7 +947,7 @@ const QuestionarioRespond = () => {
                                 onChange={(e) => handleMatrixResponse(questionId, subQ.id, e.target.value)}
                                 className="w-5 h-5 text-blue-600 focus:ring-blue-500 focus:ring-2"
                               />
-                              <span className={`text-base ${isSelected ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>
+                              <span className={`text-base ${isSelected ? 'text-foreground font-medium' : 'text-foreground'}`}>
                                 {option}
                               </span>
                             </label>
@@ -837,16 +970,16 @@ const QuestionarioRespond = () => {
                     max={question.max || 100}
                     value={sliderValue}
                     onChange={(e) => handleSliderChange(questionId, parseInt(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
                     style={{
                       background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%)`,
                       WebkitAppearance: 'none',
                       appearance: 'none'
                     }}
                   />
-                  <div className="flex justify-between text-xs text-gray-500 mt-2">
+                  <div className="flex justify-between text-xs text-muted-foreground mt-2">
                     <span>{question.min || 0}</span>
-                    <span className="font-medium text-gray-700">
+                    <span className="font-medium text-foreground">
                       Valor: <span className="text-blue-600 font-semibold">{sliderValue}</span>
                     </span>
                     <span>{question.max || 100}</span>
@@ -865,16 +998,16 @@ const QuestionarioRespond = () => {
                     max={question.max || 100}
                     value={sliderValue}
                     onChange={(e) => handleSliderChange(questionId, parseInt(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
                     style={{
                       background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%)`,
                       WebkitAppearance: 'none',
                       appearance: 'none'
                     }}
                   />
-                  <div className="flex justify-between text-xs text-gray-500 mt-2">
+                  <div className="flex justify-between text-xs text-muted-foreground mt-2">
                     <span>{question.min || 0}</span>
-                    <span className="font-medium text-gray-700">
+                    <span className="font-medium text-foreground">
                       Valor: <span className="text-blue-600 font-semibold">{sliderValue}</span>
                     </span>
                     <span>{question.max || 100}</span>
@@ -882,7 +1015,7 @@ const QuestionarioRespond = () => {
                 </div>
                 {question.optionText && (
                   <div className="mt-2">
-                    <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                    <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-muted transition-colors">
                       <input
                         type="checkbox"
                         checked={currentResponse?.optionChecked || false}
@@ -903,7 +1036,7 @@ const QuestionarioRespond = () => {
                   const subSliderValue = sliderValues[`${questionId}_${subQ.id}`] ?? (question.min !== undefined ? question.min : 0);
                   return (
                     <div key={subQ.id} className="ml-4">
-                      <p className="text-sm font-medium text-gray-700 mb-2">
+                      <p className="text-sm font-medium text-foreground mb-2">
                         {subQ.text || subQ.texto}
                       </p>
                       <div className="relative">
@@ -917,16 +1050,16 @@ const QuestionarioRespond = () => {
                             setSliderValues(prev => ({ ...prev, [`${questionId}_${subQ.id}`]: value }));
                             handleMatrixResponse(questionId, subQ.id, value);
                           }}
-                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                          className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
                           style={{
                             background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((subSliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((subSliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%)`,
                             WebkitAppearance: 'none',
                             appearance: 'none'
                           }}
                         />
-                        <div className="flex justify-between text-xs text-gray-500 mt-2">
+                        <div className="flex justify-between text-xs text-muted-foreground mt-2">
                           <span>{question.min || 0}</span>
-                          <span className="font-medium text-gray-700">
+                          <span className="font-medium text-foreground">
                             Valor: <span className="text-blue-600 font-semibold">{subSliderValue}</span>
                           </span>
                           <span>{question.max || 100}</span>
@@ -948,7 +1081,7 @@ const QuestionarioRespond = () => {
                   className="w-full"
                   placeholder="Digite sua resposta aqui..."
                 />
-                <div className="flex justify-between text-xs text-gray-500">
+                <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Resposta livre</span>
                   <span>{(currentResponse as string)?.length || 0} caracteres</span>
                 </div>
@@ -978,7 +1111,7 @@ const QuestionarioRespond = () => {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <AlertCircle className="h-16 w-16 text-gray-400 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <h3 className="text-lg font-semibold text-foreground mb-2">
               Questionário não encontrado
             </h3>
             <p className="text-gray-600 mb-4">
@@ -1005,12 +1138,25 @@ const QuestionarioRespond = () => {
   const remainingQuestions = totalQuestions - currentQuestionNumber;
 
   // Verificar se pode avançar
-  const canProceed = currentQuestion ? isQuestionAnswered(currentQuestion) : false;
+  // ✅ Se a questão tem subperguntas, verificar se todas foram respondidas
+  // ✅ Se não tem subperguntas, usar a validação normal
+  const canProceed = currentQuestion ? (() => {
+    const subQuestions = currentQuestion.subQuestions || currentQuestion.subPerguntas || [];
+    const hasSubQuestions = subQuestions.length > 0;
+    
+    if (hasSubQuestions) {
+      // Para questões com subperguntas, verificar se todas foram respondidas
+      return areAllSubQuestionsAnswered(currentQuestion);
+    } else {
+      // Para questões sem subperguntas, usar validação normal
+      return isQuestionAnswered(currentQuestion);
+    }
+  })() : false;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-muted">
       {/* Header Moderno */}
-      <div className="bg-white border-b shadow-sm">
+      <div className="bg-card border-b shadow-sm">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex-1">
@@ -1050,11 +1196,11 @@ const QuestionarioRespond = () => {
       {/* Conteúdo Principal */}
       <div className="container mx-auto px-6 py-8">
         {currentQuestion ? (
-          <div className="bg-white rounded-lg shadow-sm p-8 min-h-[400px]">
+          <div className="bg-card rounded-lg shadow-sm p-8 min-h-[400px]">
             {renderQuestion(currentQuestion)}
           </div>
         ) : (
-          <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+          <div className="bg-card rounded-lg shadow-sm p-8 text-center">
             <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-600">Nenhuma questão disponível no momento.</p>
           </div>
@@ -1083,7 +1229,7 @@ const QuestionarioRespond = () => {
       </div>
 
       {/* Botões de Navegação Fixos */}
-      <div className="fixed bottom-0 left-0 md:left-16 lg:left-64 right-0 bg-white border-t shadow-lg z-[60]">
+      <div className="fixed bottom-0 left-0 md:left-16 lg:left-64 right-0 bg-card border-t shadow-lg z-[60]">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <Button

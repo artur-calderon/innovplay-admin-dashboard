@@ -6,9 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { User, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
-import { useSettings } from "@/hooks/useSettings";
 
-import LOGO from "/LOGO-1.png"
 import LOGO_WHITE from "/AFIRME PLAY LOGO branco.png"
 
 export default function Login() {
@@ -17,11 +15,9 @@ export default function Login() {
   const [lembrar, setLembrar] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isDark, setIsDark] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { settings } = useSettings();
 
   const { login, user } = useAuth();
 
@@ -49,35 +45,6 @@ export default function Login() {
     });
   }, []);
 
-  // Verificar tema do sistema e sincronizar
-  useEffect(() => {
-    const checkTheme = () => {
-      const rootElement = document.documentElement;
-      const hasDarkClass = rootElement.classList.contains('dark');
-      setIsDark(hasDarkClass);
-    };
-
-    // Verificar tema inicial
-    checkTheme();
-
-    // Observar mudanças na classe dark
-    const observer = new MutationObserver(checkTheme);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class']
-    });
-
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
-
-  // Sincronizar com settings quando mudar
-  useEffect(() => {
-    if (settings.theme) {
-      setIsDark(settings.theme === "dark");
-    }
-  }, [settings.theme]);
 
   const handleLogin = async (e?: React.FormEvent<HTMLFormElement>) => {
     if (e) {
@@ -198,18 +165,10 @@ export default function Login() {
   return (
     <div 
       data-auth-page="login"
-      className={`min-h-screen w-full flex flex-col lg:flex-row transition-all duration-500 fixed inset-0 z-50 ${
-        isDark 
-          ? "bg-[#240046]" 
-          : "bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50"
-      }`}
+      className={`min-h-screen w-full flex flex-col lg:flex-row transition-all duration-500 fixed inset-0 z-50 bg-[#240046]`}
     >
       {/* Lado esquerdo (gradiente Afirme Play) */}
-      <div className={`text-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12 relative overflow-hidden transition-all duration-500 ${
-        isDark 
-          ? "bg-[#240046]" 
-          : "bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-600"
-      }`}>
+      <div className="text-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12 relative overflow-hidden transition-all duration-500 bg-[#240046]">
         {/* Elementos decorativos de fundo */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-20 w-72 h-72 bg-white rounded-full blur-3xl"></div>
@@ -224,7 +183,7 @@ export default function Login() {
             <div className="relative">
               <div className="absolute inset-0 bg-white/20 rounded-full blur-2xl animate-pulse"></div>
               <img 
-                src={isDark ? LOGO_WHITE : LOGO} 
+                src={LOGO_WHITE} 
                 alt="Logo" 
                 className="relative w-[300px] max-w-full h-auto drop-shadow-2xl" 
               />
@@ -234,49 +193,39 @@ export default function Login() {
             }`}>
               APRENDIZAGEM E RESULTADO
             </p>
-            <div className={`mt-6 w-24 h-1 rounded-full transition-opacity duration-300 ${
-              isDark ? "bg-purple-400/50" : "bg-white/30"
-            } ${isMounted ? "animate-fade-in-delay-2 opacity-100" : "opacity-0"}`}></div>
+            <div className={`mt-6 w-24 h-1 rounded-full transition-opacity duration-300 bg-purple-400/50 ${
+              isMounted ? "animate-fade-in-delay-2 opacity-100" : "opacity-0"
+            }`}></div>
           </div>
         </div>
       </div>
 
       {/* Lado direito (card sobre o gradiente) */}
-      <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
+      <div className="flex flex-col justify-center items-center p-6 lg:p-12 w-full lg:w-1/2">
         <div className="w-full max-w-md">
-          <div className={`relative flex flex-col transition-all duration-300 ${
-            isDark 
-              ? "bg-gradient-to-br from-[#240046] to-[#2d0052] shadow-[7px_7px_10px_3px_rgba(36,0,70,0.16)] border border-purple-500/20" 
-              : "bg-white/95 backdrop-blur-md shadow-2xl border border-white/50"
-          } rounded-2xl overflow-hidden hover:shadow-2xl hover:scale-[1.01] ${
+          <div className={`relative flex flex-col transition-all duration-300 bg-gradient-to-br from-[#240046] to-[#2d0052] shadow-[7px_7px_10px_3px_rgba(36,0,70,0.16)] border border-purple-500/20 rounded-2xl overflow-hidden hover:shadow-2xl hover:scale-[1.01] ${
             isMounted ? "animate-slide-in-right opacity-100" : "opacity-0 translate-x-8"
           }`}>
             {/* Gradiente sutil no topo */}
-            <div className={`absolute top-0 left-0 right-0 h-1 ${
-              isDark 
-                ? "bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500" 
-                : "bg-gradient-to-r from-purple-500 via-blue-500 to-indigo-500"
-            }`}></div>
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500"></div>
             
             <div className="flex flex-col gap-5 p-8">
               {/* Header */}
               <div className="text-center space-y-2">
-                <h2 className={`text-3xl md:text-4xl font-bold transition-opacity duration-300 ${
-                  isDark ? "text-white" : "text-gray-900"
-                } ${isMounted ? "animate-fade-in opacity-100" : "opacity-0"}`}>
+                <h2 className={`text-3xl md:text-4xl font-bold transition-opacity duration-300 text-white ${
+                  isMounted ? "animate-fade-in opacity-100" : "opacity-0"
+                }`}>
                   Bem-vindo
                 </h2>
-                <p className={`text-sm font-medium transition-opacity duration-300 ${
-                  isDark ? "text-white/70" : "text-gray-500"
-                } ${isMounted ? "animate-fade-in-delay opacity-100" : "opacity-0"}`}>
+                <p className={`text-sm font-medium transition-opacity duration-300 text-white/70 ${
+                  isMounted ? "animate-fade-in-delay opacity-100" : "opacity-0"
+                }`}>
                   Excelência Institucional impulsionada por Resultados e Foco no Aprendizado
                 </p>
               </div>
 
               {/* Divisor */}
-              <div className={`h-px w-full my-2 ${
-                isDark ? "bg-gradient-to-r from-transparent via-purple-500/30 to-transparent" : "bg-gradient-to-r from-transparent via-gray-200 to-transparent"
-              }`}></div>
+              <div className="h-px w-full my-2 bg-gradient-to-r from-transparent via-purple-500/30 to-transparent"></div>
 
               <form 
                 onSubmit={(e) => { 
@@ -289,26 +238,22 @@ export default function Login() {
                 noValidate
               >
                 <div className="space-y-1">
-                  <label className={`text-xs font-semibold uppercase tracking-wider transition-opacity duration-300 delay-75 ${
-                    isDark ? "text-white/70" : "text-gray-600"
-                  } ${isMounted ? "animate-slide-in-up opacity-100" : "opacity-0"}`}>
+                  <label className={`text-xs font-semibold uppercase tracking-wider transition-opacity duration-300 delay-75 text-white/70 ${
+                    isMounted ? "animate-slide-in-up opacity-100" : "opacity-0"
+                  }`}>
                     Usuário
                   </label>
                   <div className={`relative group transition-opacity duration-300 delay-75 ${
                     isMounted ? "animate-slide-in-up opacity-100" : "opacity-0"
                   }`}>
                     <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none transition-transform duration-300 group-focus-within:scale-110 z-10">
-                      <User className={`h-5 w-5 transition-colors duration-300 ${isDark ? "text-gray-400 group-focus-within:text-purple-400" : "text-gray-500 group-focus-within:text-purple-600"}`} />
+                      <User className="h-5 w-5 transition-colors duration-300 text-gray-400 group-focus-within:text-purple-400" />
                     </div>
                     <div className="relative flex items-center">
                       <Input
                         type="text"
                         placeholder="usuario"
-                        className={`pl-12 pr-32 h-12 bg-[#e0dede] border-none outline-none rounded-lg transition-all duration-300 focus:scale-[1.01] focus:shadow-lg ${
-                          isDark 
-                            ? "bg-gray-700/80 text-white placeholder:text-gray-500 focus:bg-gray-700 focus:ring-2 focus:ring-purple-500/50" 
-                            : "bg-gray-50 text-gray-900 placeholder:text-gray-500 focus:bg-white focus:ring-2 focus:ring-purple-500/50"
-                        }`}
+                        className="pl-12 pr-32 h-12 bg-gray-700/80 text-white placeholder:text-gray-500 border-none outline-none rounded-lg transition-all duration-300 focus:scale-[1.01] focus:shadow-lg focus:bg-gray-700 focus:ring-2 focus:ring-purple-500/50"
                         value={matricula}
                         onChange={(e) => {
                           const value = e.target.value;
@@ -325,9 +270,7 @@ export default function Login() {
                         }}
                         disabled={isLoading}
                       />
-                      <span className={`absolute right-4 text-sm pointer-events-none ${
-                        isDark ? "text-gray-400" : "text-gray-500"
-                      }`}>
+                      <span className="absolute right-4 text-sm pointer-events-none text-gray-400">
                         @afirmeplay.com.br
                       </span>
                     </div>
@@ -335,25 +278,21 @@ export default function Login() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className={`text-xs font-semibold uppercase tracking-wider transition-opacity duration-300 delay-150 ${
-                    isDark ? "text-white/70" : "text-gray-600"
-                  } ${isMounted ? "animate-slide-in-up opacity-100" : "opacity-0"}`}>
+                  <label className={`text-xs font-semibold uppercase tracking-wider transition-opacity duration-300 delay-150 text-white/70 ${
+                    isMounted ? "animate-slide-in-up opacity-100" : "opacity-0"
+                  }`}>
                     Senha
                   </label>
                   <div className={`relative group transition-opacity duration-300 delay-150 ${
                     isMounted ? "animate-slide-in-up opacity-100" : "opacity-0"
                   }`}>
                     <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none transition-transform duration-300 group-focus-within:scale-110">
-                      <Lock className={`h-5 w-5 transition-colors duration-300 ${isDark ? "text-gray-400 group-focus-within:text-purple-400" : "text-gray-500 group-focus-within:text-purple-600"}`} />
+                      <Lock className="h-5 w-5 transition-colors duration-300 text-gray-400 group-focus-within:text-purple-400" />
                     </div>
                     <Input
                       type={showPassword ? "text" : "password"}
                       placeholder="Digite sua senha"
-                      className={`pl-12 pr-12 h-12 bg-[#e0dede] border-none outline-none rounded-lg transition-all duration-300 focus:scale-[1.01] focus:shadow-lg ${
-                        isDark 
-                          ? "bg-gray-700/80 text-white placeholder:text-gray-500 focus:bg-gray-700 focus:ring-2 focus:ring-purple-500/50" 
-                          : "bg-gray-50 text-gray-900 placeholder:text-gray-500 focus:bg-white focus:ring-2 focus:ring-purple-500/50"
-                      }`}
+                      className="pl-12 pr-12 h-12 bg-gray-700/80 text-white placeholder:text-gray-500 border-none outline-none rounded-lg transition-all duration-300 focus:scale-[1.01] focus:shadow-lg focus:bg-gray-700 focus:ring-2 focus:ring-purple-500/50"
                       value={senha}
                       onChange={(e) => setSenha(e.target.value)}
                       disabled={isLoading}
@@ -365,9 +304,9 @@ export default function Login() {
                       disabled={isLoading}
                     >
                       {showPassword ? (
-                        <EyeOff className={`h-5 w-5 transition-all duration-300 ${isDark ? "text-gray-400 hover:text-purple-400" : "text-gray-500 hover:text-purple-600"}`} />
+                        <EyeOff className="h-5 w-5 transition-all duration-300 text-gray-400 hover:text-purple-400" />
                       ) : (
-                        <Eye className={`h-5 w-5 transition-all duration-300 ${isDark ? "text-gray-400 hover:text-purple-400" : "text-gray-500 hover:text-purple-600"}`} />
+                        <Eye className="h-5 w-5 transition-all duration-300 text-gray-400 hover:text-purple-400" />
                       )}
                     </button>
                   </div>
@@ -386,18 +325,14 @@ export default function Login() {
                     />
                     <label
                       htmlFor="lembrar"
-                      className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 transition-colors duration-300 cursor-pointer ${
-                        isDark ? "text-white/90 hover:text-purple-300" : "text-gray-700 hover:text-purple-600"
-                      }`}
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 transition-colors duration-300 cursor-pointer text-white/90 hover:text-purple-300"
                     >
                       Lembrar-me
                     </label>
                   </div>
                   <a 
                     href="/forgot-password" 
-                    className={`text-sm font-medium transition-all duration-300 hover:underline hover:scale-105 ${
-                      isDark ? "text-purple-300 hover:text-purple-200" : "text-purple-600 hover:text-purple-700"
-                    }`}
+                    className="text-sm font-medium transition-all duration-300 hover:underline hover:scale-105 text-purple-300 hover:text-purple-200"
                   >
                     Esqueceu a senha?
                   </a>
@@ -410,12 +345,8 @@ export default function Login() {
                     e.stopPropagation();
                     await handleLogin();
                   }}
-                  className={`w-full h-12 mt-4 text-white font-semibold text-base border-none rounded-lg cursor-pointer transition-all duration-300 delay-300 shadow-lg ${
+                  className={`w-full h-12 mt-4 text-white font-semibold text-base border-none rounded-lg cursor-pointer transition-all duration-300 delay-300 shadow-lg bg-gradient-to-r from-[#573b8a] to-[#6d44b8] hover:from-[#6d44b8] hover:to-[#7d54c8] hover:scale-[1.02] hover:shadow-xl hover:shadow-purple-500/50 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 ${
                     isMounted ? "animate-slide-in-up opacity-100" : "opacity-0 translate-y-4"
-                  } ${
-                    isDark 
-                      ? "bg-gradient-to-r from-[#573b8a] to-[#6d44b8] hover:from-[#6d44b8] hover:to-[#7d54c8] hover:scale-[1.02] hover:shadow-xl hover:shadow-purple-500/50 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100" 
-                      : "bg-gradient-to-r from-[#573b8a] to-[#6d44b8] hover:from-[#6d44b8] hover:to-[#7d54c8] hover:scale-[1.02] hover:shadow-xl hover:shadow-purple-500/50 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                   }`}
                   disabled={isLoading}
                 >
@@ -432,10 +363,10 @@ export default function Login() {
             </div>
           </div>
 
-          <div className={`mt-6 text-center text-xs transition-opacity duration-300 ${
-            isDark ? "text-white/60" : "text-gray-500"
-          } ${isMounted ? "animate-fade-in-delay-3 opacity-100" : "opacity-0"}`}>
-            © 2025 Afirme Play - JESUS CRISTO É O SENHOR
+          <div className={`mt-6 text-center text-xs transition-opacity duration-300 text-white/60 ${
+            isMounted ? "animate-fade-in-delay-3 opacity-100" : "opacity-0"
+          }`}>
+            © {new Date().getFullYear()} Afirme Play - JESUS CRISTO É O SENHOR
           </div>
         </div>
       </div>

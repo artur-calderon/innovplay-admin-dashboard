@@ -37,7 +37,9 @@ import {
   Trophy,
   Target,
   Zap,
-  Info
+  Info,
+  X,
+  AlertTriangle
 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 import { useNavigate } from "react-router-dom";
@@ -185,6 +187,10 @@ export default function StudentEvaluations() {
   const [confirmStart, setConfirmStart] = useState(false);
   const [canStartReason, setCanStartReason] = useState<string>("");
 
+  // ✅ TEMPORÁRIO: Estado para sessões ativas
+  const [activeSessions, setActiveSessions] = useState<Array<{ session_id: string; test_id: string; test_title?: string }>>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -230,7 +236,20 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
     return null;
   }
 
-  const date = new Date(value);
+  // ✅ CORREÇÃO: Se a data não tem timezone (não termina com Z nem tem +/-HH:MM),
+  // assumir que está em UTC e adicionar 'Z' para forçar interpretação correta
+  let dateString = value;
+  const hasTimezone = value.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(value);
+  
+  if (!hasTimezone) {
+    // Backend retorna data em UTC mas sem o 'Z'
+    // Adicionar 'Z' para forçar interpretação como UTC
+    dateString = value.includes('.') 
+      ? value.split('.')[0] + 'Z' // Remover microsegundos e adicionar Z
+      : value + 'Z';
+  }
+
+  const date = new Date(dateString);
 
   if (Number.isNaN(date.getTime())) {
     return null;
@@ -339,6 +358,15 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
           console.warn('Dados de avaliação incompletos:', testData);
           return false;
         }
+        // Excluir olimpíadas, competições e avaliações sem tipo (têm suas próprias interfaces)
+        const type = (testData.type || '').toUpperCase();
+        if (!testData.type || 
+            type === 'OLIMPIADAS' || 
+            type === 'OLIMPIADA' || 
+            type === 'COMPETICAO' || 
+            type === 'COMPETIÇÃO') {
+          return false;
+        }
         // ✅ NOVO: Incluir todas as avaliações, não apenas as não concluídas
         return true;
       });
@@ -440,7 +468,53 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
 
   useEffect(() => {
     fetchStudentEvaluations();
+    // ✅ TEMPORÁRIO: Carregar sessões ativas
+    loadActiveSessions();
   }, [fetchStudentEvaluations]);
+
+  // ✅ TEMPORÁRIO: Função para carregar sessões ativas
+  const loadActiveSessions = useCallback(async () => {
+    setLoadingSessions(true);
+    try {
+      // Buscar todas as sessões do aluno usando a rota oficial do backend
+      const response = await api.get('/student-answers/student/sessions');
+      const sessions = response.data?.sessions || [];
+      
+      // Filtrar apenas sessões em andamento
+      // A rota retorna status: 'em_andamento', 'finalizada', 'expirada', etc.
+      const active = sessions.filter((s: any) => s.status === 'em_andamento');
+      
+      setActiveSessions(active);
+    } catch (error) {
+      console.error('Erro ao carregar sessões ativas:', error);
+      // Não mostrar erro ao usuário, apenas logar
+    } finally {
+      setLoadingSessions(false);
+    }
+  }, []);
+
+  // ✅ TEMPORÁRIO: Função para encerrar sessão
+  const handleEndSession = useCallback(async (sessionId: string) => {
+    try {
+      await EvaluationApiService.endSession(sessionId, 'manual');
+      toast({
+        title: 'Sessão encerrada',
+        description: 'A sessão foi encerrada com sucesso. Você pode iniciar uma nova avaliação ou olimpíada.',
+        variant: 'default',
+      });
+      // Recarregar sessões ativas
+      await loadActiveSessions();
+      // Recarregar avaliações para atualizar status
+      await fetchStudentEvaluations();
+    } catch (error: any) {
+      console.error('Erro ao encerrar sessão:', error);
+      toast({
+        title: 'Erro',
+        description: error?.response?.data?.message || 'Erro ao encerrar sessão',
+        variant: 'destructive',
+      });
+    }
+  }, [toast, loadActiveSessions, fetchStudentEvaluations]);
 
   // Verificar avaliação em progresso separadamente, apenas quando evaluations mudar
   useEffect(() => {
@@ -861,7 +935,10 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Minhas Avaliações</h1>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+              <BookOpen className="w-8 h-8 text-blue-600" />
+              Minhas Avaliações
+            </h1>
             <p className="text-muted-foreground">
               Acompanhe suas avaliações agendadas e resultados
             </p>
@@ -879,6 +956,73 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
           </Button>
         </div>
       </div>
+
+      {/* ✅ TEMPORÁRIO: Card para encerrar sessões ativas */}
+      {activeSessions.length > 0 && (
+        <Card className="border-orange-300 bg-orange-50 dark:bg-orange-950/20">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-orange-600" />
+              <CardTitle className="text-lg text-orange-900 dark:text-orange-100">
+                ⚠️ TEMPORÁRIO: Sessões Ativas Encontradas
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-orange-800 dark:text-orange-200">
+              Você tem {activeSessions.length}{' '}
+              {activeSessions.length === 1 ? 'sessão ativa' : 'sessões ativas'} que podem
+              estar impedindo o início de novas avaliações ou olimpíadas.
+            </p>
+            <div className="space-y-2">
+              {activeSessions.map((session) => (
+                <div
+                  key={session.session_id}
+                  className="flex items-center justify-between p-3 bg-card rounded-md border border-orange-200 dark:border-orange-800"
+                >
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900 text-foreground">
+                      Sessão: {session.session_id.substring(0, 8)}...
+                    </p>
+                    {session.test_title && (
+                      <p className="text-xs text-muted-foreground">
+                        {session.test_title}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    onClick={() => handleEndSession(session.session_id)}
+                    variant="destructive"
+                    size="sm"
+                    className="ml-4"
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Encerrar Sessão
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <Button
+              onClick={loadActiveSessions}
+              variant="outline"
+              size="sm"
+              disabled={loadingSessions}
+            >
+              {loadingSessions ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Carregando...
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="h-4 w-4 mr-2" />
+                  Atualizar
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Estatísticas Rápidas */}
       <div className="grid gap-4 md:grid-cols-5">
@@ -1134,11 +1278,11 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
       <Dialog open={showInstructions} onOpenChange={setShowInstructions}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 dark:text-gray-100">
+            <DialogTitle className="flex items-center gap-2 text-foreground">
               <Info className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               Instruções da Avaliação
             </DialogTitle>
-            <DialogDescription className="dark:text-gray-400">
+            <DialogDescription className="text-muted-foreground">
               Leia atentamente antes de iniciar a avaliação
             </DialogDescription>
           </DialogHeader>

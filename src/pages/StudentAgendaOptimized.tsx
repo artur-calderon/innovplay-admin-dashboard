@@ -11,8 +11,11 @@ import ptBrLocale from '@fullcalendar/core/locales/pt-br';
 import '../styles/fullcalendar.css';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Calendar } from 'lucide-react';
 import { CalendarApi as CalendarService } from "@/services/calendarApi";
 import { toast } from 'react-toastify';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 // Interface para eventos do aluno
 interface StudentEventInput extends EventInput {
@@ -68,8 +71,30 @@ export default function StudentAgendaOptimized() {
     }
   };
 
+  // Helper para verificar se a string de data contém informação de hora
+  const hasTimeInfo = (dateStr: string | undefined): boolean => {
+    if (!dateStr) return false;
+    // Verifica se contém 'T' (formato ISO) ou ':' (formato de hora)
+    return dateStr.includes('T') || (dateStr.includes(':') && dateStr.length > 10);
+  };
+
   const handleEventClick = async (clickInfo: EventClickArg) => {
     const e = clickInfo.event;
+    
+    // Log para ver os dados do evento retornado
+    console.log('=== DADOS DO EVENTO RETORNADO (StudentAgendaOptimized) ===');
+    console.log('ID:', e.id);
+    console.log('Title:', e.title);
+    console.log('Start (string):', e.startStr);
+    console.log('End (string):', e.endStr);
+    console.log('Start (Date):', e.start);
+    console.log('End (Date):', e.end);
+    console.log('allDay:', e.allDay);
+    console.log('extendedProps:', e.extendedProps);
+    console.log('Has time in start:', hasTimeInfo(e.startStr));
+    console.log('Has time in end:', hasTimeInfo(e.endStr));
+    console.log('===========================================================');
+    
     setSelected({
       id: e.id,
       title: e.title,
@@ -80,18 +105,26 @@ export default function StudentAgendaOptimized() {
     });
     setIsViewOpen(true);
     if (!e.extendedProps?.read) {
-      try { await CalendarService.markRead(e.id); } catch {}
+      try { 
+        await CalendarService.markRead(e.id); 
+      } catch (error) {
+        // Silenciosamente ignora erros ao marcar como lido
+        console.error('Erro ao marcar evento como lido:', error);
+      }
     }
   };
 
   return (
     <div className="p-4">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Minha Agenda</h1>
-        <p className="text-gray-600">Acompanhe seus eventos e atividades escolares</p>
+        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3 mb-2">
+          <Calendar className="w-8 h-8 text-blue-600" />
+          Minha Agenda
+        </h1>
+        <p className="text-muted-foreground">Acompanhe seus eventos e atividades escolares</p>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border">
+      <div className="bg-card rounded-lg shadow-sm border">
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
@@ -133,15 +166,55 @@ export default function StudentAgendaOptimized() {
         />
       </div>
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md w-[95vw] sm:w-full">
           <DialogHeader>
             <DialogTitle>{selected?.title}</DialogTitle>
             <DialogDescription>{selected?.extendedProps?.description || 'Sem descrição'}</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 text-sm">
-            {selected?.extendedProps?.subject && (<div>Disciplina: {selected.extendedProps.subject}</div>)}
-            {selected?.extendedProps?.teacher && (<div>Professor: {selected.extendedProps.teacher}</div>)}
-            {selected?.extendedProps?.room && (<div>Local: {selected.extendedProps.room}</div>)}
+            {selected?.extendedProps?.subject && (
+              <div>
+                <strong>Disciplina:</strong> {selected.extendedProps.subject}
+              </div>
+            )}
+            {selected?.extendedProps?.teacher && (
+              <div>
+                <strong>Professor:</strong> {selected.extendedProps.teacher}
+              </div>
+            )}
+            {selected?.extendedProps?.location && (
+              <div>
+                <strong>Local:</strong> {selected.extendedProps.location}
+              </div>
+            )}
+            {selected?.extendedProps?.room && !selected?.extendedProps?.location && (
+              <div>
+                <strong>Local:</strong> {selected.extendedProps.room}
+              </div>
+            )}
+            {selected?.start && (
+              <div>
+                <strong>
+                  {hasTimeInfo(selected.start as string) ? 'Início:' : 'Data:'}
+                </strong>{' '}
+                {hasTimeInfo(selected.start as string)
+                  ? format(new Date(selected.start as string), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+                  : format(new Date(selected.start as string), "dd/MM/yyyy", { locale: ptBR })
+                }
+              </div>
+            )}
+            {selected?.end && hasTimeInfo(selected.end as string) && (
+              <div>
+                <strong>Fim:</strong>{' '}
+                {format(new Date(selected.end as string), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+              </div>
+            )}
+            {selected?.end && !hasTimeInfo(selected.end as string) && (
+              <div>
+                <strong>Até:</strong>{' '}
+                {format(new Date(selected.end as string), "dd/MM/yyyy", { locale: ptBR })}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button onClick={() => setIsViewOpen(false)}>Fechar</Button>

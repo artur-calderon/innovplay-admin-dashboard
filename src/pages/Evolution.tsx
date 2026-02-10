@@ -159,6 +159,9 @@ export default function Evolution() {
     initializeData();
   }, [autoLogin, loadInitialFilters, toast]);
 
+  // Limite máximo de avaliações para comparação (suportado pelo sistema)
+  const MAX_EVALUATIONS = 10;
+
   // Função para adicionar avaliação ao carrinho (validação acontece apenas quando há 2+ avaliações)
   const handleAddEvaluation = useCallback((evaluationId: string) => {
     const evaluation = availableEvaluationsForPicker.find(e => e.id === evaluationId);
@@ -167,6 +170,16 @@ export default function Evolution() {
     // Adicionar diretamente ao carrinho com verificação atômica dentro do setState
     // Isso previne race conditions em cliques rápidos
     setSelectedEvaluationsForComparison(prev => {
+      // Verificar limite máximo
+      if (prev.length >= MAX_EVALUATIONS) {
+        toast({
+          title: "Limite de avaliações atingido",
+          description: `Você pode comparar no máximo ${MAX_EVALUATIONS} avaliações por vez. Remova uma avaliação antes de adicionar outra.`,
+          variant: "destructive",
+        });
+        return prev; // Retornar estado inalterado
+      }
+      
       // Verificar duplicata dentro do setState (garantido que usa o estado mais recente)
       if (prev.some(e => e.id === evaluationId)) {
         // Se já existe, retornar estado inalterado e mostrar toast
@@ -180,9 +193,10 @@ export default function Evolution() {
       
       // Se não existe, adicionar e mostrar toast de sucesso
       const newState = [...prev, evaluation];
+      const remaining = MAX_EVALUATIONS - newState.length;
       const message = prev.length === 0
-        ? `"${evaluation.titulo}" foi adicionada à comparação. Selecione mais uma avaliação para comparar.`
-        : `"${evaluation.titulo}" foi adicionada à comparação.`;
+        ? `"${evaluation.titulo}" foi adicionada à comparação. Selecione mais uma avaliação para comparar.${remaining > 0 ? ` (${remaining} restantes)` : ''}`
+        : `"${evaluation.titulo}" foi adicionada à comparação.${remaining > 0 ? ` (${remaining} restantes)` : ' (limite atingido)'}`;
       
       toast({
         title: "Avaliação adicionada",
@@ -207,8 +221,8 @@ export default function Evolution() {
   useEffect(() => {
     const loadMunicipalities = async () => {
       if (selectedState !== 'all') {
+        // Não definir loading aqui para não interferir com o loading de avaliações
         try {
-          setIsLoadingFilters(true);
           const response = await EvaluationComparisonApiService.getComparisonFilterOptions({
             estado: selectedState
           });
@@ -263,21 +277,26 @@ export default function Evolution() {
   // Carregar avaliações quando município for selecionado (com filtros opcionais de escola, série e turma)
   useEffect(() => {
     const loadEvaluations = async () => {
-      if (selectedState !== 'all' && selectedMunicipality !== 'all') {
+      if (selectedMunicipality !== 'all') {
+        // Definir loading imediatamente para mostrar feedback visual
+        setIsLoadingFilters(true);
         try {
-          setIsLoadingFilters(true);
           
           // Construir filtros para a API
           const filters: {
-            estado: string;
+            estado?: string;
             municipio: string;
             escola?: string;
             serie?: string;
             turma?: string;
           } = {
-            estado: selectedState,
             municipio: selectedMunicipality
           };
+          
+          // Adicionar estado se estiver selecionado
+          if (selectedState !== 'all') {
+            filters.estado = selectedState;
+          }
           
           if (selectedSchool !== 'all') {
             filters.escola = selectedSchool;
@@ -324,6 +343,16 @@ export default function Evolution() {
                 
                 evaluationsWithDetails = detailedResponse.resultados_detalhados.avaliacoes
                   .filter(evaluation => {
+                    // Excluir olimpíadas
+                    const type = evaluation.type || evaluation.tipo;
+                    const title = evaluation.titulo || evaluation.title || '';
+                    const isOlimpiada = type === 'OLIMPIADA' || 
+                                       title.includes('[OLIMPÍADA]') || 
+                                       title.toUpperCase().includes('OLIMPÍADA');
+                    if (isOlimpiada) {
+                      return false;
+                    }
+                    
                     const evalId = String(evaluation.id).trim().toLowerCase();
                     const found = comparisonIds.has(evalId);
                     if (!found) {
@@ -359,7 +388,17 @@ export default function Evolution() {
               );
               
               // Mapear todas as avaliações da API de comparação, usando detalhes quando disponíveis
-              const mappedEvaluations = comparisonResponse.opcoes.avaliacoes.map(evaluation => {
+              // Filtrar olimpíadas primeiro
+              const filteredComparisonEvaluations = comparisonResponse.opcoes.avaliacoes.filter(evaluation => {
+                const type = evaluation.type || evaluation.tipo;
+                const title = evaluation.titulo || evaluation.title || '';
+                const isOlimpiada = type === 'OLIMPIADA' || 
+                                   title.includes('[OLIMPÍADA]') || 
+                                   title.toUpperCase().includes('OLIMPÍADA');
+                return !isOlimpiada;
+              });
+              
+              const mappedEvaluations = filteredComparisonEvaluations.map(evaluation => {
                 const evalId = String(evaluation.id).trim().toLowerCase();
                 const existingDetail = detailsMap.get(evalId);
                 
@@ -438,8 +477,39 @@ export default function Evolution() {
               
               if (detailedResponse?.resultados_detalhados?.avaliacoes) {
                 // Filtrar apenas avaliações com status concluída/finalizada
+                // e excluir olimpíadas e competições
                 const evaluationsWithResults = detailedResponse.resultados_detalhados.avaliacoes
                   .filter(evaluation => {
+                    const rawType = (evaluation.type || evaluation.tipo || '').toString().toUpperCase();
+                    const title = (evaluation.titulo || evaluation.title || '').toString().toUpperCase();
+
+                    // Excluir olimpíadas
+                    const isOlimpiada =
+                      rawType === 'OLIMPIADA' ||
+                      rawType === 'OLIMPÍADA' ||
+                      title.includes('[OLIMPÍADA]') ||
+                      title.includes('OLIMPIADA') ||
+                      title.includes('OLIMPÍADA');
+
+                    if (isOlimpiada) {
+                      console.log(`⚠️ Removendo avaliação ${evaluation.id} do tipo OLIMPIADA da tela de evolução`);
+                      return false;
+                    }
+
+                    // Excluir competições
+                    const isCompeticao =
+                      rawType === 'COMPETICAO' ||
+                      rawType === 'COMPETIÇÃO' ||
+                      rawType.includes('COMPET') ||
+                      title.includes('COMPETICAO') ||
+                      title.includes('COMPETIÇÃO') ||
+                      title.includes('COMPET');
+
+                    if (isCompeticao) {
+                      console.log(`⚠️ Removendo avaliação ${evaluation.id} do tipo COMPETICAO da tela de evolução`);
+                      return false;
+                    }
+                    
                     const status = (evaluation.status || '').toLowerCase();
                     return status === 'concluida' || status === 'finalized' || status === 'finalizada';
                   })
@@ -477,8 +547,8 @@ export default function Evolution() {
           setIsLoadingFilters(false);
         }
       } else {
-        // Só limpar avaliações se realmente mudou para 'all'
-        if (selectedState === 'all' || selectedMunicipality === 'all') {
+        // Limpar avaliações quando município voltar para 'all'
+        if (selectedMunicipality === 'all') {
           setAvailableEvaluationsForPicker([]);
         }
       }
@@ -726,6 +796,12 @@ export default function Evolution() {
 
       // Processar dados para os gráficos
       const processed = processComparisonData(comparison);
+      console.log('📊 Dados processados:', {
+        totalEvaluations: comparison.total_evaluations,
+        evaluationNames: processed.evaluationNames,
+        evaluationNamesCount: processed.evaluationNames.length,
+        generalData: processed.generalData,
+      });
       setProcessedData(processed);
       // Visibilidade de gráficos agora é controlada localmente em EvolutionCharts
 
@@ -851,35 +927,31 @@ export default function Evolution() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8 space-y-8">
-        {/* Header com design melhorado */}
-        <div className="text-center space-y-4">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full mb-4">
-            <TrendingUp className="h-8 w-8 text-white" />
-          </div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+    <div className="container mx-auto px-4 py-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <TrendingUp className="w-8 h-8 text-blue-600" />
             Análise de Evolução
           </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+          <p className="text-muted-foreground">
             Compare múltiplas avaliações e acompanhe a evolução dos resultados ao longo do tempo com insights detalhados.
           </p>
         </div>
 
-        {/* Controles de ação */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+        <div className="flex gap-2">
           <Button 
             variant="outline" 
             onClick={() => window.location.reload()} 
             disabled={isLoadingComparison}
-            className="w-full sm:w-auto"
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingComparison ? 'animate-spin' : ''}`} />
-            Atualizar Dados
+            Atualizar
           </Button>
-          
-          {/* Botão para ver avaliações selecionadas */}
-          {selectedEvaluationsForComparison.length > 0 && (
+        
+        {/* Botão para ver avaliações selecionadas */}
+        {selectedEvaluationsForComparison.length > 0 && (
             <Dialog>
               <DialogTrigger asChild>
                 <Button 
@@ -899,7 +971,15 @@ export default function Evolution() {
                     Avaliações Selecionadas
                   </DialogTitle>
                   <DialogDescription>
-                    {selectedEvaluationsForComparison.length} avaliação(ões) selecionada(s) para comparação
+                    {selectedEvaluationsForComparison.length} de {MAX_EVALUATIONS}{' '}
+                    {selectedEvaluationsForComparison.length === 1
+                      ? 'avaliação selecionada para comparação'
+                      : 'avaliações selecionadas para comparação'}
+                    {selectedEvaluationsForComparison.length >= MAX_EVALUATIONS && (
+                      <span className="block mt-1 text-amber-600 dark:text-amber-400 text-xs">
+                        Limite máximo atingido. Remova uma avaliação para adicionar outra.
+                      </span>
+                    )}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 mt-4">
@@ -1106,7 +1186,10 @@ export default function Evolution() {
 
                     toast({
                       title: "Excel exportado com sucesso!",
-                      description: `Arquivo gerado com sucesso para ${selectedEvaluationsForComparison.length} avaliação(ões).`,
+                      description:
+                        selectedEvaluationsForComparison.length === 1
+                          ? 'Arquivo gerado com sucesso para 1 avaliação.'
+                          : `Arquivo gerado com sucesso para ${selectedEvaluationsForComparison.length} avaliações.`,
                     });
                   } catch (error: any) {
                     console.error('Erro ao exportar Excel:', error);
@@ -1148,326 +1231,208 @@ export default function Evolution() {
                 {isExportingExcel ? 'Exportando...' : 'Exportar Excel'}
               </Button>
             </>
-          )}
+        )}
         </div>
+      </div>
 
-        {/* Filtros com design melhorado */}
-        <Card className="shadow-lg border-0 bg-card/80 backdrop-blur-sm">
-          <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
-            <CardTitle className="flex items-center gap-3 text-xl">
-              <div className="p-2 bg-white/20 dark:bg-white/10 rounded-lg">
-                <Filter className="h-6 w-6" />
-              </div>
-              Configurar Filtros de Busca
-            </CardTitle>
-            <CardDescription className="text-blue-100 dark:text-blue-300">
-              Selecione os critérios para encontrar as avaliações que deseja comparar
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-6">
-            <div className="grid gap-6 grid-cols-1 lg:grid-cols-3 xl:grid-cols-5">
-              {/* Estado */}
-              <div className="space-y-3">
-                <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  Estado
-                </label>
-                <Select
-                  value={selectedState}
-                  onValueChange={setSelectedState}
-                  disabled={isLoadingFilters}
-                >
-                  <SelectTrigger className="h-12 border-2 border-border hover:border-blue-300 dark:hover:border-blue-600 focus:border-blue-500 dark:focus:border-blue-400 transition-colors">
-                    <SelectValue placeholder="Selecione um estado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos os estados</SelectItem>
-                    {states.map(state => (
-                      <SelectItem key={state.id} value={state.id}>
-                        {state.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedState !== 'all' && (
-                  <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                    Estado selecionado
-                  </div>
-                )}
-              </div>
-
-              {/* Município */}
-              <div className="space-y-3">
-                <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-                  <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
-                  Município
-                </label>
-                <Select
-                  value={selectedMunicipality}
-                  onValueChange={setSelectedMunicipality}
-                  disabled={isLoadingFilters || selectedState === 'all'}
-                >
-                  <SelectTrigger className="h-12 border-2 border-border hover:border-indigo-300 dark:hover:border-indigo-600 focus:border-indigo-500 dark:focus:border-indigo-400 transition-colors">
-                    <SelectValue placeholder={
-                      isLoadingFilters ? "Carregando..." : 
-                      selectedState === 'all' ? "Selecione o estado primeiro" :
-                      "Selecione um município"
-                    } />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos os municípios</SelectItem>
-                    {municipalities.map(municipality => (
-                      <SelectItem key={municipality.id} value={municipality.id}>
-                        {municipality.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {isLoadingFilters && selectedState !== 'all' && (
-                  <div className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                    <RefreshCw className="h-3 w-3 animate-spin" />
-                    Carregando municípios...
-                  </div>
-                )}
-                {selectedMunicipality !== 'all' && selectedState !== 'all' && (
-                  <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                    Município selecionado
-                  </div>
-                )}
-              </div>
-
-              {/* Escola - Sempre visível */}
-              <div className="space-y-3">
-                <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-                  <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                  Escola
-                  <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                    Opcional
-                  </span>
-                </label>
-                <Select
-                  value={selectedSchool}
-                  onValueChange={setSelectedSchool}
-                  disabled={isLoadingFilters || selectedMunicipality === 'all'}
-                >
-                  <SelectTrigger className="h-12 border-2 border-border hover:border-purple-300 dark:hover:border-purple-600 focus:border-purple-500 dark:focus:border-purple-400 transition-colors">
-                    <SelectValue placeholder={
-                      isLoadingFilters ? "Carregando..." : 
-                      selectedMunicipality === 'all' ? "Selecione o município primeiro" :
-                      schools.length === 0 ? "Nenhuma escola encontrada" :
-                      "Selecione uma escola (opcional)"
-                    } />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas as escolas</SelectItem>
-                    {schools.map(school => (
-                      <SelectItem key={school.id} value={school.id}>
-                        {school.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedSchool !== 'all' && selectedMunicipality !== 'all' && (
-                  <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                    Escola selecionada
-                  </div>
-                )}
-                {schools.length === 0 && selectedMunicipality !== 'all' && !isLoadingFilters && (
-                  <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 bg-amber-500 rounded-full"></div>
-                    Nenhuma escola encontrada para este município
-                  </div>
-                )}
-              </div>
-
-              {/* Série */}
-              <div className="space-y-3">
-                <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-                  <div className="w-2 h-2 bg-teal-500 rounded-full"></div>
-                  Série
-                  <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                    Opcional
-                  </span>
-                </label>
-                <Select
-                  value={selectedGrade}
-                  onValueChange={setSelectedGrade}
-                  disabled={isLoadingFilters || selectedSchool === 'all'}
-                >
-                  <SelectTrigger className="h-12 border-2 border-border hover:border-teal-300 dark:hover:border-teal-600 focus:border-teal-500 dark:focus:border-teal-400 transition-colors">
-                    <SelectValue placeholder={
-                      isLoadingFilters ? "Carregando..." : 
-                      selectedSchool === 'all' ? "Selecione a escola primeiro" :
-                      grades.length === 0 ? "Nenhuma série encontrada" :
-                      "Selecione uma série (opcional)"
-                    } />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas as séries</SelectItem>
-                    {grades.map(grade => (
-                      <SelectItem key={grade.id} value={grade.id}>
-                        {grade.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedGrade !== 'all' && selectedSchool !== 'all' && (
-                  <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                    Série selecionada
-                  </div>
-                )}
-                {grades.length === 0 && selectedSchool !== 'all' && !isLoadingFilters && (
-                  <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 bg-amber-500 rounded-full"></div>
-                    Nenhuma série encontrada para esta escola
-                  </div>
-                )}
-              </div>
-
-              {/* Turma */}
-              <div className="space-y-3">
-                <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-                  <div className="w-2 h-2 bg-cyan-500 rounded-full"></div>
-                  Turma
-                  <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                    Opcional
-                  </span>
-                </label>
-                <Select
-                  value={selectedClass}
-                  onValueChange={setSelectedClass}
-                  disabled={isLoadingFilters || selectedGrade === 'all'}
-                >
-                  <SelectTrigger className="h-12 border-2 border-border hover:border-cyan-300 dark:hover:border-cyan-600 focus:border-cyan-500 dark:focus:border-cyan-400 transition-colors">
-                    <SelectValue placeholder={
-                      isLoadingFilters ? "Carregando..." : 
-                      selectedGrade === 'all' ? "Selecione a série primeiro" :
-                      classes.length === 0 ? "Nenhuma turma encontrada" :
-                      "Selecione uma turma (opcional)"
-                    } />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas as turmas</SelectItem>
-                    {classes.map(classItem => (
-                      <SelectItem key={classItem.id} value={classItem.id}>
-                        {classItem.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedClass !== 'all' && selectedGrade !== 'all' && (
-                  <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                    Turma selecionada
-                  </div>
-                )}
-                {classes.length === 0 && selectedGrade !== 'all' && !isLoadingFilters && (
-                  <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 bg-amber-500 rounded-full"></div>
-                    Nenhuma turma encontrada para esta série
-                  </div>
-                )}
-              </div>
+      {/* Filtros */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filtros
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* Estado */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Estado</label>
+              <Select
+                value={selectedState}
+                onValueChange={setSelectedState}
+                disabled={isLoadingFilters}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {states.map(state => (
+                    <SelectItem key={state.id} value={state.id}>
+                      {state.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Filtro de Período */}
-            {selectedState !== 'all' && selectedMunicipality !== 'all' && (
-              <div className="mt-6 pt-6 border-t border-border">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                    <h3 className="text-sm font-semibold text-foreground">Filtro por Período</h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-muted-foreground">Data Início</label>
-                      <Input
-                        type="date"
-                        value={periodStart}
-                        onChange={(e) => setPeriodStart(e.target.value)}
-                        className="h-10"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-muted-foreground">Data Fim</label>
-                      <Input
-                        type="date"
-                        value={periodEnd}
-                        onChange={(e) => setPeriodEnd(e.target.value)}
-                        min={periodStart}
-                        className="h-10"
-                      />
-                    </div>
-                  </div>
-                  {(periodStart || periodEnd) && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setPeriodStart('');
-                        setPeriodEnd('');
-                      }}
-                      className="text-xs"
-                    >
-                      <X className="h-3 w-3 mr-1" />
-                      Limpar período
-                    </Button>
-                  )}
+            {/* Município */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Município</label>
+              <Select
+                value={selectedMunicipality}
+                onValueChange={setSelectedMunicipality}
+                disabled={isLoadingFilters || selectedState === 'all'}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o município" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {municipalities.map(municipality => (
+                    <SelectItem key={municipality.id} value={municipality.id}>
+                      {municipality.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Escola */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Escola</label>
+              <Select
+                value={selectedSchool}
+                onValueChange={setSelectedSchool}
+                disabled={isLoadingFilters || selectedMunicipality === 'all'}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a escola" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {schools.map(school => (
+                    <SelectItem key={school.id} value={school.id}>
+                      {school.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Série */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Série</label>
+              <Select
+                value={selectedGrade}
+                onValueChange={setSelectedGrade}
+                disabled={isLoadingFilters || selectedSchool === 'all'}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a série" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {grades.map(grade => (
+                    <SelectItem key={grade.id} value={grade.id}>
+                      {grade.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Turma */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Turma</label>
+              <Select
+                value={selectedClass}
+                onValueChange={setSelectedClass}
+                disabled={isLoadingFilters || selectedGrade === 'all'}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a turma" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {classes.map(classItem => (
+                    <SelectItem key={classItem.id} value={classItem.id}>
+                      {classItem.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Filtro de Período */}
+          {selectedMunicipality !== 'all' && (
+            <div className="mt-6 pt-6 border-t border-border">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Data Início</label>
+                  <Input
+                    type="date"
+                    value={periodStart}
+                    onChange={(e) => setPeriodStart(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Data Fim</label>
+                  <Input
+                    type="date"
+                    value={periodEnd}
+                    onChange={(e) => setPeriodEnd(e.target.value)}
+                    min={periodStart}
+                  />
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Seção de Avaliações com design moderno */}
-            {selectedState !== 'all' && selectedMunicipality !== 'all' && (
-              <div className="mt-8 pt-6 border-t border-border">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-lg">
-                      <Target className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-foreground">Avaliações Disponíveis</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Selecione as avaliações para comparação
-                      </p>
-                    </div>
+          {/* Seção de Avaliações */}
+          {selectedMunicipality !== 'all' && (
+            <div className="mt-6 pt-6 border-t border-border">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-foreground mb-1">Avaliações Disponíveis</h3>
+                <p className="text-sm text-muted-foreground">
+                  Selecione as avaliações para comparação
+                </p>
+              </div>
+              <div className="flex items-center gap-3 mb-4">
+                {isLoadingFilters && (
+                  <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">Carregando avaliações...</span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    {isLoadingFilters && (
-                      <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                        <span className="text-sm">Carregando...</span>
-                      </div>
-                    )}
-                    {!isLoadingFilters && filteredEvaluations.length > 0 && (
-                      <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800">
-                        {filteredEvaluations.length} encontrada(s)
+                )}
+                {!isLoadingFilters && filteredEvaluations.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800">
+                      {filteredEvaluations.length} encontrada(s)
+                    </Badge>
+                    {selectedEvaluationsForComparison.length > 0 && (
+                      <Badge variant="outline" className="bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800">
+                        {selectedEvaluationsForComparison.length}/{MAX_EVALUATIONS} selecionada(s)
                       </Badge>
                     )}
                   </div>
-                </div>
-
-                {/* Busca de avaliações */}
-                {!isLoadingFilters && availableEvaluationsForPicker.length > 0 && (
-                  <div className="mb-4">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        type="text"
-                        placeholder="Buscar avaliações por nome..."
-                        value={evaluationSearch}
-                        onChange={(e) => setEvaluationSearch(e.target.value)}
-                        className="pl-9 h-10"
-                      />
-                    </div>
-                  </div>
                 )}
+                {!isLoadingFilters && filteredEvaluations.length === 0 && availableEvaluationsForPicker.length === 0 && (
+                  <Badge variant="outline" className="bg-muted text-muted-foreground">
+                    Nenhuma avaliação encontrada
+                  </Badge>
+                )}
+              </div>
 
-                {isLoadingFilters ? (
+              {/* Busca de avaliações */}
+              {!isLoadingFilters && availableEvaluationsForPicker.length > 0 && (
+                <div className="mb-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      placeholder="Buscar avaliações por nome..."
+                      value={evaluationSearch}
+                      onChange={(e) => setEvaluationSearch(e.target.value)}
+                      className="pl-9 h-10"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {isLoadingFilters ? (
                   <div className="flex items-center justify-center py-12 border-2 border-dashed border-border rounded-xl bg-muted/50">
                     <div className="text-center">
                       <RefreshCw className="h-8 w-8 animate-spin text-blue-600 dark:text-blue-400 mx-auto mb-3" />
@@ -1488,13 +1453,15 @@ export default function Evolution() {
                               ? 'bg-green-50 dark:bg-green-950/20 border-green-300 dark:border-green-800'
                               : isInvalid
                               ? 'bg-red-50 dark:bg-red-950/20 border-red-300 dark:border-red-800 opacity-60'
+                              : selectedEvaluationsForComparison.length >= MAX_EVALUATIONS
+                              ? 'bg-muted/50 border-border opacity-50 cursor-not-allowed'
                               : 'bg-card border-border hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md'
                           }`}
                         >
                           <div className="flex items-start gap-3">
                             <Checkbox
                               checked={isAlreadyAdded}
-                              disabled={isInvalid}
+                              disabled={isInvalid || (!isAlreadyAdded && selectedEvaluationsForComparison.length >= MAX_EVALUATIONS)}
                               onCheckedChange={(checked) => {
                                 if (checked && !isAlreadyAdded) {
                                   handleAddEvaluation(evaluation.id);
@@ -1555,56 +1522,55 @@ export default function Evolution() {
 
 
 
-        {/* Loading dos dados com design melhorado */}
-        {isLoadingComparison && (
-          <Card className="shadow-lg border-0 bg-card/90 backdrop-blur-sm">
-            <CardContent className="flex flex-col items-center justify-center py-16">
-              <div className="relative">
-                <div className="w-20 h-20 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full flex items-center justify-center mb-6">
-                  <RefreshCw className="h-10 w-10 animate-spin text-white" />
-                </div>
-                <div className="absolute -inset-2 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full opacity-20 animate-pulse"></div>
+      {/* Loading dos dados com design melhorado */}
+      {isLoadingComparison && (
+        <Card className="shadow-lg border-0 bg-card/90 backdrop-blur-sm">
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <div className="relative">
+              <div className="w-20 h-20 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full flex items-center justify-center mb-6">
+                <RefreshCw className="h-10 w-10 animate-spin text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-foreground mb-2">Processando Análise</h3>
-              <p className="text-muted-foreground text-center max-w-md">
-                Estamos comparando suas avaliações e gerando insights detalhados. Isso pode levar alguns momentos...
-              </p>
-            </CardContent>
-          </Card>
-        )}
+              <div className="absolute -inset-2 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full opacity-20 animate-pulse"></div>
+            </div>
+            <h3 className="text-xl font-semibold text-foreground mb-2">Processando Análise</h3>
+            <p className="text-muted-foreground text-center max-w-md">
+              Estamos comparando suas avaliações e gerando insights detalhados. Isso pode levar alguns momentos...
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Erro na comparação com design melhorado */}
-        {comparisonError && (
-          <Card className="shadow-lg border-0 bg-card/90 backdrop-blur-sm">
-            <CardContent className="flex flex-col items-center justify-center py-16">
-              <div className="w-20 h-20 bg-gradient-to-r from-red-500 to-rose-500 rounded-full flex items-center justify-center mb-6">
-                <AlertCircle className="h-10 w-10 text-white" />
-              </div>
-              <h3 className="text-xl font-semibold text-foreground mb-2">
-                Erro na Análise
-              </h3>
-              <p className="text-muted-foreground text-center max-w-md mb-6">
-                {comparisonError}
-              </p>
-              <Button 
-                variant="outline" 
-                onClick={() => setComparisonError(null)}
-                className="border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
-              >
-                Tentar Novamente
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+      {/* Erro na comparação com design melhorado */}
+      {comparisonError && (
+        <Card className="shadow-lg border-0 bg-card/90 backdrop-blur-sm">
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <div className="w-20 h-20 bg-gradient-to-r from-red-500 to-rose-500 rounded-full flex items-center justify-center mb-6">
+              <AlertCircle className="h-10 w-10 text-white" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground mb-2">
+              Erro na Análise
+            </h3>
+            <p className="text-muted-foreground text-center max-w-md mb-6">
+              {comparisonError}
+            </p>
+            <Button 
+              variant="outline" 
+              onClick={() => setComparisonError(null)}
+              className="border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
+            >
+              Tentar Novamente
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Gráficos de Evolução */}
-        {processedData && (
-          <EvolutionCharts 
-            data={processedData} 
-            isLoading={isLoadingComparison}
-          />
-        )}
-      </div>
+      {/* Gráficos de Evolução */}
+      {processedData && (
+        <EvolutionCharts 
+          data={processedData} 
+          isLoading={isLoadingComparison}
+        />
+      )}
     </div>
   );
 }
