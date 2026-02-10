@@ -32,7 +32,8 @@ export class FormFiltersApiService {
       if (params.turma && params.turma !== 'all') queryParams.append('turma', params.turma);
 
       const url = `/forms/filter-options${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-      const response = await api.get(url);
+      const requestConfig = params.municipio && params.municipio !== 'all' ? { meta: { cityId: params.municipio } } : {};
+      const response = await api.get(url, requestConfig);
       return response.data || {};
     } catch (error) {
       console.error('❌ Erro ao buscar opções de filtros de formulários:', error);
@@ -102,7 +103,8 @@ export class FormFiltersApiService {
 
       // Fallback: usar rota direta
       console.log('Rota unificada não retornou escolas, tentando rota direta...');
-      const directResponse = await api.get(`/forms/schools/city/${params.municipio}`);
+      const directConfig = { meta: { cityId: params.municipio } };
+      const directResponse = await api.get(`/forms/schools/city/${params.municipio}`, directConfig);
       const schools = directResponse.data || [];
       return schools.map((school: any) => ({
         id: school.id,
@@ -142,7 +144,8 @@ export class FormFiltersApiService {
 
       // Fallback: usar rota direta
       console.log('Rota unificada não retornou séries, tentando rota direta...');
-      const directResponse = await api.get(`/forms/grades/school/${params.escola}`);
+      const gradeConfig = params.municipio ? { meta: { cityId: params.municipio } } : {};
+      const directResponse = await api.get(`/forms/grades/school/${params.escola}`, gradeConfig);
       const grades = directResponse.data || [];
       return grades.map((grade: any) => ({
         id: grade.id,
@@ -184,7 +187,8 @@ export class FormFiltersApiService {
 
       // Fallback: usar rota direta com filtro de escola
       console.log('Rota unificada não retornou turmas, tentando rota direta...');
-      const directResponse = await api.get(`/forms/classes/grade/${params.serie}?escola=${params.escola}`);
+      const classConfig = params.municipio ? { meta: { cityId: params.municipio } } : {};
+      const directResponse = await api.get(`/forms/classes/grade/${params.serie}?escola=${params.escola}`, classConfig);
       const classes = directResponse.data || [];
       return classes.map((classItem: any) => ({
         id: classItem.id,

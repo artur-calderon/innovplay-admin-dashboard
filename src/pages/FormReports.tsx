@@ -397,8 +397,9 @@ const FormReports = () => {
         params.turma = selectedClasses.join(',');
       }
 
-      // Buscar índices agregados
-      const indicesResponse = await api.get('/forms/aggregated/results/indices', { params });
+      // Buscar índices agregados (admin: enviar contexto de cidade)
+      const indicesConfig = selectedMunicipality !== 'all' ? { params, meta: { cityId: selectedMunicipality } } : { params };
+      const indicesResponse = await api.get('/forms/aggregated/results/indices', indicesConfig);
 
       if (indicesResponse.status === 200) {
         // Cache pronto
@@ -411,8 +412,9 @@ const FormReports = () => {
         startPolling(taskId, 'indices');
       }
 
-      // Buscar perfis agregados
-      const profilesResponse = await api.get('/forms/aggregated/results/profiles', { params });
+      // Buscar perfis agregados (admin: enviar contexto de cidade)
+      const profilesConfig = selectedMunicipality !== 'all' ? { params, meta: { cityId: selectedMunicipality } } : { params };
+      const profilesResponse = await api.get('/forms/aggregated/results/profiles', profilesConfig);
 
       if (profilesResponse.status === 200) {
         // Cache pronto
@@ -448,7 +450,8 @@ const FormReports = () => {
   const startPolling = useCallback((taskId: string, type: 'indices' | 'profiles') => {
     const pollInterval = setInterval(async () => {
       try {
-        const statusResponse = await api.get(`/forms/aggregated/results/status/${taskId}`);
+        const statusConfig = selectedMunicipality !== 'all' ? { meta: { cityId: selectedMunicipality } } : {};
+        const statusResponse = await api.get(`/forms/aggregated/results/status/${taskId}`, statusConfig);
         const status = statusResponse.data;
 
         if (status.status === 'completed') {
@@ -551,7 +554,8 @@ const FormReports = () => {
         params.turma = selectedClasses.join(',');
       }
 
-      const response = await api.get('/forms/aggregated/results/indices', { params });
+      const listConfig = selectedMunicipality !== 'all' ? { params, meta: { cityId: selectedMunicipality } } : { params };
+      const response = await api.get('/forms/aggregated/results/indices', listConfig);
 
       if (response.status === 200 && response.data.indicesConsolidados?.[indexType]) {
         const indexData = response.data.indicesConsolidados[indexType];

@@ -1,5 +1,12 @@
 import axios from 'axios'
 
+// Permitir meta.cityId nas requisições (para admin tenant context)
+declare module 'axios' {
+    interface InternalAxiosRequestConfig {
+        meta?: { cityId?: string }
+    }
+}
+
 // Configuração da base URL da API
 // Em desenvolvimento, use o proxy do Vite (\"/api\") para evitar CORS
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
@@ -19,8 +26,21 @@ api.interceptors.request.use((config) => {
         config.headers.Authorization = `Bearer ${token}`
     }
 
-    // ✅ CORRIGIDO: Remover headers de CORS do frontend
-    // Os headers de CORS devem ser configurados apenas no backend
+    // Admin em rotas tenant: adicionar X-City-ID quando config.meta.cityId for passado
+    const userJson = localStorage.getItem('user')
+    if (userJson) {
+        try {
+            const user = JSON.parse(userJson) as { role?: string }
+            const cityId = (config as typeof config & { meta?: { cityId?: string } }).meta?.cityId
+            if (user?.role === 'admin' && cityId) {
+                config.headers['X-City-ID'] = cityId
+            }
+        } catch {
+            // ignore parse error
+        }
+    }
+    const cfg = config as typeof config & { meta?: unknown }
+    if (cfg.meta !== undefined) delete cfg.meta
 
     return config;
 }, (error) => {

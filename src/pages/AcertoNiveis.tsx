@@ -619,7 +619,8 @@ export default function AcertoNiveis() {
           console.log('🔍 Diretor com município mas sem escola específica, carregando escolas do município');
           try {
             // Buscar escolas do município via API de escolas
-            const schoolsResponse = await api.get(`/school`);
+            const schoolMeta = context.municipality?.id ? { meta: { cityId: context.municipality.id } } : {};
+            const schoolsResponse = await api.get(`/school`, schoolMeta);
             const allSchools = Array.isArray(schoolsResponse.data) 
               ? schoolsResponse.data 
               : (schoolsResponse.data?.data || []);

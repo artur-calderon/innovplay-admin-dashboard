@@ -57,36 +57,42 @@ export async function getTransactions(params?: {
 
 /**
  * Credita moedas ao aluno (admin/coordenador/diretor/tecadm).
+ * @param cityId - Opcional; quando admin e em contexto de município, envia X-City-ID
  */
 export async function credit(
   studentId: string,
   amount: number,
   reason: string,
-  description?: string
+  description?: string,
+  cityId?: string
 ): Promise<void> {
+  const config = cityId ? { meta: { cityId } } : {};
   await api.post('/coins/admin/credit', {
     student_id: studentId,
     amount,
     reason,
     ...(description && { description }),
-  });
+  }, config);
 }
 
 /**
  * Debita moedas do aluno (admin/coordenador/diretor/tecadm).
+ * @param cityId - Opcional; quando admin e em contexto de município, envia X-City-ID
  */
 export async function debit(
   studentId: string,
   amount: number,
   reason: string,
-  description?: string
+  description?: string,
+  cityId?: string
 ): Promise<void> {
+  const config = cityId ? { meta: { cityId } } : {};
   await api.post('/coins/admin/debit', {
     student_id: studentId,
     amount,
     reason,
     ...(description && { description }),
-  });
+  }, config);
 }
 
 /**

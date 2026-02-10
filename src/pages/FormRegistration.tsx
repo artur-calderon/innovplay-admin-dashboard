@@ -808,8 +808,9 @@ const FormRegistration = () => {
     payload.isActive = true;
 
     try {
-      // Enviar para o backend usando a rota correta
-      const response = await api.post('/forms', payload);
+      // Enviar para o backend usando a rota correta (admin: enviar contexto de cidade)
+      const postConfig = selectedMunicipality !== 'all' ? { meta: { cityId: selectedMunicipality } } : {};
+      const response = await api.post('/forms', payload, postConfig);
       
       const recipientsCount = response.data?.recipientsCount;
       const message = recipientsCount 

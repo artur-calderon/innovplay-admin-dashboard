@@ -101,6 +101,7 @@ export const useAuth = create<AuthContext>((set, get) => ({
     },
     setUser: (user) => {
         set({ user })
+        localStorage.setItem('user', JSON.stringify(user))
     },
     fetchUserDetails: async (userId: string) => {
         if (!userId) {
@@ -117,6 +118,7 @@ export const useAuth = create<AuthContext>((set, get) => ({
                         ...detailedUser,
                     }
                 }));
+                localStorage.setItem('user', JSON.stringify(get().user));
             }
         } catch (error) {
             console.error('Erro ao buscar detalhes completos do usuário:', error);
@@ -137,6 +139,7 @@ export const useAuth = create<AuthContext>((set, get) => ({
             // ✅ CORRIGIDO: Usar a instância da API corretamente
             api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
             set({ user: response.data.user })
+            localStorage.setItem('user', JSON.stringify(response.data.user))
 
             if (response.data.user?.id) {
                 await loadAndApplySettings(response.data.user.id)
@@ -174,6 +177,7 @@ export const useAuth = create<AuthContext>((set, get) => ({
             api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
 
             set({ user: response.data.user })
+            localStorage.setItem('user', JSON.stringify(response.data.user))
 
             if (response.data.user?.id) {
                 await loadAndApplySettings(response.data.user.id)
@@ -197,6 +201,7 @@ export const useAuth = create<AuthContext>((set, get) => ({
         try {
             await api.post("/logout/")
             localStorage.removeItem('token')
+            localStorage.removeItem('user')
             
             // ✅ NOVO: Limpar filtros da página de resultados ao fazer logout
             sessionStorage.removeItem('results_filters')
@@ -268,6 +273,7 @@ export const useAuth = create<AuthContext>((set, get) => ({
                             ...persistedUser,
                         }
                     }));
+                    localStorage.setItem('user', JSON.stringify(get().user));
 
                     const targetId = persistedUser.id;
                     if (targetId) {
@@ -281,6 +287,7 @@ export const useAuth = create<AuthContext>((set, get) => ({
         } catch (error: unknown) {
             console.error('Erro ao persistir usuário:', error);
             localStorage.removeItem('token');
+            localStorage.removeItem('user');
             delete api.defaults.headers.common['Authorization'];
             return false;
         }
@@ -303,6 +310,7 @@ export const useAuth = create<AuthContext>((set, get) => ({
                         ...response.data.user,
                     }
                 }));
+                localStorage.setItem('user', JSON.stringify(get().user));
                 toast.success('Avatar atualizado com sucesso!');
             }
         } catch (error: unknown) {
