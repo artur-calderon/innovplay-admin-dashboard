@@ -6,38 +6,23 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Loader2, Trophy, Users, Award, TrendingUp, BarChart3, PieChart, BookOpen, Table2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Trophy, Users, Award, TrendingUp, BarChart3, PieChart, BookOpen } from 'lucide-react';
 import {
   PieChart as RechartsPieChart,
   Pie,
   Cell,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from 'recharts';
 import { getCompetitionAnalytics, type CompetitionAnalytics } from '@/services/competitionsApi';
 import type { CompetitionRankingEntry } from '@/services/competitionsApi';
 import { getCompetition } from '@/services/competitionsApi';
-import { formatCoins, getMedalEmoji } from '@/utils/coins';
 import { ResultsCharts } from '@/components/evaluations/ResultsCharts';
 import { ClassStatistics } from '@/components/evaluations/ClassStatistics';
 import { StudentRanking } from '@/components/evaluations/StudentRanking';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 const COLORS = ['#81338A', '#758E4F', '#F6AE2D', '#33658A', '#86BBD8'];
 
@@ -247,13 +232,6 @@ export default function CompetitionAnalytics() {
     { name: 'Não participaram', value: Math.max(0, totalEnrolled - totalParticipants) },
   ].filter((item) => item.value > 0);
 
-  const gradeBarData = (analytics.grade_distribution ?? []).map((item) => ({
-    name: item.range,
-    Quantidade: item.count,
-  }));
-
-  const top10 = analytics.top_10 ?? [];
-
   return (
     <div className="container mx-auto space-y-6 py-6 px-4">
       <div className="flex items-center justify-between">
@@ -324,16 +302,12 @@ export default function CompetitionAnalytics() {
         </Card>
       </div>
 
-      {/* Abas: Gráficos | Tabelas | Estatísticas | Ranking */}
+      {/* Abas: Gráficos | Estatísticas | Ranking */}
       <Tabs defaultValue="charts" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="charts" className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
             Gráficos
-          </TabsTrigger>
-          <TabsTrigger value="tables" className="flex items-center gap-2">
-            <Table2 className="h-4 w-4" />
-            Tabelas
           </TabsTrigger>
           <TabsTrigger value="statistics" className="flex items-center gap-2">
             <BookOpen className="h-4 w-4" />
@@ -431,62 +405,6 @@ export default function CompetitionAnalytics() {
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
-
-        <TabsContent value="tables" className="space-y-6 mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Table2 className="h-5 w-5" />
-                Resultados dos Alunos
-              </CardTitle>
-              <CardDescription className="text-muted-foreground">
-                Top 10 participantes da competição.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {top10.length > 0 ? (
-                <div className="rounded-md border overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-12">#</TableHead>
-                        <TableHead>Nome</TableHead>
-                        <TableHead className="hidden sm:table-cell">Turma</TableHead>
-                        <TableHead className="text-right">Nota / Resultado</TableHead>
-                        <TableHead className="text-right w-24">Moedas</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {top10.map((entry) => (
-                        <TableRow key={`${entry.student_id}-${entry.position}`}>
-                          <TableCell className="font-medium">
-                            {getMedalEmoji(entry.position) || `${entry.position}º`}
-                          </TableCell>
-                          <TableCell>{entry.name}</TableCell>
-                          <TableCell className="hidden sm:table-cell text-muted-foreground">
-                            {entry.class_name ?? '—'}
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {entry.value_label ?? entry.score_percentage ?? entry.value}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {entry.coins_earned != null && entry.coins_earned > 0
-                              ? `+${formatCoins(entry.coins_earned)}`
-                              : '—'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  Nenhum participante no ranking ainda
-                </p>
-              )}
-            </CardContent>
-          </Card>
         </TabsContent>
 
         <TabsContent value="statistics" className="space-y-6 mt-6">
