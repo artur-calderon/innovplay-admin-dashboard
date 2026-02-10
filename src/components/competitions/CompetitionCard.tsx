@@ -60,14 +60,21 @@ const finalizadaConfig = {
   icon: CheckCircle2,
 };
 
+const emAndamentoConfig = {
+  label: 'Em andamento',
+  className: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-200 dark:border-emerald-800',
+  icon: Play,
+};
+
 function getStatusConfig(status: CompetitionStatus, competition?: { expiration?: string; application?: string } | null) {
   const s = String(status).toLowerCase();
   const now = Date.now();
-  // Só considerar finalizada se expiration passou E application também já passou (prova começou e terminou)
   const applicationStarted = competition?.application ? new Date(competition.application).getTime() <= now : false;
   const applicationEnded = competition?.expiration ? new Date(competition.expiration).getTime() < now : false;
-  const isActuallyFinished = applicationStarted && applicationEnded;
-  if (s === 'completed' || s === 'encerrada' || isActuallyFinished) return finalizadaConfig;
+  // Finalizada somente quando o prazo de expiração terminou
+  if (applicationEnded) return finalizadaConfig;
+  // Dentro do horário de aplicação (prova começou e ainda não expirou) → Em andamento
+  if (applicationStarted) return emAndamentoConfig;
   if (s === 'draft' || s === 'rascunho')
     return {
       label: 'Rascunho',
@@ -100,7 +107,8 @@ function getStatusConfig(status: CompetitionStatus, competition?: { expiration?:
         icon: Play,
       };
     case 'completed':
-      return finalizadaConfig;
+      // Só mostra Finalizada quando expiration passou (já tratado no início da função)
+      return emAndamentoConfig;
     case 'cancelled':
       return {
         label: 'Cancelada',

@@ -25,7 +25,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Trophy, Calendar, Clock, Loader2, Eye, UserPlus, Coins, XCircle, Award, CheckCircle, AlertCircle, Timer, Sparkles, Swords, UserCheck, Filter, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { getAvailableCompetitions, unenrollCompetition, startCompetition } from '@/services/competitionsApi';
+import { getAvailableCompetitions, getMyCompetitions, getMyCompetitionSession, unenrollCompetition, startCompetition } from '@/services/competitionsApi';
 import type { Competition } from '@/types/competition-types';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -119,7 +119,8 @@ interface SubjectOption {
 export default function CompetitionsStudent() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [competitions, setCompetitions] = useState<Competition[]>([]);
+  const [availableCompetitions, setAvailableCompetitions] = useState<Competition[]>([]);
+  const [myCompetitions, setMyCompetitions] = useState<Competition[]>([]);
   const [loading, setLoading] = useState(true);
   const [subjectFilter, setSubjectFilter] = useState<string>('all');
   const [levelFilter, setLevelFilter] = useState<'all' | '1' | '2'>('all');
@@ -135,27 +136,40 @@ export default function CompetitionsStudent() {
   const [dateFilter, setDateFilter] = useState<'all' | 'next-week' | 'next-2-weeks' | 'next-month'>('all');
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const fetchCompetitions = useCallback(async () => {
-    setLoading(true);
+  const fetchAvailable = useCallback(async () => {
     try {
       const list = await getAvailableCompetitions();
-      setCompetitions(Array.isArray(list) ? list : []);
+      setAvailableCompetitions(Array.isArray(list) ? list : []);
     } catch (error) {
-      console.error('Erro ao carregar competições:', error);
+      console.error('Erro ao carregar competições disponíveis:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível carregar as competições.',
+        description: 'Não foi possível carregar as competições disponíveis.',
         variant: 'destructive',
       });
-      setCompetitions([]);
-    } finally {
-      setLoading(false);
+      setAvailableCompetitions([]);
+    }
+  }, [toast]);
+
+  const fetchMy = useCallback(async () => {
+    try {
+      const list = await getMyCompetitions({ status: 'all' });
+      setMyCompetitions(Array.isArray(list) ? list : []);
+    } catch (error) {
+      console.error('Erro ao carregar suas competições:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível carregar suas competições.',
+        variant: 'destructive',
+      });
+      setMyCompetitions([]);
     }
   }, [toast]);
 
   useEffect(() => {
-    fetchCompetitions();
-  }, [fetchCompetitions]);
+    setLoading(true);
+    Promise.all([fetchAvailable(), fetchMy()]).finally(() => setLoading(false));
+  }, [fetchAvailable, fetchMy]);
 
   useEffect(() => {
     let cancelled = false;
@@ -165,8 +179,9 @@ export default function CompetitionsStudent() {
     return () => { cancelled = true; };
   }, []);
 
-  const filteredBySubject = useMemo(() => {
-    let list = competitions;
+  /** Filtros aplicados às competições disponíveis (inscrição/prova). */
+  const filteredAvailable = useMemo(() => {
+    let list = availableCompetitions;
     
     // Filtro por disciplina
     if (subjectFilter !== 'all') {
@@ -195,7 +210,9 @@ export default function CompetitionsStudent() {
     
     // Filtro por vagas disponíveis
     if (onlyWithSlots) {
-      list = list.filter((c) => hasSlots(c));
+      // Não esconder competições em que o aluno já está inscrito,
+      // mesmo que não haja mais vagas.
+      list = list.filter((c) => c.is_enrolled ? true : hasSlots(c));
     }
     
     // Filtro por data
@@ -216,6 +233,9 @@ export default function CompetitionsStudent() {
       const futureDate = now + (daysAhead * 24 * 60 * 60 * 1000);
       
       list = list.filter((c) => {
+        // Sempre manter competições em que o aluno já está inscrito,
+        // independentemente do filtro de período.
+        if (c.is_enrolled) return true;
         // Verificar se alguma data relevante está dentro do período
         const enrollmentStart = c.enrollment_start ? new Date(c.enrollment_start).getTime() : null;
         const enrollmentEnd = c.enrollment_end ? new Date(c.enrollment_end).getTime() : null;
@@ -230,22 +250,107 @@ export default function CompetitionsStudent() {
     }
     
     return list;
-  }, [competitions, subjectFilter, levelFilter, minCoinsFilter, onlyWithSlots, dateFilter]);
+  }, [availableCompetitions, subjectFilter, levelFilter, minCoinsFilter, onlyWithSlots, dateFilter]);
 
-  const { abertas, proximas, minhasInscricoes, encerradas } = useMemo(() => {
+  /** Filtros aplicados às competições do aluno (minhas/encerradas). */
+  const filteredMy = useMemo(() => {
+    let list = myCompetitions;
+
+    // Filtro por disciplina
+    if (subjectFilter !== 'all') {
+      list = list.filter((c) => c.subject_id === subjectFilter);
+    }
+
+    // Filtro por nível
+    if (levelFilter !== 'all') {
+      list = list.filter((c) => String(c.level) === levelFilter);
+    }
+
+    // Filtro por recompensas (moedas mínimas)
+    if (minCoinsFilter) {
+      const minCoins = Number.parseInt(minCoinsFilter, 10);
+      if (!Number.isNaN(minCoins) && minCoins > 0) {
+        list = list.filter((c) => {
+          const participationCoins = Number(
+            c.reward_config?.participation_coins ?? c.reward_participation ?? 0,
+          );
+          const rankingRewards = c.reward_config?.ranking_rewards ?? [];
+          const maxRankingCoins =
+            rankingRewards.length > 0
+              ? Math.max(...rankingRewards.map((r) => r.coins))
+              : 0;
+          return participationCoins >= minCoins || maxRankingCoins >= minCoins;
+        });
+      }
+    }
+
+    // Para "minhas" competições, não aplicar filtros de vagas/data para evitar sumiço.
+    return list;
+  }, [myCompetitions, subjectFilter, levelFilter, minCoinsFilter]);
+
+  // Enriquecer competições do aluno com dados de sessão (/competitions/:id/my-session)
+  // para corrigir casos em que a sessão já foi concluída mas ainda não temos attempt_* atualizados.
+  useEffect(() => {
+    const targets = myCompetitions.filter(
+      (c) => isEnrolled(c) && !isAttemptCompleted(c),
+    );
+    if (!targets.length) return;
+
+    let cancelled = false;
+    (async () => {
+      const patches = new Map<string, Partial<Competition>>();
+      await Promise.all(
+        targets.map(async (comp) => {
+          try {
+            const session = await getMyCompetitionSession(comp.id);
+            if (!session) return;
+            const patch: Partial<Competition> = {};
+            if (session.test_id) patch.test_id = session.test_id;
+            if (session.status) patch.attempt_status = session.status as Competition['attempt_status'];
+            if (session.started_at) patch.attempt_started_at = session.started_at;
+            if (session.submitted_at) patch.attempt_completed_at = session.submitted_at;
+            if (Object.keys(patch).length) {
+              patches.set(comp.id, patch);
+            }
+          } catch {
+            // silencioso: se /my-session falhar, seguimos com dados atuais
+          }
+        }),
+      );
+      if (cancelled || patches.size === 0) return;
+      setMyCompetitions((prev) =>
+        prev.map((c) => {
+          const patch = patches.get(c.id);
+          return patch ? { ...c, ...patch } : c;
+        }),
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [myCompetitions]);
+
+  const { abertas, proximas } = useMemo(() => {
     const a: Competition[] = [];
     const p: Competition[] = [];
+    for (const c of filteredAvailable) {
+      if (canEnrollNow(c)) a.push(c);
+      else if (isUpcoming(c)) p.push(c);
+    }
+    return { abertas: a, proximas: p };
+  }, [filteredAvailable]);
+
+  const { minhasInscricoes, encerradas } = useMemo(() => {
     const m: Competition[] = [];
     const e: Competition[] = [];
-    for (const c of filteredBySubject) {
-      if (isEnrolled(c)) m.push(c);
-      else if (canEnrollNow(c)) a.push(c);
-      else if (isUpcoming(c)) p.push(c);
-      else if (isEnded(c)) e.push(c);
-      else if (!isEnrolled(c) && !canEnrollNow(c) && !isUpcoming(c)) e.push(c);
+    for (const c of filteredMy) {
+      // Toda competição retornada em /competitions/my é considerada "minha"
+      m.push(c);
+      if (isEnded(c)) e.push(c);
     }
-    return { abertas: a, proximas: p, minhasInscricoes: m, encerradas: e };
-  }, [filteredBySubject]);
+    return { minhasInscricoes: m, encerradas: e };
+  }, [filteredMy]);
 
   const handleOpenEnrollModal = (comp: Competition) => {
     setEnrollCompetitionSelected(comp);
@@ -253,7 +358,8 @@ export default function CompetitionsStudent() {
   };
 
   const handleEnrollConfirm = () => {
-    fetchCompetitions();
+    fetchAvailable();
+    fetchMy();
     setEnrollCompetitionSelected(null);
   };
 
@@ -263,7 +369,8 @@ export default function CompetitionsStudent() {
     try {
       await unenrollCompetition(comp.id);
       toast({ title: 'Inscrição cancelada.', description: 'Sua inscrição foi removida.' });
-      fetchCompetitions();
+      fetchAvailable();
+      fetchMy();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Não foi possível cancelar a inscrição.';
       toast({ title: 'Erro', description: msg, variant: 'destructive' });
@@ -393,8 +500,8 @@ export default function CompetitionsStudent() {
 
     if (appStart == null) {
       return { title: 'Prova sem data definida', subtitle: null };
-    }
-    if (expiration != null && now > expiration) {
+  }
+  if (expiration != null && now > expiration) {
       return { title: 'Prova finalizada', subtitle: `Prova encerrou em ${formatDate(comp.expiration)}` };
     }
     if (now >= appStart && (expiration == null || now <= expiration)) {
@@ -404,7 +511,11 @@ export default function CompetitionsStudent() {
       };
     }
     if (now < appStart) {
-      return { title: 'Aguardando início da prova', subtitle: `Prova começa em ${formatDate(comp.application)}` };
+    // Aluno já inscrito e prova ainda não começou: tratar como "Agendada"
+    return {
+      title: 'Prova agendada',
+      subtitle: `Prova começa em ${formatDate(comp.application)}`,
+    };
     }
     return { title: 'Prova finalizada', subtitle: comp.expiration ? `Prova encerrou em ${formatDate(comp.expiration)}` : null };
   }
@@ -478,12 +589,6 @@ export default function CompetitionsStudent() {
               <Eye className="mr-1 h-4 w-4" />
               Ver detalhes
             </Button>
-            {canUnenroll(comp) && (
-              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleUnenroll(comp)} disabled={unenrollingId === comp.id}>
-                {unenrollingId === comp.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="mr-1 h-4 w-4" />}
-                Cancelar inscrição
-              </Button>
-            )}
             {attemptStatus === 'completed' && (
               <Button size="sm" variant="secondary" onClick={() => comp.test_id ? navigate(`/aluno/avaliacao/${comp.test_id}/resultado`) : navigate(`/aluno/competitions/${comp.id}`)}>
                 <CheckCircle className="mr-1 h-4 w-4" />
