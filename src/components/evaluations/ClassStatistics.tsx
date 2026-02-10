@@ -187,6 +187,11 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
       case 'serie':
         name = stats.serie || 'Série';
         break;
+      case 'avaliacao':
+        // Visão geral de uma avaliação/competição inteira
+        name = 'Geral';
+        seriesName = stats.serie;
+        break;
       case 'turma':
       default:
         name = stats.serie || 'Turma';

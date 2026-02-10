@@ -1,34 +1,68 @@
 /**
  * Página de Analytics da Competição (Admin).
  * Rota: /app/competitions/:id/analytics
- * Exibe gráficos, métricas e top 10 alunos.
+ * Exibe gráficos, métricas, tabelas e ranking usando os mesmos componentes de Results.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Loader2, Trophy, Users, Award, TrendingUp, BarChart3, PieChart, LineChart } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ArrowLeft, Loader2, Trophy, Users, Award, TrendingUp, BarChart3, PieChart, BookOpen } from 'lucide-react';
 import {
   PieChart as RechartsPieChart,
   Pie,
   Cell,
-  BarChart,
-  Bar,
-  LineChart as RechartsLineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from 'recharts';
 import { getCompetitionAnalytics, type CompetitionAnalytics } from '@/services/competitionsApi';
+import type { CompetitionRankingEntry } from '@/services/competitionsApi';
 import { getCompetition } from '@/services/competitionsApi';
-import { formatCoins, getMedalEmoji } from '@/utils/coins';
+import { ResultsCharts } from '@/components/evaluations/ResultsCharts';
+import { ClassStatistics } from '@/components/evaluations/ClassStatistics';
+import { StudentRanking } from '@/components/evaluations/StudentRanking';
 
 const COLORS = ['#81338A', '#758E4F', '#F6AE2D', '#33658A', '#86BBD8'];
+
+type StageGroup = 'group1' | 'group2';
+
+/** Converte grade_distribution (faixas do backend) em distribuicao_classificacao para gráficos/estatísticas. */
+function gradeDistributionToClassificacao(
+  gradeDistribution: { range: string; count: number }[]
+): { abaixo_do_basico: number; basico: number; adequado: number; avancado: number } {
+  const d = { abaixo_do_basico: 0, basico: 0, adequado: 0, avancado: 0 };
+  if (!gradeDistribution?.length) return d;
+  const n = gradeDistribution.length;
+  gradeDistribution.forEach((item, i) => {
+    const count = Number(item.count) || 0;
+    if (n <= 4) {
+      if (i === 0) d.abaixo_do_basico += count;
+      else if (i === 1) d.basico += count;
+      else if (i === 2) d.adequado += count;
+      else d.avancado += count;
+    } else {
+      if (i <= 1) d.abaixo_do_basico += count;
+      else if (i === 2) d.basico += count;
+      else if (i === 3) d.adequado += count;
+      else d.avancado += count;
+    }
+  });
+  return d;
+}
+
+/** Converte score_percentage em classificacao para StudentRanking. */
+function scoreToClassificacao(
+  scorePercent: number | undefined,
+  value: number | undefined
+): 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado' {
+  const p = scorePercent ?? (typeof value === 'number' ? value : 0);
+  if (p < 25) return 'Abaixo do Básico';
+  if (p < 50) return 'Básico';
+  if (p < 75) return 'Adequado';
+  return 'Avançado';
+}
 
 export default function CompetitionAnalytics() {
   const { id } = useParams<{ id: string }>();
@@ -68,6 +102,99 @@ export default function CompetitionAnalytics() {
     fetchData();
   }, [id, navigate]);
 
+  const toNumber = (value: unknown, fallback = 0): number => {
+    if (value == null) return fallback;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  // Dados adaptados para ResultsCharts (estatisticas_gerais + resultados_por_disciplina)
+  const chartsApiData = useMemo(() => {
+    if (!analytics) return null;
+    const avgGrade = analytics.averages?.grade ?? 0;
+    const avgProf = analytics.averages?.proficiency ?? 0;
+    const dist = gradeDistributionToClassificacao(analytics.grade_distribution ?? []);
+    return {
+      estatisticas_gerais: {
+        media_nota_geral: toNumber(avgGrade),
+        media_proficiencia_geral: toNumber(avgProf),
+      },
+      resultados_por_disciplina: [
+        {
+          disciplina: competitionName || 'Competição',
+          media_nota: toNumber(avgGrade),
+          media_proficiencia: toNumber(avgProf),
+          distribuicao_classificacao: dist,
+        },
+      ],
+    };
+  }, [analytics, competitionName]);
+
+  const chartsEvaluationInfo = useMemo(
+    () =>
+      analytics
+        ? {
+            id: id ?? '',
+            titulo: competitionName || 'Competição',
+            total_alunos: toNumber(analytics.participation?.participated_students),
+            alunos_participantes: toNumber(analytics.participation?.participated_students),
+            alunos_ausentes: 0,
+            media_nota: toNumber(analytics.averages?.grade),
+            media_proficiencia: toNumber(analytics.averages?.proficiency),
+          }
+        : null,
+    [analytics, id, competitionName]
+  );
+
+  const inferStageGroup = (): StageGroup => 'group1';
+  const getMaxForDiscipline = (_disciplina: string, _group: StageGroup): number => 500;
+
+  // Dados adaptados para ClassStatistics (estatisticas_gerais)
+  const classStatsApiData = useMemo(() => {
+    if (!analytics) return null;
+    const participated = toNumber(analytics.participation?.participated_students);
+    const dist = gradeDistributionToClassificacao(analytics.grade_distribution ?? []);
+    return {
+      // 'avaliacao' indica visão geral, usada pelo ClassStatistics para exibir \"Geral\"
+      nivel_granularidade: 'avaliacao' as const,
+      estatisticas_gerais: {
+        tipo: 'competição',
+        nome: competitionName || 'Competição',
+        total_alunos: participated,
+        alunos_participantes: participated,
+        alunos_ausentes: 0,
+        media_nota_geral: toNumber(analytics.averages?.grade),
+        media_proficiencia_geral: toNumber(analytics.averages?.proficiency),
+        distribuicao_classificacao: dist,
+      },
+    };
+  }, [analytics, competitionName]);
+
+  // Alunos para StudentRanking (top_10 mapeado para o formato esperado)
+  const rankingStudents = useMemo(() => {
+    const top10 = analytics?.top_10 ?? [];
+    return top10.map((entry: CompetitionRankingEntry) => {
+      // Backend pode enviar o nome em \"name\" ou \"student_name\"
+      const rawName =
+        (entry as any).name ??
+        (entry as any).student_name ??
+        '';
+      const nota = typeof entry.score_percentage === 'number' ? entry.score_percentage : toNumber(entry.value);
+      const proficiencia = toNumber(entry.proficiency ?? entry.value);
+      return {
+        id: entry.student_id ?? '',
+        nome: String(rawName),
+        turma: entry.class_name ?? '—',
+        nota,
+        proficiencia,
+        classificacao: scoreToClassificacao(entry.score_percentage, entry.value),
+        status: 'concluida' as const,
+        moedas_ganhas: entry.coins_earned,
+        posicao: entry.position,
+      };
+    });
+  }, [analytics?.top_10]);
+
   if (loading) {
     return (
       <div className="container mx-auto py-12 flex items-center justify-center">
@@ -87,42 +214,23 @@ export default function CompetitionAnalytics() {
     );
   }
 
-  // Helpers numéricos
-  const toNumber = (value: unknown, fallback = 0): number => {
-    if (value == null) return fallback;
-    const n = Number(value);
-    return Number.isFinite(n) ? n : fallback;
-  };
-
-  // Contagens derivadas a partir das métricas do backend
   const totalEligible = toNumber(analytics.enrollment?.eligible_students);
   const totalEnrolled = toNumber(analytics.enrollment?.enrolled_students);
   const totalParticipants = toNumber(analytics.participation?.participated_students);
-
   const enrollmentRate = toNumber(analytics.enrollment_rate || analytics.enrollment?.rate);
   const participationRate = toNumber(analytics.participation_rate || analytics.participation?.rate);
-
   const averageGrade = analytics.averages?.grade ?? null;
-  const completionRate =
-    totalEnrolled > 0 ? (totalParticipants / totalEnrolled) * 100 : 0;
+  const completionRate = totalEnrolled > 0 ? (totalParticipants / totalEnrolled) * 100 : 0;
 
-  // Dados para gráfico de pizza - Taxa de inscrição
   const enrollmentPieData = [
     { name: 'Inscritos', value: totalEnrolled },
     { name: 'Não inscritos', value: Math.max(0, totalEligible - totalEnrolled) },
-  ].filter(item => item.value > 0);
+  ].filter((item) => item.value > 0);
 
-  // Dados para gráfico de pizza - Taxa de participação
   const participationPieData = [
     { name: 'Participantes', value: totalParticipants },
     { name: 'Não participaram', value: Math.max(0, totalEnrolled - totalParticipants) },
-  ].filter(item => item.value > 0);
-
-  // Dados para gráfico de barras - Distribuição de notas
-  const gradeBarData = analytics.grade_distribution.map(item => ({
-    name: item.range,
-    Quantidade: item.count,
-  }));
+  ].filter((item) => item.value > 0);
 
   return (
     <div className="container mx-auto space-y-6 py-6 px-4">
@@ -147,12 +255,9 @@ export default function CompetitionAnalytics() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalEnrolled}</div>
-            <p className="text-xs text-muted-foreground">
-              de {totalEligible} elegíveis
-            </p>
+            <p className="text-xs text-muted-foreground">de {totalEligible} elegíveis</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Participantes</CardTitle>
@@ -160,12 +265,9 @@ export default function CompetitionAnalytics() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalParticipants}</div>
-            <p className="text-xs text-muted-foreground">
-              {participationRate.toFixed(1)}% dos inscritos
-            </p>
+            <p className="text-xs text-muted-foreground">{participationRate.toFixed(1)}% dos inscritos</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Média de Nota</CardTitle>
@@ -175,12 +277,9 @@ export default function CompetitionAnalytics() {
             <div className="text-2xl font-bold">
               {averageGrade != null ? toNumber(averageGrade).toFixed(1) : '—'}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {completionRate.toFixed(1)}% concluíram
-            </p>
+            <p className="text-xs text-muted-foreground">{completionRate.toFixed(1)}% concluíram</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Taxa de Inscrição</CardTitle>
@@ -188,12 +287,9 @@ export default function CompetitionAnalytics() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{enrollmentRate.toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">
-              Inscritos / Elegíveis
-            </p>
+            <p className="text-xs text-muted-foreground">Inscritos / Elegíveis</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Taxa de Participação</CardTitle>
@@ -201,165 +297,145 @@ export default function CompetitionAnalytics() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{participationRate.toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">
-              Participantes / Inscritos
-            </p>
+            <p className="text-xs text-muted-foreground">Participantes / Inscritos</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Gráficos */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Gráfico Pizza - Taxa de Inscrição */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <PieChart className="h-5 w-5" />
-              Taxa de Inscrição
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {enrollmentPieData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <RechartsPieChart>
-                  <Pie
-                    data={enrollmentPieData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {enrollmentPieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </RechartsPieChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                Sem dados de inscrição
-              </p>
-            )}
-          </CardContent>
-        </Card>
+      {/* Abas: Gráficos | Estatísticas | Ranking */}
+      <Tabs defaultValue="charts" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="charts" className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Gráficos
+          </TabsTrigger>
+          <TabsTrigger value="statistics" className="flex items-center gap-2">
+            <BookOpen className="h-4 w-4" />
+            Estatísticas gerais
+          </TabsTrigger>
+          <TabsTrigger value="ranking" className="flex items-center gap-2">
+            <Trophy className="h-4 w-4" />
+            Ranking
+          </TabsTrigger>
+        </TabsList>
 
-        {/* Gráfico Pizza - Taxa de Participação */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <PieChart className="h-5 w-5" />
-              Taxa de Participação
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {participationPieData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <RechartsPieChart>
-                  <Pie
-                    data={participationPieData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {participationPieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </RechartsPieChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                Sem dados de participação
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Gráfico Barra - Distribuição de Notas */}
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Distribuição de Notas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {gradeBarData.some(item => item.Quantidade > 0) ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={gradeBarData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="Quantidade" fill="#81338A" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                Sem dados de distribuição de notas
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Top 10 Alunos */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Trophy className="h-5 w-5" />
-            Top 10 Alunos
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {(analytics.top_10 ?? []).length > 0 ? (
-            <div className="space-y-2">
-              {analytics.top_10!.map((entry) => (
-                <div
-                  key={entry.student_id ?? entry.name}
-                  className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg font-semibold w-8">
-                      {getMedalEmoji(entry.position) || `${entry.position ?? ''}º`}
-                    </span>
-                    <div>
-                      <p className="font-medium">{entry.name}</p>
-                      {entry.class_name && (
-                        <p className="text-xs text-muted-foreground">{entry.class_name}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold">
-                      {entry.value_label ?? entry.grade ?? entry.proficiency ?? entry.score_percentage ?? entry.value}
-                    </p>
-                    {entry.coins_earned != null && Number(entry.coins_earned) > 0 && (
-                      <Badge variant="secondary" className="mt-1">
-                        +{formatCoins(entry.coins_earned)} moedas
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+        <TabsContent value="charts" className="space-y-6 mt-6">
+          {/* Gráficos do Results (média nota, proficiência, distribuição) */}
+          {chartsApiData?.estatisticas_gerais && chartsApiData?.resultados_por_disciplina ? (
+            <ResultsCharts
+              apiData={chartsApiData}
+              evaluationInfo={chartsEvaluationInfo}
+              inferStageGroup={inferStageGroup}
+              getMaxForDiscipline={getMaxForDiscipline}
+            />
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              Nenhum participante no ranking ainda
-            </p>
+            <Card>
+              <CardContent className="text-center py-12">
+                <p className="text-muted-foreground">Não há dados suficientes para gerar os gráficos.</p>
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
+
+          {/* Gráficos de pizza (inscrição e participação) */}
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <PieChart className="h-5 w-5" />
+                  Taxa de Inscrição
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {enrollmentPieData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <RechartsPieChart>
+                      <Pie
+                        data={enrollmentPieData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {enrollmentPieData.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-8">Sem dados de inscrição</p>
+                )}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <PieChart className="h-5 w-5" />
+                  Taxa de Participação
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {participationPieData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <RechartsPieChart>
+                      <Pie
+                        data={participationPieData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {participationPieData.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-8">Sem dados de participação</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="statistics" className="space-y-6 mt-6">
+          {classStatsApiData ? (
+            <>
+              <div>
+                <h2 className="text-lg font-semibold">Estatísticas gerais da competição</h2>
+                <p className="text-sm text-muted-foreground">
+                  Visão consolidada de desempenho e participação da competição como um todo.
+                </p>
+              </div>
+              <ClassStatistics apiData={classStatsApiData} />
+            </>
+          ) : (
+            <Card>
+              <CardContent className="text-center py-12">
+                <p className="text-muted-foreground">Não há dados de estatísticas disponíveis.</p>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="ranking" className="space-y-6 mt-6">
+          <StudentRanking
+            students={rankingStudents}
+            maxStudents={50}
+            showCoins={true}
+            isCompetition={true}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

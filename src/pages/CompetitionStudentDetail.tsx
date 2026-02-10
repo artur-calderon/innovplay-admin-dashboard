@@ -27,7 +27,7 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
-import { getCompetitionDetails, unenrollCompetition, startCompetition } from '@/services/competitionsApi';
+import { getCompetitionDetails, getMyCompetitionSession, unenrollCompetition, startCompetition } from '@/services/competitionsApi';
 import type { Competition } from '@/types/competition-types';
 import { EnrollConfirmationModal } from '@/components/competitions/EnrollConfirmationModal';
 import { EnrollmentStatusBadge, type EnrollmentStatus } from '@/components/competitions/EnrollmentStatusBadge';
@@ -108,6 +108,32 @@ export default function CompetitionStudentDetail() {
       })
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Enriquecer dados da tentativa com /competitions/:id/my-session quando o aluno estiver inscrito.
+  useEffect(() => {
+    if (!id || !competition?.is_enrolled) return;
+    let cancelled = false;
+    getMyCompetitionSession(id)
+      .then((session) => {
+        if (cancelled || !session) return;
+        setCompetition((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            test_id: session.test_id ?? prev.test_id,
+            attempt_status: (session.status as Competition['attempt_status']) ?? prev.attempt_status,
+            attempt_started_at: (session.started_at as string | undefined) ?? prev.attempt_started_at,
+            attempt_completed_at: (session.submitted_at as string | undefined) ?? prev.attempt_completed_at,
+          };
+        });
+      })
+      .catch(() => {
+        // silencioso: se /my-session falhar, seguimos com os dados de /details
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, competition?.is_enrolled]);
 
   const isEnrolled = competition?.is_enrolled === true;
   const inApplication = competition ? isInApplicationPeriod(competition) : false;

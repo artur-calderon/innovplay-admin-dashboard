@@ -19,6 +19,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
@@ -26,7 +33,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { Loader2, ArrowLeft, Calendar, Clock, Trophy, BookOpen, Coins, Users, Award, Pencil, Send, Trash2, XCircle, UserCheck, Flag, ChevronDown, ChevronUp, BarChart3 } from 'lucide-react';
+import { Loader2, ArrowLeft, Calendar, Clock, Trophy, BookOpen, Coins, Users, Award, Pencil, Send, Trash2, XCircle, UserCheck, Flag, ChevronDown, ChevronUp, BarChart3, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
@@ -56,6 +63,8 @@ import {
 import { formatCoins, getMedalEmoji } from '@/utils/coins';
 import { getSubjectColors } from '@/utils/competitionSubjectColors';
 import { api } from '@/lib/api';
+import QuestionPreview from '@/components/evaluations/questions/QuestionPreview';
+import type { Question as EvaluationQuestion } from '@/components/evaluations/types';
 
 const FINALIZADA_STYLE = 'bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-200';
 
@@ -115,6 +124,8 @@ export default function CompetitionDetails() {
   const [questionsSectionOpen, setQuestionsSectionOpen] = useState(false);
   const [enrolledSectionOpen, setEnrolledSectionOpen] = useState(false);
   const [eligibleSectionOpen, setEligibleSectionOpen] = useState(false);
+  const [selectedQuestion, setSelectedQuestion] = useState<EvaluationQuestion | null>(null);
+  const [selectedRankingEntry, setSelectedRankingEntry] = useState<CompetitionRankingEntry | null>(null);
 
   const fetchCompetition = () => {
     if (!id) return;
@@ -278,13 +289,33 @@ export default function CompetitionDetails() {
   const isCompleted = competition && (s === 'completed' || s === 'encerrada' || isActuallyFinished);
   const isEncerrada = competition && (s === 'completed' || s === 'encerrada');
   const isOpenOrActive = competition && (s === 'aberta' || s === 'enrollment_open' || s === 'active' || s === 'em_andamento');
+  const enrollmentStartTime = competition?.enrollment_start
+    ? new Date(competition.enrollment_start).getTime()
+    : null;
+  const enrollmentEndTime = competition?.enrollment_end
+    ? new Date(competition.enrollment_end).getTime()
+    : null;
+  const isEnrollmentWindow =
+    enrollmentStartTime != null &&
+    enrollmentEndTime != null &&
+    now >= enrollmentStartTime &&
+    now <= enrollmentEndTime;
   /** Botão "Finalizar competição": data de expiração já passou e competição ainda aberta/em andamento. */
   const canFinalize = isOpenOrActive && isActuallyFinished;
-  /** Pode excluir direto em rascunho, cancelada ou já finalizada. */
-  const canDeleteDirectly = isDraft || isCancelled || isCompleted;
-  /** Cancelar competição desabilitado na UI (não exibir no card). */
-  const canCancel = false;
+  /**
+   * Excluir competição:
+   * - permitido apenas para rascunho ou já cancelada
+   * - em finalizada, primeiro cancela, depois aparece o botão de excluir.
+   */
+  const canDeleteDirectly = isDraft || isCancelled;
+  /**
+   * Cancelar competição:
+   * - disponível para competições já finalizadas (requisito: "em competições finalizadas na parte de ver")
+   * - e que ainda não estejam com status cancelado.
+   */
+  const canCancel = Boolean(isCompleted && !isCancelled);
   const canEdit = isDraft || isAberta;
+  const showEligibleSection = Boolean(competition && !isCompleted && !isCancelled && isEnrollmentWindow);
 
   const handleFinalize = async () => {
     if (!id) return;
@@ -525,21 +556,73 @@ export default function CompetitionDetails() {
           <CollapsibleContent>
             <CardContent>
               {questionsLoading ? (
-                <p className="text-sm text-muted-foreground py-4">Carregando...</p>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Carregando questões...</span>
+                </div>
               ) : !questionCount ? (
                 <p className="text-sm text-muted-foreground py-4">Nenhuma questão selecionada.</p>
               ) : questions.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4">Não foi possível carregar as questões.</p>
               ) : (
                 <div className="space-y-2">
-                  {questions.map((q, index) => (
-                    <div key={q.id} className="rounded-lg border bg-muted/20 p-3 text-sm flex justify-between items-center gap-2">
-                      <span className="font-medium">Questão {index + 1}{q.title ? ` · ${q.title}` : ''}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {q.difficulty ?? '—'} {typeof q.value === 'number' ? `· ${q.value} pts` : ''}
-                      </span>
-                    </div>
-                  ))}
+                  {questions.map((q, index) => {
+                    const handleOpenDetails = () => {
+                      if (!competition) return;
+                      const previewQuestion: EvaluationQuestion = {
+                        id: q.id,
+                        title: q.title,
+                        text: q.text,
+                        formattedText: q.text,
+                        type: 'multipleChoice',
+                        subjectId: competition.subject_id ?? '',
+                        subject: competition.subject_id
+                          ? {
+                              id: competition.subject_id,
+                              name: competition.subject_name ?? competition.subject_id,
+                            }
+                          : undefined,
+                        educationStage: undefined,
+                        grade: undefined,
+                        difficulty: q.difficulty ?? '',
+                        value: q.value ?? 1,
+                        solution: '',
+                        formattedSolution: '',
+                        options: [],
+                        secondStatement: '',
+                        skills: undefined,
+                        created_by: '',
+                        lastModifiedBy: undefined,
+                      };
+                      setSelectedQuestion(previewQuestion);
+                    };
+
+                    return (
+                      <div
+                        key={q.id}
+                        className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3 text-sm"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">
+                            Questão {index + 1}
+                            {q.title ? ` · ${q.title}` : ''}
+                          </p>
+                          <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+                            {q.text}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <span className="text-xs text-muted-foreground">
+                            {q.difficulty ?? '—'}{' '}
+                            {typeof q.value === 'number' ? `· ${q.value} pts` : ''}
+                          </span>
+                          <Button variant="outline" size="sm" onClick={handleOpenDetails}>
+                            Ver detalhes
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -599,44 +682,88 @@ export default function CompetitionDetails() {
         </Card>
       </Collapsible>
 
-      {/* Elegíveis (collapsible) */}
-      <Collapsible open={eligibleSectionOpen} onOpenChange={setEligibleSectionOpen}>
-        <Card>
-          <CollapsibleTrigger asChild>
-            <CardHeader className="cursor-pointer hover:bg-muted/30 transition-colors">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Users className="h-5 w-5" /> Podem se inscrever
-                  <Badge variant="outline">{eligibleLoading ? '...' : eligibleStudents.length}</Badge>
-                </CardTitle>
-                {eligibleSectionOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-              </div>
-            </CardHeader>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
+      {/* Elegíveis (collapsible) — só exibe durante a janela de inscrição e enquanto não finalizada/cancelada */}
+      {showEligibleSection && (
+        <Collapsible open={eligibleSectionOpen} onOpenChange={setEligibleSectionOpen}>
+          <Card>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer hover:bg-muted/30 transition-colors">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Users className="h-5 w-5" /> Podem se inscrever
+                    <Badge variant="outline">{eligibleLoading ? '...' : eligibleStudents.length}</Badge>
+                  </CardTitle>
+                  {eligibleSectionOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                </div>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
             <CardContent>
               {eligibleLoading ? (
-                <p className="text-sm text-muted-foreground py-4">Carregando...</p>
+                <div className="flex flex-col items-center justify-center gap-3 py-6 text-sm text-muted-foreground">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  <p>Buscando alunos elegíveis...</p>
+                </div>
               ) : eligibleError ? (
                 <p className="text-sm text-destructive py-4">{eligibleError}</p>
               ) : !eligibleStudents.length ? (
-                <p className="text-sm text-muted-foreground py-4">Nenhum aluno elegível no momento.</p>
+                <p className="text-sm text-muted-foreground py-4">
+                  Nenhum aluno elegível no momento.
+                </p>
               ) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {eligibleStudents.map((student) => (
-                    <div key={student.id} className="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                      <span className="font-medium">{student.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {[student.grade_name, student.class_name].filter(Boolean).join(' · ')}
-                      </span>
-                    </div>
-                  ))}
+                <div className="grid max-h-72 grid-cols-1 gap-3 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
+                  {eligibleStudents.map((student) => {
+                    const escola = student.school_name;
+                    const serie = student.grade_name;
+                    const turma = student.class_name;
+                    const initials = student.name
+                      .split(' ')
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .map((p) => p[0]?.toUpperCase())
+                      .join('');
+                    return (
+                      <div
+                        key={student.id}
+                        className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-background to-background px-3 py-3 text-sm shadow-sm"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground shadow">
+                            {initials || student.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold">{student.name}</p>
+                            {escola && (
+                              <p className="truncate text-[11px] text-muted-foreground">
+                                {escola}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        {(serie || turma) && (
+                          <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                            {serie && (
+                              <span className="rounded-full bg-background/60 px-2 py-0.5 font-medium">
+                                {serie}
+                              </span>
+                            )}
+                            {turma && (
+                              <span className="rounded-full bg-background/60 px-2 py-0.5">
+                                {turma}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
-          </CollapsibleContent>
-        </Card>
-      </Collapsible>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+      )}
 
       {/* Ranking (quando encerrada) — pódio + tabela */}
       {isEncerrada && (
@@ -699,6 +826,7 @@ export default function CompetitionDetails() {
                         <TableHead className="hidden sm:table-cell">Turma</TableHead>
                         <TableHead className="text-right">Nota</TableHead>
                         <TableHead className="text-right w-20">Moedas</TableHead>
+                        <TableHead className="w-[100px] text-right">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -719,6 +847,17 @@ export default function CompetitionDetails() {
                               ? `+${formatCoins(entry.coins_earned)}`
                               : '—'}
                           </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelectedRankingEntry(entry)}
+                              className="gap-1"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              Ver resultados
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -729,6 +868,88 @@ export default function CompetitionDetails() {
           </CardContent>
         </Card>
       )}
+
+      {/* Modal de resultados detalhados do aluno no ranking */}
+      <Dialog open={!!selectedRankingEntry} onOpenChange={(open) => !open && setSelectedRankingEntry(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5" />
+              Resultados do aluno
+            </DialogTitle>
+            <DialogDescription>
+              {selectedRankingEntry?.name}
+              {selectedRankingEntry?.class_name && ` · ${selectedRankingEntry.class_name}`}
+              {selectedRankingEntry?.school_name && ` · ${selectedRankingEntry.school_name}`}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedRankingEntry && (
+            <div className="grid gap-3 py-2">
+              <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
+                <span className="text-sm text-muted-foreground">Posição</span>
+                <span className="font-semibold">
+                  {getMedalEmoji(selectedRankingEntry.position) || `${selectedRankingEntry.position}º`}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
+                <span className="text-sm text-muted-foreground">Nota / Resultado</span>
+                <span className="font-semibold">
+                  {selectedRankingEntry.value_label ?? selectedRankingEntry.score_percentage ?? selectedRankingEntry.value}
+                </span>
+              </div>
+              {selectedRankingEntry.correct_answers != null && selectedRankingEntry.total_questions != null && (
+                <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
+                  <span className="text-sm text-muted-foreground">Acertos</span>
+                  <span className="font-semibold">
+                    {selectedRankingEntry.correct_answers} / {selectedRankingEntry.total_questions}
+                  </span>
+                </div>
+              )}
+              {selectedRankingEntry.score_percentage != null && (
+                <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
+                  <span className="text-sm text-muted-foreground">Percentual</span>
+                  <span className="font-semibold">{selectedRankingEntry.score_percentage}%</span>
+                </div>
+              )}
+              {selectedRankingEntry.tempo_gasto != null && (
+                <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
+                  <span className="text-sm text-muted-foreground">Tempo</span>
+                  <span className="font-semibold">
+                    {selectedRankingEntry.tempo_gasto < 60
+                      ? `${selectedRankingEntry.tempo_gasto} min`
+                      : `${Math.floor(selectedRankingEntry.tempo_gasto / 60)}h ${selectedRankingEntry.tempo_gasto % 60} min`}
+                  </span>
+                </div>
+              )}
+              {selectedRankingEntry.coins_earned != null && selectedRankingEntry.coins_earned > 0 && (
+                <div className="flex items-center justify-between rounded-lg border bg-amber-500/10 px-3 py-2">
+                  <span className="text-sm text-muted-foreground flex items-center gap-1">
+                    <Coins className="h-4 w-4 text-amber-500" /> Moedas
+                  </span>
+                  <span className="font-semibold text-amber-600 dark:text-amber-400">
+                    +{formatCoins(selectedRankingEntry.coins_earned)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de detalhes da questão */}
+      <Dialog open={!!selectedQuestion} onOpenChange={(open) => !open && setSelectedQuestion(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedQuestion?.title ? selectedQuestion.title : 'Detalhes da questão'}
+            </DialogTitle>
+            <DialogDescription>Visualização completa da questão, incluindo imagens e alternativas.</DialogDescription>
+          </DialogHeader>
+          {selectedQuestion && (
+            <QuestionPreview question={selectedQuestion} />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <EditCompetitionModal
         open={editOpen}

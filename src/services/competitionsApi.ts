@@ -64,6 +64,32 @@ export async function getAvailableCompetitions(): Promise<Competition[]> {
   return Array.isArray(data) ? data : [];
 }
 
+/** Parâmetros para GET /competitions/my (competição do ponto de vista do aluno). */
+export interface MyCompetitionsParams {
+  status?: 'finished' | 'active' | 'upcoming' | 'all';
+  subject_id?: string;
+  level?: number;
+}
+
+/**
+ * Lista de competições do aluno (histórico + ativas).
+ * GET /competitions/my — usa o mesmo formato base de Competition de /available,
+ * com campos adicionais de sessão/tentativa quando existirem.
+ */
+export async function getMyCompetitions(
+  params?: MyCompetitionsParams,
+): Promise<Competition[]> {
+  const query: Record<string, string | number> = {};
+  if (params?.status && params.status !== 'all') query.status = params.status;
+  if (params?.subject_id) query.subject_id = params.subject_id;
+  if (typeof params?.level === 'number') query.level = params.level;
+
+  const { data } = await api.get<Competition[]>('/competitions/my', {
+    params: Object.keys(query).length ? query : undefined,
+  });
+  return Array.isArray(data) ? data : [];
+}
+
 export async function getCompetition(id: string): Promise<Competition> {
   const { data } = await api.get<Competition>(`/competitions/${id}`);
   return data;
@@ -377,6 +403,31 @@ export interface MyRankingResponse {
 export async function getMyRanking(competitionId: string): Promise<MyRankingResponse> {
   const { data } = await api.get<MyRankingResponse>(`/competitions/${competitionId}/my-ranking`);
   return data ?? { position: null, total_participants: 0 };
+}
+
+/** Sessão de prova do aluno em uma competição (GET /competitions/:id/my-session). */
+export interface CompetitionTestSession {
+  id?: string;
+  test_id?: string;
+  status?: string;
+  started_at?: string;
+  submitted_at?: string;
+  score?: number;
+  grade?: number | string;
+  [key: string]: unknown;
+}
+
+interface MyCompetitionSessionResponse {
+  test_session: CompetitionTestSession | null;
+}
+
+/** Buscar sessão de prova do aluno para uma competição específica. */
+export async function getMyCompetitionSession(
+  competitionId: string,
+): Promise<CompetitionTestSession | null> {
+  const { data } = await api.get<MyCompetitionSessionResponse>(`/competitions/${competitionId}/my-session`);
+  if (!data || !data.test_session) return null;
+  return data.test_session;
 }
 
 /** Finalizar competição (gerar ranking e pagar recompensas). Só quando expiração já passou e status ainda aberta/em_andamento. */
