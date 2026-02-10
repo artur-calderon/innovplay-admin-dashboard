@@ -1007,7 +1007,8 @@ export default function AnswerSheetGenerator() {
     // Iniciar polling a cada 2 segundos
     pollingIntervalRef.current = setInterval(async () => {
       try {
-        const response = await api.get(`/answer-sheets/task/${taskId}/status`);
+        const statusConfig = selectedMunicipio ? { meta: { cityId: selectedMunicipio } } : {};
+        const response = await api.get(`/answer-sheets/task/${taskId}/status`, statusConfig);
         const data = response.data;
 
         console.log("📊 Status do polling:", data.status);
@@ -1246,11 +1247,10 @@ export default function AnswerSheetGenerator() {
       }
 
       // 1. DISPARAR GERAÇÃO (retorna imediatamente com 202)
-      const response = await api.post('/answer-sheets/generate', payload, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      const generateConfig = selectedMunicipio
+        ? { headers: { 'Content-Type': 'application/json' }, meta: { cityId: selectedMunicipio } }
+        : { headers: { 'Content-Type': 'application/json' } };
+      const response = await api.post('/answer-sheets/generate', payload, generateConfig);
 
       // Verificar se a resposta é 202 Accepted (assíncrono)
       if (response.status === 202) {
@@ -1463,7 +1463,8 @@ export default function AnswerSheetGenerator() {
   const fetchGabaritos = useCallback(async () => {
     try {
       setIsLoadingGabaritos(true);
-      const response = await api.get<GabaritosResponse>('/answer-sheets/gabaritos');
+      const config = selectedMunicipio ? { meta: { cityId: selectedMunicipio } } : {};
+      const response = await api.get<GabaritosResponse>('/answer-sheets/gabaritos', config);
       setGabaritos(response.data.gabaritos || []);
     } catch (error: any) {
       console.error('Erro ao carregar gabaritos:', error);
@@ -1476,14 +1477,15 @@ export default function AnswerSheetGenerator() {
     } finally {
       setIsLoadingGabaritos(false);
     }
-  }, [toast]);
+  }, [toast, selectedMunicipio]);
 
   const handleDownloadGabarito = async (gabaritoId: string) => {
     try {
       setDownloadingGabaritoId(gabaritoId);
       
       // 1. Solicitar URL de download (JSON response com URL pré-assinada do MinIO)
-      const response = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`);
+      const downloadConfig = selectedMunicipio ? { meta: { cityId: selectedMunicipio } } : {};
+      const response = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`, downloadConfig);
 
       // 2. Verificar se retornou URL de download
       if (response.data.download_url) {
@@ -1530,7 +1532,8 @@ export default function AnswerSheetGenerator() {
     try {
       setDownloadingGabaritoId(batchId);
       
-      const response = await api.get<BatchDownloadResponse>(`/answer-sheets/batch/${batchId}/download`);
+      const batchConfig = selectedMunicipio ? { meta: { cityId: selectedMunicipio } } : {};
+      const response = await api.get<BatchDownloadResponse>(`/answer-sheets/batch/${batchId}/download`, batchConfig);
 
       if (response.data.download_url) {
         window.location.href = response.data.download_url;
@@ -1574,7 +1577,8 @@ export default function AnswerSheetGenerator() {
   const handleDeleteGabarito = async (gabaritoId: string) => {
     try {
       setIsDeleting(true);
-      const response = await api.delete(`/answer-sheets/gabarito/${gabaritoId}`);
+      const deleteConfig = selectedMunicipio ? { meta: { cityId: selectedMunicipio } } : {};
+      const response = await api.delete(`/answer-sheets/gabarito/${gabaritoId}`, deleteConfig);
       
       toast({
         title: 'Sucesso!',
@@ -1619,9 +1623,10 @@ export default function AnswerSheetGenerator() {
     try {
       setIsDeleting(true);
       const ids = Array.from(selectedGabaritos);
-      const response = await api.delete('/answer-sheets/gabaritos', {
-        data: { ids },
-      });
+      const multiDeleteConfig = selectedMunicipio
+        ? { data: { ids }, meta: { cityId: selectedMunicipio } }
+        : { data: { ids } };
+      const response = await api.delete('/answer-sheets/gabaritos', multiDeleteConfig);
       
       const data = response.data;
       const deletedCount = data.deleted_count || 0;

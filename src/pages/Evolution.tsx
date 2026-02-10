@@ -615,7 +615,8 @@ export default function Evolution() {
           setIsLoadingFilters(true);
 
           // Buscar todas as escolas e filtrar pelo município selecionado
-          const schoolsResponse = await api.get('/school/');
+          const schoolRequestConfig = selectedMunicipality !== 'all' ? { meta: { cityId: selectedMunicipality } } : {};
+          const schoolsResponse = await api.get('/school/', schoolRequestConfig);
           const allSchools = Array.isArray(schoolsResponse.data)
             ? schoolsResponse.data
             : (schoolsResponse.data?.data || []);
@@ -660,7 +661,8 @@ export default function Evolution() {
         try {
           setIsLoadingFilters(true);
           // Buscar turmas da escola para extrair as séries disponíveis
-          const classesResponse = await api.get(`/classes/school/${selectedSchool}`);
+          const classesRequestConfig = selectedMunicipality !== 'all' ? { meta: { cityId: selectedMunicipality } } : {};
+          const classesResponse = await api.get(`/classes/school/${selectedSchool}`, classesRequestConfig);
           const classesData = Array.isArray(classesResponse.data)
             ? classesResponse.data
             : (classesResponse.data?.data || []);
@@ -710,7 +712,8 @@ export default function Evolution() {
       if (selectedSchool !== 'all' && selectedGrade !== 'all') {
         try {
           setIsLoadingFilters(true);
-          const response = await api.get(`/classes/school/${selectedSchool}`);
+          const classesConfig = selectedMunicipality !== 'all' ? { meta: { cityId: selectedMunicipality } } : {};
+          const response = await api.get(`/classes/school/${selectedSchool}`, classesConfig);
           const classesData = Array.isArray(response.data)
             ? response.data
             : (response.data?.data || []);
@@ -1130,9 +1133,10 @@ export default function Evolution() {
                     };
 
                     // Fazer requisição POST para o backend
-                    const response = await api.post('/test/evolution/export-excel', payload, {
-                      responseType: 'blob',
-                    });
+                    const exportConfig = selectedMunicipality !== 'all'
+                      ? { responseType: 'blob' as const, meta: { cityId: selectedMunicipality } }
+                      : { responseType: 'blob' as const };
+                    const response = await api.post('/test/evolution/export-excel', payload, exportConfig);
 
                     // Criar blob a partir da resposta
                     const blob = new Blob([response.data], {

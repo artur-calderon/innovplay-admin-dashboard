@@ -341,11 +341,11 @@ export default function AnaliseAvaliacoes() {
         apiUrl = `/reports/relatorio-pdf/${selectedEvaluation}?school_id=${selectedSchool}`;
       }
       
-      // Buscar o relatório PDF diretamente do backend
-      const response = await api.get(apiUrl, {
-        responseType: 'blob', // Importante: receber como blob
-        timeout: 120000 // Aumenta o tempo limite especificamente para geração do PDF (2 minutos)
-      });
+      // Buscar o relatório PDF diretamente do backend (admin: enviar contexto de cidade)
+      const pdfConfig = selectedMunicipality !== 'all'
+        ? { responseType: 'blob' as const, timeout: 120000, meta: { cityId: selectedMunicipality } }
+        : { responseType: 'blob' as const, timeout: 120000 };
+      const response = await api.get(apiUrl, pdfConfig);
       
       // Criar URL do blob
       const blob = new Blob([response.data], { type: 'application/pdf' });
