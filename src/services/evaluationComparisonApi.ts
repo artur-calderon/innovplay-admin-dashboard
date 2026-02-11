@@ -196,7 +196,8 @@ export class EvaluationComparisonApiService {
         ? `/evaluation-results/opcoes-filtros-comparacao?${queryParams.toString()}`
         : '/evaluation-results/opcoes-filtros-comparacao';
       
-      const response = await api.get(url);
+      const requestConfig = params?.municipio ? { meta: { cityId: params.municipio } } : {};
+      const response = await api.get(url, requestConfig);
       return response.data;
     } catch (error) {
       console.error('Erro ao buscar opções de filtros de comparação:', error);

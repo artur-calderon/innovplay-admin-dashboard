@@ -512,7 +512,10 @@ export class EvaluationResultsApiService {
         params.append('turma', filters.turma);
       }
 
-      const response = await api.get(`/evaluation-results/avaliacoes?${params}`);
+      const requestConfig = filters.municipio && filters.municipio !== 'all'
+        ? { meta: { cityId: filters.municipio } }
+        : {};
+      const response = await api.get(`/evaluation-results/avaliacoes?${params}`, requestConfig);
 
       // Filtrar olimpíadas dos resultados
       if (response.data?.resultados_detalhados?.avaliacoes) {
@@ -1462,7 +1465,10 @@ export class EvaluationResultsApiService {
       if (params.turma && params.turma !== 'all') queryParams.append('turma', params.turma);
 
       const url = `/evaluation-results/opcoes-filtros${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-      const response = await api.get(url);
+      const requestConfig = params.municipio && params.municipio !== 'all'
+        ? { meta: { cityId: params.municipio } }
+        : {};
+      const response = await api.get(url, requestConfig);
       return response.data || {};
     } catch (error) {
       // ✅ MELHORADO: Log detalhado do erro para debug
