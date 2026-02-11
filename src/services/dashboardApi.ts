@@ -80,6 +80,20 @@ export class DashboardApiService {
   }
 
   /**
+   * Busca quantidade de avisos (escopo do usuário logado).
+   * GET /dashboard/avisos/quantidade
+   */
+  static async getAvisosQuantidade(): Promise<number> {
+    try {
+      const response = await api.get<{ quantidade: number }>("/dashboard/avisos/quantidade");
+      return response.data?.quantidade ?? 0;
+    } catch (error) {
+      console.error("Erro ao buscar quantidade de avisos:", error);
+      return 0;
+    }
+  }
+
+  /**
    * Busca dados do dashboard baseado no role do usuário
    */
   static async getDashboardByRole(role: string): Promise<
