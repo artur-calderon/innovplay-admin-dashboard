@@ -1,22 +1,26 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Trophy, TrendingUp, Users, Award } from "lucide-react";
-import { api } from "@/lib/api";
+import { Trophy, TrendingUp, Users, Award, FileCheck } from "lucide-react";
+import { DashboardApiService } from "@/services/dashboardApi";
 
-interface SchoolRanking {
-  position: number;
-  schoolName: string;
-  municipality: string;
-  averageScore: number;
-  completionRate: number;
-  totalStudents: number;
-  totalEvaluations: number;
+interface SchoolRankingItem {
+  posicao: number;
+  escola_id: string;
+  nome_escola: string;
+  municipio: string;
+  media: number;
+  media_score_percent: number;
+  quantidade_alunos: number;
+  taxa_conclusao: number;
+  quantidade_avaliacoes: number;
+  total_turmas: number;
+  total_provas_entregues: number;
 }
 
 export default function SchoolRankingTable() {
-  const [rankings, setRankings] = useState<SchoolRanking[]>([]);
+  const [rankings, setRankings] = useState<SchoolRankingItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,139 +30,20 @@ export default function SchoolRankingTable() {
         setIsLoading(true);
         setError(null);
 
-        const response = await api.get("/schools/recent", {
-          params: {
-            per_page: 50,
-            include_stats: true,
-          },
-        });
+        const data = await DashboardApiService.getSchoolRanking(10, 0);
 
-        // Verificar diferentes estruturas de resposta
-        const data = response.data?.data || response.data?.schools || response.data;
-        
-        // Log para debug (remover depois)
-        if (data && Array.isArray(data) && data.length > 0) {
-          console.log('📊 Estrutura de dados da escola (primeira):', JSON.stringify(data[0], null, 2));
-        }
-
-        if (Array.isArray(data) && data.length > 0) {
-          const rankingsArray = data
-            .map((school: any) => {
-              // Tentar múltiplos nomes de campos para média
-              const averageScore = Number(
-                school.average_score ?? 
-                school.avg_score ?? 
-                school.media_nota ?? 
-                school.average_grade ?? 
-                school.media_score ??
-                school.media_nota_geral ??
-                school.stats?.average_score ??
-                school.stats?.avg_score ??
-                school.stats?.media_nota ??
-                school.stats?.media_nota_geral ??
-                school.statistics?.average_score ??
-                school.statistics?.media_nota ??
-                school.evaluation_stats?.average_score ??
-                school.evaluation_stats?.media_nota ??
-                0
-              );
-
-              // Tentar múltiplos nomes de campos para taxa de conclusão
-              let completionRate = Number(
-                school.completion_rate ?? 
-                school.completion_percentage ?? 
-                school.taxa_conclusao ??
-                school.taxa_conclusao_percentual ??
-                school.stats?.completion_rate ??
-                school.stats?.completion_percentage ??
-                school.stats?.taxa_conclusao ??
-                school.statistics?.completion_rate ??
-                school.statistics?.completion_percentage ??
-                school.evaluation_stats?.completion_rate ??
-                school.evaluation_stats?.completion_percentage ??
-                0
-              );
-
-              // Se não encontrou, calcular a partir de dados disponíveis
-              if (completionRate === 0 || isNaN(completionRate)) {
-                const completedStudents = Number(
-                  school.completed_students ?? 
-                  school.students_completed ?? 
-                  school.stats?.completed_students ??
-                  school.statistics?.completed_students ??
-                  0
-                );
-                const totalStudents = Number(
-                  school.total_students ?? 
-                  school.students_count ?? 
-                  school.stats?.total_students ??
-                  school.statistics?.total_students ??
-                  0
-                );
-                
-                if (totalStudents > 0) {
-                  completionRate = (completedStudents / totalStudents) * 100;
-                }
-              }
-
-              return {
-                position: 0,
-                schoolName: school.name || "Escola sem nome",
-                municipality: school.city?.name || school.city_name || "Não informado",
-                averageScore: isNaN(averageScore) ? 0 : averageScore,
-                completionRate: isNaN(completionRate) ? 0 : completionRate,
-                totalStudents: Number(school.students_count ?? school.total_students ?? school.students?.length ?? 0),
-                totalEvaluations: Number(
-                  school.evaluations_count ?? school.total_evaluations ?? school.evaluations?.length ?? 0,
-                ),
-              };
-            })
-            .filter((school) => school.schoolName !== "Escola sem nome")
-            .sort((a, b) => {
-              if (b.averageScore !== a.averageScore) {
-                return b.averageScore - a.averageScore;
-              }
-              if (b.completionRate !== a.completionRate) {
-                return b.completionRate - a.completionRate;
-              }
-              return b.totalStudents - a.totalStudents;
-            })
-            .slice(0, 10)
-            .map((school, index) => ({
-              ...school,
-              position: index + 1,
-            }));
-
-          setRankings(rankingsArray);
+        if (data?.ranking && Array.isArray(data.ranking)) {
+          setRankings(data.ranking.slice(0, 10));
+          setTotal(data.total ?? data.ranking.length);
         } else {
           setRankings([]);
+          setTotal(0);
         }
-      } catch (error: unknown) {
-        // ✅ MELHORADO: Tratar erro 500 como "sem dados" para endpoints de listagem
-        const axiosError = error as { response?: { status?: number; data?: { message?: string } } };
-        if (axiosError.response?.status === 500) {
-          const errorMessage = axiosError.response?.data?.message || '';
-          const isEmptyError = errorMessage.toLowerCase().includes('nenhum') || 
-                             errorMessage.toLowerCase().includes('não encontrado') ||
-                             errorMessage.toLowerCase().includes('empty') ||
-                             errorMessage.toLowerCase().includes('no data') ||
-                             errorMessage === '';
-          
-          if (isEmptyError) {
-            // Não há escolas no sistema ainda - não é um erro real
-            console.info('Nenhuma escola encontrada no sistema.');
-            setRankings([]);
-            setError(null);
-          } else {
-            console.error("Erro ao buscar ranking de escolas:", error);
-            setError("Não foi possível carregar o ranking de escolas.");
-            setRankings([]);
-          }
-        } else {
-          console.error("Erro ao buscar ranking de escolas:", error);
-          setError("Não foi possível carregar o ranking de escolas.");
-          setRankings([]);
-        }
+      } catch (err) {
+        console.error("Erro ao buscar ranking de escolas:", err);
+        setError("Não foi possível carregar o ranking de escolas.");
+        setRankings([]);
+        setTotal(0);
       } finally {
         setIsLoading(false);
       }
@@ -168,9 +53,9 @@ export default function SchoolRankingTable() {
   }, []);
 
   const getPerformanceColor = (score: number) => {
-    if (score >= 8) return "text-green-600 bg-green-50";
-    if (score >= 6) return "text-yellow-600 bg-yellow-50";
-    return "text-red-600 bg-red-50";
+    if (score >= 8) return "text-green-600 bg-green-50 dark:bg-green-950/30 dark:text-green-400";
+    if (score >= 6) return "text-yellow-600 bg-yellow-50 dark:bg-yellow-950/30 dark:text-yellow-400";
+    return "text-red-600 bg-red-50 dark:bg-red-950/30 dark:text-red-400";
   };
 
   const getPositionIcon = (position: number) => {
@@ -192,7 +77,7 @@ export default function SchoolRankingTable() {
         <CardContent>
           <div className="space-y-4">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex items-center justify-between p-3 rounded-lg border">
+              <div key={i} className="flex items-center justify-between p-3 rounded-lg border border-border">
                 <div className="flex items-center gap-3">
                   <Skeleton className="h-8 w-8 rounded-full" />
                   <div className="space-y-2">
@@ -222,9 +107,7 @@ export default function SchoolRankingTable() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-center text-red-500 py-8">
-            {error}
-          </div>
+          <div className="text-center text-red-500 py-8">{error}</div>
         </CardContent>
       </Card>
     );
@@ -255,54 +138,66 @@ export default function SchoolRankingTable() {
           <Trophy className="h-5 w-5 text-yellow-500" />
           Ranking de Escolas
         </CardTitle>
+        <p className="text-xs text-muted-foreground mt-1">
+          Top 10 • ordenado por média (0–10)
+        </p>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
           {rankings.map((school) => (
-            <div key={school.position} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted transition-colors border-border">
-              {/* Posição e Nome da Escola */}
+            <div
+              key={school.escola_id}
+              className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
+            >
               <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="flex-shrink-0">
-                  {getPositionIcon(school.position)}
+                <div className="flex-shrink-0 w-8 flex items-center justify-center">
+                  {getPositionIcon(school.posicao)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h4 className="font-medium text-sm truncate">
-                    {school.schoolName}
-                  </h4>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {school.municipality}
-                  </p>
+                  <h4 className="font-medium text-sm truncate">{school.nome_escola}</h4>
+                  <p className="text-xs text-muted-foreground truncate">{school.municipio}</p>
                 </div>
               </div>
 
-              {/* Métricas */}
-              <div className="flex items-center gap-4 flex-shrink-0">
-                {/* Média de Pontuação */}
+              <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
                 <div className="text-center">
-                  <div className={`text-sm font-semibold px-2 py-1 rounded-full ${getPerformanceColor(school.averageScore)}`}>
-                    {school.averageScore > 0 ? school.averageScore.toFixed(1) : '0.0'}
+                  <div
+                    className={`text-sm font-semibold px-2 py-1 rounded-full ${getPerformanceColor(school.media)}`}
+                  >
+                    {school.media > 0 ? school.media.toFixed(1) : "0.0"}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">Média</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Média</p>
                 </div>
 
-                {/* Taxa de Conclusão */}
+                <div className="text-center hidden sm:block">
+                  <span className="text-sm font-medium">{school.media_score_percent?.toFixed(1) ?? "0"}%</span>
+                  <p className="text-xs text-muted-foreground mt-0.5">Acerto</p>
+                </div>
+
                 <div className="text-center">
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center justify-center gap-1">
                     <TrendingUp className="h-3 w-3 text-green-500" />
                     <span className="text-sm font-medium">
-                      {isNaN(school.completionRate) ? '0.0' : school.completionRate.toFixed(1)}%
+                      {school.taxa_conclusao != null ? school.taxa_conclusao.toFixed(1) : "0"}%
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground">Conclusão</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Conclusão</p>
                 </div>
 
-                {/* Número de Alunos */}
                 <div className="text-center">
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center justify-center gap-1">
                     <Users className="h-3 w-3 text-blue-500" />
-                    <span className="text-sm font-medium">{school.totalStudents}</span>
+                    <span className="text-sm font-medium">{school.quantidade_alunos ?? 0}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">Alunos</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Alunos</p>
+                </div>
+
+                <div className="text-center hidden md:flex flex-col">
+                  <div className="flex items-center justify-center gap-1">
+                    <FileCheck className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-sm font-medium">{school.quantidade_avaliacoes ?? 0}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">Avaliações</p>
                 </div>
               </div>
             </div>

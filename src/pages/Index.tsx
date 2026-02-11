@@ -8,6 +8,7 @@ import TopStudentsTable from "@/components/dashboard/TopStudentsTable";
 import RecentEvaluationsTable from "@/components/dashboard/RecentEvaluationsTable";
 import QuestionsList from "@/components/dashboard/QuestionsList";
 import ActionCards from "@/components/dashboard/ActionCards";
+import { AnaliseSistemaModal } from "@/components/dashboard/AnaliseSistemaModal";
 import ModernStatCard from "@/components/dashboard/ModernStatCard";
 import PerformanceCard from "@/components/dashboard/PerformanceCard";
 
@@ -43,6 +44,7 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [avisosQuantidade, setAvisosQuantidade] = useState<number | null>(null);
   const [certificadosQuantidade, setCertificadosQuantidade] = useState<number | null>(null);
+  const [analiseSistemaModalOpen, setAnaliseSistemaModalOpen] = useState(false);
 
   // Novo hook para buscar dados do dashboard por role
   const dashboardData = user?.role ? useDashboardByRole(user.role) : null;
@@ -161,8 +163,19 @@ const Index = () => {
 
       {/* Cards de Ação Rápida */}
       <div className="mb-8">
-        <ActionCards />
+        <ActionCards
+          onAnaliseSistemaClick={
+            user?.role === "admin" || user?.role === "tecadm"
+              ? () => setAnaliseSistemaModalOpen(true)
+              : undefined
+          }
+        />
       </div>
+
+      <AnaliseSistemaModal
+        open={analiseSistemaModalOpen}
+        onOpenChange={setAnaliseSistemaModalOpen}
+      />
 
 
       {/* Cards Principais com Performance */}
@@ -350,7 +363,7 @@ const Index = () => {
         </div>
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <RecentEvaluationsTable />
+          <RecentEvaluationsTable dashboard={dashboard} />
           <QuestionsList />
         </div>
       </div>

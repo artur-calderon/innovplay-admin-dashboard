@@ -55,7 +55,12 @@ function ActionCard({ icon, title, description, action, color, bgColor }: Action
   );
 }
 
-export default function ActionCards() {
+interface ActionCardsProps {
+  /** Se definido (admin/tecadm), o card "Análise de Dados" abre o modal em vez de navegar */
+  onAnaliseSistemaClick?: () => void;
+}
+
+export default function ActionCards({ onAnaliseSistemaClick }: ActionCardsProps) {
   const navigate = useNavigate();
 
   const actions = [
@@ -152,7 +157,7 @@ export default function ActionCards() {
 
         <Card 
           className="group cursor-pointer transition-all duration-200 hover:shadow-md border border-border"
-          onClick={() => navigate('/app/resultados')}
+          onClick={onAnaliseSistemaClick ?? (() => navigate('/app/resultados'))}
         >
           <CardContent className="p-3">
             <div className="flex items-center gap-2">
