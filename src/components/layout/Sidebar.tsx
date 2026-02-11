@@ -46,7 +46,8 @@ import {
   Sparkles,
   Medal,
   Star,
-  Coins
+  Coins,
+  Globe
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useMemo } from "react";
@@ -297,6 +298,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           badge: unreadAvisosCount > 0 ? unreadAvisosCount.toString() : undefined
         },
         { icon: Settings, label: "Configurações", href: `${user.role === 'aluno' ? "/aluno/configuracoes" : "/app/configuracoes"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
+        { icon: Globe, label: "Dominios", href: "/app/dominios", role: ["admin"] },
         { icon: LogOut, label: "Sair", href: "/logout", role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"], divider: true },
       ]
     }
