@@ -5,8 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -18,22 +17,13 @@ import {
 import { BarChartComponent, DonutChartComponent } from "@/components/ui/charts";
 import { Progress } from "@/components/ui/progress";
 import {
-  Users,
-  School,
-  List,
-  Gamepad,
-  User,
-  BookOpen,
-  LayoutGrid,
-  GraduationCap,
-  Award,
-  Calendar,
   Server,
   MapPin,
   Building2,
   BarChart3,
   CheckCircle2,
   XCircle,
+  School,
 } from "lucide-react";
 import { DashboardApiService, type AnaliseSistemaResponse } from "@/services/dashboardApi";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -84,7 +74,6 @@ export function AnaliseSistemaModal({ open, onOpenChange }: AnaliseSistemaModalP
       .finally(() => setLoading(false));
   }, [open]);
 
-  const metricas = data?.metricas;
   const admin = data?.administracao;
   const porEstado = data?.por_escopo?.estado ?? [];
   const porMunicipio = (data?.por_escopo?.municipio ?? []).slice(0, 15);
@@ -97,20 +86,6 @@ export function AnaliseSistemaModal({ open, onOpenChange }: AnaliseSistemaModalP
   const avaliacoesPorTipo = data?.graficos?.avaliacoes_por_tipo ?? [];
   const participacao = data?.graficos?.participacao;
 
-  const kpiCards = metricas
-    ? [
-        { label: "Alunos", value: metricas.students, icon: Users, color: "text-violet-600" },
-        { label: "Escolas", value: metricas.schools, icon: School, color: "text-blue-600" },
-        { label: "Avaliações", value: metricas.evaluations, icon: List, color: "text-emerald-600" },
-        { label: "Jogos", value: metricas.games, icon: Gamepad, color: "text-amber-600" },
-        { label: "Usuários", value: metricas.users, icon: User, color: "text-cyan-600" },
-        { label: "Questões", value: metricas.questions, icon: BookOpen, color: "text-indigo-600" },
-        { label: "Turmas", value: metricas.classes, icon: LayoutGrid, color: "text-sky-600" },
-        { label: "Professores", value: metricas.teachers, icon: GraduationCap, color: "text-teal-600" },
-        { label: "Certificados", value: metricas.certificates, icon: Award, color: "text-rose-600" },
-      ]
-    : [];
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[92vh] flex flex-col p-0 gap-0">
@@ -121,14 +96,10 @@ export function AnaliseSistemaModal({ open, onOpenChange }: AnaliseSistemaModalP
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 px-6 pb-6 pt-4">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 pb-6 pt-4">
           {loading ? (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                {[...Array(9)].map((_, i) => (
-                  <Skeleton key={i} className="h-20 rounded-lg" />
-                ))}
-              </div>
+              <Skeleton className="h-32 w-full rounded-lg" />
               <Skeleton className="h-64 w-full rounded-lg" />
               <Skeleton className="h-48 w-full rounded-lg" />
             </div>
@@ -136,34 +107,6 @@ export function AnaliseSistemaModal({ open, onOpenChange }: AnaliseSistemaModalP
             <div className="py-12 text-center text-destructive">{error}</div>
           ) : data ? (
             <div className="space-y-6">
-              {/* KPIs */}
-              <section>
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                  Métricas gerais
-                </h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                  {kpiCards.map(({ label, value, icon: Icon, color }) => (
-                    <Card key={label} className="border-border">
-                      <CardContent className="p-3 flex items-center gap-3">
-                        <div className={`p-2 rounded-lg bg-muted ${color}`}>
-                          <Icon className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs text-muted-foreground truncate">{label}</p>
-                          <p className="text-lg font-bold tabular-nums">{value}</p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-                {metricas?.last_sync && (
-                  <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    Última sincronização: {formatDateTime(metricas.last_sync)}
-                  </p>
-                )}
-              </section>
-
               {/* Conexão / Status do sistema */}
               {(conexao || tecnicos) && (
                 <section>
@@ -558,7 +501,7 @@ export function AnaliseSistemaModal({ open, onOpenChange }: AnaliseSistemaModalP
               )}
             </div>
           ) : null}
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   );
