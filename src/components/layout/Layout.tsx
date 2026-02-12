@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Outlet } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
+import { NotificationBell } from "@/components/Notifications/NotificationBell";
+import { useAuth } from "@/context/authContext";
 
 type LayoutProps = {
   children: ReactNode;
@@ -13,6 +15,7 @@ type LayoutProps = {
 export default function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const { user } = useAuth();
   
   // Scroll to top on route change
   useScrollToTop();
@@ -84,7 +87,10 @@ export default function Layout() {
           />
         </div>
         
-        <div className="w-9"></div> {/* Spacer for centering */}
+        <div className="flex items-center gap-2">
+          {user?.id && <NotificationBell />}
+          <div className="w-9"></div> {/* Spacer for centering */}
+        </div>
       </header>
 
       {/* Responsive Sidebar */}

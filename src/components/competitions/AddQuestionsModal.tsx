@@ -54,7 +54,12 @@ export function AddQuestionsModal({
     setLoading(true);
     try {
       await addCompetitionQuestions(competitionId, questionIds);
-      toast({ title: `${questionIds.length} questão(ões) adicionada(s) com sucesso.` });
+      toast({
+        title:
+          questionIds.length === 1
+            ? '1 questão adicionada com sucesso.'
+            : `${questionIds.length} questões adicionadas com sucesso.`,
+      });
       setRawIds('');
       onSuccess();
       onClose();
@@ -114,7 +119,9 @@ export function AddQuestionsModal({
                 className="font-mono text-sm resize-none"
               />
               <p className="text-xs text-muted-foreground">
-                {questionIds.length} questão(ões) detectada(s).
+                {questionIds.length === 1
+                  ? '1 questão detectada.'
+                  : `${questionIds.length} questões detectadas.`}
               </p>
             </div>
           </TabsContent>

@@ -105,8 +105,11 @@ const CoinHistory = React.lazy(() => import("./pages/CoinHistory"));
 const CoinsAdmin = React.lazy(() => import("./pages/CoinsAdmin"));
 const CompetitionList = React.lazy(() => import("./pages/Competitions"));
 const CompetitionDetails = React.lazy(() => import("./pages/CompetitionDetails"));
+const CompetitionAnalytics = React.lazy(() => import("./pages/Admin/Competitions/CompetitionAnalytics"));
 const CompetitionsStudent = React.lazy(() => import("./pages/CompetitionsStudent"));
 const CompetitionStudentDetail = React.lazy(() => import("./pages/CompetitionStudentDetail"));
+const CompetitionTest = React.lazy(() => import("./pages/CompetitionTest"));
+const CompetitionRankingPage = React.lazy(() => import("./pages/CompetitionRanking"));
 
 // Loading component
 const LoadingSpinner = () => (
@@ -195,7 +198,9 @@ const App = () => {
               <Route path="/aluno/moedas/historico" element={<PrivateRoute><CoinHistory /></PrivateRoute>} />
               <Route path="/aluno/competitions" element={<PrivateRoute><CompetitionsStudent /></PrivateRoute>} />
               <Route path="/aluno/competitions/:id" element={<PrivateRoute><CompetitionStudentDetail /></PrivateRoute>} />
-              <Route path="/aluno/competitions/:id/fazer" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/aluno/competitions/:id/fazer" element={<PrivateRoute><CompetitionTest /></PrivateRoute>} />
+              <Route path="/aluno/competitions/:id/test" element={<PrivateRoute><CompetitionTest /></PrivateRoute>} />
+              <Route path="/aluno/competitions/:id/ranking" element={<PrivateRoute><CompetitionRankingPage /></PrivateRoute>} />
             </Route>
 
             {/* Rota de avaliação em tela cheia para alunos */}
@@ -235,6 +240,7 @@ const App = () => {
               <Route path="/app/olimpiadas" element={<PrivateRoute><Olimpiadas /></PrivateRoute>} />
               <Route path="/app/competitions" element={<PrivateRoute><RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}><CompetitionList /></RoleRoute></PrivateRoute>} />
               <Route path="/app/competitions/:id" element={<PrivateRoute><RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}><CompetitionDetails /></RoleRoute></PrivateRoute>} />
+              <Route path="/app/competitions/:id/analytics" element={<PrivateRoute><RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}><CompetitionAnalytics /></RoleRoute></PrivateRoute>} />
               <Route path="/app/olimpiada/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
               <Route path="/app/olimpiada-resultado/:testId/:studentId" element={<PrivateRoute><StudentResult /></PrivateRoute>} />
               <Route path="/app/city" element={<PrivateRoute><Cities /></PrivateRoute>} />
@@ -271,6 +277,7 @@ const App = () => {
               {/* Rotas de Relatórios */}
               <Route path="/app/relatorios/analise-avaliacoes" element={<PrivateRoute><AnaliseAvaliacoes /></PrivateRoute>} />
               <Route path="/app/relatorios/acerto-niveis" element={<PrivateRoute><AcertoNiveis /></PrivateRoute>} />
+              <Route path="/app/relatorios/relatorio-escolar" element={<PrivateRoute><RelatorioEscolar /></PrivateRoute>} />
             </Route>
 
             {/* Rota de avaliação em tela cheia para admin/professor */}

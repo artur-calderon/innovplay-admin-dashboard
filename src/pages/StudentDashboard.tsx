@@ -572,14 +572,17 @@ const StudentDashboard = () => {
     console.log('🔄 Mapeando dados completados para formato de avaliações...');
     console.log('📊 Dados da API:', apiData);
     
-    return apiData.evaluations.map(evaluation => ({
+    const evaluations = apiData?.evaluations ?? [];
+    if (!Array.isArray(evaluations)) return [];
+
+    return evaluations.map(evaluation => ({
       id: evaluation.test_id,
-      titulo: evaluation.title,
-      disciplina: evaluation.subject.name,
-      data_aplicacao: evaluation.application_info.application,
-      serie: evaluation.grade.name,
-      escola: apiData.student.name,
-      turma: evaluation.grade.name,
+      titulo: evaluation.title ?? '—',
+      disciplina: evaluation.subject?.name ?? '—',
+      data_aplicacao: evaluation.application_info?.application ?? '—',
+      serie: evaluation.grade?.name ?? '—',
+      escola: apiData?.student?.name ?? '—',
+      turma: evaluation.grade?.name ?? '—',
       type: evaluation.type
     }));
   };
@@ -590,19 +593,22 @@ const StudentDashboard = () => {
     const response = await api.get(`/test/student/completed`);
     console.log('📊 Resposta completa da API:', response.data);
     
-    const completedData: StudentCompletedResponse = response.data;
+    const completedData: StudentCompletedResponse = response.data ?? {};
     console.log('📊 Dados completados:', completedData);
     console.log('📊 Total de avaliações completadas:', completedData.total_completed);
     console.log('📊 Avaliações retornadas:', completedData.returned_count);
 
-    // Mapear os dados da nova API para o formato esperado
+    // Mapear os dados da nova API para o formato esperado (com proteção contra null/undefined)
     const mappedEvaluations = mapCompletedToEvaluations(completedData);
 
-    // Remover olimpíadas da lista de avaliações usadas no dashboard do aluno
+    // Remover olimpíadas e competições da lista de avaliações usadas no dashboard do aluno
     const filteredEvaluations = mappedEvaluations.filter((evaluation) => {
       const type = evaluation.type?.toLowerCase() ?? '';
       // Considera qualquer tipo que contenha "olimpi" (olimpíada, olimpiada, etc.) como olimpíada
-      return !type.includes('olimpi');
+      const isOlimpiada = type.includes('olimpi');
+      // Considera qualquer tipo que contenha "compet" (competição, competicao, etc.) como competição
+      const isCompeticao = type.includes('compet');
+      return !isOlimpiada && !isCompeticao;
     });
     
     console.log('📊 Avaliações mapeadas (sem olimpíadas):', filteredEvaluations);
@@ -625,10 +631,11 @@ const StudentDashboard = () => {
     
     // Primeiro buscar avaliações completadas para validar
     const completedResponse = await api.get(`/test/student/completed`);
-    const completedData: StudentCompletedResponse = completedResponse.data;
+    const completedData: StudentCompletedResponse = completedResponse.data ?? {};
+    const evaluationsList = completedData.evaluations ?? [];
     
     // Filtrar apenas as avaliações solicitadas que existem nas completadas
-    const availableTestIds = completedData.evaluations
+    const availableTestIds = evaluationsList
       .map(evaluation => evaluation.test_id)
       .filter(id => testIds.includes(id));
     

@@ -338,7 +338,10 @@ const EvaluationsTable = ({
       {selectedIds.length > 0 && (
         <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-950/30 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
           <span className="text-sm text-blue-800 dark:text-blue-400">
-            {selectedIds.length} avaliação(ões) selecionada(s)
+            {selectedIds.length}{' '}
+            {selectedIds.length === 1
+              ? 'avaliação selecionada'
+              : 'avaliações selecionadas'}
           </span>
           <div className="flex gap-2">
             <Button
@@ -370,16 +373,18 @@ const EvaluationsTable = ({
               <TableCaption className="caption-top text-left p-6 pb-0">
                 <div className="flex items-center justify-between">
                   <span>Lista de avaliações disponíveis</span>
-                  {!isLoading && (
-                    <span className="text-sm text-muted-foreground">
-                      {searchTerm 
-                        ? filteredEvaluations.length 
-                        : showMyEvaluations 
-                          ? evaluations.length 
-                          : pagination?.total || 0
-                      } avaliação(ões) encontrada(s)
-                    </span>
-                  )}
+                  {!isLoading && (() => {
+                    const total = searchTerm 
+                      ? filteredEvaluations.length 
+                      : showMyEvaluations 
+                        ? evaluations.length 
+                        : pagination?.total || 0;
+                    return (
+                      <span className="text-sm text-muted-foreground">
+                        {total} {total === 1 ? 'avaliação encontrada' : 'avaliações encontradas'}
+                      </span>
+                    );
+                  })()}
                 </div>
               </TableCaption>
               <TableHeader>
@@ -651,11 +656,9 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   });
 
   // ✅ CORREÇÃO: Preparar parâmetros de forma estável antes de chamar useEvaluations
-  // para garantir que os hooks sejam sempre chamados na mesma ordem
-  // Usar valores individuais dos filtros em vez do objeto inteiro para evitar mudanças desnecessárias
+  // Página de avaliações: apenas AVALIACAO e SIMULADO (não buscar competições nem olimpíadas)
   const evaluationParams = useMemo(() => ({
     // Quando showMyEvaluations é true, buscar todas as avaliações (sem paginação no backend)
-    // para aplicar paginação local após filtrar
     ...(showMyEvaluations && user?.id 
       ? { 
           page: 1, 
@@ -667,8 +670,12 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
           per_page: itemsPerPage 
         }
     ),
+    // Restringir a apenas avaliações (backend pode usar types ou type)
+    ...(filters.type === 'all'
+      ? { types: 'AVALIACAO,SIMULADO' }
+      : filters.type !== 'all' && { type: filters.type }
+    ),
     ...(filters.subject !== 'all' && { subject_id: filters.subject }),
-    ...(filters.type !== 'all' && { type: filters.type }),
     ...(filters.model !== 'all' && { model: filters.model }),
     ...(filters.grade !== 'all' && { grade_id: filters.grade })
   }), [showMyEvaluations, user?.id, currentPage, itemsPerPage, filters.subject, filters.type, filters.model, filters.grade]);
@@ -690,22 +697,18 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   // ✅ Preparar dados das avaliações com verificações de segurança
   const rawEvaluations = Array.isArray(evaluationsData?.data) ? evaluationsData.data : [];
   
-  // ✅ Filtrar avaliações ativas (não deletadas/arquivadas) E excluir olimpíadas
+  // ✅ Filtrar: apenas avaliações (AVALIACAO/SIMULADO); excluir competições e olimpíadas; ativas
   const allEvaluations = rawEvaluations
     .filter((evaluation: Record<string, unknown>) => {
-      // Verificar se tem propriedades básicas de Evaluation
-      if (!evaluation || typeof evaluation !== 'object' || !evaluation.id) {
-        return false;
-      }
-      
-      // Excluir olimpíadas
-      const type = evaluation.type as string;
-      const isOlimpiada = type === 'OLIMPIADA';
-      if (isOlimpiada) {
-        return false;
-      }
-      
-      // Verificar se não está deletada/arquivada
+      if (!evaluation || typeof evaluation !== 'object' || !evaluation.id) return false;
+
+      const rawType = (evaluation.type ?? evaluation.tipo ?? '').toString().trim().toUpperCase();
+      // Excluir olimpíadas e competições (não contabilizar nem mostrar)
+      if (rawType === 'OLIMPIADA' || rawType === 'OLIMPIADAS' || rawType.includes('OLIMPI')) return false;
+      if (rawType === 'COMPETICAO' || rawType === 'COMPETIÇÃO' || rawType.includes('COMPET')) return false;
+      // Incluir apenas avaliação e simulado
+      if (rawType !== '' && rawType !== 'AVALIACAO' && rawType !== 'SIMULADO') return false;
+
       const deletedAt = evaluation.deleted_at;
       const archived = evaluation.archived;
       const isActive = evaluation.is_active;
@@ -1017,7 +1020,10 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
 
       toast({
         title: "Exportação concluída!",
-        description: `Arquivo Excel gerado com sucesso para ${selectedIds.length} avaliação(ões).`,
+        description:
+          selectedIds.length === 1
+            ? 'Arquivo Excel gerado com sucesso para 1 avaliação.'
+            : `Arquivo Excel gerado com sucesso para ${selectedIds.length} avaliações.`,
       });
     } catch (error: any) {
       console.error('Erro ao exportar para Excel:', error);

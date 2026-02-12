@@ -21,20 +21,22 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { createCompetition, getCompetition, updateCompetition, addCompetitionQuestions, getCompetitionLevelOptions } from '@/services/competitionsApi';
+import { createCompetition, getCompetition, updateCompetition, addCompetitionQuestions, getCompetitionLevelOptions, getAllowedCompetitionScopes } from '@/services/competitionsApi';
 import type { CreateCompetitionFormData, CompetitionScope, CompetitionScopeFilter, QuestionRulesPayload } from '@/types/competition-types';
 import { api } from '@/lib/api';
 import { parseISOToDatetimeLocal, convertDateTimeLocalToISONaive } from '@/utils/date';
-import { CalendarDays, CalendarRange, Clock, Loader2, Shuffle, ListOrdered, Trophy, Book, Plus, Eye, Trash2 } from 'lucide-react';
+import { CalendarDays, CalendarRange, Clock, Loader2, Shuffle, ListOrdered, Trophy, Book, Plus, Eye, Trash2, List } from 'lucide-react';
 import { QuestionBank } from '@/components/evaluations/QuestionBank';
+import { ScopeFilterSelectionModal, type ScopeFilterKind } from '@/components/competitions/ScopeFilterSelectionModal';
 import QuestionPreview from '@/components/evaluations/questions/QuestionPreview';
 import type { Question } from '@/components/evaluations/types';
+import { useAuth } from '@/context/authContext';
+import { getUserHierarchyContext, type UserHierarchyContext } from '@/utils/userHierarchy';
 
 const STEP_DESCRIPTIONS: Record<number, string> = {
-  1: 'Configure o nome, disciplina e nível da competição.',
-  2: 'Defina o período de inscrições (início e encerramento).',
-  3: 'Selecione as questões (manual ou aleatório).',
-  4: 'Defina as recompensas.',
+  1: 'Configure o nome, disciplina, nível, escopo e vagas da competição.',
+  2: 'Selecione as questões (manual ou aleatório).',
+  3: 'Defina as recompensas. Depois, use o botão de aplicação no card para escolher o período da prova e abrir para os alunos.',
 };
 
 /** Fallback se a API de level-options falhar. */
@@ -47,6 +49,7 @@ const SCOPE_OPTIONS: { value: CompetitionScope; label: string }[] = [
   { value: 'individual', label: 'Individual' },
   { value: 'turma', label: 'Turma' },
   { value: 'escola', label: 'Escola' },
+  { value: 'estado', label: 'Estado' },
   { value: 'municipio', label: 'Município' },
 ];
 
@@ -92,8 +95,9 @@ const initialFormData: CreateCompetitionFormData = {
   enrollment_end: '',
   question_mode: 'manual',
   question_rules: '',
-  reward_participation: '',
-  reward_ranking: '',
+  // valores padrão numéricos para recompensas
+  reward_participation: '25',
+  reward_ranking: '100',
 };
 
 /** Campo de data/hora com botão para abrir o seletor nativo (mais fácil em mobile/desktop). */
@@ -183,16 +187,34 @@ export function CreateCompetitionModal({
   const [selectedQuestions, setSelectedQuestions] = useState<Question[]>([]);
   const [showQuestionBank, setShowQuestionBank] = useState(false);
   const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null);
+  const [scopeFilterOptions, setScopeFilterOptions] = useState<{ id: string; name: string }[]>([]);
+  const [scopeFilterLoading, setScopeFilterLoading] = useState(false);
+  const [scopeStates, setScopeStates] = useState<{ id: string; name: string; uf?: string }[]>([]);
+  const [scopeMunicipalities, setScopeMunicipalities] = useState<{ id: string; name: string }[]>([]);
+  const [selectedStateForMunicipio, setSelectedStateForMunicipio] = useState<string>('');
+  const [allowedScopes, setAllowedScopes] = useState<string[]>(['individual']);
+  const [scopeFilterModalOpen, setScopeFilterModalOpen] = useState(false);
+  const [userHierarchy, setUserHierarchy] = useState<UserHierarchyContext | null>(null);
+  const { user } = useAuth();
   const isEdit = Boolean(editId);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setScopeFilterModalOpen(false);
+      setUserHierarchy(null);
+      return;
+    }
     setStep(1);
     setFormData(initialFormData);
     setErrors({});
     setSelectedQuestions([]);
     setShowQuestionBank(false);
     setPreviewQuestion(null);
+    setScopeFilterOptions([]);
+    setScopeStates([]);
+    setScopeMunicipalities([]);
+    setSelectedStateForMunicipio('');
+    setScopeFilterModalOpen(false);
     if (editId) setLoadingEdit(true);
   }, [open, editId]);
 
@@ -211,6 +233,90 @@ export function CreateCompetitionModal({
       })
       .catch(() => setLevelOptions(LEVEL_OPTIONS_FALLBACK));
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    getAllowedCompetitionScopes()
+      .then((scopes) => setAllowedScopes(scopes))
+      .catch(() => setAllowedScopes(['individual']));
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !user?.id) return;
+    getUserHierarchyContext(user.id, user.role ?? '')
+      .then((ctx) => setUserHierarchy(ctx))
+      .catch(() => setUserHierarchy(null));
+  }, [open, user?.id, user?.role]);
+
+  // Em edição: se o escopo da competição não estiver nos permitidos (ex.: admin criou Estado, tec adm editando), limpar
+  useEffect(() => {
+    if (!open || !formData.scope || allowedScopes.length === 0) return;
+    if (!allowedScopes.includes(formData.scope)) {
+      setFormData((prev) => ({ ...prev, scope: undefined, scope_filter: undefined }));
+      setSelectedStateForMunicipio('');
+    }
+  }, [open, allowedScopes, formData.scope]);
+
+  // Carregar opções do filtro de escopo conforme o tipo selecionado
+  useEffect(() => {
+    if (!open || !formData.scope || formData.scope === 'individual') {
+      setScopeFilterOptions([]);
+      setScopeStates([]);
+      setScopeMunicipalities([]);
+      setSelectedStateForMunicipio('');
+      return;
+    }
+    const scope = formData.scope;
+
+    if (scope === 'municipio') {
+      setScopeFilterOptions([]);
+      setScopeFilterLoading(true);
+      api.get<Array<{ id: string; name: string; uf?: string }>>('/city/states')
+        .then((res) => {
+          const list = Array.isArray(res.data) ? res.data : [];
+          setScopeStates(list.map((s) => ({ id: s.id, name: s.name, uf: s.uf })));
+        })
+        .catch(() => setScopeStates([]))
+        .finally(() => setScopeFilterLoading(false));
+      return;
+    }
+
+    setScopeFilterLoading(true);
+    const endpoints: Record<string, string> = {
+      turma: '/classes',
+      escola: '/schools',
+      estado: '/city/states',
+    };
+    const url = endpoints[scope];
+    if (!url) {
+      setScopeFilterLoading(false);
+      return;
+    }
+    api.get<Array<{ id: string; name: string }>>(url)
+      .then((res) => {
+        const raw = Array.isArray(res.data) ? res.data : [];
+        setScopeFilterOptions(raw.map((item) => ({ id: item.id, name: item.name ?? item.id })));
+      })
+      .catch(() => setScopeFilterOptions([]))
+      .finally(() => setScopeFilterLoading(false));
+  }, [open, formData.scope]);
+
+  // Município: carregar municípios quando o estado for selecionado
+  useEffect(() => {
+    if (!open || formData.scope !== 'municipio' || !selectedStateForMunicipio) {
+      setScopeMunicipalities([]);
+      return;
+    }
+    setScopeFilterLoading(true);
+    const stateName = selectedStateForMunicipio;
+    api.get<Array<{ id: string; name: string }>>(`/city/municipalities/state/${encodeURIComponent(stateName)}`)
+      .then((res) => {
+        const raw = Array.isArray(res.data) ? res.data : [];
+        setScopeMunicipalities(raw.map((item) => ({ id: item.id, name: item.name ?? item.id })));
+      })
+      .catch(() => setScopeMunicipalities([]))
+      .finally(() => setScopeFilterLoading(false));
+  }, [open, formData.scope, selectedStateForMunicipio]);
 
   useEffect(() => {
     if (!open || !editId) return;
@@ -235,6 +341,8 @@ export function CreateCompetitionModal({
           scope_filter: c.scope_filter ?? undefined,
           enrollment_start: parseISOToDatetimeLocal(c.enrollment_start),
           enrollment_end: parseISOToDatetimeLocal(c.enrollment_end),
+          // usa max_participants quando existir; fallback para limit legado
+          limit: c.max_participants ?? c.limit ?? undefined,
           question_mode: c.question_mode ?? 'manual',
           question_rules: questionRulesStr,
           reward_participation: participation,
@@ -280,13 +388,46 @@ export function CreateCompetitionModal({
 
   const buildPayloadWithISODates = () => {
     const payload = { ...formData };
+
+    const now = new Date();
+    const fiveMinutesMs = 5 * 60 * 1000;
+    const oneHourMs = 60 * 60 * 1000;
+
+    // Definição de inscrições:
+    // - Se já houver valores (caso edição), respeita e converte.
+    // - Se não houver, usa padrões: início = agora + 5min, fim = agora + 1h.
     if (payload.enrollment_start?.trim()) {
-      payload.enrollment_start = convertDateTimeLocalToISONaive(payload.enrollment_start.trim()) || formData.enrollment_start;
+      payload.enrollment_start =
+        convertDateTimeLocalToISONaive(payload.enrollment_start.trim()) ||
+        formData.enrollment_start;
+    } else {
+      const start = new Date(now.getTime() + fiveMinutesMs);
+      payload.enrollment_start = convertDateTimeLocalToISONaive(
+        `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(
+          start.getDate(),
+        ).padStart(2, '0')}T${String(start.getHours()).padStart(2, '0')}:${String(
+          start.getMinutes(),
+        ).padStart(2, '0')}`,
+      );
     }
+
     if (payload.enrollment_end?.trim()) {
-      payload.enrollment_end = convertDateTimeLocalToISONaive(payload.enrollment_end.trim()) || formData.enrollment_end;
+      payload.enrollment_end =
+        convertDateTimeLocalToISONaive(payload.enrollment_end.trim()) ||
+        formData.enrollment_end;
+    } else {
+      const end = new Date(now.getTime() + oneHourMs);
+      payload.enrollment_end = convertDateTimeLocalToISONaive(
+        `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(
+          end.getDate(),
+        ).padStart(2, '0')}T${String(end.getHours()).padStart(2, '0')}:${String(
+          end.getMinutes(),
+        ).padStart(2, '0')}`,
+      );
     }
-    // Backend exige application e expiration; definimos depois pelo botão "Datas" no card. Enviamos padrões para o create/update aceitar.
+
+    // Backend exige application e expiration; na prática, o período final da prova será ajustado
+    // no fluxo de aplicação do card. Aqui apenas garantimos valores coerentes de default.
     const toNaiveISO = (d: Date) => {
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -310,6 +451,13 @@ export function CreateCompetitionModal({
     }
     delete (payload as Record<string, unknown>).ranking_criterion;
     delete (payload as Record<string, unknown>).visibility;
+    // mapear limit (campo do formulário) para max_participants na API; vazio ou 0 = ilimitado
+    const rawLimit = formData.limit;
+    const maxParticipants =
+      rawLimit != null && !Number.isNaN(rawLimit) && Number(rawLimit) > 0
+        ? Number(rawLimit)
+        : undefined;
+    (payload as Record<string, unknown>).max_participants = maxParticipants;
     delete (payload as Record<string, unknown>).limit;
     // API exige reward_config: { participation_coins, ranking_rewards: [{ position, coins }] }
     const participationCoins = Number(formData.reward_participation) || 0;
@@ -338,6 +486,15 @@ export function CreateCompetitionModal({
     setLoading(true);
     try {
       const payload = buildPayloadWithISODates();
+      if (process.env.NODE_ENV !== 'production') {
+        // Log detalhado do payload enviado ao backend na criação/edição da competição
+        console.log(
+          '[Competitions] Enviando payload para %s /competitions%s:',
+          isEdit ? 'PUT' : 'POST',
+          isEdit && editId ? `/${editId}` : '',
+          JSON.stringify(payload, null, 2),
+        );
+      }
       let competitionId: string;
       if (isEdit && editId) {
         await updateCompetition(editId, payload);
@@ -459,22 +616,172 @@ export function CreateCompetitionModal({
                     <Label htmlFor="scope">Escopo (opcional)</Label>
                     <Select
                       value={formData.scope ?? '__none__'}
-                      onValueChange={(value) => update({ scope: value === '__none__' ? undefined : (value as CompetitionScope) })}
+                      onValueChange={(value) => {
+                        const newScope = value === '__none__' ? undefined : (value as CompetitionScope);
+                        update({ scope: newScope, scope_filter: undefined });
+                        setSelectedStateForMunicipio('');
+                      }}
                     >
                       <SelectTrigger id="scope" className="w-full min-w-0">
                         <SelectValue placeholder="Selecione o escopo" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none__">Nenhum</SelectItem>
-                        {SCOPE_OPTIONS.map((opt) => (
+                        {SCOPE_OPTIONS.filter((opt) => allowedScopes.includes(opt.value)).map((opt) => (
                           <SelectItem key={opt.value} value={opt.value}>
                             {opt.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    <div className="rounded-md border border-muted bg-muted/30 p-3 text-xs text-muted-foreground space-y-2">
+                      <p className="font-medium text-foreground/90">O que é escopo?</p>
+                      <p>
+                        O escopo define <strong>quem vai ver</strong> essa competição e <strong>quem pode se inscrever</strong>.
+                        Escolha conforme o público que você quer atingir:
+                      </p>
+                      <ul className="list-disc list-inside space-y-0.5 ml-1">
+                        <li><strong>Nenhum / Individual:</strong> a competição fica disponível para todo o sistema (qualquer aluno que tiver acesso).</li>
+                        <li><strong>Turma:</strong> só os alunos de uma ou mais turmas que você escolher.</li>
+                        <li><strong>Escola:</strong> só os alunos de uma ou mais escolas que você escolher.</li>
+                        <li><strong>Município:</strong> só os alunos de um município (cidade) que você escolher.</li>
+                        <li><strong>Estado:</strong> todos os alunos de um estado inteiro.</li>
+                      </ul>
+                      <p className="pt-0.5">
+                        Se não tiver certeza, deixe em <strong>Nenhum</strong> — a competição ficará aberta para todo o sistema.
+                      </p>
+                    </div>
+                  </div>
+                  {/* Filtro de escopo: modal de seleção múltipla com cards e filtros */}
+                  {formData.scope && formData.scope !== 'individual' && (
+                    <div className="space-y-2 xs:col-span-2">
+                      {formData.scope === 'municipio' && (
+                        <>
+                          <Label>Estado (para município)</Label>
+                          <Select
+                            value={selectedStateForMunicipio}
+                            onValueChange={(v) => {
+                              setSelectedStateForMunicipio(v);
+                              update({ scope_filter: undefined });
+                            }}
+                            disabled={scopeFilterLoading || scopeStates.length === 0}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={scopeFilterLoading ? 'Carregando…' : 'Selecione o estado'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {scopeStates.map((s) => (
+                                <SelectItem key={s.id} value={s.name}>
+                                  {s.name}{s.uf ? ` (${s.uf})` : ''}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </>
+                      )}
+                      <Label>
+                        {formData.scope === 'turma' && 'Turmas'}
+                        {formData.scope === 'escola' && 'Escolas'}
+                        {formData.scope === 'estado' && 'Estados'}
+                        {formData.scope === 'municipio' && 'Municípios'}
+                      </Label>
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full sm:w-auto justify-start gap-2"
+                          onClick={() => setScopeFilterModalOpen(true)}
+                          disabled={formData.scope === 'municipio' && !selectedStateForMunicipio}
+                        >
+                          <List className="h-4 w-4" />
+                          {formData.scope === 'municipio' && !selectedStateForMunicipio
+                            ? 'Selecione o estado acima primeiro'
+                            : `Selecionar ${formData.scope === 'turma' ? 'turmas' : formData.scope === 'escola' ? 'escolas' : formData.scope === 'estado' ? 'estados' : 'municípios'}`
+                          }
+                        </Button>
+                        {(() => {
+                          const ids =
+                            formData.scope === 'turma' ? formData.scope_filter?.class_ids ?? []
+                              : formData.scope === 'escola' ? formData.scope_filter?.school_ids ?? []
+                              : formData.scope === 'estado' ? formData.scope_filter?.state_ids ?? []
+                              : formData.scope === 'municipio' ? formData.scope_filter?.municipality_ids ?? []
+                              : [];
+                          if (ids.length === 0) return null;
+                          return (
+                            <div className="rounded-md border bg-muted/20 p-3">
+                              <p className="text-xs font-medium text-muted-foreground mb-2">
+                                {ids.length} {ids.length === 1
+                                  ? (formData.scope === 'turma' ? 'turma' : formData.scope === 'escola' ? 'escola' : formData.scope === 'estado' ? 'estado' : 'município')
+                                  : (formData.scope === 'turma' ? 'turmas' : formData.scope === 'escola' ? 'escolas' : formData.scope === 'estado' ? 'estados' : 'municípios')
+                                } selecionada(s)
+                              </p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {ids.slice(0, 10).map((id) => (
+                                  <Badge key={id} variant="secondary" className="text-xs font-normal">
+                                    {scopeFilterOptions.find((o) => o.id === id)?.name ?? scopeMunicipalities.find((m) => m.id === id)?.name ?? id.slice(0, 8)}
+                                  </Badge>
+                                ))}
+                                {ids.length > 10 && (
+                                  <Badge variant="outline" className="text-xs">+{ids.length - 10} mais</Badge>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      {formData.scope !== 'municipio' && (
+                        <ScopeFilterSelectionModal
+                          open={scopeFilterModalOpen}
+                          onClose={() => setScopeFilterModalOpen(false)}
+                          kind={formData.scope as ScopeFilterKind}
+                          competitionLevel={formData.level}
+                          initialStateForTurma={formData.scope === 'turma' ? userHierarchy?.municipality?.state : undefined}
+                          initialMunicipalityIdForTurma={formData.scope === 'turma' ? userHierarchy?.municipality?.id : undefined}
+                          selectedIds={
+                            formData.scope === 'turma' ? formData.scope_filter?.class_ids ?? []
+                              : formData.scope === 'escola' ? formData.scope_filter?.school_ids ?? []
+                              : formData.scope === 'estado' ? formData.scope_filter?.state_ids ?? []
+                              : []
+                          }
+                          onConfirm={(ids) => {
+                            if (formData.scope === 'turma') update({ scope_filter: ids.length ? { class_ids: ids } : undefined });
+                            else if (formData.scope === 'escola') update({ scope_filter: ids.length ? { school_ids: ids } : undefined });
+                            else if (formData.scope === 'estado') update({ scope_filter: ids.length ? { state_ids: ids } : undefined });
+                          }}
+                        />
+                      )}
+                      {formData.scope === 'municipio' && selectedStateForMunicipio && (
+                        <ScopeFilterSelectionModal
+                          open={scopeFilterModalOpen}
+                          onClose={() => setScopeFilterModalOpen(false)}
+                          kind="municipio"
+                          stateNameForMunicipio={selectedStateForMunicipio}
+                          selectedIds={formData.scope_filter?.municipality_ids ?? []}
+                          onConfirm={(ids) => update({ scope_filter: ids.length ? { municipality_ids: ids } : undefined })}
+                        />
+                      )}
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="max_participants">
+                      Quantidade máxima de vagas (opcional)
+                    </Label>
+                    <Input
+                      id="max_participants"
+                      type="number"
+                      min={1}
+                      value={formData.limit != null ? String(formData.limit) : ''}
+                      onChange={(e) => {
+                        const v = e.target.value.trim();
+                        update({
+                          limit: v === '' ? undefined : Number(v),
+                        });
+                      }}
+                      placeholder="Deixe em branco para vagas ilimitadas"
+                      className="w-full min-w-0"
+                    />
                     <p className="text-xs text-muted-foreground">
-                      Quem pode ver/inscrever: individual, turma, escola ou município.
+                      Se não preencher este campo, a competição terá vagas ilimitadas.
                     </p>
                   </div>
                 </div>
@@ -482,54 +789,6 @@ export function CreateCompetitionModal({
             )}
 
             {step === 2 && (
-              <div className="space-y-4">
-                <p className="text-xs text-muted-foreground">
-                  Datas em horário local (armazenadas em ISO 8601). Aplicação e expiração podem ser definidas depois pelo botão &quot;Datas&quot; no card da competição.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <DateTimeField
-                    id="enrollment_start"
-                    value={formData.enrollment_start}
-                    onChange={(v) => update({ enrollment_start: v })}
-                    label={
-                      <span className="flex items-center gap-2">
-                        <CalendarDays className="h-4 w-4" />
-                        Início das inscrições *
-                      </span>
-                    }
-                    description="Quando as inscrições serão abertas"
-                    aria-label="Data e hora de início das inscrições"
-                  />
-                  <DateTimeField
-                    id="enrollment_end"
-                    value={formData.enrollment_end}
-                    onChange={(v) => update({ enrollment_end: v })}
-                    label={
-                      <span className="flex items-center gap-2">
-                        <Clock className="h-4 w-4" />
-                        Encerramento das inscrições *
-                      </span>
-                    }
-                    description="Último momento para se inscrever"
-                    aria-label="Data e hora de término das inscrições"
-                  />
-                </div>
-                {(formData.enrollment_start || formData.enrollment_end) && (
-                  <div className="bg-muted/50 border rounded-lg p-4">
-                    <div className="text-sm space-y-1">
-                      {formData.enrollment_start && (
-                        <p><strong>Início:</strong> {new Date(formData.enrollment_start).toLocaleString('pt-BR')}</p>
-                      )}
-                      {formData.enrollment_end && (
-                        <p><strong>Encerramento:</strong> {new Date(formData.enrollment_end).toLocaleString('pt-BR')}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {step === 3 && (
               <div className="space-y-4">
                 <RadioGroup
                   value={formData.question_mode === 'auto_random' ? 'auto_random' : 'manual'}
@@ -570,7 +829,8 @@ export function CreateCompetitionModal({
                     <div className="flex items-center justify-between">
                       <h3 className="text-lg font-semibold">Questões da competição</h3>
                       <span className="text-sm text-muted-foreground">
-                        Total: {selectedQuestions.length} questão(ões)
+                        Total: {selectedQuestions.length}{' '}
+                        {selectedQuestions.length === 1 ? 'questão' : 'questões'}
                       </span>
                     </div>
                     {!formData.subject_id ? (
@@ -667,7 +927,8 @@ export function CreateCompetitionModal({
                       <div className="flex items-center justify-between rounded-md bg-primary/10 border border-primary/20 px-3 py-2">
                         <span className="text-sm font-medium">Configuração selecionada (modo aleatório)</span>
                         <span className="text-sm text-muted-foreground">
-                          {numQuestions} questão(ões)
+                          {numQuestions}{' '}
+                          {numQuestions === 1 ? 'questão' : 'questões'}
                           {difficultyFilter.length > 0 ? ` · ${difficultyFilter.join(', ')}` : ' · Todas as dificuldades'}
                         </span>
                       </div>
@@ -704,28 +965,52 @@ export function CreateCompetitionModal({
               </div>
             )}
 
-            {step === 4 && (
+            {step === 3 && (
               <div className="space-y-4">
                 <div className="grid gap-4 grid-cols-1 xs:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="reward_participation">Por participação</Label>
                     <Input
                       id="reward_participation"
+                      type="number"
+                      min={0}
+                      step={1}
                       value={formData.reward_participation ?? ''}
-                      onChange={(e) => update({ reward_participation: e.target.value })}
-                      placeholder="Ex.: pontos, moedas"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        // permite vazio ou número inteiro não negativo
+                        if (v === '' || /^[0-9]+$/.test(v)) {
+                          update({ reward_participation: v });
+                        }
+                      }}
+                      placeholder="Ex.: 25"
                       className="w-full min-w-0"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Quantidade de moedas que cada participante recebe (padrão: 25).
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="reward_ranking">Por ranking</Label>
                     <Input
                       id="reward_ranking"
+                      type="number"
+                      min={0}
+                      step={1}
                       value={formData.reward_ranking ?? ''}
-                      onChange={(e) => update({ reward_ranking: e.target.value })}
-                      placeholder="Ex.: pontos por posição"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === '' || /^[0-9]+$/.test(v)) {
+                          update({ reward_ranking: v });
+                        }
+                      }}
+                      placeholder="Ex.: 100"
                       className="w-full min-w-0"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Quantidade de moedas para o primeiro colocado (padrão: 100). Os demais podem ser
+                      configurados depois no backend se necessário.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -739,7 +1024,7 @@ export function CreateCompetitionModal({
               {step > 1 ? 'Voltar' : 'Cancelar'}
             </Button>
             <div className="flex gap-2">
-              {step < 4 ? (
+              {step < 3 ? (
                 <Button onClick={() => setStep(step + 1)}>Próximo</Button>
               ) : (
                 <Button onClick={handleSubmit} disabled={loading}>

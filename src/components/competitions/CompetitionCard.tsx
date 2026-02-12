@@ -34,16 +34,18 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { Competition, CompetitionStatus } from '@/types/competition-types';
+import { formatCompetitionLevel } from '@/utils/competitionLevel';
+import { CompetitionCountdown } from '@/components/competitions/CompetitionCountdown';
 
 interface CompetitionCardProps {
   competition: Competition;
   onView?: (id: string) => void;
   onEdit?: (id: string) => void;
-  onEditDates?: (id: string) => void;
   onCancel?: (id: string) => void;
-  onPublish?: (id: string) => void;
   onDelete?: (id: string) => void;
   onAddQuestions?: (id: string) => void;
+  /** Fluxo unificado: abre modal para agendar inscrição/prova e publicar. */
+  onScheduleAndPublish?: (id: string) => void;
   className?: string;
 }
 
@@ -52,8 +54,27 @@ function isDraft(status: CompetitionStatus): boolean {
   return s === 'draft' || s === 'rascunho';
 }
 
-function getStatusConfig(status: CompetitionStatus) {
+const finalizadaConfig = {
+  label: 'Finalizada',
+  className: 'bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-950/50 dark:text-violet-200 dark:border-violet-800',
+  icon: CheckCircle2,
+};
+
+const emAndamentoConfig = {
+  label: 'Em andamento',
+  className: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-200 dark:border-emerald-800',
+  icon: Play,
+};
+
+function getStatusConfig(status: CompetitionStatus, competition?: { expiration?: string; application?: string } | null) {
   const s = String(status).toLowerCase();
+  const now = Date.now();
+  const applicationStarted = competition?.application ? new Date(competition.application).getTime() <= now : false;
+  const applicationEnded = competition?.expiration ? new Date(competition.expiration).getTime() < now : false;
+  // Finalizada somente quando o prazo de expiração terminou
+  if (applicationEnded) return finalizadaConfig;
+  // Dentro do horário de aplicação (prova começou e ainda não expirou) → Em andamento
+  if (applicationStarted) return emAndamentoConfig;
   if (s === 'draft' || s === 'rascunho')
     return {
       label: 'Rascunho',
@@ -86,11 +107,8 @@ function getStatusConfig(status: CompetitionStatus) {
         icon: Play,
       };
     case 'completed':
-      return {
-        label: 'Concluída',
-        className: 'bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-950/50 dark:text-violet-200 dark:border-violet-800',
-        icon: CheckCircle2,
-      };
+      // Só mostra Finalizada quando expiration passou (já tratado no início da função)
+      return emAndamentoConfig;
     case 'cancelled':
       return {
         label: 'Cancelada',
@@ -125,14 +143,13 @@ export function CompetitionCard({
   competition,
   onView,
   onEdit,
-  onEditDates,
   onCancel,
-  onPublish,
   onDelete,
   onAddQuestions,
+  onScheduleAndPublish,
   className,
 }: CompetitionCardProps) {
-  const statusConfig = getStatusConfig(competition.status);
+  const statusConfig = getStatusConfig(competition.status, competition);
   const StatusIcon = statusConfig.icon;
   const draft = isDraft(competition.status);
   const cancelled = String(competition.status).toLowerCase() === 'cancelled' || String(competition.status).toLowerCase() === 'cancelada';
@@ -149,7 +166,7 @@ export function CompetitionCard({
             <span className="truncate">{competition.name}</span>
           </CardTitle>
           <CardDescription>
-            {competition.subject_name ?? competition.subject_id} · Nível {competition.level}
+            {competition.subject_name ?? competition.subject_id} · {formatCompetitionLevel(competition.level)}
           </CardDescription>
         </div>
         <Badge variant="secondary" className={cn('shrink-0 border font-medium', statusConfig.className)}>
@@ -159,22 +176,43 @@ export function CompetitionCard({
       </CardHeader>
       <CardContent className="flex-1 space-y-2 pt-0 text-sm">
         {competition.enrollment_end && (
-          <p className="flex items-center gap-2 text-muted-foreground">
-            <Calendar className="h-3.5 w-3.5 shrink-0" />
-            Inscrição até: {formatDate(competition.enrollment_end)}
-          </p>
+          <div className="flex flex-col gap-1">
+            <p className="flex items-center gap-2 text-muted-foreground">
+              <Calendar className="h-3.5 w-3.5 shrink-0" />
+              Inscrição até: {formatDate(competition.enrollment_end)}
+            </p>
+            <CompetitionCountdown
+              targetDate={competition.enrollment_end}
+              label="Inscrição fecha em"
+              variant="secondary"
+            />
+          </div>
         )}
         {competition.application && (
-          <p className="flex items-center gap-2 text-muted-foreground">
-            <Clock className="h-3.5 w-3.5 shrink-0" />
-            Aplicação: {formatDate(competition.application)}
-          </p>
+          <div className="flex flex-col gap-1">
+            <p className="flex items-center gap-2 text-muted-foreground">
+              <Clock className="h-3.5 w-3.5 shrink-0" />
+              Aplicação: {formatDate(competition.application)}
+            </p>
+            <CompetitionCountdown
+              targetDate={competition.application}
+              label="Prova abre em"
+              variant="secondary"
+            />
+          </div>
         )}
         {competition.expiration && (
-          <p className="flex items-center gap-2 text-muted-foreground">
-            <CalendarRange className="h-3.5 w-3.5 shrink-0" />
-            Expiração: {formatDate(competition.expiration)}
-          </p>
+          <div className="flex flex-col gap-1">
+            <p className="flex items-center gap-2 text-muted-foreground">
+              <CalendarRange className="h-3.5 w-3.5 shrink-0" />
+              Expiração: {formatDate(competition.expiration)}
+            </p>
+            <CompetitionCountdown
+              targetDate={competition.expiration}
+              label="Prova fecha em"
+              variant="secondary"
+            />
+          </div>
         )}
       </CardContent>
       <CardFooter className="flex items-center justify-between border-t pt-4">
@@ -191,10 +229,14 @@ export function CompetitionCard({
               Editar
             </Button>
           )}
-          {onPublish && draft && (
-            <Button size="sm" onClick={() => onPublish(competition.id)}>
+          {onScheduleAndPublish && draft && (
+            <Button
+              size="sm"
+              onClick={() => onScheduleAndPublish(competition.id)}
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+            >
               <Send className="mr-1 h-4 w-4" />
-              Publicar
+              Aplicação
             </Button>
           )}
           {onAddQuestions && canAddQuestions && draft && (
@@ -203,14 +245,8 @@ export function CompetitionCard({
               Questões
             </Button>
           )}
-          {onEditDates && draft && (
-            <Button variant="outline" size="sm" onClick={() => onEditDates(competition.id)}>
-              <CalendarRange className="mr-1 h-4 w-4" />
-              Datas
-            </Button>
-          )}
         </div>
-        {(onCancel || onDelete) && (
+        {onDelete && (draft || cancelled) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon">
@@ -218,24 +254,13 @@ export function CompetitionCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {onDelete && (draft || cancelled) && (
-                <DropdownMenuItem
-                  className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-                  onClick={() => onDelete(competition.id)}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Excluir
-                </DropdownMenuItem>
-              )}
-              {onCancel && !draft && !cancelled && (
-                <DropdownMenuItem
-                  className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-                  onClick={() => onCancel(competition.id)}
-                >
-                  <XCircle className="mr-2 h-4 w-4" />
-                  Cancelar competição
-                </DropdownMenuItem>
-              )}
+              <DropdownMenuItem
+                className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                onClick={() => onDelete(competition.id)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Excluir
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}

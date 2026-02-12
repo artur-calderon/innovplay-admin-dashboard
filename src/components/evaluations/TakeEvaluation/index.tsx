@@ -20,16 +20,29 @@ import {
     X,
     Menu
 } from "lucide-react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationTimer } from "../EvaluationTimer";
 import { useEvaluation } from "@/hooks/useEvaluation";
 import { Question } from "@/types/evaluation-types";
+import { CompetitionSubmitSuccessModal } from "@/components/competitions/CompetitionSubmitSuccessModal";
+
+/** State passado quando a prova é feita no contexto de uma competição. */
+interface CompetitionLocationState {
+  fromCompetition?: boolean;
+  competitionId?: string;
+  competitionName?: string;
+  participationCoins?: number;
+  rankingVisibility?: string;
+  showRankingButton?: boolean;
+}
 
 
 export default function TakeEvaluation() {
     const { id: evaluationId } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const location = useLocation();
+    const competitionState = (location.state ?? null) as CompetitionLocationState | null;
     const { toast } = useToast();
     const [showSubmitDialog, setShowSubmitDialog] = useState(false);
     const [showCompletionDialog, setShowCompletionDialog] = useState(false);
@@ -40,6 +53,7 @@ export default function TakeEvaluation() {
     const [shuffledQuestions, setShuffledQuestions] = useState<Question[]>([]);
     // ✅ NOVO: Manter referência às questões originais para mapeamento correto
     const [originalQuestions, setOriginalQuestions] = useState<Question[]>([]);
+    const [showCompetitionSuccessModal, setShowCompetitionSuccessModal] = useState(false);
 
     // ✅ NOVO: Função para mapear resposta da interface para letra original
     const mapAnswerToOriginalLetter = useCallback((questionId: string, selectedText: string | string[]): string => {
@@ -411,34 +425,43 @@ export default function TakeEvaluation() {
         }
     }, [answers, shuffledQuestions, hasSeenCompletionDialog, isCompletionDialogClosed]);
 
-    // ✅ Redirecionamento automático quando avaliação é concluída
+    // ✅ Quando conclusão é de prova de competição, abrir modal de sucesso em vez de redirecionar
+    useEffect(() => {
+        if (evaluationState === 'completed' && competitionState?.fromCompetition) {
+            setShowFullscreenQuestion(false);
+            setShowCompletionDialog(false);
+            setShowSubmitDialog(false);
+            setIsCompletionDialogClosed(false);
+            setShowCompetitionSuccessModal(true);
+        }
+    }, [evaluationState, competitionState?.fromCompetition]);
+
+    // ✅ Redirecionamento automático quando avaliação é concluída (exceto competição)
     useEffect(() => {
         console.log('🔍 Verificando redirecionamento:', {
             evaluationState,
             hasResults: !!results,
-            shouldRedirect: evaluationState === 'completed'
+            fromCompetition: competitionState?.fromCompetition,
+            shouldRedirect: evaluationState === 'completed' && !competitionState?.fromCompetition
         });
         
-        if (evaluationState === 'completed') {
+        if (evaluationState === 'completed' && !competitionState?.fromCompetition) {
             console.log('📊 Avaliação enviada com sucesso, redirecionando...', {
                 evaluationState,
                 hasResults: !!results,
                 resultsData: results
             });
             
-            // Fechar todos os modais imediatamente
             setShowFullscreenQuestion(false);
             setShowCompletionDialog(false);
             setShowSubmitDialog(false);
             setIsCompletionDialogClosed(false);
             
-            // Mostrar toast de sucesso
             toast({
                 title: "✅ Avaliação enviada com sucesso!",
                 description: "Redirecionando para a listagem de avaliações...",
             });
             
-            // Redirecionar após um breve delay para o usuário ver o toast
             const timer = setTimeout(() => {
                 console.log('🔄 Executando redirecionamento para /aluno/avaliacoes');
                 navigate("/aluno/avaliacoes");
@@ -446,7 +469,7 @@ export default function TakeEvaluation() {
             
             return () => clearTimeout(timer);
         }
-    }, [evaluationState, results, navigate, toast]);
+    }, [evaluationState, results, navigate, toast, competitionState?.fromCompetition]);
 
     // ✅ NOVO: Log para debug do estado da avaliação
     useEffect(() => {
@@ -583,8 +606,9 @@ export default function TakeEvaluation() {
         );
     }
 
-    // Results screen - Mostrar resultados imediatos
+    // Results screen - Mostrar resultados imediatos (ou modal de competição)
     if (evaluationState === 'completed') {
+        const isCompetition = Boolean(competitionState?.fromCompetition);
         return (
             <div className="flex items-center justify-center min-h-screen w-screen bg-background p-4">
                 <div className="max-w-lg w-full">
@@ -594,12 +618,11 @@ export default function TakeEvaluation() {
                                 {results ? "✅ Avaliação Concluída!" : "⚠️ Avaliação Já Enviada"}
                             </CardTitle>
                             <div className="text-center space-y-2">
-                                <h2 className="text-xl font-semibold">{testData?.title}</h2>
-                                <Badge variant="outline">{testData?.subject.name}</Badge>
+                                <h2 className="text-xl font-semibold">{competitionState?.competitionName ?? testData?.title}</h2>
+                                {testData?.subject && <Badge variant="outline">{testData.subject.name}</Badge>}
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            {/* Mensagem de sucesso ou aviso */}
                             <div className={`text-center space-y-4 p-4 rounded-lg border ${
                                 results 
                                     ? 'bg-green-50 border-green-200' 
@@ -619,27 +642,39 @@ export default function TakeEvaluation() {
                                             : "Avaliação Já Foi Enviada Anteriormente"
                                         }
                                     </h3>
-                                    <p className={`text-sm ${
-                                        results ? 'text-green-700' : 'text-yellow-700'
-                                    }`}>
-                                        Redirecionando em 2 segundos...
-                                    </p>
+                                    {!isCompetition && (
+                                        <p className={`text-sm ${
+                                            results ? 'text-green-700' : 'text-yellow-700'
+                                        }`}>
+                                            Redirecionando em 2 segundos...
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
-                            {/* Botão para redirecionamento manual */}
-                            <div className="text-center">
-                                <Button
-                                    onClick={() => navigate("/aluno/avaliacoes")}
-                                    className="bg-purple-600 hover:bg-purple-700"
-                                >
-                                    <Home className="h-4 w-4 mr-2" />
-                                    Voltar às Avaliações
-                                </Button>
-                            </div>
+                            {!isCompetition && (
+                                <div className="text-center">
+                                    <Button
+                                        onClick={() => navigate("/aluno/avaliacoes")}
+                                        className="bg-purple-600 hover:bg-purple-700"
+                                    >
+                                        <Home className="h-4 w-4 mr-2" />
+                                        Voltar às Avaliações
+                                    </Button>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 </div>
+                {isCompetition && (
+                    <CompetitionSubmitSuccessModal
+                        open={showCompetitionSuccessModal}
+                        onOpenChange={setShowCompetitionSuccessModal}
+                        participationCoins={competitionState?.participationCoins ?? 50}
+                        showRankingButton={competitionState?.showRankingButton === true}
+                        competitionId={competitionState?.competitionId}
+                    />
+                )}
             </div>
         );
     }
@@ -907,7 +942,7 @@ export default function TakeEvaluation() {
                             {/* Conteúdo centralizado */}
                             <div className="flex-1 flex flex-col items-center text-center min-w-0">
                                 <h1 className="text-xs sm:text-sm md:text-base font-semibold truncate w-full px-1 dark:text-gray-100">
-                                    {testData.title}
+                                    {competitionState?.competitionName ?? testData.title}
                                 </h1>
                                 <div className="text-xs text-muted-foreground">
                                     <span className="hidden sm:inline">Questão </span>

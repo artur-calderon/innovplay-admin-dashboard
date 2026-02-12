@@ -476,16 +476,37 @@ export default function Evolution() {
               const detailedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 100, filters);
               
               if (detailedResponse?.resultados_detalhados?.avaliacoes) {
-                // Filtrar apenas avaliações com status concluída/finalizada E excluir olimpíadas
+                // Filtrar apenas avaliações com status concluída/finalizada
+                // e excluir olimpíadas e competições
                 const evaluationsWithResults = detailedResponse.resultados_detalhados.avaliacoes
                   .filter(evaluation => {
+                    const rawType = (evaluation.type || evaluation.tipo || '').toString().toUpperCase();
+                    const title = (evaluation.titulo || evaluation.title || '').toString().toUpperCase();
+
                     // Excluir olimpíadas
-                    const type = evaluation.type || evaluation.tipo;
-                    const title = evaluation.titulo || evaluation.title || '';
-                    const isOlimpiada = type === 'OLIMPIADA' || 
-                                       title.includes('[OLIMPÍADA]') || 
-                                       title.toUpperCase().includes('OLIMPÍADA');
+                    const isOlimpiada =
+                      rawType === 'OLIMPIADA' ||
+                      rawType === 'OLIMPÍADA' ||
+                      title.includes('[OLIMPÍADA]') ||
+                      title.includes('OLIMPIADA') ||
+                      title.includes('OLIMPÍADA');
+
                     if (isOlimpiada) {
+                      console.log(`⚠️ Removendo avaliação ${evaluation.id} do tipo OLIMPIADA da tela de evolução`);
+                      return false;
+                    }
+
+                    // Excluir competições
+                    const isCompeticao =
+                      rawType === 'COMPETICAO' ||
+                      rawType === 'COMPETIÇÃO' ||
+                      rawType.includes('COMPET') ||
+                      title.includes('COMPETICAO') ||
+                      title.includes('COMPETIÇÃO') ||
+                      title.includes('COMPET');
+
+                    if (isCompeticao) {
+                      console.log(`⚠️ Removendo avaliação ${evaluation.id} do tipo COMPETICAO da tela de evolução`);
                       return false;
                     }
                     
@@ -953,7 +974,10 @@ export default function Evolution() {
                     Avaliações Selecionadas
                   </DialogTitle>
                   <DialogDescription>
-                    {selectedEvaluationsForComparison.length} de {MAX_EVALUATIONS} avaliação(ões) selecionada(s) para comparação
+                    {selectedEvaluationsForComparison.length} de {MAX_EVALUATIONS}{' '}
+                    {selectedEvaluationsForComparison.length === 1
+                      ? 'avaliação selecionada para comparação'
+                      : 'avaliações selecionadas para comparação'}
                     {selectedEvaluationsForComparison.length >= MAX_EVALUATIONS && (
                       <span className="block mt-1 text-amber-600 dark:text-amber-400 text-xs">
                         Limite máximo atingido. Remova uma avaliação para adicionar outra.
@@ -1166,7 +1190,10 @@ export default function Evolution() {
 
                     toast({
                       title: "Excel exportado com sucesso!",
-                      description: `Arquivo gerado com sucesso para ${selectedEvaluationsForComparison.length} avaliação(ões).`,
+                      description:
+                        selectedEvaluationsForComparison.length === 1
+                          ? 'Arquivo gerado com sucesso para 1 avaliação.'
+                          : `Arquivo gerado com sucesso para ${selectedEvaluationsForComparison.length} avaliações.`,
                     });
                   } catch (error: any) {
                     console.error('Erro ao exportar Excel:', error);
