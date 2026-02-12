@@ -84,6 +84,10 @@ export function FormMultiSelect({
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Selecionar Opções</DialogTitle>
+            {/* Descrição simples para acessibilidade do DialogContent */}
+            <p className="text-sm text-muted-foreground">
+              Use a busca para filtrar e selecione uma ou mais opções da lista.
+            </p>
           </DialogHeader>
           <div className="space-y-4">
             <div className="flex items-center gap-2">

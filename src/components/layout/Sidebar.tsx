@@ -46,16 +46,17 @@ import {
   Sparkles,
   Medal,
   Star,
-  Coins
+  Coins,
+  Globe
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/context/authContext";
 import { Button } from "@/components/ui/button";
 import { useGamesCount } from "@/hooks/useGamesCount";
-import { useUnreadAvisos } from "@/hooks/useUnreadAvisos";
 import { useOpenCompetitionsCount } from "@/hooks/useOpenCompetitionsCount";
+import { DashboardApiService } from "@/services/dashboardApi";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getRoleDisplayName } from "@/lib/constants";
 import { AvatarPreview } from "@/components/profile/AvatarPreview";
@@ -93,26 +94,25 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   const currentPath = useLocation().pathname;
   const isMobile = useIsMobile();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [avisoIds, setAvisoIds] = useState<string[]>([]);
+  const [avisosQuantidade, setAvisosQuantidade] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   useGamesCount();
-  const { getUnreadCount } = useUnreadAvisos();
   const openCompetitionsCount = useOpenCompetitionsCount();
 
   useEffect(() => {
-    const loadAvisoIds = async () => {
+    const loadAvisosQuantidade = async () => {
       try {
-        const mockAvisoIds = ['1', '2', '3', '4', '5', '6', '7', '8'];
-        setAvisoIds(mockAvisoIds);
+        const quantidade = await DashboardApiService.getAvisosQuantidade();
+        setAvisosQuantidade(quantidade);
       } catch (error) {
-        console.error('Erro ao carregar avisos:', error);
+        console.error('Erro ao carregar quantidade de avisos:', error);
       }
     };
 
-    if (user.id) loadAvisoIds();
+    if (user.id) loadAvisosQuantidade();
   }, [user.id, user.role]);
 
   useEffect(() => {
@@ -130,7 +130,6 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
     return () => observer.disconnect();
   }, []);
 
-  const unreadAvisosCount = useMemo(() => getUnreadCount(avisoIds), [avisoIds, getUnreadCount]);
 
   function handleLogout() {
     logout().then(() => navigate("/"));
@@ -294,9 +293,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           label: "Avisos",
           href: `${user.role === 'aluno' ? "/aluno/avisos" : "/app/avisos"}`,
           role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
-          badge: unreadAvisosCount > 0 ? unreadAvisosCount.toString() : undefined
+          badge: avisosQuantidade > 0 ? avisosQuantidade.toString() : undefined
         },
         { icon: Settings, label: "Configurações", href: `${user.role === 'aluno' ? "/aluno/configuracoes" : "/app/configuracoes"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
+        { icon: Globe, label: "Dominios", href: "/app/dominios", role: ["admin"] },
         { icon: LogOut, label: "Sair", href: "/logout", role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"], divider: true },
       ]
     }

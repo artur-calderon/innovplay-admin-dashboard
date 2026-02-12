@@ -28,44 +28,14 @@ export default function PerformanceCard({
   className 
 }: PerformanceCardProps) {
   
-  const getPerformanceColors = (perf: PerformanceCardProps['performance']) => {
-    switch (perf) {
-      case 'excellent':
-        return {
-          bg: 'bg-green-50 dark:bg-green-950/30',
-          icon: 'text-green-600 dark:text-green-400',
-          value: 'text-green-700 dark:text-green-400',
-          border: 'border-green-200 dark:border-green-800'
-        };
-      case 'good':
-        return {
-          bg: 'bg-blue-50 dark:bg-blue-950/30',
-          icon: 'text-blue-600 dark:text-blue-400',
-          value: 'text-blue-700 dark:text-blue-400',
-          border: 'border-blue-200 dark:border-blue-800'
-        };
-      case 'average':
-        return {
-          bg: 'bg-yellow-50 dark:bg-yellow-950/30',
-          icon: 'text-yellow-600 dark:text-yellow-400',
-          value: 'text-yellow-700 dark:text-yellow-400',
-          border: 'border-yellow-200 dark:border-yellow-800'
-        };
-      case 'poor':
-        return {
-          bg: 'bg-orange-50 dark:bg-orange-950/30',
-          icon: 'text-orange-600 dark:text-orange-400',
-          value: 'text-orange-700 dark:text-orange-400',
-          border: 'border-orange-200 dark:border-orange-800'
-        };
-      case 'critical':
-        return {
-          bg: 'bg-red-50 dark:bg-red-950/30',
-          icon: 'text-red-600 dark:text-red-400',
-          value: 'text-red-700 dark:text-red-400',
-          border: 'border-red-200 dark:border-red-800'
-        };
-    }
+  // Cores roxas habituais do sistema (sem mistura de amarelo/azul)
+  const getPerformanceColors = (_perf: PerformanceCardProps['performance']) => {
+    return {
+      bg: 'bg-violet-50 dark:bg-violet-950/30',
+      icon: 'text-violet-600 dark:text-violet-400',
+      value: 'text-violet-700 dark:text-violet-400',
+      border: 'border-violet-200 dark:border-violet-800'
+    };
   };
 
   const colors = getPerformanceColors(performance);

@@ -28,7 +28,9 @@ const StatCard = ({
           <p className="text-xs sm:text-sm font-medium text-muted-foreground truncate">{title}</p>
           <div className="flex items-center gap-1 sm:gap-2">
             <span className="text-lg sm:text-xl lg:text-2xl font-bold truncate">
-              {typeof value === 'number' && value % 1 !== 0 ? (Math.ceil(value * 10) / 10).toString().replace('.', ',') : value}
+              {typeof value === 'number'
+                ? (Math.round(value * 10) / 10).toString().replace('.', ',')
+                : value}
             </span>
           </div>
         </div>
@@ -51,7 +53,7 @@ const StatsCards: React.FC<StatsCardsProps> = ({ stats }) => {
       />
       <StatCard
         title="Nota"
-        value={stats.nota.value ? Math.ceil(stats.nota.value * 10) / 10 : 0}
+        value={stats.nota.value ?? 0}
         icon={BookOpen}
         color="bg-red-500"
       />

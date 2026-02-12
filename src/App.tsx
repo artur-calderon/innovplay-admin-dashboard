@@ -33,6 +33,7 @@ const SchoolDetails = React.lazy(() => import("./components/schools/SchoolDetail
 const CreateEvaluation = React.lazy(() => import("./pages/CreateEvaluation"));
 const EditEvaluation = React.lazy(() => import("./pages/EditEvaluation"));
 const Cities = React.lazy(() => import("./pages/Cities"));
+const Domains = React.lazy(() => import("./pages/Domains"));
 const EditQuickLinks = React.lazy(() => import("./pages/EditQuickLinks"));
 const ViewEvaluation = React.lazy(() => import("./pages/ViewEvaluation"));
 const CreateQuestionPage = React.lazy(() => import("./pages/CreateQuestionPage"));
@@ -250,6 +251,7 @@ const App = () => {
               <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/app/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
               <Route path="/app/configuracoes" element={<PrivateRoute><Settings /></PrivateRoute>} />
+              <Route path="/app/dominios" element={<PrivateRoute><RoleRoute allowed={["admin"]}><Domains /></RoleRoute></PrivateRoute>} />
               <Route path="/app/moedas" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><CoinsAdmin /></RoleRoute></PrivateRoute>} />
 
               {/* Rotas de gerenciamento de questões */}

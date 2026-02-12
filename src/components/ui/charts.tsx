@@ -331,17 +331,28 @@ export function DonutChartComponent({
                             return null
                         }}
                     />
+                    <Legend
+                        verticalAlign="bottom"
+                        height={36}
+                        formatter={(value) => (
+                            <span className="text-sm text-foreground">{value}</span>
+                        )}
+                        wrapperStyle={{
+                            color: isDarkMode ? 'hsl(var(--foreground))' : '#374151',
+                        }}
+                    />
                 </PieChart>
             </ResponsiveContainer>
-            <div className="flex justify-center">
-                <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="flex justify-center mt-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-4 gap-y-1 text-sm">
                     {data.map((item, index) => (
                         <div key={item.name} className="flex items-center gap-2">
                             <div
-                                className="w-3 h-3 rounded-full"
+                                className="w-3 h-3 rounded-full shrink-0"
                                 style={{ backgroundColor: colors[index % colors.length] }}
                             />
-                            <span className="text-foreground">{item.name}</span>
+                            <span className="text-foreground truncate" title={item.name}>{item.name}</span>
+                            <span className="text-muted-foreground tabular-nums">({item.value})</span>
                         </div>
                     ))}
                 </div>
