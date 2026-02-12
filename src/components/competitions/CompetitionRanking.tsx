@@ -24,7 +24,7 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 import { Trophy, Coins, RefreshCw, Loader2, User } from 'lucide-react';
-import { getCompetitionRanking, type CompetitionRankingEntry } from '@/services/competitionsApi';
+import { getCompetitionRanking, type CompetitionRankingEntry, type CompetitionRankingResponse } from '@/services/competitionsApi';
 import { getMedalEmoji, formatCoins } from '@/utils/coins';
 import type { RewardConfig } from '@/types/competition-types';
 
@@ -45,6 +45,11 @@ export interface CompetitionRankingProps {
   classId?: string;
   /** Filtro por escola (opcional) */
   schoolId?: string;
+  /**
+   * Quando fornecido, usa este resultado externo em vez de buscar via getCompetitionRanking.
+   * Útil para cenários de ranking por escopo (/ranking-by-scope).
+   */
+  externalRanking?: CompetitionRankingResponse;
 }
 
 function PodiumPlace({
@@ -104,6 +109,7 @@ export function CompetitionRanking({
   inline = false,
   classId,
   schoolId,
+  externalRanking,
 }: CompetitionRankingProps) {
   const [data, setData] = useState<{
     entries: CompetitionRankingEntry[];
@@ -124,19 +130,19 @@ export function CompetitionRanking({
     else setLoading(true);
     setError(null);
     try {
-      const res = await getCompetitionRanking(competitionId, {
+      const source = externalRanking ?? await getCompetitionRanking(competitionId, {
         page,
         page_size: PAGE_SIZE,
         ...(classId && { class_id: classId }),
         ...(schoolId && { school_id: schoolId }),
       });
       setData({
-        entries: res.entries,
-        total: res.total,
-        my_position: res.my_position,
-        my_coins_earned: res.my_coins_earned,
+        entries: source.entries,
+        total: source.total,
+        my_position: source.my_position,
+        my_coins_earned: source.my_coins_earned,
       });
-      const firstThree = res.entries.filter((e) => e.position >= 1 && e.position <= 3);
+      const firstThree = source.entries.filter((e) => e.position >= 1 && e.position <= 3);
       if (firstThree.length > 0) {
         setTop3((prev) => (prev.length >= 3 ? prev : firstThree));
       }
@@ -156,17 +162,17 @@ export function CompetitionRanking({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [competitionId, page, classId, schoolId]);
+  }, [competitionId, page, classId, schoolId, externalRanking]);
 
   useEffect(() => {
     fetchRanking();
   }, [fetchRanking]);
 
   useEffect(() => {
-    if (!isRealtime || !competitionId) return;
+    if (!isRealtime || !competitionId || externalRanking) return;
     const interval = setInterval(() => fetchRanking(true), POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [isRealtime, competitionId, fetchRanking]);
+  }, [isRealtime, competitionId, externalRanking, fetchRanking]);
 
   // Atualizar contador de tempo desde última atualização
   useEffect(() => {

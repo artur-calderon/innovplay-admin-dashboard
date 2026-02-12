@@ -105,6 +105,8 @@ const CoinsAdmin = React.lazy(() => import("./pages/CoinsAdmin"));
 const CompetitionList = React.lazy(() => import("./pages/Competitions"));
 const CompetitionDetails = React.lazy(() => import("./pages/CompetitionDetails"));
 const CompetitionAnalytics = React.lazy(() => import("./pages/Admin/Competitions/CompetitionAnalytics"));
+const CompetitionTemplatesList = React.lazy(() => import("./pages/Admin/Competitions/CompetitionTemplatesList"));
+const CompetitionTemplateDetails = React.lazy(() => import("./pages/Admin/Competitions/CompetitionTemplateDetails"));
 const CompetitionsStudent = React.lazy(() => import("./pages/CompetitionsStudent"));
 const CompetitionStudentDetail = React.lazy(() => import("./pages/CompetitionStudentDetail"));
 const CompetitionTest = React.lazy(() => import("./pages/CompetitionTest"));
@@ -230,9 +232,56 @@ const App = () => {
               <Route path="/app/certificados" element={<PrivateRoute><Certificates /></PrivateRoute>} />
               <Route path="/app/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
               <Route path="/app/olimpiadas" element={<PrivateRoute><Olimpiadas /></PrivateRoute>} />
-              <Route path="/app/competitions" element={<PrivateRoute><RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}><CompetitionList /></RoleRoute></PrivateRoute>} />
-              <Route path="/app/competitions/:id" element={<PrivateRoute><RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}><CompetitionDetails /></RoleRoute></PrivateRoute>} />
-              <Route path="/app/competitions/:id/analytics" element={<PrivateRoute><RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}><CompetitionAnalytics /></RoleRoute></PrivateRoute>} />
+              <Route
+                path="/app/competitions"
+                element={
+                  <PrivateRoute>
+                    <RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}>
+                      <CompetitionList />
+                    </RoleRoute>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/app/competitions/:id"
+                element={
+                  <PrivateRoute>
+                    <RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}>
+                      <CompetitionDetails />
+                    </RoleRoute>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/app/competitions/:id/analytics"
+                element={
+                  <PrivateRoute>
+                    <RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}>
+                      <CompetitionAnalytics />
+                    </RoleRoute>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/app/competition-templates"
+                element={
+                  <PrivateRoute>
+                    <RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}>
+                      <CompetitionTemplatesList />
+                    </RoleRoute>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/app/competition-templates/:id"
+                element={
+                  <PrivateRoute>
+                    <RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}>
+                      <CompetitionTemplateDetails />
+                    </RoleRoute>
+                  </PrivateRoute>
+                }
+              />
               <Route path="/app/olimpiada/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
               <Route path="/app/olimpiada-resultado/:testId/:studentId" element={<PrivateRoute><StudentResult /></PrivateRoute>} />
               <Route path="/app/city" element={<PrivateRoute><Cities /></PrivateRoute>} />

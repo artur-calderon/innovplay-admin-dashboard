@@ -95,14 +95,15 @@
     --info: 199 89% 48%;
     --info-foreground: 210 40% 98%;
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Sidebar - próximo ao primary #7B3FE4 para modo claro */
+    --sidebar-background: 267 55% 94%;
+    --sidebar-foreground: 267 45% 22%;
+    --sidebar-primary: 267 84% 65%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 267 55% 88%;
+    --sidebar-accent-foreground: 267 50% 18%;
+    --sidebar-border: 267 45% 82%;
+    --sidebar-ring: 267 84% 65%;
 
     /* App Settings - Font and Size */
     --app-font-family: 'Inter';
