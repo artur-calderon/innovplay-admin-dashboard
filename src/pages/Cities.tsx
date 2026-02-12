@@ -31,10 +31,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 
+const SLUG_REGEX = /^[a-z0-9-]+$/;
+const SLUG_MAX_LENGTH = 100;
+
 interface City {
   id: string;
   name: string;
   state: string;
+  slug: string;
   created_at: string;
 }
 
@@ -53,6 +57,7 @@ export default function Cities() {
   const [newCity, setNewCity] = useState({
     name: "",
     state: "",
+    subdominio: "",
   });
   const { toast } = useToast();
 
@@ -84,34 +89,68 @@ export default function Cities() {
     fetchCities();
   }, [user.role, user.tenant_id, toast]);
 
+  function normalizeSlug(value: string): string {
+    return value.trim().toLowerCase();
+  }
+
+  function validateSlug(value: string): string | null {
+    const normalized = normalizeSlug(value);
+    if (!normalized) return "Informe o subdomínio.";
+    if (normalized.length > SLUG_MAX_LENGTH) return `Máximo de ${SLUG_MAX_LENGTH} caracteres.`;
+    if (!SLUG_REGEX.test(normalized)) return "Use apenas letras minúsculas, números e hífen (sem acentos ou espaços).";
+    return null;
+  }
+
   const handleAddCity = async () => {
+    const slugError = validateSlug(newCity.subdominio);
+    if (slugError) {
+      toast({
+        title: "Subdomínio inválido",
+        description: slugError,
+        variant: "destructive",
+      });
+      return;
+    }
+    const slug = normalizeSlug(newCity.subdominio);
+
     setIsAdding(true);
     try {
-      await api.post("/city/", newCity);
-      
-      // Fetch updated cities list
+      await api.post("/city/", {
+        name: newCity.name,
+        state: newCity.state,
+        slug,
+      });
+
       const response = await api.get("/city/");
       let citiesData = response.data;
 
-      // Se não for admin, filtra apenas o município do usuário
-      if (user.role !== 'admin') {
+      if (user.role !== "admin") {
         citiesData = citiesData.filter((city: City) => city.id === user.tenant_id);
       }
 
       setCities(citiesData);
       setIsAddDialogOpen(false);
-      setNewCity({ name: "", state: "" });
+      setNewCity({ name: "", state: "", subdominio: "" });
       toast({
         title: "Sucesso",
         description: "Município criado com sucesso",
       });
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Error creating city:", error);
-      toast({
-        title: "Erro",
-        description: "Erro ao criar município",
-        variant: "destructive",
-      });
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 409) {
+        toast({
+          title: "Subdomínio já em uso",
+          description: "Já existe um município com este subdomínio. Escolha outro.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erro",
+          description: "Erro ao criar município",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsAdding(false);
     }
@@ -119,38 +158,59 @@ export default function Cities() {
 
   const handleEditCity = async () => {
     if (!selectedCity) return;
-    setIsEditing(true);
 
+    const payload: { name: string; state: string; slug?: string } = {
+      name: newCity.name,
+      state: newCity.state,
+    };
+    if (newCity.subdominio !== undefined && newCity.subdominio !== "") {
+      const slugError = validateSlug(newCity.subdominio);
+      if (slugError) {
+        toast({
+          title: "Subdomínio inválido",
+          description: slugError,
+          variant: "destructive",
+        });
+        return;
+      }
+      payload.slug = normalizeSlug(newCity.subdominio);
+    }
+
+    setIsEditing(true);
     try {
-      await api.put(`/city/${selectedCity.id}/`, {
-        name: newCity.name,
-        state: newCity.state,
-      });
-      
-      // Fetch updated cities list
+      await api.put(`/city/${selectedCity.id}/`, payload);
+
       const response = await api.get("/city/");
       let citiesData = response.data;
 
-      // Se não for admin, filtra apenas o município do usuário
-      if (user.role !== 'admin') {
+      if (user.role !== "admin") {
         citiesData = citiesData.filter((city: City) => city.id === user.tenant_id);
       }
 
       setCities(citiesData);
       setIsEditDialogOpen(false);
       setSelectedCity(null);
-      setNewCity({ name: "", state: "" });
+      setNewCity({ name: "", state: "", subdominio: "" });
       toast({
         title: "Sucesso",
         description: "Município atualizado com sucesso",
       });
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Error updating city:", error);
-      toast({
-        title: "Erro",
-        description: "Erro ao atualizar município",
-        variant: "destructive",
-      });
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 409) {
+        toast({
+          title: "Subdomínio já em uso",
+          description: "Já existe um município com este subdomínio. Escolha outro.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erro",
+          description: "Erro ao atualizar município",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsEditing(false);
     }
@@ -235,6 +295,7 @@ export default function Cities() {
               <TableRow>
                 <TableHead>Nome</TableHead>
                 <TableHead>Estado</TableHead>
+                <TableHead>Subdomínio</TableHead>
                 <TableHead>Data de Cadastro</TableHead>
                 {user.role === 'admin' && <TableHead className="w-[100px]">Ações</TableHead>}
               </TableRow>
@@ -242,7 +303,7 @@ export default function Cities() {
             <TableBody>
               {!filteredCities || filteredCities.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={user.role === 'admin' ? 4 : 3} className="text-center py-6">
+                  <TableCell colSpan={user.role === 'admin' ? 5 : 4} className="text-center py-6">
                     <div className="flex flex-col items-center gap-2">
                       <Building2 className="h-10 w-10 text-gray-400" />
                       <h3 className="font-medium text-lg">
@@ -261,6 +322,7 @@ export default function Cities() {
                   <TableRow key={city.id}>
                     <TableCell className="font-medium">{city.name}</TableCell>
                     <TableCell>{city.state}</TableCell>
+                    <TableCell className="font-mono text-sm">{city.slug || "—"}</TableCell>
                     <TableCell>
                       {new Date(city.created_at + 'Z').toLocaleDateString('pt-BR', {
                         timeZone: 'UTC'
@@ -274,7 +336,7 @@ export default function Cities() {
                             size="icon"
                             onClick={() => {
                               setSelectedCity(city);
-                              setNewCity({ name: city.name, state: city.state });
+                              setNewCity({ name: city.name, state: city.state, subdominio: city.slug ?? "" });
                               setIsEditDialogOpen(true);
                             }}
                           >
@@ -328,6 +390,20 @@ export default function Cities() {
                 disabled={isAdding}
               />
             </div>
+            <div className="grid gap-2">
+              <Label htmlFor="subdominio">Subdomínio</Label>
+              <Input
+                id="subdominio"
+                value={newCity.subdominio}
+                onChange={(e) => setNewCity({ ...newCity, subdominio: e.target.value })}
+                placeholder="ex: jiparana"
+                disabled={isAdding}
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Não use acentos, espaços ou caracteres especiais. Apenas letras minúsculas, números e hífens (ex.: jiparana). Será usado em endereços como subdomínio.afirmeplay.com.br
+              </p>
+            </div>
             <Button onClick={handleAddCity} className="mt-4" disabled={isAdding}>
               {isAdding ? (
                 <>
@@ -368,6 +444,20 @@ export default function Cities() {
                 placeholder="Digite o estado"
                 disabled={isEditing}
               />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-subdominio">Subdomínio</Label>
+              <Input
+                id="edit-subdominio"
+                value={newCity.subdominio}
+                onChange={(e) => setNewCity({ ...newCity, subdominio: e.target.value })}
+                placeholder="ex: jiparana"
+                disabled={isEditing}
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Não use acentos, espaços ou caracteres especiais. Apenas letras minúsculas, números e hífens.
+              </p>
             </div>
             <Button onClick={handleEditCity} className="mt-4" disabled={isEditing}>
               {isEditing ? (
