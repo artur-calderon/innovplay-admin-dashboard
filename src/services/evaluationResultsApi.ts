@@ -517,16 +517,17 @@ export class EvaluationResultsApiService {
         : {};
       const response = await api.get(`/evaluation-results/avaliacoes?${params}`, requestConfig);
 
-      // Filtrar olimpíadas dos resultados
+      // Filtrar olimpíadas e competição dos resultados (manter só AVALIACAO / SIMULADO)
       if (response.data?.resultados_detalhados?.avaliacoes) {
         response.data.resultados_detalhados.avaliacoes = 
           response.data.resultados_detalhados.avaliacoes.filter((evaluation: any) => {
-            const type = evaluation.type || evaluation.tipo;
-            const title = evaluation.titulo || evaluation.title || '';
-            const isOlimpiada = type === 'OLIMPIADA' || 
-                               title.includes('[OLIMPÍADA]') || 
-                               title.toUpperCase().includes('OLIMPÍADA');
-            return !isOlimpiada;
+            const type = String(evaluation.type ?? evaluation.tipo ?? '').toUpperCase().trim();
+            const title = String(evaluation.titulo ?? evaluation.title ?? '').toUpperCase();
+            if (type === 'OLIMPIADA' || type === 'OLIMPIADAS' || type.includes('OLIMPI')) return false;
+            if (type === 'COMPETICAO' || type === 'COMPETIÇÃO' || type.includes('COMPET')) return false;
+            if (title.includes('[OLIMPÍADA]') || title.includes('OLIMPÍADA') || title.includes('OLIMPIADA')) return false;
+            if (title.includes('COMPETIÇÃO') || title.includes('COMPETICAO')) return false;
+            return type === '' || type === 'AVALIACAO' || type === 'SIMULADO';
           });
       }
 

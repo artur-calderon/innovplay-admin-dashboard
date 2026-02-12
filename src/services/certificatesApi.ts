@@ -9,6 +9,21 @@ import type {
 
 export class CertificatesApiService {
   /**
+   * Busca quantidade de certificados emitidos (respeita escopo do usuário logado).
+   * GET /certificates/quantidade
+   * Requer contexto de cidade (X-City-ID) quando aplicável.
+   */
+  static async getQuantidade(): Promise<number> {
+    try {
+      const response = await api.get<{ quantidade: number }>('/certificates/quantidade');
+      return response.data?.quantidade ?? 0;
+    } catch (error) {
+      console.error('Erro ao buscar quantidade de certificados:', error);
+      return 0;
+    }
+  }
+
+  /**
    * Buscar avaliações da escola do diretor com contagem de alunos aprovados
    * Se isAdmin for true, busca todas as avaliações do sistema usando /test/
    * Caso contrário, usa /evaluation-results/avaliacoes com filtros

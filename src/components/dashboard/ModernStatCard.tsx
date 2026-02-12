@@ -31,49 +31,15 @@ export default function ModernStatCard({
   onClick
 }: ModernStatCardProps) {
   
-  const getPerformanceColors = (perf: ModernStatCardProps['performance']) => {
-    switch (perf) {
-      case 'excellent':
-        return {
-          iconBg: 'bg-green-100',
-          iconColor: 'text-green-600',
-          valueColor: 'text-green-700',
-          borderColor: 'border-green-200',
-          hoverBg: 'hover:bg-green-50'
-        };
-      case 'good':
-        return {
-          iconBg: 'bg-blue-100',
-          iconColor: 'text-blue-600',
-          valueColor: 'text-blue-700',
-          borderColor: 'border-blue-200',
-          hoverBg: 'hover:bg-blue-50'
-        };
-      case 'average':
-        return {
-          iconBg: 'bg-yellow-100',
-          iconColor: 'text-yellow-600',
-          valueColor: 'text-yellow-700',
-          borderColor: 'border-yellow-200',
-          hoverBg: 'hover:bg-yellow-50'
-        };
-      case 'poor':
-        return {
-          iconBg: 'bg-orange-100',
-          iconColor: 'text-orange-600',
-          valueColor: 'text-orange-700',
-          borderColor: 'border-orange-200',
-          hoverBg: 'hover:bg-orange-50'
-        };
-      case 'critical':
-        return {
-          iconBg: 'bg-red-100',
-          iconColor: 'text-red-600',
-          valueColor: 'text-red-700',
-          borderColor: 'border-red-200',
-          hoverBg: 'hover:bg-red-50'
-        };
-    }
+  // Cores roxas habituais do sistema (sem mistura de amarelo/azul)
+  const getPerformanceColors = (_perf: ModernStatCardProps['performance']) => {
+    return {
+      iconBg: 'bg-violet-100 dark:bg-violet-950/40',
+      iconColor: 'text-violet-600 dark:text-violet-400',
+      valueColor: 'text-violet-700 dark:text-violet-400',
+      borderColor: 'border-violet-200 dark:border-violet-800',
+      hoverBg: 'hover:bg-violet-50 dark:hover:bg-violet-950/30'
+    };
   };
 
   const colors = getPerformanceColors(performance);
