@@ -16,6 +16,8 @@ const Index = React.lazy(() => import("./pages/Index"));
 const Evaluations = React.lazy(() => import("./pages/Evaluations"));
 const NotFound = React.lazy(() => import("./pages/NotFound"));
 const Login = React.lazy(() => import("./pages/Login"));
+const SubdominioInvalido = React.lazy(() => import("./pages/SubdominioInvalido"));
+const SubdomainCheck = React.lazy(() => import("./components/SubdomainCheck"));
 const ForgotPassword = React.lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = React.lazy(() => import("./pages/ResetPassword"));
 const ChangePassword = React.lazy(() => import("./pages/ChangePassword"));
@@ -150,13 +152,20 @@ const App = () => {
 
         <Suspense fallback={<LoadingSpinner />}>
           <Routes>
-            {/* Rota raiz - redireciona baseado no papel do usuário */}
+            {/* Rota raiz - checa subdomínio e redireciona ou mostra login */}
             <Route
               path="/"
               element={
-                user.id ? <Navigate to={getBaseRoute()} /> : <Login key="login" />
+                user.id ? (
+                  <Navigate to={getBaseRoute()} />
+                ) : (
+                  <SubdomainCheck />
+                )
               }
             />
+
+            {/* Subdomínio não cadastrado */}
+            <Route path="/subdominio-invalido" element={<SubdominioInvalido />} />
 
             {/* Rotas de autenticação */}
             <Route path="/forgot-password" element={<ForgotPassword key="forgot-password" />} />
