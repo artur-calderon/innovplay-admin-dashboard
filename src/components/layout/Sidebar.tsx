@@ -248,6 +248,12 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           href: "/app/cartao-resposta",
           role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
         },
+        {
+          icon: ClipboardList,
+          label: "Lista de Frequência",
+          href: "/app/lista-frequencia",
+          role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
+        },
         { icon: Calculator, label: "Calculadora SAEB", href: "/app/calculadora-saeb", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: Coins, label: "Administração de moedas", href: "/app/moedas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: Target, label: "Cálculo de Metas", href: "/app/calculo-metas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
