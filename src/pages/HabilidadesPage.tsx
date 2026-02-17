@@ -197,18 +197,6 @@ const HabilidadesPage = () => {
     return groups;
   }, [skills]);
 
-  const handleSelectAllSkills = useCallback((checked: boolean) => {
-    if (checked) {
-      setSelectedSkillIds(filteredSkills.map((s) => s.id));
-    } else {
-      setSelectedSkillIds([]);
-    }
-  }, [filteredSkills]);
-
-  const handleSelectSkill = useCallback((id: string, checked: boolean) => {
-    setSelectedSkillIds((prev) => (checked ? [...prev, id] : prev.filter((x) => x !== id)));
-  }, []);
-
   const filteredGroupedSkills = useMemo(() => {
     const groups: Record<string, Skill[]> = {};
     filteredSkills.forEach((skill) => {
@@ -233,6 +221,23 @@ const HabilidadesPage = () => {
     });
     return sorted;
   }, [filteredSkills, selectedCategories, skillSortBy]);
+
+  const visibleSkillIds = useMemo(
+    () => Object.values(filteredGroupedSkills).flat().map((s) => s.id),
+    [filteredGroupedSkills]
+  );
+
+  const handleSelectAllSkills = useCallback((checked: boolean) => {
+    if (checked) {
+      setSelectedSkillIds(visibleSkillIds);
+    } else {
+      setSelectedSkillIds([]);
+    }
+  }, [visibleSkillIds]);
+
+  const handleSelectSkill = useCallback((id: string, checked: boolean) => {
+    setSelectedSkillIds((prev) => (checked ? [...prev, id] : prev.filter((x) => x !== id)));
+  }, []);
 
   const categoriesForPicker = useMemo(
     () =>
@@ -464,9 +469,9 @@ const HabilidadesPage = () => {
               {canDeleteSkills && (
                 <div className="flex items-center gap-2">
                   <Checkbox
-                    checked={filteredSkills.length > 0 && selectedSkillIds.length === filteredSkills.length}
+                    checked={visibleSkillIds.length > 0 && visibleSkillIds.every((id) => selectedSkillIds.includes(id))}
                     onCheckedChange={(c) => handleSelectAllSkills(!!c)}
-                    aria-label="Selecionar todas"
+                    aria-label="Selecionar todas as visíveis"
                   />
                   <span className="text-sm text-muted-foreground">Selecionar todas</span>
                   {selectedSkillIds.length > 0 && (
