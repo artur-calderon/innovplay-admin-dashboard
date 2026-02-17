@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Copy, HelpCircle } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Copy, HelpCircle, BookOpen } from "lucide-react";
 import { Question } from "@/components/evaluations/types";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
@@ -1296,6 +1296,16 @@ const QuestionsPage = () => {
             </Button>
           )}
 
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/app/cadastros/habilidades")}
+            className="flex-1 sm:flex-none"
+          >
+            <BookOpen className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">Banco de Habilidades</span>
+            <span className="sm:hidden">Habilidades</span>
+          </Button>
           <Button
             size="sm"
             onClick={() => navigate("/app/cadastros/questao/criar")}

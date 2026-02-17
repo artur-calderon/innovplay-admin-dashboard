@@ -39,6 +39,7 @@ const ViewEvaluation = React.lazy(() => import("./pages/ViewEvaluation"));
 const CreateQuestionPage = React.lazy(() => import("./pages/CreateQuestionPage"));
 const QuestionsPage = React.lazy(() => import("./pages/QuestionsPage"));
 const EditQuestionPage = React.lazy(() => import("./pages/EditQuestionPage"));
+const HabilidadesPage = React.lazy(() => import("./pages/HabilidadesPage"));
 const Turmas = React.lazy(() => import("./pages/Turmas"));
 const Instituicao = React.lazy(() => import("./pages/Instituicao"));
 const Curso = React.lazy(() => import("./pages/Curso"));
@@ -309,6 +310,7 @@ const App = () => {
               <Route path="/app/cadastros/questao" element={<PrivateRoute><QuestionsPage /></PrivateRoute>} />
               <Route path="/app/cadastros/questao/criar" element={<PrivateRoute><CreateQuestionPage /></PrivateRoute>} />
               <Route path="/app/cadastros/questao/editar/:id" element={<PrivateRoute><EditQuestionPage /></PrivateRoute>} />
+              <Route path="/app/cadastros/habilidades" element={<PrivateRoute><HabilidadesPage /></PrivateRoute>} />
 
               {/* Rotas de gerenciamento de turmas */}
               <Route path="/app/cadastros/turma" element={<PrivateRoute><Turmas /></PrivateRoute>} />

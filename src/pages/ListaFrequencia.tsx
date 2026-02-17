@@ -6,8 +6,12 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { ClipboardList, Filter, Loader2, Printer } from 'lucide-react';
 import { api } from '@/lib/api';
+import { DashboardApiService } from '@/services/dashboardApi';
 import { FormFiltersApiService } from '@/services/formFiltersApi';
-import { getListaFrequencia } from '@/services/listaFrequenciaApi';
+import {
+  getListaFrequencia,
+  getListaFrequenciaPorAvaliacao,
+} from '@/services/listaFrequenciaApi';
 import type {
   ListaFrequenciaResponse,
   Cabecalho,
@@ -23,32 +27,49 @@ function formatLegenda(legenda: Cabecalho['legenda']): string {
 }
 
 /**
- * Texto de SÉRIE e TURMA para exibição.
- * O backend envia serie (Grade.name) e turma (atributo da Class ou última parte do nome); quando
- * ambos vêm preenchidos, usamos direto. Caso contrário, usamos fallback (serie_turma ou heurística).
+ * SÉRIE e TURMA para exibição.
+ * Backend envia serie (Grade.name) e turma (removendo série do nome da turma, ou última palavra quando fizer sentido).
+ * Fallback no frontend replica a mesma lógica quando turma não vier preenchida.
  */
 function getSerieTurmaDisplay(cab: Cabecalho): { serie: string; turma: string } {
   const s = cab.serie?.trim() ?? '';
   const t = cab.turma?.trim() ?? '';
   const st = cab.serie_turma?.trim() ?? '';
 
-  // Prioridade: backend já envia serie (Grade.name) e turma (atributo ou última parte do nome)
-  if (s && t) return { serie: s, turma: t };
-  if (s) return { serie: s, turma: t || '—' };
-  if (t) return { serie: st || '—', turma: t };
+  /** Turma removendo a série do início do nome (mesmo nº de caracteres da série em maiúsculas). */
+  const turmaRemovendoSerie = (): string => {
+    if (!s || !st) return '';
+    const serieLen = s.toUpperCase().length;
+    let rest = st.slice(serieLen);
+    rest = rest.replace(/^[\s\-–—]+/, '').trim();
+    return rest;
+  };
 
-  // Fallback: extrair de serie_turma (ex.: "6º ANO A" ou "6º ANO - A")
+  /** Última palavra como turma só quando fizer sentido: >2 palavras ou 2 palavras com última de 1 caractere. */
+  const turmaUltimaPalavra = (): string => {
+    if (!st) return '';
+    const parts = st.split(/\s+/).filter(Boolean);
+    if (parts.length > 2) return parts[parts.length - 1] ?? '';
+    if (parts.length === 2 && parts[1]?.length === 1) return parts[1];
+    return '';
+  };
+
+  if (s && t) return { serie: s, turma: t };
+  if (t) return { serie: st || s || '—', turma: t };
+
+  if (s) {
+    const derived = turmaRemovendoSerie() || turmaUltimaPalavra();
+    return { serie: s, turma: derived || '—' };
+  }
+
   if (st) {
     const dashSplit = st.split(/\s*-\s*/);
-    if (dashSplit.length >= 2) {
-      return { serie: dashSplit[0].trim(), turma: dashSplit[1].trim() };
-    }
-    const parts = st.split(/\s+/);
-    if (parts.length >= 2) {
-      const last = parts[parts.length - 1];
-      if (last.length <= 2 && /^[A-Za-z0-9]+$/.test(last)) {
-        return { serie: parts.slice(0, -1).join(' ').trim(), turma: last };
-      }
+    if (dashSplit.length >= 2) return { serie: dashSplit[0].trim(), turma: dashSplit[1].trim() };
+    const derived = turmaUltimaPalavra();
+    if (derived) {
+      const parts = st.split(/\s+/).filter(Boolean);
+      const serieFromSt = parts.length > 1 ? parts.slice(0, -1).join(' ') : st;
+      return { serie: serieFromSt || st, turma: derived };
     }
     return { serie: st, turma: '—' };
   }
@@ -80,6 +101,11 @@ export default function ListaFrequencia() {
   const [data, setData] = useState<ListaFrequenciaResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+
+  const [modoLista, setModoLista] = useState<'turma' | 'avaliacao'>('turma');
+  const [avaliacoes, setAvaliacoes] = useState<{ id: string; titulo: string }[]>([]);
+  const [selectedAvaliacaoId, setSelectedAvaliacaoId] = useState('all');
+  const [isLoadingAvaliacoes, setIsLoadingAvaliacoes] = useState(false);
 
   // Carregar estados
   useEffect(() => {
@@ -255,36 +281,81 @@ export default function ListaFrequencia() {
     };
   }, [selectedSerie, selectedSchool, selectedMunicipio, selectedEstado]);
 
+  useEffect(() => {
+    if (modoLista !== 'avaliacao') return;
+    // Só carrega avaliações após selecionar escola e série
+    if (!selectedSchool || selectedSchool === 'all' || !selectedSerie || selectedSerie === 'all') {
+      setAvaliacoes([]);
+      setSelectedAvaliacaoId('all');
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingAvaliacoes(true);
+    DashboardApiService.getAvaliacoesRecentes(50)
+      .then((data) => {
+        if (cancelled || !data?.avaliacoes) return;
+        // Filtra avaliações por escola/série se possível (aqui carregamos todas; idealmente o backend filtraria)
+        setAvaliacoes(
+          data.avaliacoes.map((a) => ({ id: a.avaliacao_id, titulo: a.titulo || a.avaliacao_id }))
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setAvaliacoes([]);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingAvaliacoes(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [modoLista, selectedSchool, selectedSerie]);
+
   const handleGerarLista = async () => {
-    if (!selectedSchool || selectedSchool === 'all') return;
     setError(null);
     setIsLoadingLista(true);
     try {
-      let classIds: { id: string }[] = [];
-      if (selectedTurma && selectedTurma !== 'all') {
-        classIds = [{ id: selectedTurma }];
-      } else if (selectedSerie && selectedSerie !== 'all' && turmas.length > 0) {
-        classIds = turmas.map((t) => ({ id: t.id }));
+      if (modoLista === 'avaliacao') {
+        if (!selectedAvaliacaoId || selectedAvaliacaoId === 'all') {
+          setError('Selecione a avaliação.');
+          toast({ title: 'Aviso', description: 'Selecione a avaliação.', variant: 'destructive' });
+          return;
+        }
+        const classId =
+          selectedTurma && selectedTurma !== 'all' ? selectedTurma : undefined;
+        const res = await getListaFrequenciaPorAvaliacao(selectedAvaliacaoId, classId);
+        setData([res]);
       } else {
-        const res = await api.get<{ id: string; name?: string }[]>(`/classes/school/${selectedSchool}`);
-        const list = Array.isArray(res.data) ? res.data : [];
-        classIds = list.map((c) => ({ id: c.id }));
+        if (!selectedSchool || selectedSchool === 'all') {
+          setError('Selecione a escola.');
+          return;
+        }
+        let classIds: { id: string }[] = [];
+        if (selectedTurma && selectedTurma !== 'all') {
+          classIds = [{ id: selectedTurma }];
+        } else if (selectedSerie && selectedSerie !== 'all' && turmas.length > 0) {
+          classIds = turmas.map((t) => ({ id: t.id }));
+        } else {
+          const res = await api.get<{ id: string; name?: string }[]>(`/classes/school/${selectedSchool}`);
+          const list = Array.isArray(res.data) ? res.data : [];
+          classIds = list.map((c) => ({ id: c.id }));
+        }
+        if (classIds.length === 0) {
+          setError('Nenhuma turma encontrada.');
+          setData(null);
+          toast({ title: 'Aviso', description: 'Nenhuma turma encontrada para os filtros selecionados.', variant: 'destructive' });
+          return;
+        }
+        const results = await Promise.all(
+          classIds.map((c) => getListaFrequencia(c.id, 'avaliacao'))
+        );
+        setData(results);
       }
-      if (classIds.length === 0) {
-        setError('Nenhuma turma encontrada.');
-        setData(null);
-        toast({ title: 'Aviso', description: 'Nenhuma turma encontrada para os filtros selecionados.', variant: 'destructive' });
-        return;
-      }
-      const results = await Promise.all(
-        classIds.map((c) => getListaFrequencia(c.id, 'avaliacao'))
-      );
-      setData(results);
     } catch (err: unknown) {
       const ax = err as { response?: { status?: number; data?: { erro?: string } } };
       const msg =
         ax.response?.data?.erro ||
-        (ax.response?.status === 404 ? 'Turma não encontrada' : 'Não foi possível carregar a lista de frequência.');
+        (ax.response?.status === 404 ? (modoLista === 'avaliacao' ? 'Avaliação ou turma não encontrada.' : 'Turma não encontrada') : 'Não foi possível carregar a lista de frequência.') ||
+        (ax.response?.status === 400 ? 'Informe a turma (class_id) quando a avaliação tiver várias turmas.' : 'Não foi possível carregar a lista de frequência.');
       setError(msg);
       setData(null);
       toast({ title: 'Erro', description: msg, variant: 'destructive' });
@@ -347,7 +418,16 @@ export default function ListaFrequencia() {
         boxY += 5;
         doc.text(`TURMA: ${turmaDisplay}`, margin + 4, boxY);
         boxY += 5;
-        doc.text(`DISCIPLINA: ${cab.disciplina}`, margin + 4, boxY);
+        const disciplinaVal = cab.disciplina?.trim() ?? '';
+        doc.text('DISCIPLINA: ', margin + 4, boxY);
+        if (disciplinaVal) {
+          doc.text(disciplinaVal, margin + 4 + doc.getTextWidth('DISCIPLINA: '), boxY);
+        } else {
+          const lineX0 = margin + 4 + doc.getTextWidth('DISCIPLINA: ');
+          const lineLength = 50;
+          doc.setDrawColor(120, 120, 120);
+          doc.line(lineX0, boxY + 1.5, lineX0 + lineLength, boxY + 1.5);
+        }
         y = boxY + 8;
 
         doc.setFontSize(8);
@@ -469,7 +549,7 @@ export default function ListaFrequencia() {
             Lista de Frequência
           </h1>
           <p className="text-muted-foreground mt-1">
-            Gere listas de presença por turma, por série ou da escola inteira.
+            Gere listas por turma (status vazios) ou por avaliação já aplicada (P/A conforme sessões).
           </p>
         </div>
       </div>
@@ -483,7 +563,57 @@ export default function ListaFrequencia() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Modo</label>
+              <Select value={modoLista} onValueChange={(v) => setModoLista(v as 'turma' | 'avaliacao')}>
+                <SelectTrigger className="max-w-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="turma">Por turma (Estado → Escola → Série → Turma)</SelectItem>
+                  <SelectItem value="avaliacao">Por avaliação aplicada</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {modoLista === 'avaliacao' && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Avaliação</label>
+                <Select
+                  value={selectedAvaliacaoId}
+                  onValueChange={setSelectedAvaliacaoId}
+                  disabled={
+                    isLoadingAvaliacoes ||
+                    !selectedSchool ||
+                    selectedSchool === 'all' ||
+                    !selectedSerie ||
+                    selectedSerie === 'all'
+                  }
+                >
+                  <SelectTrigger className="max-w-md">
+                    <SelectValue
+                      placeholder={
+                        !selectedSchool || selectedSchool === 'all'
+                          ? 'Selecione a escola primeiro'
+                          : !selectedSerie || selectedSerie === 'all'
+                          ? 'Selecione a série primeiro'
+                          : 'Selecione a avaliação'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Selecione a avaliação</SelectItem>
+                    {avaliacoes.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.titulo}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Estado</label>
               <Select
@@ -588,7 +718,12 @@ export default function ListaFrequencia() {
           <div className="mt-4 flex flex-wrap items-center gap-4">
             <Button
               onClick={handleGerarLista}
-              disabled={!selectedSchool || selectedSchool === 'all' || isLoadingLista}
+              disabled={
+                isLoadingLista ||
+                (modoLista === 'avaliacao'
+                  ? !selectedAvaliacaoId || selectedAvaliacaoId === 'all'
+                  : !selectedSchool || selectedSchool === 'all')
+              }
             >
               {isLoadingLista ? (
                 <>
@@ -601,8 +736,11 @@ export default function ListaFrequencia() {
             </Button>
           </div>
           <p className="text-sm text-muted-foreground mt-3">
-            Hierarquia: Estado → Município → Escola → Série → Turma. Selecione a escola para gerar por turma, por série ou pela escola inteira.
+            {modoLista === 'turma'
+              ? 'Hierarquia: Estado → Município → Escola → Série → Turma. Selecione a escola para gerar por turma, por série ou pela escola inteira.'
+              : 'Selecione Escola e Série primeiro, depois escolha a Avaliação. Se houver várias turmas, escolha a turma específica.'}
           </p>
+          </div>
         </CardContent>
       </Card>
 
@@ -647,7 +785,14 @@ export default function ListaFrequencia() {
                       <p>NOME DA ESCOLA*: {item.cabecalho.nome_escola}</p>
                       <p>SÉRIE: {getSerieTurmaDisplay(item.cabecalho).serie}</p>
                       <p>TURMA: {getSerieTurmaDisplay(item.cabecalho).turma}</p>
-                      <p>DISCIPLINA: {item.cabecalho.disciplina}</p>
+                      <p className="flex items-baseline gap-1">
+                        DISCIPLINA:{' '}
+                        {item.cabecalho.disciplina?.trim() ? (
+                          item.cabecalho.disciplina
+                        ) : (
+                          <span className="inline-block min-w-[200px] border-b border-white/40" aria-hidden />
+                        )}
+                      </p>
                     </div>
                   </div>
                   <p className="mt-3 text-left text-xs">
