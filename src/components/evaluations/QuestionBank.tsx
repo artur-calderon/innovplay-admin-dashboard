@@ -478,12 +478,9 @@ export function QuestionBank({
       const matchesDifficulty = !filters.difficulty || filters.difficulty === "all" || question.difficulty === filters.difficulty;
       const matchesType = !filters.type || filters.type === "all" || question.type === filters.type;
 
-      // Aplicar mapeamento EJA: se a avaliação é EJA, incluir questões do ano equivalente
-      if (gradeId && gradeName && grades.length > 0) {
-        if (!shouldIncludeQuestionForEJA(question, gradeId, gradeName, grades)) {
-          return false;
-        }
-      }
+      // ✅ CORREÇÃO: Remover filtro automático por gradeId para permitir que o usuário
+      // visualize questões de todas as séries usando o filtro dropdown
+      // O filtro de série agora é controlado apenas pelo dropdown (matchesGrade)
       
       return matchesSearch && matchesSubjectId && matchesSubject && matchesGrade && matchesDifficulty && matchesType;
     });
