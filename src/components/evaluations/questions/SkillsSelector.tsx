@@ -5,10 +5,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import './SkillsSelector.css';
 import { useSkillsStore } from '@/stores/useSkillsStore';
 import { api } from '@/lib/api';
+import CategoryPickerModal from './CategoryPickerModal';
 
 interface Skill {
   id: string;
@@ -440,7 +442,9 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const [skillSortBy, setSkillSortBy] = useState<'code-asc' | 'code-desc' | 'desc-asc' | 'desc-desc'>('code-asc');
   const fetchSkillsByGrade = useSkillsStore(s => s.fetchSkillsByGrade);
   const fetchSkillsByGrades = useSkillsStore(s => s.fetchSkillsByGrades);
   const fetchSkills = useSkillsStore(s => s.fetchSkills);
@@ -973,21 +977,36 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
     });
   }, [effectiveSkills, searchTerm]);
 
-  // Habilidades filtradas agrupadas
+  // Habilidades filtradas agrupadas, com filtro de categorias e ordenação
   const filteredGroupedSkills = useMemo(() => {
     const groups: Record<string, Skill[]> = {};
     filteredSkills.forEach(skill => {
-      // Garantir que a habilidade tenha code válido
-      if (!skill.code) {
-        console.warn('Habilidade sem código no filtro:', skill);
-        return;
-      }
+      if (!skill.code) return;
       const prefix = skill.code.split('.')[0] || skill.code.split('-')[0] || 'Outros';
+      if (selectedCategories.length > 0 && !selectedCategories.includes(prefix)) return;
       if (!groups[prefix]) groups[prefix] = [];
       groups[prefix].push(skill);
     });
-    return groups;
-  }, [filteredSkills]);
+    const sortFn = (a: Skill, b: Skill) => {
+      switch (skillSortBy) {
+        case 'code-asc': return a.code.localeCompare(b.code);
+        case 'code-desc': return b.code.localeCompare(a.code);
+        case 'desc-asc': return a.description.localeCompare(b.description);
+        case 'desc-desc': return b.description.localeCompare(a.description);
+        default: return 0;
+      }
+    };
+    const sorted: Record<string, Skill[]> = {};
+    Object.entries(groups).forEach(([cat, items]) => {
+      sorted[cat] = [...items].sort(sortFn);
+    });
+    return sorted;
+  }, [filteredSkills, selectedCategories, skillSortBy]);
+
+  const categoriesForPicker = useMemo(
+    () => Object.entries(groupedSkills).map(([name, items]) => ({ name, count: items.length })),
+    [groupedSkills]
+  );
 
   const handleToggleSkill = (skillId: string) => {
     // Seleção única: se já está selecionado, desmarca; senão, seleciona apenas este
@@ -1048,38 +1067,47 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
 
           <div className="flex flex-col lg:flex-row h-[calc(100%-60px)] sm:h-[calc(100%-80px)] bg-background relative overflow-hidden">
             {/* Sidebar de Categorias - Oculta em mobile, visível em desktop */}
-            <div className="skills-sidebar hidden lg:flex lg:w-64 xl:w-72 border-r bg-muted/50 flex-col shrink-0">
+            <div className="skills-sidebar hidden lg:flex lg:w-64 xl:w-72 border-r bg-muted/50 flex-col shrink-0 min-h-0 overflow-hidden">
               <div className="p-3 xl:p-4 border-b shrink-0">
                 <h4 className="font-semibold text-sm text-foreground mb-3">Categorias</h4>
-                <div className="space-y-1">
-                  <button
-                    onClick={() => setSelectedCategory(null)}
-                    className={cn(
-                      "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
-                      selectedCategory === null 
-                        ? "bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-medium" 
-                        : "hover:bg-muted"
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span>Todas</span>
-                      <Badge variant="outline" className="text-xs">
-                        {effectiveSkills.length}
-                      </Badge>
-                    </div>
-                  </button>
-                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start mb-2"
+                  onClick={() => setCategoryPickerOpen(true)}
+                >
+                  <Filter className="h-4 w-4 mr-2" />
+                  Buscar categorias...
+                </Button>
+                <button
+                  onClick={() => setSelectedCategories([])}
+                  className={cn(
+                    "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
+                    selectedCategories.length === 0 
+                      ? "bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-medium" 
+                      : "hover:bg-muted"
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <span>Todas</span>
+                    <Badge variant="outline" className="text-xs">
+                      {effectiveSkills.length}
+                    </Badge>
+                  </div>
+                </button>
               </div>
               
-              <ScrollArea className="flex-1 p-2 xl:p-3 overflow-y-auto">
+              <div className="flex-1 min-h-0 overflow-y-auto p-2 xl:p-3">
                 <div className="space-y-1">
                   {Object.entries(groupedSkills).map(([category, categorySkills]) => (
                     <button
                       key={category}
-                      onClick={() => setSelectedCategory(category)}
+                      onClick={() => setSelectedCategories(prev => 
+                        prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]
+                      )}
                       className={cn(
                         "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
-                        selectedCategory === category 
+                        selectedCategories.includes(category) 
                           ? "bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-medium" 
                           : "hover:bg-muted"
                       )}
@@ -1093,8 +1121,17 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
                     </button>
                   ))}
                 </div>
-              </ScrollArea>
+              </div>
             </div>
+
+            <CategoryPickerModal
+              open={categoryPickerOpen}
+              onOpenChange={setCategoryPickerOpen}
+              categories={categoriesForPicker}
+              selected={selectedCategories}
+              onConfirm={setSelectedCategories}
+              title="Buscar categorias"
+            />
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col overflow-hidden min-w-0">
@@ -1104,27 +1141,39 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
                   <div className="flex items-center gap-2 min-w-0">
                     <Target className="h-4 w-4 text-muted-foreground shrink-0" />
                     <span className="font-medium text-foreground truncate">
-                      {selectedCategory || 'Todas as Habilidades'}
+                      {selectedCategories.length === 0 
+                        ? 'Todas as Habilidades' 
+                        : selectedCategories.length === 1 
+                        ? selectedCategories[0] 
+                        : `${selectedCategories.length} categorias`}
                     </span>
                   </div>
                   
-                  {/* Mobile Category Selector */}
+                  {/* Mobile: Buscar categorias */}
                   <div className="lg:hidden">
-                    <select
-                      value={selectedCategory || ''}
-                      onChange={(e) => setSelectedCategory(e.target.value || null)}
-                      className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setCategoryPickerOpen(true)}
                     >
-                      <option value="">Todas as Categorias ({effectiveSkills.length})</option>
-                      {Object.entries(groupedSkills).map(([category, categorySkills]) => (
-                        <option key={category} value={category}>
-                          {category} ({categorySkills.length})
-                        </option>
-                      ))}
-                    </select>
+                      <Filter className="h-4 w-4 mr-1" />
+                      Buscar categorias
+                    </Button>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <Select value={skillSortBy} onValueChange={(v: typeof skillSortBy) => setSkillSortBy(v)}>
+                      <SelectTrigger className="w-[160px] h-8 text-xs">
+                        <SelectValue placeholder="Ordenar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="code-asc">Código (A-Z)</SelectItem>
+                        <SelectItem value="code-desc">Código (Z-A)</SelectItem>
+                        <SelectItem value="desc-asc">Descrição (A-Z)</SelectItem>
+                        <SelectItem value="desc-desc">Descrição (Z-A)</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <Button
                       variant={viewMode === 'list' ? 'default' : 'outline'}
                       size="sm"
@@ -1186,7 +1235,6 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
                       </div>
                     ) : (
                       Object.entries(filteredGroupedSkills)
-                        .filter(([category]) => !selectedCategory || category === selectedCategory)
                         .map(([category, categorySkills]) => (
                       <div key={category}>
                         <div className="skills-category-header flex items-center gap-2 mb-3 sticky top-0 bg-background z-20 py-2 sm:py-3 border-b border-border -mx-3 sm:-mx-4 px-3 sm:px-4 backdrop-blur-sm">

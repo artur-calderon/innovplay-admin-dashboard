@@ -28,6 +28,18 @@ import {
 import { DashboardApiService, type AnaliseSistemaResponse } from "@/services/dashboardApi";
 import { Skeleton } from "@/components/ui/skeleton";
 
+/** Paleta harmoniosa para os 12 meses (donut e calendário) */
+const CORES_MESES = [
+  "#4f46e5", "#7c3aed", "#6366f1", "#8b5cf6",
+  "#0891b2", "#0d9488", "#059669", "#16a34a",
+  "#ca8a04", "#ea580c", "#c026d3", "#db2777",
+];
+
+/** Cores para o gráfico Avaliações por tipo (Avaliação, Simulado, etc.) */
+const CORES_AVALIACOES_POR_TIPO = [
+  "#4f46e5", "#0891b2", "#059669", "#7c3aed", "#0ea5e9", "#6366f1",
+];
+
 function formatMes(mes: string): string {
   if (!mes || mes.length < 7) return mes;
   const [y, m] = mes.split("-");
@@ -311,31 +323,65 @@ export function AnaliseSistemaModal({ open, onOpenChange }: AnaliseSistemaModalP
                         title="Tipos de avaliação"
                         subtitle="Quantidade por tipo"
                         showValues={true}
+                        colors={CORES_AVALIACOES_POR_TIPO}
                       />
                     </CardContent>
                   </Card>
                 </section>
               )}
 
-              {/* Evolução 12 meses - gráfico de círculo (alunos por mês) */}
+              {/* Evolução 12 meses - gráfico de círculo + calendário de cadastros */}
               {evolucao.length > 0 && (
                 <section>
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                     Últimos 12 meses — Alunos por mês
                   </h3>
-                  <Card className="border-border">
-                    <CardContent className="pt-4 pb-2">
-                      <DonutChartComponent
-                        data={evolucao.map((d) => ({
-                          name: formatMes(d.mes),
-                          value: d.alunos,
-                        }))}
-                        title="Alunos por mês"
-                        subtitle="Últimos 12 meses — cada fatia é um mês"
-                        showValues={true}
-                      />
-                    </CardContent>
-                  </Card>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <Card className="border-border">
+                      <CardContent className="pt-4 pb-2">
+                        <DonutChartComponent
+                          data={evolucao.map((d) => ({
+                            name: formatMes(d.mes),
+                            value: d.alunos,
+                          }))}
+                          title="Alunos por mês"
+                          subtitle="Cada fatia é um mês"
+                          showValues={true}
+                          colors={CORES_MESES}
+                        />
+                      </CardContent>
+                    </Card>
+                    <Card className="border-border">
+                      <CardContent className="pt-4 pb-4">
+                        <h4 className="text-sm font-semibold text-foreground mb-3 text-center">
+                          Cadastros de alunos por mês
+                        </h4>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                          {evolucao.map((d, index) => {
+                            const cor = CORES_MESES[index % CORES_MESES.length];
+                            return (
+                              <div
+                                key={d.mes}
+                                className="rounded-lg border-2 p-3 text-center transition-opacity hover:opacity-90"
+                                style={{
+                                  borderColor: cor,
+                                  backgroundColor: `${cor}18`,
+                                }}
+                              >
+                                <p className="text-xs font-medium uppercase tracking-wider" style={{ color: cor }}>
+                                  {formatMes(d.mes)}
+                                </p>
+                                <p className="text-xl font-bold tabular-nums mt-1" style={{ color: cor }}>
+                                  {d.alunos}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground mt-0.5">cadastros</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
                 </section>
               )}
 
@@ -348,12 +394,12 @@ export function AnaliseSistemaModal({ open, onOpenChange }: AnaliseSistemaModalP
                   <Card className="border-border">
                     <CardContent className="pt-4 pb-2">
                       <BarChartComponent
-                        data={distEstado.map((d) => ({ name: d.estado, value: d.alunos }))}
+                        data={distEstado.map((d) => ({ name: d.estado, value: Math.round(Number(d.alunos) || 0) }))}
                         title="Alunos por estado"
                         subtitle="Eixo vertical: quantidade de alunos"
                         yAxisLabel="Alunos"
-                        color="#8b5cf6"
-                        yAxisDomain={[0, Math.max(...distEstado.map((d) => d.alunos), 1) * 1.1]}
+                        color="#4f46e5"
+                        yAxisDomain={[0, Math.max(...distEstado.map((d) => Number(d.alunos) || 0), 1) * 1.1]}
                       />
                     </CardContent>
                   </Card>
@@ -371,13 +417,13 @@ export function AnaliseSistemaModal({ open, onOpenChange }: AnaliseSistemaModalP
                       <BarChartComponent
                         data={distMunicipio.map((d) => ({
                           name: d.municipio.length > 12 ? d.municipio.slice(0, 12) + "…" : d.municipio,
-                          value: d.alunos,
+                          value: Math.round(Number(d.alunos) || 0),
                         }))}
                         title="Alunos por município"
                         subtitle="Top 15 — eixo vertical: quantidade de alunos"
                         yAxisLabel="Alunos"
-                        color="#06b6d4"
-                        yAxisDomain={[0, Math.max(...distMunicipio.map((d) => d.alunos), 1) * 1.1]}
+                        color="#0891b2"
+                        yAxisDomain={[0, Math.max(...distMunicipio.map((d) => Number(d.alunos) || 0), 1) * 1.1]}
                       />
                     </CardContent>
                   </Card>

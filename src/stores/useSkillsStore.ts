@@ -18,6 +18,7 @@ interface SkillsStore {
     fetchSkillsByGrades: (gradeIds: string[]) => Promise<Skill[]>;
     getSkillById: (skillId: string, subjectId?: string, gradeId?: string) => Skill | undefined;
     getSkillsByIds: (skillIds: string[], subjectId?: string, gradeId?: string) => Skill[];
+    invalidateCache: () => void;
 }
 
 export const useSkillsStore = create<SkillsStore>((set, get) => ({
@@ -325,5 +326,13 @@ export const useSkillsStore = create<SkillsStore>((set, get) => ({
 
     getSkillsByIds: (skillIds: string[], subjectId?: string, gradeId?: string) => {
         return skillIds.map(id => get().getSkillById(id, subjectId, gradeId)).filter(Boolean) as Skill[];
+    },
+
+    invalidateCache: () => {
+        set({
+            skillsBySubject: {},
+            skillsByGrade: {},
+            skillsBySubjectAndGrade: {},
+        });
     }
 })); 
