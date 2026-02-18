@@ -386,6 +386,41 @@ export async function getCompetitionRanking(
   return data as CompetitionRankingResponse;
 }
 
+export interface CompetitionRankingByScopeParams extends CompetitionRankingParams {
+  scope: 'global' | 'state' | 'municipality' | 'school';
+  state?: string;
+  city_id?: string;
+  school_id?: string;
+}
+
+/**
+ * Ranking da competição filtrado por escopo.
+ * GET /competitions/:id/ranking-by-scope?scope=...
+ */
+export async function getCompetitionRankingByScope(
+  id: string,
+  params: CompetitionRankingByScopeParams,
+): Promise<CompetitionRankingResponse> {
+  const { data } = await api.get<CompetitionRankingResponse & { ranking?: CompetitionRankingBackendItem[] }>(
+    `/competitions/${id}/ranking-by-scope`,
+    { params: params as Record<string, string | number> },
+  );
+  if (Array.isArray(data.ranking) && data.ranking.length >= 0) {
+    const entries = data.ranking
+      .map((item, i) => mapBackendRankingToEntry(item, i))
+      .sort((a, b) => a.position - b.position);
+    return {
+      entries,
+      total: entries.length,
+      page: data.page ?? 1,
+      page_size: data.page_size ?? entries.length,
+      my_position: data.my_position,
+      my_coins_earned: data.my_coins_earned,
+    };
+  }
+  return data as CompetitionRankingResponse;
+}
+
 /** Resposta de GET /competitions/:id/my-ranking (aluno com resultado) */
 export interface MyRankingResponse {
   position: number | null;

@@ -34,6 +34,7 @@ import { EnrollConfirmationModal } from '@/components/competitions/EnrollConfirm
 import { formatCompetitionLevel } from '@/utils/competitionLevel';
 import { getSubjectColors } from '@/utils/competitionSubjectColors';
 import { CompetitionCountdown } from '@/components/competitions/CompetitionCountdown';
+import { StudentCompetitionClassificationCard } from '@/components/competitions/StudentCompetitionClassificationCard';
 
 const OPEN_STATUSES = ['aberta', 'enrollment_open', 'active', 'scheduled'];
 
@@ -774,6 +775,9 @@ export default function CompetitionsStudent() {
           </Select>
         </div>
       </div>
+
+      {/* Card de classificação global em competições */}
+      <StudentCompetitionClassificationCard />
 
       {/* Filtros Avançados */}
       <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>

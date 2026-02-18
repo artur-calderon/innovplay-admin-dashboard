@@ -7,9 +7,16 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ArrowLeft, Loader2, Coins } from 'lucide-react';
-import { getCompetitionDetails, getMyRanking, type MyRankingResponse } from '@/services/competitionsApi';
+import {
+  getCompetitionDetails,
+  getMyRanking,
+  getCompetitionRankingByScope,
+  type MyRankingResponse,
+  type CompetitionRankingResponse,
+} from '@/services/competitionsApi';
 import { CompetitionRanking } from '@/components/competitions/CompetitionRanking';
 import { formatCoins } from '@/utils/coins';
+import { RankingScopeSelector, type RankingScopeSelection } from '@/components/competitions/RankingScopeSelector';
 
 export default function CompetitionRankingPage() {
   const { id } = useParams<{ id: string }>();
@@ -22,6 +29,9 @@ export default function CompetitionRankingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [myRanking, setMyRanking] = useState<MyRankingResponse | null>(null);
+  const [scopeSelection, setScopeSelection] = useState<RankingScopeSelection>({ scope: 'global' });
+  const [scopedRanking, setScopedRanking] = useState<CompetitionRankingResponse | null>(null);
+  const [scopedLoading, setScopedLoading] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -40,6 +50,32 @@ export default function CompetitionRankingPage() {
       .then(setMyRanking)
       .catch(() => setMyRanking({ position: null, total_participants: 0 }));
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    // Global usa o endpoint existente de ranking padrão dentro do componente CompetitionRanking.
+    if (scopeSelection.scope === 'global') {
+      setScopedRanking(null);
+      return;
+    }
+    setScopedLoading(true);
+    setScopedRanking(null);
+    getCompetitionRankingByScope(id, {
+      scope: scopeSelection.scope,
+      state: scopeSelection.state,
+      city_id: scopeSelection.city_id,
+      school_id: scopeSelection.school_id,
+    })
+      .then((res) => {
+        setScopedRanking(res);
+      })
+      .catch(() => {
+        setScopedRanking(null);
+      })
+      .finally(() => {
+        setScopedLoading(false);
+      });
+  }, [id, scopeSelection]);
 
   if (loading) {
     return (
@@ -108,6 +144,20 @@ export default function CompetitionRankingPage() {
         </CardContent>
       </Card>
 
+      {/* Seletor de escopo do ranking */}
+      <div className="flex items-center justify-between gap-3">
+        <RankingScopeSelector
+          value={scopeSelection}
+          onChange={setScopeSelection}
+        />
+        {scopedLoading && scopeSelection.scope !== 'global' && (
+          <p className="text-xs text-muted-foreground flex items-center gap-1">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Carregando ranking por escopo...
+          </p>
+        )}
+      </div>
+
       <CompetitionRanking
         competitionId={id!}
         competitionName={competition.name}
@@ -115,6 +165,7 @@ export default function CompetitionRankingPage() {
         rewardConfig={competition.reward_config ?? undefined}
         isRealtime={isRealtime}
         inline={false}
+        externalRanking={scopeSelection.scope === 'global' ? undefined : scopedRanking ?? undefined}
       />
     </div>
   );

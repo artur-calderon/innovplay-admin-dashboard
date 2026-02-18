@@ -27,11 +27,19 @@ interface PieChartProps {
 }
 
 const defaultColors = [
-    "#ef4444", // red-500 - Abaixo do Básico
-    "#fbbf24", // yellow-400 - Básico (amarelo mais claro)
-    "#4ade80", // green-400 - Adequado (verde claro)
-    "#16a34a", // green-600 - Avançado (verde escuro)
+    "#dc2626", // vermelho - Abaixo do Básico
+    "#eab308", // amarelo - Básico
+    "#22c55e", // verde - Adequado
+    "#15803d", // verde escuro - Avançado
 ]
+
+// Formata valor para exibição (evita 2.0000000000000004 por causa de float)
+function formatBarValue(value: number): string {
+    const n = Number(value);
+    if (Number.isInteger(n)) return String(n);
+    if (Number.isNaN(n)) return '0';
+    return n.toFixed(1);
+}
 
 // Componente para renderizar valores nas barras
 const renderCustomBarLabel = (props: { x: number; y: number; width: number; height: number; value: number }) => {
@@ -51,7 +59,7 @@ const renderCustomBarLabel = (props: { x: number; y: number; width: number; heig
             fontSize={12}
             fontWeight={500}
         >
-            {typeof value === 'number' ? value.toFixed(1) : value}
+            {formatBarValue(value)}
         </text>
     );
 };
@@ -100,6 +108,12 @@ export function BarChartComponent({
                         domain={yAxisDomain}
                         label={{ value: yAxisLabel, angle: -90, position: 'insideLeft', fill: isDarkMode ? 'hsl(var(--foreground))' : '#374151' }}
                         tick={{ fill: isDarkMode ? 'hsl(var(--foreground))' : '#374151' }}
+                        tickFormatter={(value) => {
+                            const n = Number(value);
+                            if (Number.isInteger(n)) return String(n);
+                            if (Math.abs(n) < 0.01 || Math.abs(n) > 1e6) return n.toExponential(0);
+                            return n.toFixed(1);
+                        }}
                     />
                     <Tooltip
                         contentStyle={{
@@ -117,7 +131,7 @@ export function BarChartComponent({
                                                 {label}
                                             </span>
                                             <span className="text-lg font-bold text-foreground">
-                                                {typeof payload[0].value === 'number' ? payload[0].value.toFixed(1) : payload[0].value}
+                                                {typeof payload[0].value === 'number' ? formatBarValue(payload[0].value) : payload[0].value}
                                             </span>
                                         </div>
                                     </div>
@@ -237,16 +251,19 @@ export function PieChartComponent({
                             return null
                         }}
                     />
-                    <Legend
-                        verticalAlign="bottom"
-                        height={36}
-                        formatter={(value, entry, index) => (
-                            <span className="text-sm text-foreground">{value}</span>
-                        )}
-                        wrapperStyle={{
-                            color: isDarkMode ? 'hsl(var(--foreground))' : '#374151',
-                        }}
-                    />
+                    {data.length <= 6 && (
+                        <Legend
+                            layout="horizontal"
+                            verticalAlign="bottom"
+                            height={36}
+                            formatter={(value, entry, index) => (
+                                <span className="text-sm text-foreground">{value}</span>
+                            )}
+                            wrapperStyle={{
+                                color: isDarkMode ? 'hsl(var(--foreground))' : '#374151',
+                            }}
+                        />
+                    )}
                 </PieChart>
             </ResponsiveContainer>
         </div>
@@ -331,28 +348,31 @@ export function DonutChartComponent({
                             return null
                         }}
                     />
-                    <Legend
-                        verticalAlign="bottom"
-                        height={36}
-                        formatter={(value) => (
-                            <span className="text-sm text-foreground">{value}</span>
-                        )}
-                        wrapperStyle={{
-                            color: isDarkMode ? 'hsl(var(--foreground))' : '#374151',
-                        }}
-                    />
+                    {data.length <= 6 && (
+                        <Legend
+                            layout="horizontal"
+                            verticalAlign="bottom"
+                            height={36}
+                            formatter={(value) => (
+                                <span className="text-sm text-foreground">{value}</span>
+                            )}
+                            wrapperStyle={{
+                                color: isDarkMode ? 'hsl(var(--foreground))' : '#374151',
+                            }}
+                        />
+                    )}
                 </PieChart>
             </ResponsiveContainer>
             <div className="flex justify-center mt-2">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-4 gap-y-1 text-sm">
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-x-3 gap-y-2 text-sm w-full max-w-2xl">
                     {data.map((item, index) => (
-                        <div key={item.name} className="flex items-center gap-2">
+                        <div key={item.name} className="flex items-center gap-2 min-w-0">
                             <div
                                 className="w-3 h-3 rounded-full shrink-0"
                                 style={{ backgroundColor: colors[index % colors.length] }}
                             />
-                            <span className="text-foreground truncate" title={item.name}>{item.name}</span>
-                            <span className="text-muted-foreground tabular-nums">({item.value})</span>
+                            <span className="text-foreground truncate whitespace-nowrap" title={item.name}>{item.name}</span>
+                            <span className="text-muted-foreground tabular-nums shrink-0">({item.value})</span>
                         </div>
                     ))}
                 </div>
