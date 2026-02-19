@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "@/context/authContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,6 +55,7 @@ interface FormData {
 }
 
 export default function Serie() {
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [series, setSeries] = useState<Serie[]>([]);
   const [educationStages, setEducationStages] = useState<EducationStage[]>([]);
@@ -321,22 +323,26 @@ export default function Serie() {
                   </p>
                 </div>
                 <div className="flex gap-2 mt-4">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => openEditModal(serie)}
-                  >
-                    <Edit className="h-3 w-3 mr-1" />
-                    Editar
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => openDeleteDialog(serie)}
-                  >
-                    <Trash2 className="h-3 w-3 mr-1" />
-                    Excluir
-                  </Button>
+                  {user?.role === 'admin' && (
+                    <>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => openEditModal(serie)}
+                      >
+                        <Edit className="h-3 w-3 mr-1" />
+                        Editar
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => openDeleteDialog(serie)}
+                      >
+                        <Trash2 className="h-3 w-3 mr-1" />
+                        Excluir
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             </CardContent>

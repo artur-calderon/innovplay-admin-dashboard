@@ -300,26 +300,50 @@ export default function Curso() {
     try {
       // Buscar município do usuário
       const context = await getUserHierarchyContext(user.id, user.role);
-      
+
       if (!context.municipality?.id) {
         setSchoolsWithCourses([]);
         // Não fazer return aqui - deixar o finally executar
       } else {
         // Buscar escolas do município
-        const schoolsResponse = await api.get(`/school/city/${context.municipality.id}`);
-        const schools = schoolsResponse.data || [];
-        
+        let schools = [];
+        try {
+          const schoolsResponse = await api.get(`/school/city/${context.municipality.id}`);
+          schools = schoolsResponse.data || [];
+        } catch (error: any) {
+          // Se a API retornar erro 404/400, SEMPRE exibir exatamente a mensagem do backend (campo message), nunca mensagem genérica
+          if (error?.response?.status === 404 || error?.response?.status === 400) {
+            setSchoolsWithCourses([]);
+            const backendMsg = error?.response?.data?.message;
+            toast({
+              title: backendMsg ? 'Aviso' : 'Erro',
+              description: backendMsg || `Erro ${error?.response?.status} ao buscar escolas do município.`,
+              variant: backendMsg ? 'default' : 'destructive',
+            });
+            return;
+          } else {
+            console.error('Erro ao buscar escolas do município:', error);
+            toast({
+              title: 'Erro',
+              description: 'Erro ao buscar escolas do município.',
+              variant: 'destructive',
+            });
+            setSchoolsWithCourses([]);
+            return;
+          }
+        }
+
         // Para cada escola, buscar cursos vinculados
         const schoolsWithCoursesData: SchoolWithCourses[] = await Promise.all(
           schools.map(async (school: any) => {
             try {
               const coursesResponse = await api.get(`/school/${school.id}/courses`);
               const coursesData = coursesResponse.data;
-              
-              const courses = coursesData?.courses && Array.isArray(coursesData.courses) 
-                ? coursesData.courses 
+
+              const courses = coursesData?.courses && Array.isArray(coursesData.courses)
+                ? coursesData.courses
                 : [];
-              
+
               return {
                 id: school.id,
                 name: school.name || school.nome,
@@ -338,15 +362,15 @@ export default function Curso() {
             }
           })
         );
-        
+
         setSchoolsWithCourses(schoolsWithCoursesData);
       }
     } catch (error) {
-      console.error("Erro ao buscar escolas com cursos:", error);
+      console.error('Erro ao buscar escolas com cursos:', error);
       toast({
-        title: "Erro",
-        description: "Erro ao carregar escolas e cursos. Verifique sua conexão.",
-        variant: "destructive",
+        title: 'Erro',
+        description: 'Erro inesperado ao carregar escolas e cursos.',
+        variant: 'destructive',
       });
       setSchoolsWithCourses([]);
     } finally {

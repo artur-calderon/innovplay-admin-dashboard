@@ -67,15 +67,8 @@ api.interceptors.response.use(
             console.error('Timeout na requisição:', error.message)
             throw new Error('A requisição demorou muito para responder. O servidor pode estar sobrecarregado ou processando muitos dados.')
         } else if (error.response?.status === 404) {
-            // Recurso não encontrado - mas não lançar erro genérico para endpoints que podem não estar implementados
-            const url = error.config?.url || '';
-            // Endpoints do Play TV e Skills podem não estar implementados ainda, então preservar o erro original
-            if (url.includes('/play-tv/') || url.includes('/skills/')) {
-                // Preservar o erro original com response para que o código possa detectar o 404
-                return Promise.reject(error);
-            }
-            // Para outros endpoints, lançar erro genérico
-            throw new Error('Recurso não encontrado no servidor.')
+            // Recurso não encontrado - preservar SEMPRE o erro original para que o frontend possa acessar error.response.data.message
+            return Promise.reject(error);
         } else if (error.response?.status >= 500) {
             // ✅ CORRIGIDO: Preservar erro original para endpoints críticos
             // Endpoints que precisam de tratamento específico de erro
