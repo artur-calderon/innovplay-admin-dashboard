@@ -110,25 +110,36 @@ const HabilidadesPage = () => {
         const allSubjects = Array.isArray(subjectsRes.data) ? subjectsRes.data : [];
         const skillsMap = new Map<string, Skill>();
 
-        for (const subject of allSubjects) {
-          try {
-            const res = await api.get(`/skills/subject/${subject.id}`);
-            const list: Skill[] = Array.isArray(res.data)
-              ? res.data.map((s: { id: string; code: string; description: string }) => ({
-                  id: s.id,
-                  code: s.code,
-                  description: s.description,
-                  name: `${s.code} - ${s.description}`,
-                }))
-              : [];
+        const results = await Promise.allSettled(
+          allSubjects.map((subject) => api.get(`/skills/subject/${subject.id}`))
+        );
+
+        let failedCount = 0;
+        results.forEach((result, index) => {
+          if (result.status === "fulfilled" && Array.isArray(result.value?.data)) {
+            const list: Skill[] = result.value.data.map((s: { id: string; code: string; description: string }) => ({
+              id: s.id,
+              code: s.code,
+              description: s.description,
+              name: `${s.code} - ${s.description}`,
+            }));
             list.forEach((s) => {
               if (!skillsMap.has(s.code)) skillsMap.set(s.code, s);
             });
-          } catch {
-            /* ignorar */
+          } else {
+            failedCount += 1;
           }
-        }
+        });
+
         setSkills(Array.from(skillsMap.values()));
+
+        if (failedCount > 0) {
+          toast({
+            title: "Algumas disciplinas não carregaram",
+            description: `${failedCount} disciplina(s) retornaram erro. As habilidades exibidas são das demais.`,
+            variant: "destructive",
+          });
+        }
       }
     } catch (error) {
       console.error("Erro ao carregar habilidades:", error);
@@ -136,7 +147,7 @@ const HabilidadesPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [subjectId, gradeId, fetchSkills, fetchSkillsByGrade]);
+  }, [subjectId, gradeId, fetchSkills, fetchSkillsByGrade, toast]);
 
   useEffect(() => {
     loadSkills();
