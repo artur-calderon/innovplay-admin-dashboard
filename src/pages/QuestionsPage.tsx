@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Copy, HelpCircle, BookOpen } from "lucide-react";
@@ -18,6 +18,7 @@ import QuestionPreview from "@/components/evaluations/questions/QuestionPreview"
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { getDifficultyColor } from "@/lib/utils";
+import { useSkillsStore } from "@/stores/useSkillsStore";
 
 
 // Estilos customizados para skeleton mais fluído
@@ -52,7 +53,8 @@ interface QuestionApiResponse {
   type: string;
   difficulty: string;
   value: number;
-  skills: string[] | string;
+  skills?: string[] | string | { id: string; code?: string }[];
+  skill_code?: string;
   topics: string[] | string;
   subject?: { id: string; name: string };
   grade?: { id: string; name: string };
@@ -165,6 +167,9 @@ const SkeletonRow = ({ index }: { index: number }) => (
       <div className="h-4 w-8 rounded" style={shimmerStyle} />
     </td>
     <td className="px-3 py-2">
+      <div className="h-4 w-20 rounded" style={shimmerStyle} />
+    </td>
+    <td className="px-3 py-2">
       <div className="flex items-center gap-1">
         <div className="h-8 w-8 rounded" style={shimmerStyle} />
         <div className="h-8 w-8 rounded" style={shimmerStyle} />
@@ -263,6 +268,10 @@ const QuestionsPage = () => {
   const [viewQuestion, setViewQuestion] = useState<Question | null>(null);
   const [deleteQuestionId, setDeleteQuestionId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  // Mapeamento skillId -> code para exibir código da habilidade (não o id)
+  const [skillIdToCode, setSkillIdToCode] = useState<Record<string, string>>({});
+  const { fetchSkills } = useSkillsStore();
 
   // Função de ordenação
   const sortQuestions = (questions: Question[], sortBy: string): Question[] => {
@@ -566,6 +575,23 @@ const QuestionsPage = () => {
         };
 
         const creatorId = resolveCreatorId();
+
+        // Código da habilidade: API pode enviar skill_code, ou skills como array de { id, code }
+        let skillCode: string | undefined;
+        let skillsArr: string[] = [];
+        if ((q as QuestionApiResponse).skill_code) {
+          skillCode = (q as QuestionApiResponse).skill_code;
+        } else if (Array.isArray(q.skills) && q.skills.length > 0) {
+          const first = q.skills[0];
+          if (typeof first === 'object' && first !== null && 'code' in first) {
+            skillCode = (q.skills as { id: string; code?: string }[]).map(s => s.code).filter(Boolean).join(', ');
+            skillsArr = (q.skills as { id: string; code?: string }[]).map(s => s.id);
+          } else {
+            skillsArr = (q.skills as string[]).map((s: string) => (typeof s === 'string' ? s.trim() : String(s)));
+          }
+        } else if (q.skills && typeof q.skills === 'string') {
+          skillsArr = q.skills.split(',').map(s => s.trim());
+        }
         
         return {
           id: q.id,
@@ -582,7 +608,8 @@ const QuestionsPage = () => {
           formattedText: q.formattedText,
           formattedSolution: q.formattedSolution,
           options: q.options || [],
-          skills: Array.isArray(q.skills) ? q.skills : (q.skills && typeof q.skills === 'string' ? q.skills.split(',').map(s => s.trim()) : []),
+          skills: skillsArr,
+          skillCode,
           created_by: creatorId,
           educationStage: null
         };
@@ -736,6 +763,50 @@ const QuestionsPage = () => {
       fetchQuestions();
     }
   }, [user.id, filterType, fetchQuestions]);
+
+  // Carregar habilidades por disciplina/série em paralelo; atualizar o mapa assim que cada resposta chegar
+  useEffect(() => {
+    if (questions.length === 0) {
+      setSkillIdToCode({});
+      return;
+    }
+    const pairs = new Set<string>();
+    questions.forEach(q => {
+      const sid = q.subject?.id;
+      const gid = q.grade?.id;
+      if (sid) pairs.add(`${sid}:${gid || ''}`);
+    });
+    let cancelled = false;
+    const keys = Array.from(pairs);
+    // Buscar todas em paralelo; cada uma atualiza o estado ao terminar para exibir códigos o mais cedo possível
+    keys.forEach((key) => {
+      const [subjectId, gradeId] = key.split(':');
+      fetchSkills(subjectId, gradeId || undefined)
+        .then((skills) => {
+          if (cancelled) return;
+          const map: Record<string, string> = {};
+          skills.forEach(s => { map[s.id] = s.code; });
+          setSkillIdToCode(prev => ({ ...prev, ...map }));
+        })
+        .catch(() => {});
+    });
+    return () => { cancelled = true; };
+  }, [questions, fetchSkills]);
+
+  // Exibir código da habilidade: skillCode da API ou resolução por id
+  const getSkillCodeDisplay = (question: Question): string => {
+    if (question.skillCode) return question.skillCode;
+    const arr = Array.isArray(question.skills) ? question.skills : [];
+    if (arr.length === 0) return '—';
+    const codes = arr.map(s => {
+      const code = skillIdToCode[s];
+      if (code) return code;
+      // Se parece UUID (hex com hífens), ainda não resolvemos
+      if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(String(s).trim())) return null;
+      return s; // já é código
+    }).filter(Boolean);
+    return codes.length ? codes.join(', ') : '—';
+  };
 
   // Reset page when filters or sort change
   useEffect(() => {
@@ -1134,7 +1205,6 @@ const QuestionsPage = () => {
 
   const QuestionCard = React.memo(({ question, index }: { question: Question; index: number }) => {
     const handleView = useCallback(() => setViewQuestion(question), [question]);
-    const handleEdit = useCallback(() => navigate(`/app/cadastros/questao/editar/${question.id}`), [question.id]);
     const handleDeleteClick = useCallback(() => setDeleteQuestionId(question.id), [question.id]);
     const handleDuplicateClick = useCallback(() => handleDuplicate(question), [question]);
     const handleSelect = useCallback((checked: boolean) => handleSelectOne(question.id, checked), [question.id]);
@@ -1179,6 +1249,11 @@ const QuestionsPage = () => {
           >
             {question.difficulty}
           </Badge>
+          {getSkillCodeDisplay(question) !== '—' && (
+            <Badge variant="secondary" className="text-xs font-mono" title="Habilidade vinculada">
+              {getSkillCodeDisplay(question)}
+            </Badge>
+          )}
         </div>
         
         {/* Meta info and actions */}
@@ -1216,11 +1291,13 @@ const QuestionsPage = () => {
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  onClick={handleEdit}
+                  asChild
                   className="h-8 w-8 p-0 hover:bg-orange-100 dark:hover:bg-orange-950/30"
-                  title="Editar"
+                  title="Editar (clique com botão direito para abrir em nova guia)"
                 >
-                  <Pencil className="h-3.5 w-3.5" />
+                  <Link to={`/app/cadastros/questao/editar/${question.id}`}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Link>
                 </Button>
                 <Button 
                   variant="ghost" 
@@ -1435,6 +1512,7 @@ const QuestionsPage = () => {
                   <th className="px-3 py-2 text-left text-sm font-medium">Dificuldade</th>
                   <th className="px-3 py-2 text-left text-sm font-medium">Tipo</th>
                   <th className="px-3 py-2 text-left text-sm font-medium">Valor</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">Habilidade</th>
                   <th className="px-3 py-2 text-left text-sm font-medium">Ações</th>
                 </tr>
               </thead>
@@ -1474,6 +1552,7 @@ const QuestionsPage = () => {
                   <th className="px-3 py-2 text-left text-sm font-medium">Dificuldade</th>
                   <th className="px-3 py-2 text-left text-sm font-medium">Tipo</th>
                   <th className="px-3 py-2 text-left text-sm font-medium">Valor</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">Habilidade</th>
                   <th className="px-3 py-2 text-left text-sm font-medium">Ações</th>
                 </tr>
               </thead>
@@ -1511,6 +1590,9 @@ const QuestionsPage = () => {
                         {question.type === "multipleChoice" ? "Múltipla Escolha" : "Dissertativa"}
                       </td>
                       <td className="px-3 py-2 text-sm font-mono">{question.value}</td>
+                      <td className="px-3 py-2 text-sm text-muted-foreground max-w-[140px] truncate" title={getSkillCodeDisplay(question)}>
+                        {getSkillCodeDisplay(question)}
+                      </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1">
                           <Button 
@@ -1534,10 +1616,12 @@ const QuestionsPage = () => {
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                onClick={() => navigate(`/app/cadastros/questao/editar/${question.id}`)}
-                                title="Editar"
+                                asChild
+                                title="Editar (clique com botão direito para abrir em nova guia)"
                               >
-                                <Pencil className="h-3 w-3" />
+                                <Link to={`/app/cadastros/questao/editar/${question.id}`}>
+                                  <Pencil className="h-3 w-3" />
+                                </Link>
                               </Button>
                               <Button 
                                 variant="ghost" 
