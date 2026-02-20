@@ -140,20 +140,20 @@ export function ManageSchoolLinksModal({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="w-[95vw] max-w-6xl h-[95vh] max-h-[95vh] overflow-hidden flex flex-col p-0">
-        <DialogHeader className="px-4 sm:px-6 py-4 border-b bg-gradient-to-r from-orange-50 to-red-50">
-          <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2 text-lg sm:text-xl">
-            <div className="flex items-center gap-2">
-              <Building className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600" />
+        <DialogHeader className="px-4 sm:px-6 py-4 border-b bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/40 dark:to-red-950/30 border-border">
+          <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2 text-lg sm:text-xl text-foreground">
+            <span className="flex items-center gap-2">
+              <Building className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600 dark:text-orange-400 shrink-0" />
               <span className="font-semibold">Gerenciar Vínculos</span>
-            </div>
-            <span className="text-base sm:text-lg font-medium text-orange-700 sm:ml-2">
+            </span>
+            <span className="text-base sm:text-lg font-medium text-orange-700 dark:text-orange-300 sm:ml-2">
               {schoolName}
             </span>
           </DialogTitle>
-          <DialogDescription className="text-sm sm:text-base text-muted-foreground mt-2">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
-              <span>Visualize e gerencie diretores e coordenadores vinculados à escola</span>
-            </div>
+          <DialogDescription asChild>
+            <p className="text-sm sm:text-base text-muted-foreground mt-2">
+              Visualize e gerencie diretores e coordenadores vinculados à escola
+            </p>
           </DialogDescription>
         </DialogHeader>
 
@@ -169,7 +169,7 @@ export function ManageSchoolLinksModal({
               <div className="flex flex-col min-h-0">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                   <h3 className="font-semibold text-base sm:text-lg flex items-center gap-2">
-                    <Users className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
+                    <Users className="h-4 w-4 sm:h-5 sm:w-5 text-red-600 dark:text-red-400" />
                     <span>Diretores</span>
                     <Badge variant="secondary" className="text-xs px-2 py-0.5">
                       {directors.length}
@@ -215,20 +215,20 @@ export function ManageSchoolLinksModal({
                               </div>
                             </div>
                             <div className="flex flex-col sm:flex-row gap-1 sm:gap-2 flex-shrink-0">
-                              <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">
+                              <Badge variant="outline" className="text-xs bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-200 border-red-200 dark:border-red-800">
                                 Diretor
                               </Badge>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-red-50"
+                                className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-red-50 dark:hover:bg-red-950/30"
                                 onClick={() => handleRemoveLink(link.user.id)}
                                 disabled={isRemoving === link.user.id}
                               >
                                 {isRemoving === link.user.id ? (
-                                  <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin text-red-600" />
+                                  <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin text-red-600 dark:text-red-400" />
                                 ) : (
-                                  <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
+                                  <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-red-600 dark:text-red-400" />
                                 )}
                               </Button>
                             </div>
@@ -244,7 +244,7 @@ export function ManageSchoolLinksModal({
               <div className="flex flex-col min-h-0">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                   <h3 className="font-semibold text-base sm:text-lg flex items-center gap-2">
-                    <Users className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" />
+                    <Users className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 dark:text-orange-400" />
                     <span>Coordenadores</span>
                     <Badge variant="secondary" className="text-xs px-2 py-0.5">
                       {coordinators.length}
@@ -290,20 +290,20 @@ export function ManageSchoolLinksModal({
                               </div>
                             </div>
                             <div className="flex flex-col sm:flex-row gap-1 sm:gap-2 flex-shrink-0">
-                              <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
+                              <Badge variant="outline" className="text-xs bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-200 border-orange-200 dark:border-orange-800">
                                 Coordenador
                               </Badge>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-orange-50"
+                                className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-orange-50 dark:hover:bg-orange-950/30"
                                 onClick={() => handleRemoveLink(link.user.id)}
                                 disabled={isRemoving === link.user.id}
                               >
                                 {isRemoving === link.user.id ? (
-                                  <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin text-orange-600" />
+                                  <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin text-orange-600 dark:text-orange-400" />
                                 ) : (
-                                  <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-orange-600" />
+                                  <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-orange-600 dark:text-orange-400" />
                                 )}
                               </Button>
                             </div>
