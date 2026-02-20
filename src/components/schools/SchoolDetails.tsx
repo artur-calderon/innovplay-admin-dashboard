@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/authContext";
-import { UserPlus, Eye, Pencil, Trash2, Edit, Loader2, ArrowLeft, Building, Users, GraduationCap, MapPin, Globe, Calendar, Plus, BookOpen, School, Upload, FileSpreadsheet } from "lucide-react";
+import { UserPlus, Eye, Pencil, Trash2, Edit, Loader2, ArrowLeft, Building, Users, GraduationCap, MapPin, Globe, Calendar, Plus, BookOpen, School, Upload, FileSpreadsheet, MoveRight } from "lucide-react";
 import { AddUserForm } from "./AddUserForm";
 import { CreateClassForm } from "./CreateClassForm";
 import { LinkTeacherModal } from "./LinkTeacherModal";
@@ -21,6 +21,31 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { api } from "@/lib/api";
 import SchoolForm from "./SchoolForm";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -104,6 +129,16 @@ export default function SchoolDetails() {
   const [showLinkTeacherModal, setShowLinkTeacherModal] = useState(false);
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
   const [showPasswordReportModal, setShowPasswordReportModal] = useState(false);
+  
+  // Estados para gerenciamento de turmas
+  const [showDeleteClassDialog, setShowDeleteClassDialog] = useState(false);
+  const [showMoveClassDialog, setShowMoveClassDialog] = useState(false);
+  const [classToDelete, setClassToDelete] = useState<Class | null>(null);
+  const [classToMove, setClassToMove] = useState<Class | null>(null);
+  const [targetSchoolId, setTargetSchoolId] = useState<string>("");
+  const [availableSchools, setAvailableSchools] = useState<School[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isMoving, setIsMoving] = useState(false);
 
   useEffect(() => {
     const fetchSchool = async () => {
@@ -403,6 +438,172 @@ export default function SchoolDetails() {
         variant: "destructive",
       });
     }
+  };
+
+  // Buscar escolas disponíveis do mesmo município
+  const fetchAvailableSchools = async () => {
+    if (!school) return;
+
+    try {
+      const response = await api.get("/school");
+      const allSchools = response.data || [];
+      
+      // Filtrar escolas do mesmo município, exceto a escola atual
+      const filteredSchools = allSchools.filter(
+        (s: School) => s.city_id === school.city_id && s.id !== school.id
+      );
+      
+      setAvailableSchools(filteredSchools);
+    } catch (error) {
+      console.error("Erro ao buscar escolas:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar escolas disponíveis",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Excluir turma
+  const handleDeleteClass = async () => {
+    if (!classToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await api.delete(`/classes/${classToDelete.id}`);
+      
+      toast({
+        title: "Sucesso",
+        description: "Turma excluída com sucesso",
+      });
+      
+      // Recarregar turmas
+      window.location.reload();
+    } catch (error: unknown) {
+      console.error("Erro ao excluir turma:", error);
+      
+      let errorTitle = "Erro ao excluir";
+      let errorMessage = "Ocorreu um erro ao excluir a turma";
+
+      // Verificar se é um erro do Axios com resposta
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { 
+          response?: { 
+            status?: number;
+            data?: { 
+              mensagem?: string; 
+              erro?: string;
+              message?: string;
+            } 
+          } 
+        };
+        
+        if (axiosError.response?.data) {
+          const data = axiosError.response.data;
+          
+          // Se houver mensagem específica do backend, usar ela
+          if (data.mensagem) {
+            errorMessage = data.mensagem;
+            errorTitle = data.erro || "Não é possível excluir";
+          } else if (data.erro) {
+            errorMessage = data.erro;
+          } else if (data.message) {
+            errorMessage = data.message;
+          }
+        }
+      }
+
+      toast({
+        title: errorTitle,
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteClassDialog(false);
+      setClassToDelete(null);
+    }
+  };
+
+  // Mover turma para outra escola
+  const handleMoveClass = async () => {
+    if (!classToMove || !targetSchoolId) return;
+
+    setIsMoving(true);
+    try {
+      const response = await api.put(`/classes/${classToMove.id}`, {
+        school_id: targetSchoolId
+      });
+      
+      let successMessage = "Turma movida com sucesso";
+      
+      // Verificar se houve renomeação automática
+      if (response.data?.auto_renamed) {
+        successMessage = `Turma movida e renomeada de "${response.data.auto_renamed.old_name}" para "${response.data.auto_renamed.new_name}" (nome já existia na escola destino)`;
+      }
+      
+      toast({
+        title: "Sucesso",
+        description: successMessage,
+      });
+      
+      // Recarregar turmas
+      window.location.reload();
+    } catch (error: unknown) {
+      console.error("Erro ao mover turma:", error);
+      
+      let errorTitle = "Erro ao mover turma";
+      let errorMessage = "Ocorreu um erro ao mover a turma";
+
+      // Verificar se é um erro do Axios com resposta
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { 
+          response?: { 
+            status?: number;
+            data?: { 
+              mensagem?: string; 
+              erro?: string;
+              error?: string;
+              details?: string;
+            } 
+          } 
+        };
+        
+        if (axiosError.response?.data) {
+          const data = axiosError.response.data;
+          
+          if (data.details) {
+            errorMessage = data.details;
+            errorTitle = data.error || "Erro ao mover turma";
+          } else if (data.mensagem) {
+            errorMessage = data.mensagem;
+            errorTitle = data.erro || "Erro ao mover turma";
+          } else if (data.erro) {
+            errorMessage = data.erro;
+          } else if (data.error) {
+            errorMessage = data.error;
+          }
+        }
+      }
+
+      toast({
+        title: errorTitle,
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsMoving(false);
+      setShowMoveClassDialog(false);
+      setClassToMove(null);
+      setTargetSchoolId("");
+    }
+  };
+
+  // Abrir diálogo de mover turma
+  const handleOpenMoveClassDialog = async (classItem: Class) => {
+    setClassToMove(classItem);
+    await fetchAvailableSchools();
+    setShowMoveClassDialog(true);
   };
 
   if (isLoadingSchool) {
@@ -838,7 +1039,7 @@ export default function SchoolDetails() {
                             )}
                           </div>
                           {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 flex-wrap">
                               <Button 
                                 variant="outline" 
                                 size="sm"
@@ -849,6 +1050,30 @@ export default function SchoolDetails() {
                               >
                                 <Pencil className="h-4 w-4 mr-2" />
                                 Gerenciar
+                              </Button>
+                              
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => handleOpenMoveClassDialog(classItem)}
+                                title="Mover turma para outra escola"
+                              >
+                                <MoveRight className="h-4 w-4 mr-2" />
+                                Mover
+                              </Button>
+                              
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => {
+                                  setClassToDelete(classItem);
+                                  setShowDeleteClassDialog(true);
+                                }}
+                                className="text-red-600 hover:text-red-700"
+                                title="Excluir turma"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Excluir
                               </Button>
                             </div>
                           )}
@@ -1024,6 +1249,124 @@ export default function SchoolDetails() {
           classes={classes}
         />
       )}
+
+      {/* Delete Class Dialog */}
+      <AlertDialog open={showDeleteClassDialog} onOpenChange={setShowDeleteClassDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão de Turma</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir a turma <strong>{classToDelete?.name}</strong>?
+              <br /><br />
+              Esta ação não pode ser desfeita. Todos os alunos e professores serão desvinculados da turma.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteClass}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                "Excluir Turma"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Move Class Dialog */}
+      <Dialog open={showMoveClassDialog} onOpenChange={setShowMoveClassDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Mover Turma para Outra Escola</DialogTitle>
+            <DialogDescription>
+              Mova a turma <strong>{classToMove?.name}</strong> para outra escola do mesmo município.
+              <br /><br />
+              Os alunos da turma serão automaticamente transferidos para a nova escola.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Escola de destino</label>
+              <Select
+                value={targetSchoolId}
+                onValueChange={setTargetSchoolId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma escola" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSchools.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      Nenhuma outra escola disponível no mesmo município
+                    </div>
+                  ) : (
+                    availableSchools.map((school) => (
+                      <SelectItem key={school.id} value={school.id}>
+                        {school.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              {availableSchools.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Apenas escolas do mesmo município ({school?.city.name}) estão disponíveis
+                </p>
+              )}
+            </div>
+
+            {targetSchoolId && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  <strong>Atenção:</strong> Se já existir uma turma com o mesmo nome na escola destino, 
+                  a turma será automaticamente renomeada (ex: "5º Ano A" → "5º Ano A (2)").
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowMoveClassDialog(false);
+                setClassToMove(null);
+                setTargetSchoolId("");
+              }}
+              disabled={isMoving}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleMoveClass}
+              disabled={!targetSchoolId || isMoving}
+            >
+              {isMoving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Movendo...
+                </>
+              ) : (
+                <>
+                  <MoveRight className="h-4 w-4 mr-2" />
+                  Mover Turma
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

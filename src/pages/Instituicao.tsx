@@ -240,11 +240,45 @@ export default function Instituicao() {
         title: "Sucesso",
         description: "Instituição excluída com sucesso",
       });
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Erro ao excluir instituição:", error);
+      
+      let errorTitle = "Erro ao excluir";
+      let errorMessage = "Ocorreu um erro ao excluir a instituição";
+
+      // Verificar se é um erro do Axios com resposta
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { 
+          response?: { 
+            status?: number;
+            data?: { 
+              mensagem?: string; 
+              erro?: string;
+              dependencias?: {
+                turmas?: number;
+                professores?: number;
+                alunos?: number;
+              }
+            } 
+          } 
+        };
+        
+        if (axiosError.response?.data) {
+          const data = axiosError.response.data;
+          
+          // Se houver mensagem específica do backend, usar ela
+          if (data.mensagem) {
+            errorMessage = data.mensagem;
+            errorTitle = data.erro || "Não é possível excluir";
+          } else if (data.erro) {
+            errorMessage = data.erro;
+          }
+        }
+      }
+
       toast({
-        title: "Erro",
-        description: "Erro ao excluir instituição",
+        title: errorTitle,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -539,9 +573,9 @@ export default function Instituicao() {
               {filteredAndSortedInstituicoes.map((instituicao) => (
                                  <Card key={instituicao.id} className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02]">
                    <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-                     <CardTitle className="text-base md:text-lg font-semibold flex items-center gap-2 min-w-0 flex-1">
-                       <Building className="h-4 w-4 md:h-5 md:w-5 text-orange-600 flex-shrink-0" />
-                       <span className="truncate">{instituicao.name}</span>
+                     <CardTitle className="text-base md:text-lg font-semibold flex items-start gap-2 min-w-0 flex-1">
+                       <Building className="h-4 w-4 md:h-5 md:w-5 text-orange-600 flex-shrink-0 mt-0.5" />
+                       <span className="break-words">{instituicao.name}</span>
                      </CardTitle>
                      <Badge variant="default" className="text-xs flex-shrink-0 ml-2">
                        Ativa

@@ -33,8 +33,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { AnswerSheetConfig, StudentAnswerSheet, School as SchoolType, Serie, Turma, Estado, Municipio, Gabarito, GabaritosResponse, GenerateResponseData, TaskStatusResult, BatchDownloadResponse, BatchClass } from '@/types/answer-sheet';
-import { FormFiltersApiService } from '@/services/formFiltersApi';
+import { AnswerSheetConfig, StudentAnswerSheet, School as SchoolType, Serie, Turma, Estado, Municipio, Gabarito, GabaritosResponse } from '@/types/answer-sheet';
 
 type Step = 1 | 2;
 
@@ -44,36 +43,48 @@ export default function AnswerSheetGenerator() {
   const navigate = useNavigate();
 
   // Estados da Etapa 1: Configuração
-  // Filtros geográficos
+  // Filtros hierárquicos (cascata dinâmica)
+  type FilterLevel = 'state' | 'city' | 'school' | 'grade' | 'class';
+  
+  interface FilterOption {
+    id: string;
+    name: string;
+    count: number;
+  }
+  
+  interface SelectedFilters {
+    state?: string;
+    city?: string;
+    school_id?: string;
+    grade_id?: string;
+    class_id?: string;
+  }
+
   const [estados, setEstados] = useState<Estado[]>([]);
-  const [selectedEstado, setSelectedEstado] = useState('');
-  const [selectedMunicipio, setSelectedMunicipio] = useState('');
-  const [municipios, setMunicipios] = useState<Municipio[]>([]);
-  const [isLoadingEstados, setIsLoadingEstados] = useState(false);
-  const [isLoadingMunicipios, setIsLoadingMunicipios] = useState(false);
-  
-  // Filtros de escola/turma
-  const [schools, setSchools] = useState<SchoolType[]>([]);
-  const [series, setSeries] = useState<Serie[]>([]);
-  const [turmas, setTurmas] = useState<Turma[]>([]);
-  const [selectedSchool, setSelectedSchool] = useState('');
-  const [selectedSerie, setSelectedSerie] = useState('');
-  const [selectedTurma, setSelectedTurma] = useState('');
-  const [provaTitulo, setProvaTitulo] = useState('');
-  const [gradeName, setGradeName] = useState<string>('');
-  const [isLoadingSchools, setIsLoadingSchools] = useState(false);
-  const [isLoadingSeries, setIsLoadingSeries] = useState(false);
-  const [isLoadingTurmas, setIsLoadingTurmas] = useState(false);
-  
-  // Estados para feedback visual
-  const [noSchoolsMessage, setNoSchoolsMessage] = useState<string>('');
-  const [noTurmasMessage, setNoTurmasMessage] = useState<string>('');
-  const [noSeriesMessage, setNoSeriesMessage] = useState<string>('');
+  const [selectedFilters, setSelectedFilters] = useState<SelectedFilters>({});
+  const [currentFilterLevel, setCurrentFilterLevel] = useState<FilterLevel>('state');
+  const [availableOptions, setAvailableOptions] = useState<FilterOption[]>([]);
+  const [isLoadingOptions, setIsLoadingOptions] = useState(false);
+  const [filterLabels, setFilterLabels] = useState<Record<FilterLevel, string>>({
+    state: '',
+    city: '',
+    school: '',
+    grade: '',
+    class: '',
+  });
+
+  // Cache de opções para cada nível (para não perder dados ao mudar de nível)
+  const [stateOptions, setStateOptions] = useState<FilterOption[]>([]);
+  const [cityOptions, setCityOptions] = useState<FilterOption[]>([]);
+  const [schoolOptions, setSchoolOptions] = useState<FilterOption[]>([]);
+  const [gradeOptions, setGradeOptions] = useState<FilterOption[]>([]);
+  const [classOptions, setClassOptions] = useState<FilterOption[]>([]);
 
   // Configuração de questões e gabarito manual
   const [totalQuestoes, setTotalQuestoes] = useState<number>(0);
   const [gabaritoManual, setGabaritoManual] = useState<Record<number, 'A' | 'B' | 'C' | 'D'>>({});
   const [department, setDepartment] = useState<string>('Secretaria Municipal de Educação');
+  const [provaTitulo, setProvaTitulo] = useState('');
   
   // Estados para alternativas personalizadas
   const [questionsOptions, setQuestionsOptions] = useState<Record<number, ('A' | 'B' | 'C' | 'D')[]>>({});
@@ -99,18 +110,46 @@ export default function AnswerSheetGenerator() {
     end_question: number;
   }>>([]);
 
-  // Estados da Etapa 2: Geração e Download
+  // Estados da Etapa 2: Geração e Download (NOVO - com job hierárquico)
+  interface JobTask {
+    parent_id: string;
+    parent_type: string;
+    parent_name: string;
+    classes_count?: number;
+    students_count: number;
+    status: 'pending' | 'processing' | 'completed' | 'failed';
+    task_id: string;
+    celery_task_id?: string;
+    started_at?: string;
+    completed_at?: string;
+  }
+
+  interface JobProgress {
+    completed_tasks: number;
+    total_tasks: number;
+    percentage: number;
+  }
+
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationProgress, setGenerationProgress] = useState(0);
-  const [taskId, setTaskId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobTasks, setJobTasks] = useState<JobTask[]>([]);
+  const [jobProgress, setJobProgress] = useState<JobProgress>({ completed_tasks: 0, total_tasks: 0, percentage: 0 });
+  const [jobScopeType, setJobScopeType] = useState<string>('');
+  const [jobWarnings, setJobWarnings] = useState<string[]>([]);
+  const [jobDownloadUrl, setJobDownloadUrl] = useState<string | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const [generatedSheets, setGeneratedSheets] = useState<any[]>([]);
-  
-  // Novos estados para batch
-  const [batchId, setBatchId] = useState<string | null>(null);
-  const [batchClasses, setBatchClasses] = useState<BatchClass[]>([]);
-  const [totalPdfs, setTotalPdfs] = useState<number>(0);
-  const [totalStudents, setTotalStudents] = useState<number>(0);
+
+  // Estados para cartões gerados
+  const [gabaritos, setGabaritos] = useState<any[]>([]);
+  const [isLoadingGabaritos, setIsLoadingGabaritos] = useState(false);
+  const [downloadingGabaritoId, setDownloadingGabaritoId] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [activeTab, setActiveTab] = useState('generate');
+  const [selectedGabaritos, setSelectedGabaritos] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<'single' | 'multiple'>('single');
+  const [gabaritoToDelete, setGabaritoToDelete] = useState<string | null>(null);
 
   // Estados para correção
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
@@ -132,43 +171,73 @@ export default function AnswerSheetGenerator() {
     reset: resetBatchCorrection,
   } = useAnswerSheetCorrection();
 
-  // Estados para cartões gerados
-  const [gabaritos, setGabaritos] = useState<Gabarito[]>([]);
-  const [isLoadingGabaritos, setIsLoadingGabaritos] = useState(false);
-  const [downloadingGabaritoId, setDownloadingGabaritoId] = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState(0);
-  const [activeTab, setActiveTab] = useState('generate');
-  const [selectedGabaritos, setSelectedGabaritos] = useState<Set<string>>(new Set());
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [deleteMode, setDeleteMode] = useState<'single' | 'multiple'>('single');
-  const [gabaritoToDelete, setGabaritoToDelete] = useState<string | null>(null);
+  // Função para normalizar as opções recebidas do backend
+  const normalizeOptions = (rawOptions: any): FilterOption[] => {
+    if (!rawOptions) return [];
+    
+    console.log('Raw options received:', rawOptions);
+    
+    // Se for array de objetos com id e nome/name
+    if (Array.isArray(rawOptions) && rawOptions.length > 0 && typeof rawOptions[0] === 'object') {
+      return rawOptions.map(item => ({
+        id: item.id || item.uuid || item.value || String(item),
+        name: item.nome || item.name || item.label || item.text || String(item),
+        count: item.count || item.total || 0
+      }));
+    }
+    
+    // Se for array de strings (apenas códigos/nomes)
+    if (Array.isArray(rawOptions)) {
+      return rawOptions.map((item, idx) => ({
+        id: typeof item === 'string' ? item : String(item.id || idx),
+        name: typeof item === 'string' ? item : item.nome || item.name || String(item),
+        count: 0
+      }));
+    }
+    
+    // Se for objeto (chaves são IDs)
+    if (typeof rawOptions === 'object' && !Array.isArray(rawOptions)) {
+      return Object.entries(rawOptions).map(([key, value]: [string, any]) => ({
+        id: key,
+        name: typeof value === 'string' ? value : value.nome || value.name || key,
+        count: value.count || 0
+      }));
+    }
+    
+    return [];
+  };
 
-
-  // Carregar dados iniciais ao montar
+  // Carregar Estados iniciais ao montar (para o primeiro nível da cascata)
   useEffect(() => {
-    const fetchInitialData = async () => {
+    const fetchInitialStates = async () => {
       try {
-        setIsLoadingEstados(true);
+        setIsLoadingOptions(true);
+        // Chamar GET /opcoes-filtros sem parâmetros para obter os Estados disponíveis
+        const response = await api.get('/answer-sheets/opcoes-filtros');
+        const data = response.data;
         
-        const estadosData = await FormFiltersApiService.getFormFilterStates();
+        console.log('Response from opcoes-filtros:', data);
         
-        setEstados(estadosData.map(estado => ({
-          id: estado.id,
-          name: estado.nome
-        })));
+        // Resposta agora vem com: { estados, municipios, escolas, series, turmas }
+        // Para o primeiro carregamento, mostrar apenas os estados
+        const normalizedStates = normalizeOptions(data.estados);
+        setStateOptions(normalizedStates);
+        setAvailableOptions(normalizedStates);
+        setCurrentFilterLevel('state');
       } catch (error) {
-        console.error('Erro ao carregar dados iniciais:', error);
+        console.error('Erro ao carregar estados:', error);
         toast({
           title: 'Erro',
-          description: 'Não foi possível carregar os dados iniciais.',
+          description: 'Não foi possível carregar os estados.',
           variant: 'destructive',
         });
+        setStateOptions([]);
+        setAvailableOptions([]);
       } finally {
-        setIsLoadingEstados(false);
+        setIsLoadingOptions(false);
       }
     };
-    fetchInitialData();
+    fetchInitialStates();
   }, [toast]);
 
   // Cleanup do polling interval ao desmontar componente
@@ -180,84 +249,145 @@ export default function AnswerSheetGenerator() {
     };
   }, []);
 
-  // Carregar municípios quando estado for selecionado
-  useEffect(() => {
-    if (selectedEstado) {
-      fetchMunicipios();
-      // Limpar seleções subsequentes
-      setSelectedMunicipio('');
-      setMunicipios([]);
-      setSelectedSchool('');
-      setSchools([]);
-      setSelectedSerie('');
-      setSeries([]);
-      setSelectedTurma('');
-      setTurmas([]);
-      setNoSchoolsMessage('');
-      setNoTurmasMessage('');
-      setNoSeriesMessage('');
-    } else {
-      setMunicipios([]);
-      setSelectedMunicipio('');
+  // NOVO: Carregar próximas opções de filtro (cascata dinâmica)
+  const loadNextFilterOptions = async (filters: SelectedFilters) => {
+    try {
+      setIsLoadingOptions(true);
+      
+      // Construir query string com nomes em português
+      const params = new URLSearchParams();
+      if (filters.state) params.append('estado', filters.state);
+      if (filters.city) params.append('municipio', filters.city);
+      if (filters.school_id) params.append('escola', filters.school_id);
+      if (filters.grade_id) params.append('serie', filters.grade_id);
+      if (filters.class_id) params.append('turma', filters.class_id);
+      
+      const queryString = params.toString();
+      const url = `/answer-sheets/opcoes-filtros${queryString ? '?' + queryString : ''}`;
+      const response = await api.get(url);
+      const data = response.data;
+      
+      console.log('Response from loadNextFilterOptions:', data);
+      
+      // Resposta agora contém: { estados, municipios, escolas, series, turmas }
+      // Determinar qual nível mostrar baseado no que foi selecionado
+      if (!filters.state && data.estados) {
+        const normalized = normalizeOptions(data.estados);
+        setStateOptions(normalized);
+        setAvailableOptions(normalized);
+      } else if (filters.state && !filters.city && data.municipios) {
+        const normalized = normalizeOptions(data.municipios);
+        setCityOptions(normalized);
+        setAvailableOptions(normalized);
+      } else if (filters.city && !filters.school_id && data.escolas) {
+        const normalized = normalizeOptions(data.escolas);
+        setSchoolOptions(normalized);
+        setAvailableOptions(normalized);
+      } else if (filters.school_id && !filters.grade_id && data.series) {
+        const normalized = normalizeOptions(data.series);
+        setGradeOptions(normalized);
+        setAvailableOptions(normalized);
+      } else if (filters.grade_id && !filters.class_id && data.turmas) {
+        const normalized = normalizeOptions(data.turmas);
+        setClassOptions(normalized);
+        setAvailableOptions(normalized);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar opções de filtro:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível carregar as próximas opções.',
+        variant: 'destructive',
+      });
+      setAvailableOptions([]);
+    } finally {
+      setIsLoadingOptions(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEstado]);
+  };
 
-  // Carregar séries quando escola for selecionada
-  useEffect(() => {
-    if (selectedSchool) {
-      fetchSeries();
-    } else {
-      setSeries([]);
-      setSelectedSerie('');
-      setGradeName('');
-      setNoSeriesMessage('');
+  // NOVO: Selecionar um filtro e carregar próximos
+  const handleSelectFilter = async (level: FilterLevel, optionId: string, optionName: string) => {
+    const newFilters = { ...selectedFilters, [level]: optionId };
+    
+    // Mapear níveis para chaves corretas
+    if (level === 'state') {
+      newFilters.state = optionId;
+    } else if (level === 'city') {
+      newFilters.city = optionId;
+    } else if (level === 'school') {
+      newFilters.school_id = optionId;
+    } else if (level === 'grade') {
+      newFilters.grade_id = optionId;
+    } else if (level === 'class') {
+      newFilters.class_id = optionId;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSchool]);
+    
+    setSelectedFilters(newFilters);
+    
+    // Atualizar label e carregar próximas opções
+    setFilterLabels(prev => ({ ...prev, [level]: optionName }));
+    
+    // Se não for class, carregar próximo nível
+    if (level !== 'class') {
+      await loadNextFilterOptions(newFilters);
+    } else {
+      // Se for class, parar aqui
+      setCurrentFilterLevel('class');
+    }
+  };
 
-  // Carregar nome da série quando série for selecionada
-  useEffect(() => {
-    if (selectedSerie) {
-      const serieData = series.find(s => s.id === selectedSerie);
-      setGradeName(serieData?.name || '');
-    } else {
-      setGradeName('');
+  // NOVO: Limpar um nível de filtro
+  const handleClearFilter = (level: FilterLevel) => {
+    const newFilters = { ...selectedFilters };
+    
+    // Remover este nível e todos os posteriores
+    if (level === 'state') {
+      setSelectedFilters({});
+      setAvailableOptions(stateOptions);
+      setCurrentFilterLevel('state');
+      setFilterLabels({ state: '', city: '', school: '', grade: '', class: '' });
+      setCityOptions([]);
+      setSchoolOptions([]);
+      setGradeOptions([]);
+      setClassOptions([]);
+    } else if (level === 'city') {
+      delete newFilters.city;
+      delete newFilters.school_id;
+      delete newFilters.grade_id;
+      delete newFilters.class_id;
+      setSelectedFilters(newFilters);
+      setAvailableOptions(cityOptions);
+      setCurrentFilterLevel('city');
+      setFilterLabels(prev => ({ ...prev, city: '', school: '', grade: '', class: '' }));
+      setSchoolOptions([]);
+      setGradeOptions([]);
+      setClassOptions([]);
+    } else if (level === 'school') {
+      delete newFilters.school_id;
+      delete newFilters.grade_id;
+      delete newFilters.class_id;
+      setSelectedFilters(newFilters);
+      setAvailableOptions(schoolOptions);
+      setCurrentFilterLevel('school');
+      setFilterLabels(prev => ({ ...prev, school: '', grade: '', class: '' }));
+      setGradeOptions([]);
+      setClassOptions([]);
+    } else if (level === 'grade') {
+      delete newFilters.grade_id;
+      delete newFilters.class_id;
+      setSelectedFilters(newFilters);
+      setAvailableOptions(gradeOptions);
+      setCurrentFilterLevel('grade');
+      setFilterLabels(prev => ({ ...prev, grade: '', class: '' }));
+      setClassOptions([]);
+    } else if (level === 'class') {
+      delete newFilters.class_id;
+      setSelectedFilters(newFilters);
+      setAvailableOptions(classOptions);
+      setCurrentFilterLevel('class');
+      setFilterLabels(prev => ({ ...prev, class: '' }));
     }
-  }, [selectedSerie, series]);
-
-  // Carregar escolas quando município for selecionado
-  useEffect(() => {
-    if (selectedMunicipio) {
-      fetchSchools();
-      // Limpar seleções subsequentes
-      setSelectedSchool('');
-      setSchools([]);
-      setSelectedSerie('');
-      setSeries([]);
-      setSelectedTurma('');
-      setTurmas([]);
-      setNoSchoolsMessage('');
-      setNoSeriesMessage('');
-      setNoTurmasMessage('');
-    } else {
-      setSchools([]);
-      setSelectedSchool('');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMunicipio]);
-
-  // Carregar turmas quando escola e série forem selecionadas
-  useEffect(() => {
-    if (selectedSchool && selectedSerie) {
-      fetchTurmas();
-    } else {
-      setTurmas([]);
-      setSelectedTurma('');
-      setNoTurmasMessage('');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSchool, selectedSerie]);
+  };
 
   // Carregar disciplinas quando separateBySubject for ativado
   useEffect(() => {
@@ -399,177 +529,105 @@ export default function AnswerSheetGenerator() {
     setBlocksByDiscipline(updatedBlocks);
   };
 
-  const fetchMunicipios = async () => {
-    if (!selectedEstado) return;
+  // Função para validar configurações de blocos por disciplina
+  const validateDisciplineBlocks = (): { isValid: boolean; warnings: string[] } => {
+    const warnings: string[] = [];
     
-    try {
-      setIsLoadingMunicipios(true);
-      const municipiosData = await FormFiltersApiService.getFormFilterMunicipalities(selectedEstado);
-      setMunicipios(municipiosData.map(mun => ({
-        id: mun.id,
-        name: mun.nome,
-        state: selectedEstado
-      })));
-    } catch (error) {
-      console.error('Erro ao carregar municípios:', error);
-      toast({
-        title: 'Erro',
-        description: 'Não foi possível carregar os municípios.',
-        variant: 'destructive',
-      });
-      setMunicipios([]);
-    } finally {
-      setIsLoadingMunicipios(false);
+    if (blocksByDiscipline.length === 0) {
+      warnings.push('❌ Adicione pelo menos uma disciplina aos blocos.');
+      return { isValid: false, warnings };
     }
+    
+    if (blocksByDiscipline.length > 4) {
+      warnings.push('❌ Máximo de 4 blocos permitidos.');
+      return { isValid: false, warnings };
+    }
+    
+    const totalBlockQuestions = blocksByDiscipline.reduce((sum, b) => sum + b.questions_count, 0);
+    if (totalBlockQuestions !== totalQuestoes) {
+      warnings.push(`❌ A soma das questões nos blocos (${totalBlockQuestions}) deve ser igual ao total de questões (${totalQuestoes}).`);
+      return { isValid: false, warnings };
+    }
+    
+    const hasInvalidBlock = blocksByDiscipline.some(b => b.questions_count > 26);
+    if (hasInvalidBlock) {
+      warnings.push('❌ Máximo de 26 questões por bloco.');
+      return { isValid: false, warnings };
+    }
+    
+    const hasInvalidBlockCount = blocksByDiscipline.some(b => b.questions_count <= 0);
+    if (hasInvalidBlockCount) {
+      warnings.push('❌ Cada bloco deve ter pelo menos 1 questão.');
+      return { isValid: false, warnings };
+    }
+    
+    return { isValid: true, warnings };
   };
 
-  const fetchSchools = async () => {
-    if (!selectedMunicipio || !selectedEstado) return;
-    
-    try {
-      setIsLoadingSchools(true);
-      setNoSchoolsMessage('');
-      
-      const schoolsData = await FormFiltersApiService.getFormFilterSchools({
-        estado: selectedEstado,
-        municipio: selectedMunicipio
-      });
-      
-      if (schoolsData.length === 0) {
-        setNoSchoolsMessage('Nenhuma escola encontrada para este município.');
+  // Função para validar configurações de blocos
+  const validateBlockSettings = (): { isValid: boolean; warnings: string[] } => {
+    const warnings: string[] = [];
+    let hasCriticalError = false;
+
+    // Se separar por disciplina, usar validação específica
+    if (separateBySubject) {
+      return validateDisciplineBlocks();
+    }
+
+    if (!useBlocks) {
+      return { isValid: true, warnings: [] };
+    }
+
+    // Validar quantidade de blocos vs questões totais
+    if (totalQuestoes > 0) {
+      const totalQuestionsNeeded = numBlocks * questionsPerBlock;
+
+      if (numBlocks > totalQuestoes) {
+        warnings.push(
+          `⚠️ A quantidade de blocos (${numBlocks}) é maior que o número total de questões (${totalQuestoes}). ` +
+          `Isso pode resultar em blocos vazios ou com poucas questões. Considere reduzir a quantidade de blocos.`
+        );
       }
-      
-      setSchools(schoolsData.map(school => ({
-        id: school.id,
-        name: school.nome
-      })));
-    } catch (error) {
-      console.error('Erro ao carregar escolas:', error);
-      toast({
-        title: 'Erro',
-        description: 'Não foi possível carregar as escolas.',
-        variant: 'destructive',
-      });
-      setSchools([]);
-      setNoSchoolsMessage('Erro ao carregar escolas.');
-    } finally {
-      setIsLoadingSchools(false);
-    }
-  };
 
-  const fetchSeries = async () => {
-    if (!selectedSchool || !selectedEstado || !selectedMunicipio) return;
-    
-    try {
-      setIsLoadingSeries(true);
-      setNoSeriesMessage('');
-      
-      const seriesData = await FormFiltersApiService.getFormFilterGrades({
-        estado: selectedEstado,
-        municipio: selectedMunicipio,
-        escola: selectedSchool
-      });
-      
-      if (seriesData.length === 0) {
-        setNoSeriesMessage('Nenhuma série encontrada para esta escola.');
+      if (questionsPerBlock > totalQuestoes) {
+        warnings.push(
+          `⚠️ A quantidade de questões por bloco (${questionsPerBlock}) é maior que o número total de questões (${totalQuestoes}). ` +
+          `Cada bloco terá no máximo ${totalQuestoes} questões. Considere reduzir a quantidade de questões por bloco.`
+        );
       }
-      
-      setSeries(seriesData.map(serie => ({
-        id: serie.id,
-        name: serie.nome
-      })));
-    } catch (error) {
-      console.error('Erro ao carregar séries:', error);
-      toast({
-        title: 'Erro',
-        description: 'Não foi possível carregar as séries.',
-        variant: 'destructive',
-      });
-      setSeries([]);
-      setNoSeriesMessage('Erro ao carregar séries.');
-    } finally {
-      setIsLoadingSeries(false);
-    }
-  };
 
-  const fetchTurmas = async () => {
-    if (!selectedSchool || !selectedSerie || !selectedEstado || !selectedMunicipio) return;
-    
-    try {
-      setIsLoadingTurmas(true);
-      setNoTurmasMessage('');
-      
-      const turmasData = await FormFiltersApiService.getFormFilterClasses({
-        estado: selectedEstado,
-        municipio: selectedMunicipio,
-        escola: selectedSchool,
-        serie: selectedSerie
-      });
-      
-      setTurmas(turmasData.map(turma => ({
-        id: turma.id,
-        name: turma.nome
-      })));
-      
-      // Limpar seleção de turma se não houver turmas disponíveis
-      if (turmasData.length === 0) {
-        setSelectedTurma('');
-        setNoTurmasMessage('Nenhuma turma encontrada para esta escola e série.');
-      } else {
-        // Verificar se a turma selecionada ainda existe na lista
-        const turmaExists = turmasData.some((t) => t.id === selectedTurma);
-        if (!turmaExists) {
-          setSelectedTurma('');
+      if (totalQuestionsNeeded > totalQuestoes) {
+        warnings.push(
+          `⚠️ A configuração atual (${numBlocks} blocos × ${questionsPerBlock} questões = ${totalQuestionsNeeded} questões) ` +
+          `ultrapassa o número total de questões (${totalQuestoes}). ` +
+          `Os blocos serão ajustados automaticamente para distribuir as questões disponíveis.`
+        );
+      }
+
+      if (numBlocks > 0 && questionsPerBlock > 0 && totalQuestionsNeeded < totalQuestoes) {
+        const remainingQuestions = totalQuestoes - totalQuestionsNeeded;
+        if (remainingQuestions > 0) {
+          warnings.push(
+            `ℹ️ Com a configuração atual, restarão ${remainingQuestions} questão(ões) sem distribuir nos blocos. ` +
+            `Considere ajustar a quantidade de blocos ou questões por bloco para aproveitar todas as questões.`
+          );
         }
       }
-    } catch (error) {
-      console.error('Erro ao carregar turmas:', error);
-      toast({
-        title: 'Erro',
-        description: 'Não foi possível carregar as turmas.',
-        variant: 'destructive',
-      });
-      setTurmas([]);
-      setSelectedTurma('');
-      setNoTurmasMessage('Erro ao carregar turmas.');
-    } finally {
-      setIsLoadingTurmas(false);
-    }
-  };
 
-
-  const handleChangeTotalQuestoes = (value: string) => {
-    const parsed = parseInt(value, 10);
-    if (Number.isNaN(parsed) || parsed <= 0) {
-      setTotalQuestoes(0);
-      setGabaritoManual({});
-      setQuestionsOptions({});
-      return;
+      // Validações críticas que impedem a geração
+      if (numBlocks <= 0 || questionsPerBlock <= 0) {
+        hasCriticalError = true;
+        warnings.push(
+          `❌ A quantidade de blocos e questões por bloco deve ser maior que zero.`
+        );
+      }
+    } else {
+      warnings.push(
+        `ℹ️ Informe a quantidade de questões antes de configurar os blocos.`
+      );
     }
 
-    const safeTotal = Math.min(parsed, 200);
-    setTotalQuestoes(safeTotal);
-
-    setGabaritoManual(prev => {
-      const updated: Record<number, 'A' | 'B' | 'C' | 'D'> = {};
-      for (let i = 1; i <= safeTotal; i += 1) {
-        if (prev[i]) {
-          updated[i] = prev[i];
-        }
-      }
-      return updated;
-    });
-
-    // Limpar/resetar questionsOptions quando número de questões muda
-    setQuestionsOptions(prev => {
-      const updated: Record<number, ('A' | 'B' | 'C' | 'D')[]> = {};
-      for (let i = 1; i <= safeTotal; i += 1) {
-        if (prev[i]) {
-          updated[i] = prev[i];
-        }
-      }
-      return updated;
-    });
+    return { isValid: !hasCriticalError, warnings };
   };
 
   const handleChangeRespostaQuestao = (numeroQuestao: number, alternativa: string) => {
@@ -597,6 +655,31 @@ export default function AnswerSheetGenerator() {
       ...prev,
       [numeroQuestao]: alternativaUpper as 'A' | 'B' | 'C' | 'D',
     }));
+  };
+
+  const handleChangeTotalQuestoes = (value: string) => {
+    const numValue = parseInt(value, 10);
+    
+    if (!value) {
+      setTotalQuestoes(0);
+      return;
+    }
+
+    if (isNaN(numValue)) {
+      return;
+    }
+
+    if (numValue < 1) {
+      setTotalQuestoes(1);
+      return;
+    }
+
+    if (numValue > 200) {
+      setTotalQuestoes(200);
+      return;
+    }
+
+    setTotalQuestoes(numValue);
   };
 
   const handleClearGabarito = () => {
@@ -650,10 +733,7 @@ export default function AnswerSheetGenerator() {
         if (clearedCount > 0) {
           toast({
             title: 'Respostas removidas',
-            description:
-              clearedCount === 1
-                ? '1 questão teve a resposta removida pois a alternativa não está mais disponível.'
-                : `${clearedCount} questões tiveram a resposta removida pois a alternativa não está mais disponível.`,
+            description: `${clearedCount} questão(ões) tiveram a resposta removida pois a alternativa não está mais disponível.`,
             variant: 'default',
           });
         }
@@ -744,10 +824,7 @@ export default function AnswerSheetGenerator() {
       if (clearedCount > 0) {
         toast({
           title: 'Respostas removidas',
-          description:
-            clearedCount === 1
-              ? '1 questão teve a resposta removida pois não está mais disponível.'
-              : `${clearedCount} questões tiveram a resposta removida pois não está mais disponível.`,
+          description: `${clearedCount} questão(ões) tiveram a resposta removida pois não está mais disponível.`,
           variant: 'default',
         });
       }
@@ -794,50 +871,13 @@ export default function AnswerSheetGenerator() {
 
 
 
-  // Função para inferir o escopo automaticamente baseado nos filtros selecionados
-  const getInferredScope = useCallback((): 'class' | 'grade' | 'school' | null => {
-    if (!selectedSchool) return null;
-    
-    if (selectedTurma) {
-      return 'class';  // Tem turma = escopo class
-    } else if (selectedSerie) {
-      return 'grade';  // Tem série mas não tem turma = escopo grade
-    } else {
-      return 'school'; // Tem só escola = escopo school
-    }
-  }, [selectedSchool, selectedSerie, selectedTurma]);
-
+  // NOVO: Validação para Etapa 1
   const isStep1Valid = () => {
-    const hasBaseInfo =
-      selectedEstado &&
-      selectedMunicipio &&
-      selectedSchool &&
-      provaTitulo &&
-      department;
-
-    if (!hasBaseInfo) {
+    const hasValidFilters = Object.keys(selectedFilters).length > 0;
+    
+    if (!hasValidFilters || !provaTitulo || !department) {
       return false;
     }
-
-    // Inferir escopo e validar
-    const scope = getInferredScope();
-    if (!scope) {
-      return false;
-    }
-
-    // Validações específicas por escopo
-    if (scope === 'class') {
-      // Para gerar cartões de uma turma, precisa ter turma selecionada
-      if (!selectedTurma || turmas.length === 0 || !turmas.some(t => t.id === selectedTurma)) {
-        return false;
-      }
-    } else if (scope === 'grade') {
-      // Para gerar cartões de uma série, precisa ter série selecionada
-      if (!selectedSerie) {
-        return false;
-      }
-    }
-    // Para 'school', não precisa de validações extras além da escola
 
     if (totalQuestoes <= 0) {
       return false;
@@ -854,7 +894,7 @@ export default function AnswerSheetGenerator() {
         : (questionsOptions[i] || ['A', 'B', 'C', 'D']);
       
       if (!availableAlternatives.includes(gabaritoManual[i])) {
-        return false; // Resposta inválida
+        return false;
       }
     }
 
@@ -865,7 +905,6 @@ export default function AnswerSheetGenerator() {
       }
     }
 
-    // Validar blocos por disciplina se estiver ativado
     if (separateBySubject) {
       const validation = validateDisciplineBlocks();
       if (!validation.isValid) {
@@ -884,129 +923,162 @@ export default function AnswerSheetGenerator() {
 
   const handlePreviousStep = () => {
     if (currentStep > 1) {
-      if (currentStep === 2 && pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-      if (currentStep === 2) {
-        setTaskId(null);
-        setBatchId(null);
-        setBatchClasses([]);
-        setGeneratedSheets([]);
-        setTotalPdfs(0);
-        setTotalStudents(0);
-        setGenerationProgress(0);
-      }
       setCurrentStep((currentStep - 1) as Step);
     }
   };
 
-  // Função para validar configurações de blocos por disciplina
-  const validateDisciplineBlocks = (): { isValid: boolean; warnings: string[] } => {
-    const warnings: string[] = [];
-    
-    if (blocksByDiscipline.length === 0) {
-      warnings.push('❌ Adicione pelo menos uma disciplina aos blocos.');
-      return { isValid: false, warnings };
-    }
-    
-    if (blocksByDiscipline.length > 4) {
-      warnings.push('❌ Máximo de 4 blocos permitidos.');
-      return { isValid: false, warnings };
-    }
-    
-    const totalBlockQuestions = blocksByDiscipline.reduce((sum, b) => sum + b.questions_count, 0);
-    if (totalBlockQuestions !== totalQuestoes) {
-      warnings.push(`❌ A soma das questões nos blocos (${totalBlockQuestions}) deve ser igual ao total de questões (${totalQuestoes}).`);
-      return { isValid: false, warnings };
-    }
-    
-    const hasInvalidBlock = blocksByDiscipline.some(b => b.questions_count > 26);
-    if (hasInvalidBlock) {
-      warnings.push('❌ Máximo de 26 questões por bloco.');
-      return { isValid: false, warnings };
-    }
-    
-    const hasInvalidBlockCount = blocksByDiscipline.some(b => b.questions_count <= 0);
-    if (hasInvalidBlockCount) {
-      warnings.push('❌ Cada bloco deve ter pelo menos 1 questão.');
-      return { isValid: false, warnings };
-    }
-    
-    return { isValid: true, warnings };
+  // Função para remover UUIDs das mensagens de aviso
+  const cleanWarnings = (warnings: string[]): string[] => {
+    return warnings.map(warning => 
+      // Remove padrão "(UUID)" do final da mensagem
+      warning.replace(/ \([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\)/gi, '')
+    );
   };
 
-  // Função para validar configurações de blocos
-  const validateBlockSettings = (): { isValid: boolean; warnings: string[] } => {
-    const warnings: string[] = [];
-    let hasCriticalError = false;
-
-    // Se separar por disciplina, usar validação específica
-    if (separateBySubject) {
-      return validateDisciplineBlocks();
+  // Função para buscar gabaritos gerados
+  const fetchGabaritos = useCallback(async () => {
+    try {
+      setIsLoadingGabaritos(true);
+      const response = await api.get('/answer-sheets/gabaritos');
+      setGabaritos(response.data.gabaritos || []);
+    } catch (error) {
+      console.error('Erro ao carregar gabaritos:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível carregar os cartões gerados.',
+        variant: 'destructive',
+      });
+      setGabaritos([]);
+    } finally {
+      setIsLoadingGabaritos(false);
     }
+  }, [toast]);
 
-    if (!useBlocks) {
-      return { isValid: true, warnings: [] };
+  // Carregar gabaritos quando a aba "generated" for selecionada
+  useEffect(() => {
+    if (activeTab === 'generated') {
+      fetchGabaritos();
     }
+  }, [activeTab, fetchGabaritos]);
 
-    // Validar quantidade de blocos vs questões totais
-    if (totalQuestoes > 0) {
-      const totalQuestionsNeeded = numBlocks * questionsPerBlock;
-
-      if (numBlocks > totalQuestoes) {
-        warnings.push(
-          `⚠️ A quantidade de blocos (${numBlocks}) é maior que o número total de questões (${totalQuestoes}). ` +
-          `Isso pode resultar em blocos vazios ou com poucas questões. Considere reduzir a quantidade de blocos.`
-        );
+  // Funções para gerenciar seleção de gabaritos
+  const handleToggleSelectGabarito = (gabaritoId: string) => {
+    setSelectedGabaritos(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(gabaritoId)) {
+        newSet.delete(gabaritoId);
+      } else {
+        newSet.add(gabaritoId);
       }
+      return newSet;
+    });
+  };
 
-      if (questionsPerBlock > totalQuestoes) {
-        warnings.push(
-          `⚠️ A quantidade de questões por bloco (${questionsPerBlock}) é maior que o número total de questões (${totalQuestoes}). ` +
-          `Cada bloco terá no máximo ${totalQuestoes} questões. Considere reduzir a quantidade de questões por bloco.`
-        );
-      }
-
-      if (totalQuestionsNeeded > totalQuestoes) {
-        warnings.push(
-          `⚠️ A configuração atual (${numBlocks} blocos × ${questionsPerBlock} questões = ${totalQuestionsNeeded} questões) ` +
-          `ultrapassa o número total de questões (${totalQuestoes}). ` +
-          `Os blocos serão ajustados automaticamente para distribuir as questões disponíveis.`
-        );
-      }
-
-      if (numBlocks > 0 && questionsPerBlock > 0 && totalQuestionsNeeded < totalQuestoes) {
-        const remainingQuestions = totalQuestoes - totalQuestionsNeeded;
-        if (remainingQuestions > 0) {
-          warnings.push(
-            `ℹ️ Com a configuração atual, restarão ${remainingQuestions} ` +
-            (remainingQuestions === 1 ? 'questão' : 'questões') +
-            ' sem distribuir nos blocos. ' +
-            `Considere ajustar a quantidade de blocos ou questões por bloco para aproveitar todas as questões.`
-          );
-        }
-      }
-
-      // Validações críticas que impedem a geração
-      if (numBlocks <= 0 || questionsPerBlock <= 0) {
-        hasCriticalError = true;
-        warnings.push(
-          `❌ A quantidade de blocos e questões por bloco deve ser maior que zero.`
-        );
-      }
+  const handleSelectAll = () => {
+    if (selectedGabaritos.size === gabaritos.length) {
+      setSelectedGabaritos(new Set());
     } else {
-      warnings.push(
-        `ℹ️ Informe a quantidade de questões antes de configurar os blocos.`
-      );
+      setSelectedGabaritos(new Set(gabaritos.map(g => g.id)));
     }
-
-    return { isValid: !hasCriticalError, warnings };
   };
 
-  const startPolling = (taskId: string) => {
-    setGenerationProgress(20);
+  // Download de gabarito - Nova rota que retorna URL pré-assinada
+  const handleDownloadGabarito = async (gabaritoId: string) => {
+    try {
+      setDownloadingGabaritoId(gabaritoId);
+      setDownloadProgress(0);
+      
+      // Chamar novo endpoint que retorna URL pré-assinada
+      const response = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`);
+      const data = response.data;
+      
+      // Se retornou uma URL, usar para download direto
+      if (data.download_url) {
+        window.open(data.download_url, '_blank');
+        
+        toast({
+          title: "✅ Download iniciado",
+          description: `O arquivo está sendo baixado. Link expira em ${data.expires_in || '1 hora'}.`,
+        });
+      } else {
+        throw new Error('URL de download não fornecida');
+      }
+    } catch (error: any) {
+      console.error('Erro ao baixar gabarito:', error);
+      
+      let errorMessage = 'Não foi possível baixar o arquivo. Tente novamente.';
+      const status = error.response?.status;
+      const backendError = error.response?.data?.error;
 
+      if (status === 404) {
+        errorMessage = 'Os cartões solicitados não foram encontrados.';
+      } else if (status === 400 && error.response?.data?.status === 'not_generated') {
+        errorMessage = 'Os cartões ainda não foram gerados. Complete a geração primeiro.';
+      } else if (status === 403) {
+        errorMessage = 'Você não tem permissão para acessar este arquivo.';
+      } else if (backendError) {
+        errorMessage = backendError;
+      }
+      
+      toast({
+        title: 'Erro',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloadingGabaritoId(null);
+      setDownloadProgress(0);
+    }
+  };
+
+  // Deletar gabarito(s)
+  const handleOpenDeleteDialog = (gabaritoId?: string) => {
+    if (gabaritoId) {
+      setGabaritoToDelete(gabaritoId);
+      setDeleteMode('single');
+    } else {
+      setDeleteMode('multiple');
+    }
+    setShowDeleteDialog(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      setIsDeleting(true);
+      
+      if (deleteMode === 'single' && gabaritoToDelete) {
+        await api.delete(`/answer-sheets/${gabaritoToDelete}`);
+        setGabaritos(prev => prev.filter(g => g.id !== gabaritoToDelete));
+      } else if (deleteMode === 'multiple') {
+        const ids = Array.from(selectedGabaritos);
+        await Promise.all(
+          ids.map(id => api.delete(`/answer-sheets/${id}`))
+        );
+        setGabaritos(prev => prev.filter(g => !selectedGabaritos.has(g.id)));
+        setSelectedGabaritos(new Set());
+      }
+
+      toast({
+        title: 'Sucesso',
+        description: deleteMode === 'single' ? 'Cartão deletado com sucesso.' : 'Cartões deletados com sucesso.',
+      });
+      
+      setShowDeleteDialog(false);
+      setGabaritoToDelete(null);
+    } catch (error) {
+      console.error('Erro ao deletar:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível deletar o(s) cartão(ões).',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // NOVO: Função de polling para jobs hierárquicos
+  const startPollingJob = (jobIdParam: string) => {
     // Limpar intervalo anterior se existir
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
@@ -1015,78 +1087,55 @@ export default function AnswerSheetGenerator() {
     // Iniciar polling a cada 2 segundos
     pollingIntervalRef.current = setInterval(async () => {
       try {
-        const statusConfig = selectedMunicipio ? { meta: { cityId: selectedMunicipio } } : {};
-        const response = await api.get(`/answer-sheets/task/${taskId}/status`, statusConfig);
+        const response = await api.get(`/answer-sheets/jobs/${jobIdParam}/status`);
         const data = response.data;
 
-        console.log("📊 Status do polling:", data.status);
+        console.log("📊 Status do job:", data.status, "Response:", data);
 
-        // Atualizar progresso visual
-        if (data.status === 'processing' || data.status === 'pending') {
-          setGenerationProgress(prev => Math.min(prev + 5, 80));
-          
-          // Atualizar progresso por turma se disponível
-          if (data.result?.classes) {
-            setBatchClasses(data.result.classes);
-          }
+        // Usar estrutura correta da resposta da API
+        const totalTasks = data.progress?.total || 0;
+        const completedTasks = data.progress?.current || 0;
+        const percentage = data.progress?.percentage || 0;
+
+        // Atualizar progresso e tarefas
+        setJobProgress({
+          completed_tasks: completedTasks,
+          total_tasks: totalTasks,
+          percentage: percentage
+        });
+        setJobTasks(data.tasks || []);
+        
+        // Atualizar warnings se houver (removendo UUIDs)
+        if (data.warnings && Array.isArray(data.warnings)) {
+          setJobWarnings(cleanWarnings(data.warnings));
+        } else {
+          setJobWarnings([]);
         }
 
-        // SUCESSO: parar polling e exibir resultado
+        // SUCESSO: parar polling
         if (data.status === 'completed') {
           if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
             pollingIntervalRef.current = null;
           }
 
-          setGenerationProgress(100);
           setIsGenerating(false);
-
-          // Avisos (ex.: turmas puladas por não terem alunos)
-          const warnings: string[] = data.warnings ?? [];
-          if (warnings.length > 0) {
-            toast({
-              title: "Avisos na geração",
-              description: warnings.join(' '),
-              variant: "default",
-            });
-          }
-
-          // Processar resultado
-          const result: TaskStatusResult = data.result;
           
-          // Verificar se é batch ou single
-          if (result?.scope === 'class') {
-            // Comportamento antigo (uma turma)
-            setGeneratedSheets(result.sheets || []);
-            
-            toast({
-              title: "✅ Cartões gerados com sucesso!",
-              description: `${result.generated_sheets || 0} cartões foram gerados para ${result.total_students || 0} alunos.`,
-            });
-          } else if (result) {
-            // Novo: múltiplas turmas (batch) — total_classes = apenas turmas que geraram PDF
-            setBatchId(result.batch_id || null);
-            setBatchClasses(result.classes || []);
-            setTotalPdfs(result.total_pdfs || 0);
-            setTotalStudents(result.total_students || 0);
-            
-            const skippedCount = result.skipped_classes?.length ?? 0;
-            const skippedText = skippedCount > 0
-              ? ` ${skippedCount} turma(s) pulada(s) (sem alunos).`
-              : '';
-            toast({
-              title: "✅ Cartões gerados com sucesso!",
-              description: `${result.total_pdfs} PDFs gerados para ${result.total_students} alunos em ${result.total_classes} turmas.${skippedText}`,
-            });
+          // Salvar URL de download se disponível
+          if (data.result?.download_url) {
+            setJobDownloadUrl(data.result.download_url);
           }
 
-          // Recarregar lista de gabaritos
+          // Atualizar a lista de gabaritos independente da aba ativa
           await fetchGabaritos();
 
-          setGenerationProgress(0);
+          toast({
+            title: "✅ Geração concluída!",
+            description: `${completedTasks} tarefas finalizadas com sucesso.`,
+          });
         }
 
-        // ERRO: parar polling e exibir erro
+        // ERRO: parar polling
         if (data.status === 'failed') {
           if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
@@ -1094,7 +1143,6 @@ export default function AnswerSheetGenerator() {
           }
 
           setIsGenerating(false);
-          setGenerationProgress(0);
 
           toast({
             title: "❌ Erro ao gerar cartões",
@@ -1104,7 +1152,7 @@ export default function AnswerSheetGenerator() {
         }
 
       } catch (error: any) {
-        console.error("Erro ao verificar status da geração:", error);
+        console.error("Erro ao verificar status do job:", error);
         
         if (pollingIntervalRef.current) {
           clearInterval(pollingIntervalRef.current);
@@ -1112,7 +1160,6 @@ export default function AnswerSheetGenerator() {
         }
 
         setIsGenerating(false);
-        setGenerationProgress(0);
 
         toast({
           title: "Erro",
@@ -1122,7 +1169,7 @@ export default function AnswerSheetGenerator() {
       }
     }, 2000); // Polling a cada 2 segundos
 
-    // Timeout de segurança (20 minutos para turmas grandes)
+    // Timeout de segurança (30 minutos)
     setTimeout(() => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
@@ -1131,44 +1178,22 @@ export default function AnswerSheetGenerator() {
 
       if (isGenerating) {
         setIsGenerating(false);
-        setGenerationProgress(0);
         
         toast({
           title: "⚠️ Timeout",
-          description: "A geração está demorando mais do que o esperado. Por favor, verifique a lista de gabaritos ou tente novamente.",
+          description: "A geração está demorando muito. Verifique a lista ou tente novamente.",
           variant: "destructive",
         });
       }
-    }, 20 * 60 * 1000); // 20 minutos
+    }, 30 * 60 * 1000); // 30 minutos
   };
 
+  // NOVO: Gerar cartões usando endpoint hierárquico
   const handleGenerateCards = async () => {
-    // Inferir escopo automaticamente
-    const scope = getInferredScope();
-    
-    if (!scope) {
+    if (Object.keys(selectedFilters).length === 0) {
       toast({
         title: 'Erro',
-        description: 'Selecione pelo menos um estado, município e escola.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    
-    // Validações específicas por escopo
-    if (scope === 'class' && !selectedTurma) {
-      toast({
-        title: 'Erro',
-        description: 'Para gerar cartões de uma turma, selecione a turma.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    
-    if (scope === 'grade' && !selectedSerie) {
-      toast({
-        title: 'Erro',
-        description: 'Para gerar cartões de uma série, selecione a série.',
+        description: 'Selecione pelo menos um filtro antes de gerar os cartões.',
         variant: 'destructive',
       });
       return;
@@ -1176,125 +1201,95 @@ export default function AnswerSheetGenerator() {
 
     try {
       setIsGenerating(true);
-      setGenerationProgress(10);
-      setTaskId(null);
-      setBatchId(null);
-      setBatchClasses([]);
-      setGeneratedSheets([]);
-      setTotalPdfs(0);
-      setTotalStudents(0);
+      setJobTasks([]);
+      setJobProgress({ completed_tasks: 0, total_tasks: 0, percentage: 0 });
+      setJobDownloadUrl(null);
 
-      const municipioData = municipios.find(m => m.id === selectedMunicipio);
-      const schoolData = schools.find(s => s.id === selectedSchool);
-      const serieData = series.find(s => s.id === selectedSerie);
-
-      // Preparar payload no formato esperado pelo backend
+      // Preparar payload hierárquico - NOVA ESTRUTURA
       const payload: any = {
+        // Filtros de escopo (hierarquia)
+        state: selectedFilters.state,
+        city: selectedFilters.city,
+        school_id: selectedFilters.school_id,
+        grade_id: selectedFilters.grade_id,
+        class_id: selectedFilters.class_id,
+
+        // Dados do teste
         num_questions: totalQuestoes,
         correct_answers: gabaritoManual,
+
+        // Configuração de blocos
+        use_blocks: useBlocks,
+        ...(useBlocks && !separateBySubject && {
+          blocks_config: {
+            num_blocks: numBlocks,
+            questions_per_block: questionsPerBlock,
+          },
+        }),
+        ...(separateBySubject && {
+          blocks_config: {
+            blocks: blocksByDiscipline.map(block => ({
+              block_id: block.block_id,
+              subject_name: block.subject_name,
+              questions_count: block.questions_count,
+              start_question: block.start_question,
+              end_question: block.end_question
+            }))
+          }
+        }),
+
+        // Opções de perguntas
+        questions_options: buildQuestionsOptions() || {},
+
+        // Dados do teste (título e departamento)
         test_data: {
           title: provaTitulo,
-          municipality: municipioData?.name || '',
-          state: selectedEstado || '',
           department: department,
-          institution: schoolData?.name || '',
-          grade_name: serieData?.name || '',
-        }
+        },
       };
 
-      // Adicionar campos baseados no escopo inferido
-      if (scope === 'class') {
-        payload.class_id = selectedTurma;
-      } else if (scope === 'grade') {
-        payload.grade_id = selectedSerie;
-        payload.school_id = selectedSchool;
-      } else if (scope === 'school') {
-        payload.school_id = selectedSchool;
-      }
+      console.log('Payload enviado para /answer-sheets/generate:', payload);
 
-      // Adicionar questions_options se necessário
-      const questionsOptionsData = buildQuestionsOptions();
-      if (questionsOptionsData) {
-        payload.questions_options = questionsOptionsData;
-      }
+      // Chamar endpoint unificado
+      const response = await api.post('/answer-sheets/generate', payload, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-      // Configurar blocos
-      if (separateBySubject) {
-        const validation = validateDisciplineBlocks();
-        if (!validation.isValid) {
-          toast({ 
-            title: 'Erro na configuração de blocos', 
-            description: validation.warnings.join(' '), 
-            variant: 'destructive' 
-          });
-          setIsGenerating(false);
-          return;
-        }
-        
-        payload.use_blocks = true;
-        payload.blocks_config = {
-          use_blocks: true,
-          num_blocks: blocksByDiscipline.length,
-          blocks: blocksByDiscipline.map(block => ({
-            block_id: block.block_id,
-            subject_name: block.subject_name,
-            questions_count: block.questions_count,
-            start_question: block.start_question,
-            end_question: block.end_question
-          }))
-        };
-      } else if (useBlocks) {
-        payload.use_blocks = true;
-        payload.blocks_config = {
-          num_blocks: numBlocks,
-          questions_per_block: questionsPerBlock,
-          separate_by_subject: false
-        };
-      } else {
-        payload.use_blocks = false;
-      }
-
-      // 1. DISPARAR GERAÇÃO (retorna imediatamente com 202)
-      const generateConfig = selectedMunicipio
-        ? { headers: { 'Content-Type': 'application/json' }, meta: { cityId: selectedMunicipio } }
-        : { headers: { 'Content-Type': 'application/json' } };
-      const response = await api.post('/answer-sheets/generate', payload, generateConfig);
-
-      // Verificar se a resposta é 202 Accepted (assíncrono)
+      // Verificar se retornou 202 Accepted
       if (response.status === 202) {
-        const data: GenerateResponseData = response.data;
-        setTaskId(data.task_id);
-
-        // Armazenar informações do batch se houver
-        if (data.batch_id) {
-          setBatchId(data.batch_id);
-          setBatchClasses(data.classes || []);
+        const data = response.data;
+        setJobId(data.job_id);
+        setJobTasks(data.tasks || []);
+        setJobProgress({
+          completed_tasks: 0,
+          total_tasks: data.total_tasks || 0,
+          percentage: 0
+        });
+        setJobScopeType(data.scope_type);
+        
+        // Capturar warnings iniciais se houver (removendo UUIDs)
+        if (data.warnings && Array.isArray(data.warnings)) {
+          setJobWarnings(cleanWarnings(data.warnings));
+        } else {
+          setJobWarnings([]);
         }
-
-        // Mensagem personalizada por escopo
-        const scopeMessages = {
-          class: `Os cartões de resposta para 1 turma estão sendo gerados.`,
-          grade: `Os cartões de resposta para ${data.classes_count} turmas da série ${data.scope_name} estão sendo gerados.`,
-          school: `Os cartões de resposta para ${data.classes_count} turmas da escola ${data.scope_name} estão sendo gerados.`,
-        };
 
         toast({
           title: "⏳ Geração iniciada",
-          description: scopeMessages[data.scope] + ` Isso pode levar vários minutos.`,
+          description: `Gerando cartões para ${data.total_students || 0} alunos em ${data.total_tasks || 1} tarefa(s).`,
         });
 
-        // 2. INICIAR POLLING
-        startPolling(data.task_id);
+        // Iniciar polling
+        startPollingJob(data.job_id);
       } else {
-        // Resposta não esperada
         console.warn('⚠️ Resposta não é 202 Accepted:', response.status);
-        
         setIsGenerating(false);
-        setGenerationProgress(0);
 
         toast({
           title: 'Aviso',
-          description: 'A geração foi iniciada, mas o formato de resposta não é o esperado. Verifique a lista de gabaritos.',
+          description: 'A geração foi iniciada, mas o formato de resposta não é o esperado.',
         });
       }
 
@@ -1302,7 +1297,6 @@ export default function AnswerSheetGenerator() {
       console.error('❌ Erro ao gerar cartões:', error);
       
       setIsGenerating(false);
-      setGenerationProgress(0);
 
       let errorMessage = 'Não foi possível gerar os cartões resposta.';
       
@@ -1310,13 +1304,41 @@ export default function AnswerSheetGenerator() {
         errorMessage = error.response.data.error;
       } else if (error.message) {
         errorMessage = error.message;
-      } else if (error.response?.status) {
-        errorMessage = `Erro ${error.response.status}: ${error.response.statusText || 'Erro ao comunicar com o servidor'}`;
       }
       
       toast({
         title: 'Erro',
         description: errorMessage,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // NOVO: Download do ZIP usando URL direta
+  const handleDownloadZip = async () => {
+    if (!jobDownloadUrl) {
+      toast({
+        title: 'Erro',
+        description: 'URL de download não disponível. Aguarde a conclusão da geração.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // Abrir URL direta para download
+      window.open(jobDownloadUrl, '_blank');
+
+      toast({
+        title: "✅ Download iniciado",
+        description: "O arquivo ZIP está sendo baixado.",
+      });
+    } catch (error: any) {
+      console.error('Erro ao baixar ZIP:', error);
+      
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível iniciar o download. Tente novamente.',
         variant: 'destructive',
       });
     }
@@ -1467,266 +1489,7 @@ export default function AnswerSheetGenerator() {
     }
   };
 
-  // Funções para gerenciar cartões gerados
-  const fetchGabaritos = useCallback(async () => {
-    try {
-      setIsLoadingGabaritos(true);
-      const config = selectedMunicipio ? { meta: { cityId: selectedMunicipio } } : {};
-      const response = await api.get<GabaritosResponse>('/answer-sheets/gabaritos', config);
-      setGabaritos(response.data.gabaritos || []);
-    } catch (error: any) {
-      console.error('Erro ao carregar gabaritos:', error);
-      toast({
-        title: 'Erro',
-        description: 'Não foi possível carregar os cartões gerados.',
-        variant: 'destructive',
-      });
-      setGabaritos([]);
-    } finally {
-      setIsLoadingGabaritos(false);
-    }
-  }, [toast, selectedMunicipio]);
 
-  const handleDownloadGabarito = async (gabaritoId: string) => {
-    try {
-      setDownloadingGabaritoId(gabaritoId);
-      
-      // 1. Solicitar URL de download (JSON response com URL pré-assinada do MinIO)
-      const downloadConfig = selectedMunicipio ? { meta: { cityId: selectedMunicipio } } : {};
-      const response = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`, downloadConfig);
-
-      // 2. Verificar se retornou URL de download
-      if (response.data.download_url) {
-        // 3. Redirecionar para URL pré-assinada (download direto do MinIO)
-        window.location.href = response.data.download_url;
-
-        toast({
-          title: 'Download iniciado',
-          description: `O arquivo ZIP está sendo baixado. Link expira em ${response.data.expires_in || '1 hora'}.`,
-        });
-      } else {
-        throw new Error('URL de download não disponível');
-      }
-    } catch (error: any) {
-      console.error('Erro ao baixar gabarito:', error);
-      
-      let errorMessage = 'Não foi possível baixar o gabarito.';
-      
-      // Tratar erro específico: ZIP ainda não gerado
-      if (error.response?.data?.status === 'not_generated') {
-        errorMessage = 'Os cartões ainda não foram gerados. Gere primeiro ou aguarde a conclusão da geração.';
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.response?.status === 403) {
-        errorMessage = 'Você não tem permissão para acessar este gabarito.';
-      } else if (error.response?.status === 404) {
-        errorMessage = 'Gabarito não encontrado.';
-      } else if (error.response?.status === 400) {
-        errorMessage = 'Gabarito não possui turma associada.';
-      }
-      
-      toast({
-        title: 'Erro',
-        description: errorMessage,
-        variant: 'destructive',
-      });
-    } finally {
-      setDownloadingGabaritoId(null);
-    }
-  };
-
-  // Nova função para baixar batch completo
-  const handleDownloadBatch = async (batchId: string) => {
-    try {
-      setDownloadingGabaritoId(batchId);
-      
-      const batchConfig = selectedMunicipio ? { meta: { cityId: selectedMunicipio } } : {};
-      const response = await api.get<BatchDownloadResponse>(`/answer-sheets/batch/${batchId}/download`, batchConfig);
-
-      if (response.data.download_url) {
-        window.location.href = response.data.download_url;
-
-        toast({
-          title: 'Download iniciado',
-          description: `Baixando ZIP com ${response.data.classes_count} PDFs. Link expira em ${response.data.expires_in}.`,
-        });
-      } else {
-        throw new Error('URL de download não disponível');
-      }
-    } catch (error: any) {
-      console.error('Erro ao baixar batch:', error);
-      
-      let errorMessage = 'Não foi possível baixar o batch de gabaritos.';
-      
-      if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.response?.status === 404) {
-        errorMessage = 'Batch não encontrado.';
-      }
-      
-      toast({
-        title: 'Erro',
-        description: errorMessage,
-        variant: 'destructive',
-      });
-    } finally {
-      setDownloadingGabaritoId(null);
-    }
-  };
-
-  // Carregar gabaritos quando a aba "generated" for selecionada
-  useEffect(() => {
-    if (activeTab === 'generated') {
-      fetchGabaritos();
-    }
-  }, [activeTab, fetchGabaritos]);
-
-  // Funções de exclusão
-  const handleDeleteGabarito = async (gabaritoId: string) => {
-    try {
-      setIsDeleting(true);
-      const deleteConfig = selectedMunicipio ? { meta: { cityId: selectedMunicipio } } : {};
-      const response = await api.delete(`/answer-sheets/gabarito/${gabaritoId}`, deleteConfig);
-      
-      toast({
-        title: 'Sucesso!',
-        description: response.data?.message || 'Gabarito excluído com sucesso.',
-      });
-      
-      // Remover da lista local
-      setGabaritos(prev => prev.filter(g => g.id !== gabaritoId));
-      // Remover da seleção se estiver selecionado
-      setSelectedGabaritos(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(gabaritoId);
-        return newSet;
-      });
-    } catch (error: any) {
-      console.error('Erro ao excluir gabarito:', error);
-      
-      let errorMessage = 'Não foi possível excluir o gabarito.';
-      if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.response?.status === 403) {
-        errorMessage = 'Você não tem permissão para excluir este gabarito.';
-      } else if (error.response?.status === 404) {
-        errorMessage = 'Gabarito não encontrado.';
-      }
-      
-      toast({
-        title: 'Erro',
-        description: errorMessage,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsDeleting(false);
-      setShowDeleteDialog(false);
-      setGabaritoToDelete(null);
-    }
-  };
-
-  const handleDeleteMultipleGabaritos = async () => {
-    if (selectedGabaritos.size === 0) return;
-    
-    try {
-      setIsDeleting(true);
-      const ids = Array.from(selectedGabaritos);
-      const multiDeleteConfig = selectedMunicipio
-        ? { data: { ids }, meta: { cityId: selectedMunicipio } }
-        : { data: { ids } };
-      const response = await api.delete('/answer-sheets/gabaritos', multiDeleteConfig);
-      
-      const data = response.data;
-      const deletedCount = data.deleted_count || 0;
-      const requestedCount = data.requested_count || ids.length;
-      
-      if (deletedCount > 0) {
-        toast({
-          title: 'Sucesso!',
-          description: data.message || `${deletedCount} gabarito(s) excluído(s) com sucesso.`,
-        });
-        
-        // Remover gabaritos excluídos da lista local
-        if (data.deleted_ids && Array.isArray(data.deleted_ids)) {
-          setGabaritos(prev => prev.filter(g => !data.deleted_ids.includes(g.id)));
-        } else {
-          // Se não retornar IDs, remover todos os selecionados
-          setGabaritos(prev => prev.filter(g => !ids.includes(g.id)));
-        }
-        
-        // Limpar seleção
-        setSelectedGabaritos(new Set());
-      }
-      
-      if (data.not_found_or_unauthorized_ids && data.not_found_or_unauthorized_ids.length > 0) {
-        toast({
-          title: 'Atenção',
-          description: `${deletedCount} excluído(s), mas ${data.not_found_or_unauthorized_ids.length} não puderam ser excluídos (sem permissão ou não encontrados).`,
-          variant: 'default',
-        });
-      }
-    } catch (error: any) {
-      console.error('Erro ao excluir gabaritos:', error);
-      
-      let errorMessage = 'Não foi possível excluir os gabaritos.';
-      if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      }
-      
-      toast({
-        title: 'Erro',
-        description: errorMessage,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsDeleting(false);
-      setShowDeleteDialog(false);
-    }
-  };
-
-  const handleToggleSelectGabarito = (gabaritoId: string) => {
-    setSelectedGabaritos(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(gabaritoId)) {
-        newSet.delete(gabaritoId);
-      } else {
-        newSet.add(gabaritoId);
-      }
-      return newSet;
-    });
-  };
-
-  const handleSelectAll = () => {
-    if (selectedGabaritos.size === gabaritos.length) {
-      setSelectedGabaritos(new Set());
-    } else {
-      setSelectedGabaritos(new Set(gabaritos.map(g => g.id)));
-    }
-  };
-
-  const handleOpenDeleteDialog = (gabaritoId?: string) => {
-    if (gabaritoId) {
-      setDeleteMode('single');
-      setGabaritoToDelete(gabaritoId);
-    } else {
-      setDeleteMode('multiple');
-      setGabaritoToDelete(null);
-    }
-    setShowDeleteDialog(true);
-  };
-
-  const handleConfirmDelete = () => {
-    if (deleteMode === 'single' && gabaritoToDelete) {
-      handleDeleteGabarito(gabaritoToDelete);
-    } else if (deleteMode === 'multiple') {
-      handleDeleteMultipleGabaritos();
-    }
-  };
-
-  // Função para navegar para a página de resultados
-  const handleViewResults = (gabaritoId: string) => {
-    navigate(`/app/cartao-resposta/resultados/${gabaritoId}`);
-  };
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
@@ -1742,8 +1505,8 @@ export default function AnswerSheetGenerator() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList>
           <TabsTrigger value="generate">Gerar Cartões</TabsTrigger>
-          <TabsTrigger value="correct">Corrigir Cartões</TabsTrigger>
           <TabsTrigger value="generated">Cartões Gerados</TabsTrigger>
+          <TabsTrigger value="correct">Corrigir Cartões</TabsTrigger>
         </TabsList>
 
         {/* Tab: Gerar Cartões */}
@@ -1773,238 +1536,269 @@ export default function AnswerSheetGenerator() {
       {/* Etapa 1: Configuração */}
       {currentStep === 1 && (
         <div className="space-y-6">
-          {/* Card 1: Localização */}
+          {/* Card 1: Filtros Hierárquicos em Cascata */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <School className="h-5 w-5" />
-                Localização
+                Seleção Hierárquica
               </CardTitle>
               <CardDescription>
-                Selecione o estado e município
+                Selecione os níveis desejados na hierarquia (você pode parar em qualquer nível)
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
+            <CardContent className="space-y-6">
+              {/* Exibir breadcrumb com filtros selecionados */}
+              {Object.keys(selectedFilters).length > 0 && (
+                <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg p-4">
+                  <p className="text-sm font-semibold mb-2 text-blue-900 dark:text-blue-100">Filtros Selecionados:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {filterLabels.state && (
+                      <div className="bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100 px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                        <span>📍 {filterLabels.state}</span>
+                        <button
+                          onClick={() => handleClearFilter('state')}
+                          className="ml-1 hover:text-red-600 font-bold"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+                    {filterLabels.city && (
+                      <div className="bg-green-100 dark:bg-green-900 text-green-900 dark:text-green-100 px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                        <span>🏙️ {filterLabels.city}</span>
+                        <button
+                          onClick={() => handleClearFilter('city')}
+                          className="ml-1 hover:text-red-600 font-bold"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+                    {filterLabels.school && (
+                      <div className="bg-purple-100 dark:bg-purple-900 text-purple-900 dark:text-purple-100 px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                        <span>🏫 {filterLabels.school}</span>
+                        <button
+                          onClick={() => handleClearFilter('school')}
+                          className="ml-1 hover:text-red-600 font-bold"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+                    {filterLabels.grade && (
+                      <div className="bg-orange-100 dark:bg-orange-900 text-orange-900 dark:text-orange-100 px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                        <span>📚 {filterLabels.grade}</span>
+                        <button
+                          onClick={() => handleClearFilter('grade')}
+                          className="ml-1 hover:text-red-600 font-bold"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+                    {filterLabels.class && (
+                      <div className="bg-red-100 dark:bg-red-900 text-red-900 dark:text-red-100 px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                        <span>👥 {filterLabels.class}</span>
+                        <button
+                          onClick={() => handleClearFilter('class')}
+                          className="ml-1 hover:text-red-600 font-bold"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Cascata de Seletores */}
+              <div className="grid gap-4">
+                {/* State Selector */}
                 <div className="space-y-2">
-                  <Label htmlFor="estado">Estado *</Label>
-                  {isLoadingEstados ? (
-                    <Skeleton className="h-10 w-full" />
-                  ) : (
-                    <Select value={selectedEstado} onValueChange={setSelectedEstado}>
-                      <SelectTrigger id="estado">
-                        <SelectValue placeholder="Selecione o estado" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {estados.map(estado => (
-                          <SelectItem key={estado.id} value={estado.name}>
-                            {estado.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
+                  <Label>Estado *</Label>
+                  <Select
+                    value={selectedFilters.state || ''}
+                    onValueChange={(value) => {
+                      const option = stateOptions.find(o => o.id === value);
+                      if (option) {
+                        handleSelectFilter('state', value, option.name);
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o estado..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {stateOptions.map(option => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="municipio">Município *</Label>
-                  {isLoadingMunicipios ? (
-                    <Skeleton className="h-10 w-full" />
-                  ) : (
-                    <Select 
-                      value={selectedMunicipio} 
-                      onValueChange={setSelectedMunicipio}
-                      disabled={!selectedEstado}
-                    >
-                      <SelectTrigger id="municipio">
-                        <SelectValue placeholder="Selecione o município" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {municipios.map(municipio => (
-                          <SelectItem key={municipio.id} value={municipio.id}>
-                            {municipio.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Card 2: Escola e Turma */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <School className="h-5 w-5" />
-                Informações da Prova
-              </CardTitle>
-              <CardDescription>
-                Selecione a escola, série e turma
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                {/* PRIMEIRO: Escola (depende de município) */}
-                <div className="space-y-2">
-                  <Label htmlFor="school">Escola *</Label>
-                  {isLoadingSchools ? (
-                    <Skeleton className="h-10 w-full" />
-                  ) : (
-                    <>
-                      <Select 
-                        value={selectedSchool} 
-                        onValueChange={setSelectedSchool}
-                        disabled={!selectedMunicipio || schools.length === 0}
+                {/* City Selector */}
+                {selectedFilters.state && (
+                  <div className="space-y-2 pl-4 border-l-2 border-blue-300">
+                    <Label>Município {selectedFilters.city ? '(Selecionado ✓)' : '(Opcional)'}</Label>
+                    {isLoadingOptions ? (
+                      <Skeleton className="h-10 w-full" />
+                    ) : (
+                      <Select
+                        value={selectedFilters.city || ''}
+                        onValueChange={(value) => {
+                          if (value === '__back') {
+                            handleClearFilter('city');
+                          } else {
+                            const option = cityOptions.find(o => o.id === value);
+                            if (option) {
+                              handleSelectFilter('city', value, option.name);
+                            }
+                          }
+                        }}
                       >
-                        <SelectTrigger id="school">
-                          <SelectValue placeholder="Selecione a escola" />
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione o município..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {schools.map(school => (
-                            <SelectItem key={school.id} value={school.id}>
-                              {school.name}
+                          <SelectItem value="__back">← Voltar para estado</SelectItem>
+                          {cityOptions.map(option => (
+                            <SelectItem key={option.id} value={option.id}>
+                              {option.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      {noSchoolsMessage && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3" />
-                          {noSchoolsMessage}
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* SEGUNDO: Série (depende de escola, opcional) */}
-                <div className="space-y-2">
-                  <Label htmlFor="serie">Série (opcional)</Label>
-                  {isLoadingSeries ? (
-                    <Skeleton className="h-10 w-full" />
-                  ) : (
-                    <>
-                      <div className="flex gap-2">
-                        <Select 
-                          value={selectedSerie} 
-                          onValueChange={setSelectedSerie} 
-                          disabled={!selectedSchool || series.length === 0}
-                        >
-                          <SelectTrigger id="serie" className="flex-1">
-                            <SelectValue placeholder="Selecione a série (opcional)" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {series.map(serie => (
-                              <SelectItem key={serie.id} value={serie.id}>
-                                {serie.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {selectedSerie && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            onClick={() => {
-                              setSelectedSerie('');
-                              setSelectedTurma('');
-                              setTurmas([]);
-                            }}
-                            title="Limpar seleção - Voltar para toda a escola"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                      {noSeriesMessage && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3" />
-                          {noSeriesMessage}
-                        </p>
-                      )}
-                      {!selectedSerie && selectedSchool && (
-                        <p className="text-xs text-muted-foreground">
-                          Deixe vazio para gerar para toda a escola
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {selectedSerie && (
-                  <div className="space-y-2">
-                    <Label htmlFor="turma">Turma (opcional)</Label>
-                    {isLoadingTurmas ? (
-                      <Skeleton className="h-10 w-full" />
-                    ) : (
-                      <>
-                        <div className="flex gap-2">
-                          <Select 
-                            value={selectedTurma} 
-                            onValueChange={setSelectedTurma} 
-                            disabled={!selectedSerie || turmas.length === 0}
-                          >
-                            <SelectTrigger id="turma" className="flex-1">
-                              <SelectValue placeholder="Selecione a turma (opcional)" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {turmas.map(turma => (
-                                <SelectItem key={turma.id} value={turma.id}>
-                                  {turma.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {selectedTurma && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              onClick={() => setSelectedTurma('')}
-                              title="Limpar seleção - Voltar para todas as turmas da série"
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                        {noTurmasMessage && (
-                          <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                            <AlertCircle className="h-3 w-3" />
-                            {noTurmasMessage}
-                          </p>
-                        )}
-                        {!selectedTurma && selectedSerie && turmas.length > 0 && (
-                          <p className="text-xs text-muted-foreground">
-                            Deixe vazio para gerar para todas as turmas da série
-                          </p>
-                        )}
-                      </>
                     )}
                   </div>
                 )}
 
-                {/* Feedback visual do escopo */}
-                {selectedSchool && (
-                  <div className="md:col-span-2">
-                    <Alert>
-                      <AlertDescription>
-                        {!selectedSerie && !selectedTurma && (
-                          <>📚 Gerando cartões para <strong>toda a escola</strong> {schools.find(s => s.id === selectedSchool)?.name}</>
-                        )}
-                        {selectedSerie && !selectedTurma && (
-                          <>📖 Gerando cartões para <strong>todas as turmas da série</strong> {series.find(s => s.id === selectedSerie)?.name}</>
-                        )}
-                        {selectedTurma && (
-                          <>✏️ Gerando cartões para a <strong>turma</strong> {turmas.find(t => t.id === selectedTurma)?.name}</>
-                        )}
-                      </AlertDescription>
-                    </Alert>
+                {/* School Selector */}
+                {selectedFilters.city && (
+                  <div className="space-y-2 pl-4 border-l-2 border-green-300">
+                    <Label>Escola {selectedFilters.school_id ? '(Selecionada ✓)' : '(Opcional)'}</Label>
+                    {isLoadingOptions ? (
+                      <Skeleton className="h-10 w-full" />
+                    ) : (
+                      <Select
+                        value={selectedFilters.school_id || ''}
+                        onValueChange={(value) => {
+                          if (value === '__back') {
+                            handleClearFilter('school');
+                          } else {
+                            const option = schoolOptions.find(o => o.id === value);
+                            if (option) {
+                              handleSelectFilter('school', value, option.name);
+                            }
+                          }
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a escola..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__back">← Voltar para município</SelectItem>
+                          {schoolOptions.map(option => (
+                            <SelectItem key={option.id} value={option.id}>
+                              {option.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 )}
 
+                {/* Grade Selector */}
+                {selectedFilters.school_id && (
+                  <div className="space-y-2 pl-4 border-l-2 border-purple-300">
+                    <Label>Série/Ano {selectedFilters.grade_id ? '(Selecionado ✓)' : '(Opcional)'}</Label>
+                    {isLoadingOptions ? (
+                      <Skeleton className="h-10 w-full" />
+                    ) : (
+                      <Select
+                        value={selectedFilters.grade_id || ''}
+                        onValueChange={(value) => {
+                          if (value === '__back') {
+                            handleClearFilter('grade');
+                          } else {
+                            const option = gradeOptions.find(o => o.id === value);
+                            if (option) {
+                              handleSelectFilter('grade', value, option.name);
+                            }
+                          }
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a série/ano..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__back">← Voltar para escola</SelectItem>
+                          {gradeOptions.map(option => (
+                            <SelectItem key={option.id} value={option.id}>
+                              {option.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                )}
+
+                {/* Class Selector */}
+                {selectedFilters.grade_id && (
+                  <div className="space-y-2 pl-4 border-l-2 border-orange-300">
+                    <Label>Turma {selectedFilters.class_id ? '(Selecionada ✓)' : '(Opcional)'}</Label>
+                    {isLoadingOptions ? (
+                      <Skeleton className="h-10 w-full" />
+                    ) : (
+                      <Select
+                        value={selectedFilters.class_id || ''}
+                        onValueChange={(value) => {
+                          if (value === '__back') {
+                            handleClearFilter('class');
+                          } else {
+                            const option = classOptions.find(o => o.id === value);
+                            if (option) {
+                              handleSelectFilter('class', value, option.name);
+                            }
+                          }
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a turma..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__back">← Voltar para série/ano</SelectItem>
+                          {classOptions.map(option => (
+                            <SelectItem key={option.id} value={option.id}>
+                              {option.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Card 2: Informações da Prova */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Informações da Prova
+              </CardTitle>
+              <CardDescription>
+                Configure os detalhes básicos da prova
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="prova">Nome da Prova *</Label>
                   <Input
@@ -2194,9 +1988,7 @@ export default function AnswerSheetGenerator() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium">
-                      Gabarito (
-                      {totalQuestoes}{' '}
-                      {totalQuestoes === 1 ? 'questão' : 'questões'})
+                      Gabarito ({totalQuestoes} questão(ões))
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Selecione a alternativa correta para cada número de questão. As alternativas disponíveis podem ser personalizadas acima.
@@ -2618,109 +2410,185 @@ export default function AnswerSheetGenerator() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Download className="h-5 w-5" />
-                Gerar Cartões Resposta
+                Gerar Cartões Resposta Hierarquicamente
               </CardTitle>
               <CardDescription>
-                Revise as informações e gere os cartões em PDF
+                Gere cartões em lote para o escopo selecionado (cidade, escola, série ou turma)
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Resumo */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Localização</Label>
-                  <p className="font-medium">
-                    {selectedEstado} - {municipios.find(m => m.id === selectedMunicipio)?.name}
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Escola</Label>
-                  <p className="font-medium">{schools.find(s => s.id === selectedSchool)?.name}</p>
-                </div>
-                
-                {/* Mostrar escopo de geração */}
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Escopo</Label>
-                  <p className="font-medium">
-                    {selectedTurma && `Turma: ${series.find(s => s.id === selectedSerie)?.name} - ${turmas.find(t => t.id === selectedTurma)?.name}`}
-                    {!selectedTurma && selectedSerie && `Série: ${series.find(s => s.id === selectedSerie)?.name} (todas as turmas)`}
-                    {!selectedTurma && !selectedSerie && 'Escola inteira (todas as turmas)'}
-                  </p>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Prova</Label>
-                  <p className="font-medium">{provaTitulo}</p>
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <Label className="text-lg font-semibold">Geração de Cartões</Label>
-                  <Badge variant="default" className="text-lg px-4 py-2">
-                    {selectedTurma && 'Uma turma'}
-                    {!selectedTurma && selectedSerie && 'Série completa'}
-                    {!selectedTurma && !selectedSerie && 'Escola inteira'}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {selectedTurma && 'Os cartões resposta serão gerados automaticamente para todos os alunos da turma selecionada.'}
-                  {!selectedTurma && selectedSerie && 'Os cartões resposta serão gerados automaticamente para todas as turmas da série selecionada. Será gerado 1 PDF por turma.'}
-                  {!selectedTurma && !selectedSerie && 'Os cartões resposta serão gerados automaticamente para todas as turmas da escola. Será gerado 1 PDF por turma, organizados em pastas por série.'}
-                  {' '}Após a conclusão, você poderá acessá-los na aba "Cartões Gerados".
-                </p>
-              </div>
-
-              {isGenerating && (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>⏳ Gerando cartões PDF em background...</span>
-                      <span>{generationProgress}%</span>
+              {/* Resumo dos Filtros Selecionados */}
+              <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4">
+                <h4 className="font-semibold mb-3 text-slate-700 dark:text-slate-300">Escopo de Geração:</h4>
+                <div className="space-y-2 text-sm">
+                  {filterLabels.state && (
+                    <div className="flex items-center gap-2">
+                      <span className="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">1</span>
+                      <span className="font-medium">Estado:</span>
+                      <span className="text-slate-600 dark:text-slate-400">{filterLabels.state}</span>
                     </div>
-                    <Progress value={generationProgress} />
-                    <p className="text-xs text-muted-foreground text-center">
-                      Isso pode levar vários minutos (~40s por aluno). Não feche esta página.
-                    </p>
-                  </div>
-                  
-                  {/* Mostrar progresso por turma para batches */}
-                  {batchClasses.length > 0 && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-sm">Turmas Processadas</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <ScrollArea className="h-48">
-                          <ul className="space-y-2">
-                            {batchClasses.map((cls, index) => (
-                              <li key={cls.gabarito_id || index} className="flex items-center gap-2 text-sm">
-                                <CheckCircle className="h-4 w-4 text-green-500" />
-                                <span>{cls.grade_name} - {cls.class_name}</span>
-                                {cls.total_students && (
-                                  <Badge variant="secondary" className="ml-auto">
-                                    {cls.total_students} alunos
-                                  </Badge>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
-                        </ScrollArea>
-                      </CardContent>
-                    </Card>
+                  )}
+                  {filterLabels.city && (
+                    <div className="flex items-center gap-2">
+                      <span className="bg-green-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">2</span>
+                      <span className="font-medium">Município:</span>
+                      <span className="text-slate-600 dark:text-slate-400">{filterLabels.city}</span>
+                    </div>
+                  )}
+                  {filterLabels.school && (
+                    <div className="flex items-center gap-2">
+                      <span className="bg-purple-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">3</span>
+                      <span className="font-medium">Escola:</span>
+                      <span className="text-slate-600 dark:text-slate-400">{filterLabels.school}</span>
+                    </div>
+                  )}
+                  {filterLabels.grade && (
+                    <div className="flex items-center gap-2">
+                      <span className="bg-orange-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">4</span>
+                      <span className="font-medium">Série/Ano:</span>
+                      <span className="text-slate-600 dark:text-slate-400">{filterLabels.grade}</span>
+                    </div>
+                  )}
+                  {filterLabels.class && (
+                    <div className="flex items-center gap-2">
+                      <span className="bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">5</span>
+                      <span className="font-medium">Turma:</span>
+                      <span className="text-slate-600 dark:text-slate-400">{filterLabels.class}</span>
+                    </div>
                   )}
                 </div>
-              )}
+              </div>
 
-              <Button
-                onClick={handleGenerateCards}
-                disabled={isGenerating}
-                size="lg"
-                className="w-full"
-              >
-                <Download className="h-5 w-5 mr-2" />
-                {isGenerating ? 'Gerando cartões...' : 'Gerar Cartões no Servidor'}
-              </Button>
+              {/* Informações da Prova */}
+              <div className="border-t pt-4 space-y-3">
+                <h4 className="font-semibold text-slate-700 dark:text-slate-300">Detalhes da Prova:</h4>
+                <div className="grid gap-4 md:grid-cols-2 text-sm">
+                  <div>
+                    <Label className="text-muted-foreground">Nome da Prova</Label>
+                    <p className="font-medium mt-1">{provaTitulo}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground">Departamento</Label>
+                    <p className="font-medium mt-1">{department}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground">Total de Questões</Label>
+                    <p className="font-medium mt-1">{totalQuestoes}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Seção de Geração e Progresso */}
+              {!jobId ? (
+                /* Antes de gerar */
+                <div className="border-t pt-4 space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Ao clicar em "Gerar Cartões", um job será criado no servidor para gerar os cartões resposta em lote. Você poderá acompanhar o progresso em tempo real.
+                  </p>
+                  <Button
+                    onClick={handleGenerateCards}
+                    disabled={isGenerating}
+                    size="lg"
+                    className="w-full"
+                  >
+                    <Download className="h-5 w-5 mr-2" />
+                    {isGenerating ? 'Iniciando geração...' : 'Iniciar Geração em Lote'}
+                  </Button>
+                </div>
+              ) : (
+                /* Depois de gerar */
+                jobProgress && jobProgress.percentage !== undefined ? (
+                  <div className="border-t pt-4 space-y-4">
+                    {/* Progress Bar Geral */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label className="font-semibold">Progresso Geral</Label>
+                        <Badge variant={jobProgress.percentage === 100 ? 'success' : 'default'}>
+                          {jobProgress.percentage.toFixed(0)}%
+                        </Badge>
+                      </div>
+                      <Progress value={jobProgress.percentage} className="h-2.5" />
+                      <p className="text-xs text-muted-foreground text-center">
+                        {jobProgress.completed_tasks} de {jobProgress.total_tasks} tarefas concluídas
+                      </p>
+                    </div>
+
+                    {/* Avisos de Geração */}
+                    {jobWarnings.length > 0 && (
+                      <Alert variant="destructive" className="border-amber-300 bg-amber-50 dark:bg-amber-950">
+                        <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                        <AlertDescription className="text-amber-800 dark:text-amber-200">
+                          <div className="space-y-1">
+                            <p className="font-semibold">Avisos durante a geração:</p>
+                            {jobWarnings.map((warning, idx) => (
+                              <div key={idx} className="text-sm">• {warning}</div>
+                            ))}
+                          </div>
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                    {/* Lista de Tarefas */}
+                    {jobTasks.length > 0 && (
+                      <div className="space-y-2 max-h-96 overflow-y-auto border rounded-lg p-3">
+                        <h5 className="font-semibold text-sm mb-2">Geração em andamento...</h5>
+                        {jobTasks.map((task, idx) => (
+                          <div
+                            key={task.task_id}
+                            className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-2 text-xs space-y-1"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <p className="font-semibold text-slate-700 dark:text-slate-300">
+                                  {idx + 1}. {task.parent_name}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                {task.status === 'completed' && (
+                                  <CheckCircle className="h-4 w-4 text-green-600" />
+                                )}
+                                {task.status === 'processing' && (
+                                  <RefreshCw className="h-4 w-4 text-blue-600 animate-spin" />
+                                )}
+                                {task.status === 'pending' && (
+                                  <div className="h-4 w-4 rounded-full border-2 border-gray-300 border-t-gray-600" />
+                                )}
+                                {task.status === 'failed' && (
+                                  <AlertCircle className="h-4 w-4 text-red-600" />
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Botão de Download */}
+                    {jobProgress.percentage === 100 && (
+                      <Button
+                        onClick={handleDownloadZip}
+                        size="lg"
+                        className="w-full bg-green-600 hover:bg-green-700"
+                      >
+                        <Download className="h-5 w-5 mr-2" />
+                        Baixar ZIP com Cartões
+                      </Button>
+                    )}
+
+                    {jobProgress.percentage < 100 && (
+                      <p className="text-sm text-amber-600 dark:text-amber-400 text-center">
+                        ⏳ Aguardando conclusão da geração antes de fazer o download...
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="border-t pt-4 space-y-4">
+                    <p className="text-sm text-amber-600 dark:text-amber-400">
+                      Carregando informações da geração...
+                    </p>
+                  </div>
+                )
+              )}
             </CardContent>
           </Card>
 
@@ -2728,7 +2596,7 @@ export default function AnswerSheetGenerator() {
             <Button
               variant="outline"
               onClick={handlePreviousStep}
-              disabled={isGenerating}
+              disabled={isGenerating || (jobId && jobProgress?.percentage < 100)}
             >
               <ChevronLeft className="h-4 w-4 mr-2" />
               Voltar
@@ -2736,6 +2604,287 @@ export default function AnswerSheetGenerator() {
           </div>
         </div>
       )}
+        </TabsContent>
+
+        {/* Tab: Cartões Gerados */}
+        <TabsContent value="generated" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Cartões Gerados
+                  </CardTitle>
+                  <CardDescription>
+                    Visualize, baixe e exclua os cartões resposta que você gerou
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  {selectedGabaritos.size > 0 && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleOpenDeleteDialog()}
+                      disabled={isDeleting}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Excluir ({selectedGabaritos.size})
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchGabaritos}
+                    disabled={isLoadingGabaritos}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingGabaritos ? 'animate-spin' : ''}`} />
+                    Atualizar
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoadingGabaritos ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-32 w-full" />
+                  ))}
+                </div>
+              ) : gabaritos.length === 0 ? (
+                <div className="text-center py-12">
+                  <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-lg font-medium text-muted-foreground mb-2">
+                    Nenhum cartão gerado ainda
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Os cartões que você gerar aparecerão aqui
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Header com seleção múltipla */}
+                  {gabaritos.length > 0 && (
+                    <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="select-all"
+                          checked={selectedGabaritos.size === gabaritos.length && gabaritos.length > 0}
+                          onCheckedChange={handleSelectAll}
+                        />
+                        <Label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
+                          Selecionar todos ({selectedGabaritos.size}/{gabaritos.length})
+                        </Label>
+                      </div>
+                      {selectedGabaritos.size > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedGabaritos(new Set())}
+                        >
+                          Limpar seleção
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  
+                  {gabaritos.map((gabarito) => (
+                    <Card 
+                      key={gabarito.id} 
+                      className={`hover:shadow-md transition-shadow ${
+                        selectedGabaritos.has(gabarito.id) ? 'ring-2 ring-blue-500' : ''
+                      }`}
+                    >
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-start gap-3 flex-1">
+                            <Checkbox
+                              id={`select-${gabarito.id}`}
+                              checked={selectedGabaritos.has(gabarito.id)}
+                              onCheckedChange={() => handleToggleSelectGabarito(gabarito.id)}
+                              className="mt-1"
+                            />
+                            <div className="flex-1 space-y-3">
+                            <div>
+                              <h3 className="text-lg font-semibold mb-1">{gabarito.title}</h3>
+                              <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                                {/* Badge de status */}
+                                {gabarito.generation_status === 'completed' ? (
+                                  <Badge variant="default" className="bg-green-600 flex items-center gap-1">
+                                    <CheckCircle className="h-3 w-3" />
+                                    Pronto
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="flex items-center gap-1 border-yellow-500 text-yellow-700">
+                                    <Clock className="h-3 w-3" />
+                                    Processando
+                                  </Badge>
+                                )}
+                                
+                                {/* Badge de escopo */}
+                                {gabarito.scope_type === 'class' && gabarito.class_name && (
+                                  <Badge variant="secondary" className="flex items-center gap-1">
+                                    <Users className="h-3 w-3" />
+                                    {gabarito.class_name}
+                                  </Badge>
+                                )}
+                                {gabarito.scope_type === 'grade' && gabarito.grade_name && (
+                                  <Badge variant="secondary" className="flex items-center gap-1 border-blue-500 text-blue-700">
+                                    <School className="h-3 w-3" />
+                                    {gabarito.grade_name}
+                                  </Badge>
+                                )}
+                                {gabarito.scope_type === 'school' && gabarito.school_name && (
+                                  <Badge variant="secondary" className="flex items-center gap-1 border-purple-500 text-purple-700">
+                                    <School className="h-3 w-3" />
+                                    {gabarito.school_name}
+                                  </Badge>
+                                )}
+                                
+                                {/* Contagem de alunos e turmas */}
+                                <Badge variant="outline">
+                                  {gabarito.students_count || 0} aluno(s)
+                                </Badge>
+                                {gabarito.classes_count > 1 && (
+                                  <Badge variant="outline">
+                                    {gabarito.classes_count} turma(s)
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                              <div>
+                                <p className="text-muted-foreground">Criado em</p>
+                                <p className="font-medium">
+                                  {new Date(gabarito.created_at).toLocaleDateString('pt-BR', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Criado por</p>
+                                <p className="font-medium">{gabarito.creator_name}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Tipo de Escopo</p>
+                                <p className="font-medium capitalize">
+                                  {gabarito.scope_type === 'class' && 'Turma'}
+                                  {gabarito.scope_type === 'grade' && 'Série'}
+                                  {gabarito.scope_type === 'school' && 'Escola'}
+                                  {gabarito.scope_type === 'city' && 'Município'}
+                                </p>
+                              </div>
+                            </div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex flex-col gap-2 min-w-[140px]">
+                            <Button
+                              onClick={() => handleDownloadGabarito(gabarito.id)}
+                              disabled={downloadingGabaritoId === gabarito.id || isDeleting || !gabarito.can_download}
+                              className="w-full"
+                            >
+                              {downloadingGabaritoId === gabarito.id ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Baixando... {downloadProgress > 0 && `${downloadProgress}%`}
+                                </>
+                              ) : !gabarito.can_download ? (
+                                <>
+                                  <Clock className="h-4 w-4 mr-2" />
+                                  Processando
+                                </>
+                              ) : (
+                                <>
+                                  <Download className="h-4 w-4 mr-2" />
+                                  Baixar ZIP
+                                </>
+                              )}
+                            </Button>
+                            {downloadingGabaritoId === gabarito.id && downloadProgress > 0 && (
+                              <div className="space-y-1">
+                                <Progress value={downloadProgress} className="h-2" />
+                                <p className="text-xs text-center text-muted-foreground">
+                                  Preparando download...
+                                </p>
+                              </div>
+                            )}
+                            <Button
+                              variant="destructive"
+                              onClick={() => handleOpenDeleteDialog(gabarito.id)}
+                              disabled={isDeleting || downloadingGabaritoId === gabarito.id}
+                              className="w-full"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Excluir
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Diálogo de confirmação de exclusão */}
+          <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-destructive" />
+                  Confirmar Exclusão
+                </DialogTitle>
+                <DialogDescription>
+                  {deleteMode === 'single' ? (
+                    <>
+                      Tem certeza que deseja excluir este gabarito? Esta ação não pode ser desfeita.
+                    </>
+                  ) : (
+                    <>
+                      Tem certeza que deseja excluir {selectedGabaritos.size} gabarito(s) selecionado(s)? 
+                      Esta ação não pode ser desfeita.
+                    </>
+                  )}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex justify-end gap-2 mt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowDeleteDialog(false);
+                    setGabaritoToDelete(null);
+                  }}
+                  disabled={isDeleting}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleConfirmDelete}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Excluindo...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Excluir
+                    </>
+                  )}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         {/* Tab: Corrigir Cartões */}
@@ -3021,315 +3170,6 @@ export default function AnswerSheetGenerator() {
               </Dialog>
             </CardContent>
           </Card>
-        </TabsContent>
-
-        {/* Tab: Cartões Gerados */}
-        <TabsContent value="generated" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    Cartões Gerados
-                  </CardTitle>
-                  <CardDescription>
-                    Visualize, baixe e exclua os cartões resposta que você gerou
-                  </CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  {selectedGabaritos.size > 0 && (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleOpenDeleteDialog()}
-                      disabled={isDeleting}
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Excluir ({selectedGabaritos.size})
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={fetchGabaritos}
-                    disabled={isLoadingGabaritos}
-                  >
-                    <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingGabaritos ? 'animate-spin' : ''}`} />
-                    Atualizar
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isLoadingGabaritos ? (
-                <div className="space-y-4">
-                  {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-32 w-full" />
-                  ))}
-                </div>
-              ) : gabaritos.length === 0 ? (
-                <div className="text-center py-12">
-                  <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-lg font-medium text-muted-foreground mb-2">
-                    Nenhum cartão gerado ainda
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Os cartões que você gerar aparecerão aqui
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {/* Header com seleção múltipla */}
-                  {gabaritos.length > 0 && (
-                    <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="select-all"
-                          checked={selectedGabaritos.size === gabaritos.length && gabaritos.length > 0}
-                          onCheckedChange={handleSelectAll}
-                        />
-                        <Label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
-                          Selecionar todos ({selectedGabaritos.size}/{gabaritos.length})
-                        </Label>
-                      </div>
-                      {selectedGabaritos.size > 0 && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setSelectedGabaritos(new Set())}
-                        >
-                          Limpar seleção
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                  
-                  {gabaritos.map((gabarito) => (
-                    <Card 
-                      key={gabarito.id} 
-                      className={`hover:shadow-md transition-shadow ${
-                        selectedGabaritos.has(gabarito.id) ? 'ring-2 ring-blue-500' : ''
-                      }`}
-                    >
-                      <CardContent className="p-6">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex items-start gap-3 flex-1">
-                            <Checkbox
-                              id={`select-${gabarito.id}`}
-                              checked={selectedGabaritos.has(gabarito.id)}
-                              onCheckedChange={() => handleToggleSelectGabarito(gabarito.id)}
-                              className="mt-1"
-                            />
-                            <div className="flex-1 space-y-3">
-                            <div>
-                              <h3 className="text-lg font-semibold mb-1">{gabarito.title}</h3>
-                              <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
-                                <Badge variant="secondary" className="flex items-center gap-1">
-                                  <School className="h-3 w-3" />
-                                  {gabarito.school_name}
-                                </Badge>
-                                {gabarito.classes_count != null && gabarito.students_count != null ? (
-                                  <>
-                                    <Badge variant="secondary" className="flex items-center gap-1">
-                                      <Users className="h-3 w-3" />
-                                      {gabarito.classes_count} turmas
-                                    </Badge>
-                                    <Badge variant="secondary">
-                                      {gabarito.students_count} alunos
-                                    </Badge>
-                                  </>
-                                ) : (
-                                  <>
-                                    {gabarito.class_name != null && (
-                                      <Badge variant="secondary" className="flex items-center gap-1">
-                                        <Users className="h-3 w-3" />
-                                        {gabarito.class_name}
-                                      </Badge>
-                                    )}
-                                    {gabarito.grade_name != null && (
-                                      <Badge variant="secondary">
-                                        {gabarito.grade_name}
-                                      </Badge>
-                                    )}
-                                  </>
-                                )}
-                                {gabarito.num_questions != null && (
-                                  <Badge variant="outline">
-                                    {gabarito.num_questions} questões
-                                  </Badge>
-                                )}
-                                {gabarito.use_blocks && (
-                                  <Badge variant="outline" className="border-purple-500 text-purple-700">
-                                    Com blocos
-                                  </Badge>
-                                )}
-                                {gabarito.is_batch && (
-                                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300">
-                                    📦 Batch
-                                  </Badge>
-                                )}
-                                {gabarito.generation_status != null && (
-                                  <Badge variant="outline">
-                                    {gabarito.generation_status === 'completed' ? 'Concluído' : gabarito.generation_status}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                              {gabarito.municipality != null && gabarito.state != null && (
-                                <div>
-                                  <p className="text-muted-foreground">Localização</p>
-                                  <p className="font-medium">{gabarito.municipality}, {gabarito.state}</p>
-                                </div>
-                              )}
-                              {gabarito.creator_name != null && (
-                                <div>
-                                  <p className="text-muted-foreground">Criado por</p>
-                                  <p className="font-medium">{gabarito.creator_name}</p>
-                                </div>
-                              )}
-                              <div>
-                                <p className="text-muted-foreground">Data de criação</p>
-                                <p className="font-medium">
-                                  {new Date(gabarito.created_at).toLocaleDateString('pt-BR', {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                    year: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })}
-                                </p>
-                              </div>
-                              {gabarito.institution != null && (
-                                <div>
-                                  <p className="text-muted-foreground">Instituição</p>
-                                  <p className="font-medium">{gabarito.institution}</p>
-                                </div>
-                              )}
-                            </div>
-                            </div>
-                          </div>
-                          
-                          <div className="flex flex-col gap-2 min-w-[140px]">
-                            {gabarito.is_batch && gabarito.batch_id ? (
-                              <Button
-                                onClick={() => handleDownloadBatch(gabarito.batch_id!)}
-                                disabled={downloadingGabaritoId === gabarito.batch_id || isDeleting || gabarito.can_download === false}
-                                className="w-full bg-purple-600 hover:bg-purple-700"
-                              >
-                                {downloadingGabaritoId === gabarito.batch_id ? (
-                                  <>
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Preparando...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Download className="h-4 w-4 mr-2" />
-                                    Baixar ZIP Completo
-                                  </>
-                                )}
-                              </Button>
-                            ) : (
-                              <Button
-                                onClick={() => handleDownloadGabarito(gabarito.id)}
-                                disabled={downloadingGabaritoId === gabarito.id || isDeleting || gabarito.can_download === false}
-                                className="w-full"
-                              >
-                                {downloadingGabaritoId === gabarito.id ? (
-                                  <>
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Preparando download...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Download className="h-4 w-4 mr-2" />
-                                    Baixar ZIP
-                                  </>
-                                )}
-                              </Button>
-                            )}
-                            <Button
-                              variant="outline"
-                              onClick={() => handleViewResults(gabarito.id)}
-                              disabled={isDeleting || downloadingGabaritoId === gabarito.id}
-                              className="w-full"
-                            >
-                              <FileText className="h-4 w-4 mr-2" />
-                              Visualizar Resultados
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              onClick={() => handleOpenDeleteDialog(gabarito.id)}
-                              disabled={isDeleting || downloadingGabaritoId === gabarito.id}
-                              className="w-full"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Excluir
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Diálogo de confirmação de exclusão */}
-          <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5 text-destructive" />
-                  Confirmar Exclusão
-                </DialogTitle>
-                <DialogDescription>
-                  {deleteMode === 'single' ? (
-                    <>
-                      Tem certeza que deseja excluir este gabarito? Esta ação não pode ser desfeita.
-                    </>
-                  ) : (
-                    <>
-                      Tem certeza que deseja excluir {selectedGabaritos.size} gabarito(s) selecionado(s)? 
-                      Esta ação não pode ser desfeita.
-                    </>
-                  )}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex justify-end gap-2 mt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setShowDeleteDialog(false);
-                    setGabaritoToDelete(null);
-                  }}
-                  disabled={isDeleting}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={handleConfirmDelete}
-                  disabled={isDeleting}
-                >
-                  {isDeleting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Excluindo...
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Excluir
-                    </>
-                  )}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
         </TabsContent>
 
       </Tabs>
