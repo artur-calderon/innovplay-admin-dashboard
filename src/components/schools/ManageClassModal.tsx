@@ -14,11 +14,11 @@ import { Loader2, Users, GraduationCap, Trash2, Plus, Eye, UserPlus } from "luci
 import { Badge } from "@/components/ui/badge";
 import { LinkTeacherModal } from "./LinkTeacherModal";
 import { LinkStudentModal } from "./LinkStudentModal";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
 interface Teacher {
   id: string;
   name: string;
@@ -97,6 +97,8 @@ export function ManageClassModal({
   const [isRemoving, setIsRemoving] = useState<string | null>(null);
   const [showLinkTeacherModal, setShowLinkTeacherModal] = useState(false);
   const [showLinkStudentModal, setShowLinkStudentModal] = useState(false);
+  const [viewingStudent, setViewingStudent] = useState<Student | null>(null);
+  const [viewingTeacher, setViewingTeacher] = useState<Teacher | null>(null);
   const [activeTab, setActiveTab] = useState("manage");
   const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState({
@@ -416,9 +418,22 @@ export function ManageClassModal({
     }));
   };
 
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      setFormData({
+        name: "",
+        email: "",
+        password: "",
+        registration: "",
+        birth_date: ""
+      });
+      onClose();
+    }
+  };
+
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
+      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
         <DialogContent className="w-[95vw] max-w-7xl h-[95vh] max-h-[95vh] overflow-hidden flex flex-col p-0">
           <DialogHeader className="px-4 sm:px-6 py-4 border-b bg-gradient-to-r from-blue-50 to-green-50 dark:from-blue-950/40 dark:via-sky-950/30 dark:to-emerald-950/25">
             <DialogTitle className="font-semibold tracking-tight flex flex-col sm:flex-row sm:items-center gap-2 text-lg sm:text-xl text-foreground">
@@ -447,10 +462,10 @@ export function ManageClassModal({
 
           <div className="flex-1 overflow-hidden px-4 sm:px-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-              <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0 h-auto sm:h-10 p-1 bg-gray-100 dark:bg-muted rounded-lg my-4">
+              <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0 h-auto sm:h-10 p-1 bg-muted/60 rounded-lg my-4">
                 <TabsTrigger 
                   value="manage" 
-                  className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                  className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-border rounded-md transition-all"
                 >
                   <Users className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                   <span className="hidden xs:inline">Gerenciar</span>
@@ -458,7 +473,7 @@ export function ManageClassModal({
                 </TabsTrigger>
                 <TabsTrigger 
                   value="create-student" 
-                  className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                  className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-border rounded-md transition-all"
                 >
                   <UserPlus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                   <span className="hidden xs:inline">Novo Aluno</span>
@@ -466,7 +481,7 @@ export function ManageClassModal({
                 </TabsTrigger>
                 <TabsTrigger 
                   value="create-teacher" 
-                  className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                  className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-border rounded-md transition-all"
                 >
                   <GraduationCap className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                   <span className="hidden xs:inline">Novo Professor</span>
@@ -474,7 +489,7 @@ export function ManageClassModal({
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="manage" className="flex-1 mt-0 overflow-hidden">
+              <TabsContent value="manage" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=inactive]:hidden">
                 {isLoading ? (
                   <div className="flex flex-col items-center justify-center p-8 h-full">
                     <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
@@ -485,8 +500,8 @@ export function ManageClassModal({
                     {/* Teachers Section */}
                     <div className="flex flex-col min-h-0">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                        <h3 className="font-semibold text-base sm:text-lg flex items-center gap-2">
-                          <GraduationCap className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
+                        <h3 className="font-semibold text-base sm:text-lg flex items-center gap-2 text-foreground">
+                          <GraduationCap className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-400" />
                           <span>Professores</span>
                           <Badge variant="secondary" className="text-xs px-2 py-0.5">
                             {teachers.length}
@@ -517,7 +532,7 @@ export function ManageClassModal({
                             </p>
                           </div>
                         ) : (
-                          <div className="p-3 sm:p-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-blue-300 scrollbar-track-blue-50 hover:scrollbar-thumb-blue-400 scroll-smooth">
+                          <div className="p-3 sm:p-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-blue-300 dark:scrollbar-thumb-blue-700 scrollbar-track-transparent scroll-smooth">
                             <div className="space-y-2 sm:space-y-3">
                               {teachers.map((teacher) => (
                                 <div
@@ -542,7 +557,7 @@ export function ManageClassModal({
                                       variant="ghost"
                                       size="sm"
                                       className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-blue-50 dark:hover:bg-blue-950/30"
-                                      onClick={() => {/* TODO: Ver detalhes do professor */}}
+                                      onClick={() => setViewingTeacher(teacher)}
                                     >
                                       <Eye className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600 dark:text-blue-300" />
                                     </Button>
@@ -571,8 +586,8 @@ export function ManageClassModal({
                     {/* Students Section */}
                     <div className="flex flex-col min-h-0">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                        <h3 className="font-semibold text-base sm:text-lg flex items-center gap-2">
-                          <Users className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
+                        <h3 className="font-semibold text-base sm:text-lg flex items-center gap-2 text-foreground">
+                          <Users className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 dark:text-green-400" />
                           <span>Alunos</span>
                           <Badge variant="secondary" className="text-xs px-2 py-0.5">
                             {students.length}
@@ -603,7 +618,7 @@ export function ManageClassModal({
                             </p>
                           </div>
                         ) : (
-                          <div className="p-3 sm:p-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-green-300 scrollbar-track-green-50 hover:scrollbar-thumb-green-400 scroll-smooth">
+                          <div className="p-3 sm:p-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-green-300 dark:scrollbar-thumb-green-700 scrollbar-track-transparent scroll-smooth">
                             <div className="space-y-2 sm:space-y-3">
                               {students.map((student) => (
                                 <div
@@ -628,7 +643,7 @@ export function ManageClassModal({
                                       variant="ghost"
                                       size="sm"
                                       className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-green-50 dark:hover:bg-green-950/30"
-                                      onClick={() => {/* TODO: Ver detalhes do aluno */}}
+                                      onClick={() => setViewingStudent(student)}
                                     >
                                       <Eye className="h-3 w-3 sm:h-4 sm:w-4 text-green-600 dark:text-green-300" />
                                     </Button>
@@ -657,140 +672,62 @@ export function ManageClassModal({
                 )}
               </TabsContent>
 
-              <TabsContent value="create-student" className="flex-1 mt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-700 dark:scrollbar-track-gray-900 hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 pr-2 pb-4 scroll-smooth">
-                <Card className="mx-auto max-w-4xl">
-                  <CardHeader className="pb-4">
-                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-                      <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-green-600 dark:text-green-300" />
-                      Criar Novo Aluno
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:via-indigo-950/30 dark:to-indigo-950/20 p-4 sm:p-6 rounded-xl border border-blue-200 dark:border-blue-900/60">
-                      <div className="flex items-start gap-3 mb-4">
-                        <div className="flex-shrink-0 w-8 h-8 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center">
-                          <span className="text-blue-600 dark:text-blue-300 text-lg">📧</span>
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-blue-800 dark:text-blue-200 text-sm sm:text-base mb-2">
-                            Credenciais Automáticas
-                          </p>
-                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs sm:text-sm">
-                            <div className="bg-white/70 dark:bg-white/10 p-3 rounded-lg">
-                              <p className="font-medium text-foreground mb-1">
-                                <strong>Email:</strong> Iniciais do nome + "@afirmeplay.com.br"
-                              </p>
-                              <p className="text-blue-600 dark:text-blue-300 font-mono text-xs">
-                                Ex: "João Silva" → js@afirmeplay.com.br
-                              </p>
-                            </div>
-                            <div className="bg-white/70 dark:bg-white/10 p-3 rounded-lg">
-                              <p className="font-medium text-foreground mb-1">
-                                <strong>Senha:</strong> Primeiro nome + "@afirmeplay"
-                              </p>
-                              <p className="text-blue-600 dark:text-blue-300 font-mono text-xs">
-                                Ex: "João Silva" → joão@afirmeplay
-                              </p>
-                            </div>
-                          </div>
-                          <p className="text-xs sm:text-sm mt-3 text-blue-700 dark:text-blue-300 font-medium flex items-center gap-1">
-                            <span>✨</span>
-                            As credenciais aparecerão automaticamente conforme você digita o nome
-                          </p>
-                        </div>
-                      </div>
+              <TabsContent value="create-student" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=inactive]:hidden">
+                <div className="flex-1 overflow-y-auto border border-border rounded-lg bg-card min-h-[300px] p-4 sm:p-5">
+                  <p className="text-sm text-muted-foreground mb-4">
+                    E-mail e senha são gerados automaticamente a partir do nome e não são exibidos por segurança.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="student-name" className="text-sm font-medium text-foreground">Nome Completo *</Label>
+                      <Input
+                        id="student-name"
+                        placeholder="Digite o nome completo do aluno"
+                        className="h-11 border-input bg-background focus:ring-2 focus:ring-green-500"
+                        value={formData.name}
+                        onChange={(e) => handleNameChange(e.target.value)}
+                      />
                     </div>
-
-                    <div className="space-y-6">
-                      <div className="space-y-3">
-                        <Label htmlFor="student-name" className="text-sm sm:text-base font-medium text-foreground">
-                          Nome Completo *
-                        </Label>
-                        <Input
-                          id="student-name"
-                          placeholder="Digite o nome completo do aluno"
-                          className="text-base sm:text-lg h-11 sm:h-12 focus:ring-2 focus:ring-green-500"
-                          value={formData.name}
-                          onChange={(e) => handleNameChange(e.target.value)}
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                        <div className="space-y-3">
-                          <Label htmlFor="student-email" className="text-sm font-medium text-muted-foreground">
-                            Email (Gerado automaticamente)
-                          </Label>
-                          <Input
-                            id="student-email"
-                            placeholder="Email será gerado automaticamente"
-                            className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed"
-                            value={formData.email}
-                            readOnly
-                          />
-                        </div>
-                        <div className="space-y-3">
-                          <Label htmlFor="student-password" className="text-sm font-medium text-muted-foreground">
-                            Senha (Gerada automaticamente)
-                          </Label>
-                          <Input
-                            id="student-password"
-                            placeholder="Senha será gerada automaticamente"
-                            className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed"
-                            value={formData.password}
-                            readOnly
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                        <div className="space-y-3">
-                          <Label htmlFor="student-registration" className="text-sm sm:text-base font-medium text-foreground">
-                            Matrícula (Opcional)
-                          </Label>
-                          <Input
-                            id="student-registration"
-                            placeholder="Número de matrícula"
-                            className="h-11 focus:ring-2 focus:ring-green-500"
-                            value={formData.registration}
-                            onChange={(e) => handleInputChange('registration', e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-3">
-                          <Label htmlFor="student-birthdate" className="text-sm sm:text-base font-medium text-foreground">
-                            Data de Nascimento *
-                          </Label>
-                          <Input
-                            id="student-birthdate"
-                            type="date"
-                            className="h-11 focus:ring-2 focus:ring-green-500"
-                            value={formData.birth_date}
-                            onChange={(e) => handleInputChange('birth_date', e.target.value)}
-                          />
-                        </div>
-                      </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="student-registration" className="text-sm font-medium text-foreground">Matrícula (Opcional)</Label>
+                      <Input
+                        id="student-registration"
+                        placeholder="Número de matrícula"
+                        className="h-11 border-input bg-background focus:ring-2 focus:ring-green-500"
+                        value={formData.registration}
+                        onChange={(e) => handleInputChange('registration', e.target.value)}
+                      />
                     </div>
-
-                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-6 border-t border-border/60">
-                      <Button 
-                        variant="outline" 
-                        onClick={onClose} 
-                        disabled={isCreating}
-                        className="order-2 sm:order-1 h-11"
-                      >
-                        Cancelar
-                      </Button>
-                      <Button 
-                        onClick={handleCreateStudent} 
-                        disabled={isCreating}
-                        className="order-1 sm:order-2 flex-1 h-11 bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-400"
-                      >
-                        {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        <UserPlus className="mr-2 h-4 w-4" />
-                        Criar Aluno
-                      </Button>
+                    <div className="space-y-2">
+                      <Label htmlFor="student-birthdate" className="text-sm font-medium text-foreground">Data de Nascimento *</Label>
+                      <Input
+                        id="student-birthdate"
+                        type="date"
+                        className="h-11 border-input bg-background focus:ring-2 focus:ring-green-500"
+                        value={formData.birth_date}
+                        onChange={(e) => handleInputChange('birth_date', e.target.value)}
+                      />
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t bg-gray-50/50 dark:bg-muted px-4 py-3 rounded-b-lg">
+                  <div className="text-xs sm:text-sm text-muted-foreground order-2 sm:order-1">
+                    Novo aluno
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 order-1 sm:order-2">
+                    <Button variant="outline" onClick={onClose} disabled={isCreating} className="h-10 order-2 sm:order-1">
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={handleCreateStudent}
+                      disabled={isCreating || !formData.name.trim() || !formData.birth_date}
+                      className="h-10 order-1 sm:order-2 bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-400"
+                    >
+                      {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                      Criar Aluno
+                    </Button>
+                  </div>
+                </div>
               </TabsContent>
 
               <TabsContent value="create-teacher" className="flex-1 mt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-700 dark:scrollbar-track-gray-900 hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 pr-2 pb-4 scroll-smooth">
@@ -958,6 +895,72 @@ export function ManageClassModal({
               Fechar
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Informações do Aluno */}
+      <Dialog open={!!viewingStudent} onOpenChange={(open) => !open && setViewingStudent(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-500/10">
+                <Users className="h-4 w-4 text-green-600 dark:text-green-400" />
+              </div>
+              Informações do aluno
+            </DialogTitle>
+            <DialogDescription>
+              Dados cadastrais do aluno na turma
+            </DialogDescription>
+          </DialogHeader>
+          {viewingStudent && (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Nome completo</p>
+                <p className="text-base font-medium text-foreground">{viewingStudent.name}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">E-mail</p>
+                <p className="text-base text-foreground">{viewingStudent.email || viewingStudent.user?.email || "—"}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Matrícula</p>
+                <p className="text-base text-foreground">{viewingStudent.registration || "—"}</p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Informações do Professor */}
+      <Dialog open={!!viewingTeacher} onOpenChange={(open) => !open && setViewingTeacher(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/10">
+                <GraduationCap className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              </div>
+              Informações do professor
+            </DialogTitle>
+            <DialogDescription>
+              Dados cadastrais do professor na turma
+            </DialogDescription>
+          </DialogHeader>
+          {viewingTeacher && (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Nome completo</p>
+                <p className="text-base font-medium text-foreground">{viewingTeacher.name}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">E-mail</p>
+                <p className="text-base text-foreground">{viewingTeacher.email || "—"}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Matrícula</p>
+                <p className="text-base text-foreground">{viewingTeacher.registration || "—"}</p>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

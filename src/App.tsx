@@ -26,21 +26,18 @@ const Settings = React.lazy(() => import("./pages/Settings"));
 const Certificates = React.lazy(() => import("./pages/Certificates"));
 const StudentCertificates = React.lazy(() => import("./pages/StudentCertificates"));
 const StudentEvaluations = React.lazy(() => import("./components/evaluations/StudentEvaluations"));
-const Users = React.lazy(() => import("./pages/Users"));
 const Profile = React.lazy(() => import("./pages/Profile"));
 const ClassDetails = React.lazy(() => import("./components/schools/ClassDetails"));
 const SchoolDetails = React.lazy(() => import("./components/schools/SchoolDetails"));
 const CreateEvaluation = React.lazy(() => import("./pages/CreateEvaluation"));
 const EditEvaluation = React.lazy(() => import("./pages/EditEvaluation"));
 const Cities = React.lazy(() => import("./pages/Cities"));
-const Domains = React.lazy(() => import("./pages/Domains"));
 const EditQuickLinks = React.lazy(() => import("./pages/EditQuickLinks"));
 const ViewEvaluation = React.lazy(() => import("./pages/ViewEvaluation"));
 const CreateQuestionPage = React.lazy(() => import("./pages/CreateQuestionPage"));
 const QuestionsPage = React.lazy(() => import("./pages/QuestionsPage"));
 const EditQuestionPage = React.lazy(() => import("./pages/EditQuestionPage"));
 const HabilidadesPage = React.lazy(() => import("./pages/HabilidadesPage"));
-const Turmas = React.lazy(() => import("./pages/Turmas"));
 const Instituicao = React.lazy(() => import("./pages/Instituicao"));
 const Curso = React.lazy(() => import("./pages/Curso"));
 const Serie = React.lazy(() => import("./pages/Serie"));
@@ -296,14 +293,13 @@ const App = () => {
               />
               <Route path="/app/olimpiada/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
               <Route path="/app/olimpiada-resultado/:testId/:studentId" element={<PrivateRoute><StudentResult /></PrivateRoute>} />
-              <Route path="/app/city" element={<PrivateRoute><Cities /></PrivateRoute>} />
+              <Route path="/app/city" element={<PrivateRoute><RoleRoute allowed={["admin", "tecadm"]}><Cities /></RoleRoute></PrivateRoute>} />
               <Route path="/app/turma/:id" element={<PrivateRoute><ClassDetails /></PrivateRoute>} />
               <Route path="/app/escola/:id" element={<PrivateRoute><SchoolDetails /></PrivateRoute>} />
-              <Route path="/app/usuarios" element={<PrivateRoute><Users /></PrivateRoute>} />
+              <Route path="/app/usuarios" element={<Navigate to="/app/cadastros/instituicao" replace />} />
               <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/app/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
               <Route path="/app/configuracoes" element={<PrivateRoute><Settings /></PrivateRoute>} />
-              <Route path="/app/dominios" element={<PrivateRoute><RoleRoute allowed={["admin"]}><Domains /></RoleRoute></PrivateRoute>} />
               <Route path="/app/moedas" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><CoinsAdmin /></RoleRoute></PrivateRoute>} />
 
               {/* Rotas de gerenciamento de questões */}
@@ -312,10 +308,8 @@ const App = () => {
               <Route path="/app/cadastros/questao/editar/:id" element={<PrivateRoute><EditQuestionPage /></PrivateRoute>} />
               <Route path="/app/cadastros/habilidades" element={<PrivateRoute><HabilidadesPage /></PrivateRoute>} />
 
-              {/* Rotas de gerenciamento de turmas */}
-              <Route path="/app/cadastros/turma" element={<PrivateRoute><Turmas /></PrivateRoute>} />
-
-              {/* Rotas de cadastros institucionais */}
+              <Route path="/app/cadastros/turma" element={<Navigate to="/app/cadastros/instituicao?tab=turmas" replace />} />
+              {/* Rotas de cadastros institucionais (turmas e usuários unificados em instituição) */}
               <Route path="/app/cadastros/instituicao" element={<PrivateRoute><Instituicao /></PrivateRoute>} />
               <Route path="/app/cadastros/curso" element={<PrivateRoute><Curso /></PrivateRoute>} />
               <Route path="/app/cadastros/serie" element={<PrivateRoute><Serie /></PrivateRoute>} />

@@ -730,21 +730,25 @@ export default function RelatorioEscolar() {
   // Inicialização e carregamento de filtros movido para FilterComponentAnalise
   useEffect(() => {
     const initializeData = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        try {
-          await autoLogin();
-        } catch (error) {
-          console.error("Erro no login automático:", error);
-          toast({
-            title: "Erro de Autenticação",
-            description: "Não foi possível fazer login automático. Verifique suas credenciais.",
-            variant: "destructive",
-          });
-          return;
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          try {
+            await autoLogin();
+          } catch (error) {
+            console.error("Erro no login automático:", error);
+            toast({
+              title: "Erro de Autenticação",
+              description: "Não foi possível fazer login automático. Verifique suas credenciais.",
+              variant: "destructive",
+            });
+            return;
+          }
         }
+      } finally {
+        // Sempre encerrar o loading para não travar a tela (ex.: autoLogin falha ou demora)
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
     initializeData();

@@ -76,11 +76,14 @@ export function LinkStudentModal({
         setIsLoading(true);
         const endpoint = ['admin', 'tecadm'].includes(user?.role || '') ? '/students' : '/students/available';
         const response = await api.get(endpoint);
-        const allStudents = response.data || [];
-        
-        setStudents(allStudents);
-      } catch (error) {
-        console.error("Erro ao buscar alunos:", error);
+        const allStudents = Array.isArray(response.data) ? response.data : response.data?.alunos ?? response.data?.students ?? [];
+        setStudents(Array.isArray(allStudents) ? allStudents : []);
+      } catch (error: unknown) {
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        // 404 ou lista vazia: não exibir erro
+        if (status !== 404 && status !== 204) {
+          console.error("Erro ao buscar alunos:", error);
+        }
         setStudents([]);
       } finally {
         setIsLoading(false);

@@ -30,8 +30,6 @@ import {
   FileText,
   Target,
   TrendingUp,
-  GraduationCap,
-  BookMarked,
   Layers,
   Library,
   FolderTree,
@@ -46,8 +44,7 @@ import {
   Sparkles,
   Medal,
   Star,
-  Coins,
-  Globe
+  Coins
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -224,22 +221,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           label: "Cadastros",
           role: ["admin", "tecadm"],
           children: [
-            {
-              icon: Building,
-              label: "Instituição",
-              role: ["admin", "tecadm"],
-              children: [
-                { icon: Building, label: "Instituição", href: "/app/cadastros/instituicao", role: ["admin", "tecadm"] },
-                { icon: GraduationCap, label: "Curso", href: "/app/cadastros/curso", role: ["admin", "tecadm"] },
-                { icon: Layers, label: "Série", href: "/app/cadastros/serie", role: ["admin", "tecadm"] },
-                { icon: BookMarked, label: "Disciplina", href: "/app/cadastros/disciplina", role: ["admin", "tecadm"] },
-                { icon: Users2, label: "Turma", href: "/app/cadastros/turma", role: ["admin", "tecadm"] },
-              ]
-            },
+            { icon: Building, label: "Instituição", href: "/app/cadastros/instituicao", role: ["admin", "tecadm"] },
             { icon: FileCheck, label: "Avaliações", href: "/app/avaliacoes", role: ["admin", "tecadm"] },
             { icon: MapPin, label: "Municípios", href: "/app/city", role: ["admin", "tecadm"] },
             { icon: HelpCircle, label: "Questão", href: "/app/cadastros/questao", role: ["admin", "tecadm"] },
-            { icon: Users, label: "Usuário", href: "/app/usuarios", role: ["admin", "tecadm"] },
           ]
         },
         {
@@ -304,7 +289,6 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           badge: avisosQuantidade > 0 ? avisosQuantidade.toString() : undefined
         },
         { icon: Settings, label: "Configurações", href: `${user.role === 'aluno' ? "/aluno/configuracoes" : "/app/configuracoes"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
-        { icon: Globe, label: "Dominios", href: "/app/dominios", role: ["admin"] },
         { icon: LogOut, label: "Sair", href: "/logout", role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"], divider: true },
       ]
     }

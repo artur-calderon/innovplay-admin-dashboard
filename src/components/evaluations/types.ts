@@ -79,7 +79,9 @@ export interface Question {
   formattedSolution?: string;
   options?: { id?: string; text: string; isCorrect: boolean; }[];
   secondStatement?: string;
-  skills?: string; // Uma questão tem apenas UMA habilidade
+  skills?: string | string[]; // id(s) ou códigos (normalizado como array no front)
+  /** Código da habilidade vinculada (skill_code) para exibição */
+  skillCode?: string;
   created_by: string;
   lastModifiedBy?: string;
   // Add other properties as needed
