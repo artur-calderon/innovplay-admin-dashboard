@@ -37,7 +37,10 @@ export function CertificateList({ schoolId, municipalityId, isAdmin = false, onS
 
   useEffect(() => {
     const loadEvaluations = async () => {
-      if (!isAdmin && (!schoolId || !municipalityId)) return;
+      const missingContext = user?.role === 'tecadm'
+        ? !municipalityId
+        : !schoolId || !municipalityId;
+      if (!isAdmin && missingContext) return;
       
       setIsLoading(true);
       try {

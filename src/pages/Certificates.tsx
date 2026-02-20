@@ -183,7 +183,12 @@ export default function Certificates() {
   }
 
   // Para admin, não precisa de escola/município específico - pode ver todas
-  if (user.role !== 'admin' && (!schoolId || !municipalityId)) {
+  // Para tecadm, basta ter município (não tem escola vinculada)
+  const missingContext = user.role === 'tecadm'
+    ? !municipalityId
+    : !schoolId || !municipalityId;
+
+  if (user.role !== 'admin' && missingContext) {
     return (
       <div className="container mx-auto p-6">
         <Card>
