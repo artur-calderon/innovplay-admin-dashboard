@@ -19,8 +19,9 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { UserPlus, Upload, Loader2 } from "lucide-react";
+import { UserPlus, Upload, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { AxiosError } from "axios";
+import { useEmailCheck, generatePasswordFromName } from "@/hooks/useEmailCheck";
 
 interface ApiError {
   error: string;
@@ -73,20 +74,10 @@ export function AddStudentForm({ schoolId, schoolName, onSuccess }: AddStudentFo
     }
   }, [schoolId, open, toast]);
 
-  const generateEmail = (fullName: string) => {
-    const names = fullName.toLowerCase().split(" ");
-    const initials = names.map(name => name[0]).join("");
-    return `${initials}@afirmeplay.com.br`;
-  };
-
-  const generatePassword = () => {
-    const firstName = name.split(" ")[0].toLowerCase();
-    return `${firstName}@afirmeplay`;
-  };
+  const { checkedEmail, isChecking, isAvailable } = useEmailCheck(name);
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newName = e.target.value;
-    setName(newName);
+    setName(e.target.value);
   };
 
   const handleSubmit = async () => {
@@ -107,8 +98,8 @@ export function AddStudentForm({ schoolId, schoolName, onSuccess }: AddStudentFo
       // Single call to create user (if not exists) and student
       const response = await api.post("/students", {
         name,
-        email: generateEmail(name), // Include email and password
-        password: generatePassword(),
+        email: checkedEmail,
+        password: generatePasswordFromName(name),
         registration: registration || undefined,
         birth_date: birthDate,
         class_id: selectedClass,
@@ -239,20 +230,30 @@ export function AddStudentForm({ schoolId, schoolName, onSuccess }: AddStudentFo
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="email" className="text-sm text-gray-600">Email (Gerado automaticamente)</Label>
-                  <Input
-                    id="email"
-                    value={name ? generateEmail(name) : ""}
-                    readOnly
-                    className="bg-gray-50 border-gray-200 font-mono h-11 cursor-not-allowed"
-                    placeholder="Email será gerado"
-                    disabled={isLoading}
-                  />
+                  <div className="relative">
+                    <Input
+                      id="email"
+                      value={checkedEmail}
+                      readOnly
+                      className="bg-gray-50 border-gray-200 font-mono h-11 cursor-not-allowed pr-8"
+                      placeholder="Email será gerado"
+                      disabled={isLoading}
+                    />
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                      {isChecking && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                      {!isChecking && isAvailable === true && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                      {!isChecking && isAvailable === false && <AlertCircle className="h-4 w-4 text-amber-500" />}
+                    </div>
+                  </div>
+                  {!isChecking && isAvailable === false && (
+                    <p className="text-xs text-amber-600">Email original em uso. Usando sugestão disponível.</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="password" className="text-sm text-gray-600">Senha (Gerada automaticamente)</Label>
                   <Input
                     id="password"
-                    value={generatePassword()}
+                    value={generatePasswordFromName(name)}
                     readOnly
                     className="bg-gray-50 border-gray-200 font-mono h-11 cursor-not-allowed"
                     placeholder="Senha será gerada"

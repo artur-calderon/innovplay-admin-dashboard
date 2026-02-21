@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { UserPlus, Search, Plus, Users } from "lucide-react";
+import { UserPlus, Search, Plus, Users, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { useEmailCheck, generatePasswordFromName } from "@/hooks/useEmailCheck";
 import { useAuth } from "@/context/authContext";
 import {
     Select,
@@ -151,6 +152,24 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
     });
 
     const config = USER_TYPE_CONFIG[userType];
+
+    const { checkedEmail, isChecking, isAvailable } = useEmailCheck(formData.name, activeTab === "new");
+
+    // Sincronizar email e senha com formData quando nome muda na aba "novo"
+    useEffect(() => {
+        if (activeTab !== "new") return;
+        if (checkedEmail) {
+            setFormData(prev => ({ ...prev, email: checkedEmail }));
+        }
+    }, [checkedEmail, activeTab]);
+
+    useEffect(() => {
+        if (activeTab !== "new") return;
+        if (formData.name) {
+            setFormData(prev => ({ ...prev, password: generatePasswordFromName(prev.name) }));
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [formData.name, activeTab]);
 
     // Verificar permissões baseadas no role do usuário e tipo de usuário a ser adicionado
     const canAddUser = () => {
@@ -479,24 +498,34 @@ if (user.role === 'admin' || user.role === 'tecadm') return true;
                             </div>
                             
                             <div className="space-y-2">
-                                <Label htmlFor="email">Email</Label>
-                                <Input
-                                    id="email"
-                                    type="email"
-                                    value={formData.email}
-                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                    placeholder="exemplo@email.com"
-                                />
+                                <Label htmlFor="email" className="text-sm text-gray-600">Email (Gerado automaticamente)</Label>
+                                <div className="relative">
+                                    <Input
+                                        id="email"
+                                        value={formData.email}
+                                        readOnly
+                                        className="bg-gray-50 border-gray-200 font-mono cursor-not-allowed pr-8"
+                                        placeholder="Será gerado ao digitar o nome"
+                                    />
+                                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                        {isChecking && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                                        {!isChecking && isAvailable === true && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                                        {!isChecking && isAvailable === false && <AlertCircle className="h-4 w-4 text-amber-500" />}
+                                    </div>
+                                </div>
+                                {!isChecking && isAvailable === false && (
+                                    <p className="text-xs text-amber-600">Email original em uso. Usando sugestão disponível.</p>
+                                )}
                             </div>
                             
                             <div className="space-y-2">
-                                <Label htmlFor="password">Senha</Label>
+                                <Label htmlFor="password" className="text-sm text-gray-600">Senha (Gerada automaticamente)</Label>
                                 <Input
                                     id="password"
-                                    type="password"
                                     value={formData.password}
-                                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                    placeholder="Mínimo 6 caracteres"
+                                    readOnly
+                                    className="bg-gray-50 border-gray-200 font-mono cursor-not-allowed"
+                                    placeholder="Será gerada ao digitar o nome"
                                 />
                             </div>
                             
