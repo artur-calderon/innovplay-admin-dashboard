@@ -118,13 +118,20 @@ export function LinkDirectorCoordinatorModal({
         allUsers = response.data;
       }
       setUsers(allUsers);
-    } catch (error) {
-      console.error("Erro ao buscar usuários:", error);
-      toast({
-        title: "Erro",
-        description: "Erro ao carregar usuários disponíveis",
-        variant: "destructive",
-      });
+    } catch (error: unknown) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      // 404 ou lista vazia: não exibir erro, apenas lista vazia
+      if (status === 404 || status === 204) {
+        setUsers([]);
+      } else {
+        console.error("Erro ao buscar usuários:", error);
+        toast({
+          title: "Erro",
+          description: "Erro ao carregar usuários disponíveis",
+          variant: "destructive",
+        });
+        setUsers([]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -219,7 +226,6 @@ export function LinkDirectorCoordinatorModal({
         description: `${userType === 'diretor' ? 'Diretor' : 'Coordenador'} criado com sucesso!`,
       });
 
-      // Limpar formulário
       setFormData({
         name: "",
         email: "",
@@ -227,8 +233,6 @@ export function LinkDirectorCoordinatorModal({
         registration: "",
         birth_date: ""
       });
-
-      // Recarregar lista de usuários
       onSuccess();
     } catch (error: unknown) {
       console.error("Erro ao criar usuário:", error);
@@ -253,48 +257,62 @@ export function LinkDirectorCoordinatorModal({
   const userTypeLabel = userType === 'diretor' ? 'Diretores' : 'Coordenadores';
   const userTypeSingular = userType === 'diretor' ? 'Diretor' : 'Coordenador';
 
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      setFormData({
+        name: "",
+        email: "",
+        password: "",
+        registration: "",
+        birth_date: ""
+      });
+      setSelectedUsers([]);
+      onClose();
+    }
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="w-[95vw] max-w-6xl h-[95vh] max-h-[95vh] overflow-hidden flex flex-col p-0">
         <DialogHeader className="px-4 sm:px-6 py-3 border-b bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/40 dark:to-amber-950/30">
           <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2 text-lg sm:text-xl text-foreground">
-            <div className="flex items-center gap-2">
-              <Building className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600 dark:text-orange-400" />
+            <span className="flex items-center gap-2">
+              <Building className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600 dark:text-orange-400 shrink-0" />
               <span className="font-semibold">Gerenciar {userTypeLabel}</span>
-            </div>
+            </span>
             <span className="text-base sm:text-lg font-medium text-orange-700 dark:text-orange-300 sm:ml-2">
               {schoolName}
             </span>
           </DialogTitle>
-          <DialogDescription className="text-sm sm:text-base text-muted-foreground mt-1">
-            <div className="flex flex-col gap-1">
-              <span>Vincule {userTypeLabel.toLowerCase()} existentes ou crie novos para a escola</span>
-            </div>
+          <DialogDescription asChild>
+            <p className="text-sm sm:text-base text-muted-foreground mt-1">
+              Vincule {userTypeLabel.toLowerCase()} existentes ou crie novos para a escola
+            </p>
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-hidden px-4 sm:px-6 pb-4">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-            <TabsList className="grid w-full grid-cols-2 h-auto sm:h-10 p-1 bg-gray-100 dark:bg-muted rounded-lg mt-3 mb-2">
-              <TabsTrigger 
-                value="link" 
-                className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+            <TabsList className="grid w-full grid-cols-2 h-auto sm:h-10 p-1 bg-muted/60 rounded-lg my-4">
+              <TabsTrigger
+                value="link"
+                className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-border rounded-md transition-all"
               >
-                <Building className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                <Building className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 shrink-0" />
                 <span className="hidden xs:inline">Vincular Usuários</span>
                 <span className="xs:hidden">Vincular</span>
               </TabsTrigger>
-              <TabsTrigger 
-                value="create" 
-                className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              <TabsTrigger
+                value="create"
+                className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-border rounded-md transition-all"
               >
-                <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 shrink-0" />
                 <span className="hidden xs:inline">Criar Novo {userTypeSingular}</span>
                 <span className="xs:hidden">Criar</span>
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="link" className="flex-1 flex flex-col mt-0 overflow-hidden">
+            <TabsContent value="link" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=inactive]:hidden">
               {/* Search */}
               <div className="relative mb-4">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -332,8 +350,8 @@ export function LinkDirectorCoordinatorModal({
                   <div 
                     className={`h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scroll-smooth ${
                       userType === 'diretor' 
-                        ? 'scrollbar-thumb-red-300 hover:scrollbar-thumb-red-400' 
-                        : 'scrollbar-thumb-orange-300 hover:scrollbar-thumb-orange-400'
+                        ? 'scrollbar-thumb-red-300 dark:scrollbar-thumb-red-700 hover:scrollbar-thumb-red-400' 
+                        : 'scrollbar-thumb-orange-300 dark:scrollbar-thumb-orange-700 hover:scrollbar-thumb-orange-400'
                     }`}
                   >
                     <div className="space-y-2 sm:space-y-3 p-3 sm:p-4">
@@ -418,170 +436,81 @@ export function LinkDirectorCoordinatorModal({
               </div>
             </TabsContent>
 
-            <TabsContent value="create" className="flex-1 mt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-700 dark:scrollbar-track-gray-900 hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 pr-2 scroll-smooth">
-              <div className="space-y-4 pb-4">
-                {/* Header */}
-                <div className={`bg-gradient-to-r ${
-                  userType === 'diretor' 
-                    ? 'from-red-50 via-red-25 to-pink-50 dark:from-red-950/40 dark:via-red-900/30 dark:to-pink-950/20' 
-                    : 'from-orange-50 via-yellow-25 to-amber-50 dark:from-orange-950/40 dark:via-amber-900/30 dark:to-amber-950/20'
-                } p-3 rounded-lg border-l-4 ${
-                  userType === 'diretor' ? 'border-red-500 dark:border-red-600' : 'border-orange-500 dark:border-orange-600'
-                }`}>
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-full ${
-                      userType === 'diretor' ? 'bg-red-100 dark:bg-red-950/40' : 'bg-orange-100 dark:bg-orange-950/40'
-                    }`}>
-                      <Plus className={`h-5 w-5 ${
-                        userType === 'diretor' ? 'text-red-600 dark:text-red-300' : 'text-orange-600 dark:text-orange-300'
-                      }`} />
-                    </div>
-                    <div>
-                      <h3 className={`font-semibold text-lg ${
-                        userType === 'diretor' ? 'text-red-900 dark:text-red-200' : 'text-orange-900 dark:text-orange-200'
-                      }`}>
-                        Criar Novo {userTypeSingular}
-                      </h3>
-                      <p className={`text-sm ${
-                        userType === 'diretor' ? 'text-red-700 dark:text-red-300' : 'text-orange-700 dark:text-orange-300'
-                      }`}>
-                        Preencha as informações para criar um novo {userTypeSingular.toLowerCase()}
-                      </p>
-                    </div>
+            <TabsContent value="create" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=inactive]:hidden">
+              <div className="flex-1 overflow-y-auto border border-border rounded-lg bg-card min-h-[300px] p-4 sm:p-5">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Preencha os dados. A senha não será exibida após o cadastro.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name" className="text-sm font-medium text-foreground">Nome Completo *</Label>
+                    <Input
+                      id="name"
+                      placeholder="Digite o nome completo"
+                      className={`h-11 border-input bg-background focus:ring-2 ${userType === 'diretor' ? 'focus:ring-red-500' : 'focus:ring-orange-500'}`}
+                      value={formData.name}
+                      onChange={(e) => handleInputChange('name', e.target.value)}
+                    />
                   </div>
-                </div>
-
-                {/* Formulário */}
-                <div className="bg-card rounded-lg border border-border shadow-sm p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Nome Completo */}
-                    <div className="space-y-2">
-                      <Label htmlFor="name" className="text-sm font-medium text-foreground flex items-center gap-1">
-                        Nome Completo
-                        <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="name"
-                        placeholder="Digite o nome completo"
-                        className={`h-11 transition-all duration-200 border-input bg-background focus:border-transparent focus:ring-2 ${
-                          userType === 'diretor' 
-                            ? 'focus:ring-red-500 focus:ring-opacity-50' 
-                            : 'focus:ring-orange-500 focus:ring-opacity-50'
-                        }`}
-                        value={formData.name}
-                        onChange={(e) => handleInputChange('name', e.target.value)}
-                      />
-                    </div>
-
-                    {/* Email */}
-                    <div className="space-y-2">
-                      <Label htmlFor="email" className="text-sm font-medium text-foreground flex items-center gap-1">
-                        Email
-                        <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        placeholder="exemplo@email.com"
-                        className={`h-11 transition-all duration-200 border-input bg-background focus:border-transparent focus:ring-2 ${
-                          userType === 'diretor' 
-                            ? 'focus:ring-red-500 focus:ring-opacity-50' 
-                            : 'focus:ring-orange-500 focus:ring-opacity-50'
-                        }`}
-                        value={formData.email}
-                        onChange={(e) => handleInputChange('email', e.target.value)}
-                      />
-                    </div>
-
-                    {/* Senha */}
-                    <div className="space-y-2">
-                      <Label htmlFor="password" className="text-sm font-medium text-foreground flex items-center gap-1">
-                        Senha
-                        <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        placeholder="Digite uma senha segura"
-                        className={`h-11 transition-all duration-200 border-input bg-background focus:border-transparent focus:ring-2 ${
-                          userType === 'diretor' 
-                            ? 'focus:ring-red-500 focus:ring-opacity-50' 
-                            : 'focus:ring-orange-500 focus:ring-opacity-50'
-                        }`}
-                        value={formData.password}
-                        onChange={(e) => handleInputChange('password', e.target.value)}
-                      />
-                    </div>
-
-                    {/* Matrícula */}
-                    <div className="space-y-2">
-                      <Label htmlFor="registration" className="text-sm font-medium text-foreground">
-                        Matrícula
-                        <span className="text-muted-foreground ml-1">(Opcional)</span>
-                      </Label>
-                      <Input
-                        id="registration"
-                        placeholder="Digite a matrícula"
-                        className={`h-11 transition-all duration-200 border-input bg-background focus:border-transparent focus:ring-2 ${
-                          userType === 'diretor' 
-                            ? 'focus:ring-red-500 focus:ring-opacity-50' 
-                            : 'focus:ring-orange-500 focus:ring-opacity-50'
-                        }`}
-                        value={formData.registration}
-                        onChange={(e) => handleInputChange('registration', e.target.value)}
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email" className="text-sm font-medium text-foreground">Email *</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="exemplo@email.com"
+                      className={`h-11 border-input bg-background focus:ring-2 ${userType === 'diretor' ? 'focus:ring-red-500' : 'focus:ring-orange-500'}`}
+                      value={formData.email}
+                      onChange={(e) => handleInputChange('email', e.target.value)}
+                    />
                   </div>
-
-                  {/* Data de Nascimento */}
-                  <div className="mt-4 space-y-2">
-                    <Label htmlFor="birth_date" className="text-sm font-medium text-foreground flex items-center gap-1">
-                      Data de Nascimento
-                      <span className="text-red-500">*</span>
-                    </Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="password" className="text-sm font-medium text-foreground">Senha *</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="Digite uma senha segura"
+                      className={`h-11 border-input bg-background focus:ring-2 ${userType === 'diretor' ? 'focus:ring-red-500' : 'focus:ring-orange-500'}`}
+                      value={formData.password}
+                      onChange={(e) => handleInputChange('password', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="registration" className="text-sm font-medium text-foreground">Matrícula (Opcional)</Label>
+                    <Input
+                      id="registration"
+                      placeholder="Digite a matrícula"
+                      className={`h-11 border-input bg-background focus:ring-2 ${userType === 'diretor' ? 'focus:ring-red-500' : 'focus:ring-orange-500'}`}
+                      value={formData.registration}
+                      onChange={(e) => handleInputChange('registration', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="birth_date" className="text-sm font-medium text-foreground">Data de Nascimento *</Label>
                     <Input
                       id="birth_date"
                       type="date"
-                      className={`h-11 w-full max-w-xs transition-all duration-200 border-input bg-background focus:border-transparent focus:ring-2 ${
-                        userType === 'diretor' 
-                          ? 'focus:ring-red-500 focus:ring-opacity-50' 
-                          : 'focus:ring-orange-500 focus:ring-opacity-50'
-                      }`}
+                      className={`h-11 w-full border-input bg-background focus:ring-2 ${userType === 'diretor' ? 'focus:ring-red-500' : 'focus:ring-orange-500'}`}
                       value={formData.birth_date}
                       onChange={(e) => handleInputChange('birth_date', e.target.value)}
                     />
                   </div>
-                  
-                  {/* Botões */}
-                  <div className="flex flex-col sm:flex-row gap-3 mt-6 pt-4 border-t border-border/60">
-                    <Button 
-                      variant="outline" 
-                      onClick={onClose} 
+                  <div className="flex flex-col sm:flex-row gap-3 sm:col-span-2 mt-2 pt-4 border-t border-border/60">
+                    <Button
+                      variant="outline"
+                      onClick={onClose}
                       disabled={isCreating}
-                      className="order-2 sm:order-1 h-11 border-border hover:bg-muted"
+                      className="h-11"
                     >
                       Cancelar
                     </Button>
-                    <Button 
-                      onClick={handleCreateUser} 
+                    <Button
+                      onClick={handleCreateUser}
                       disabled={isCreating}
-                      className={`order-1 sm:order-2 flex-1 h-11 text-white font-medium shadow-sm transition-all duration-200 ${
-                        userType === 'diretor' 
-                          ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500 dark:bg-red-500 dark:hover:bg-red-400' 
-                          : 'bg-orange-600 hover:bg-orange-700 focus:ring-orange-500 dark:bg-orange-500 dark:hover:bg-orange-400'
-                      } focus:ring-2 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed`}
+                      className={`flex-1 h-11 ${userType === 'diretor' ? 'bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-400' : 'bg-orange-600 hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-400'}`}
                     >
-                      {isCreating ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Criando...
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="mr-2 h-4 w-4" />
-                          Criar {userTypeSingular}
-                        </>
-                      )}
+                      {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                      Criar {userTypeSingular}
                     </Button>
                   </div>
                 </div>

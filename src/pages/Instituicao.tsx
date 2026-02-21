@@ -5,15 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PlusCircle, Search, Edit, Trash2, Building, Loader2, Eye, Users, GraduationCap, UserPlus, ArrowLeft, Filter, Settings, School } from "lucide-react";
+import { PlusCircle, Search, Trash2, Building, Loader2, GraduationCap, Settings, School, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import SchoolForm from "@/components/schools/SchoolForm";
-import { InstituicaoUserManagement } from "@/components/schools/InstituicaoUserManagement";
-import { AddTeacherForm } from "@/components/schools/AddTeacherForm";
-import { AddStudentForm } from "@/components/schools/AddStudentForm";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,11 +36,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import Turmas from "@/pages/Turmas";
+import { InstituicaoUsersTab } from "@/components/schools/InstituicaoUsersTab";
 
 interface City {
   id: string;
   name: string;
   state: string;
+}
+
+interface CityWithSlug extends City {
+  slug?: string;
 }
 
 interface Instituicao {
@@ -117,8 +120,54 @@ export default function Instituicao() {
   const [selectedState, setSelectedState] = useState<string>("ALL");
   const [selectedCityId, setSelectedCityId] = useState<string>("ALL");
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("ALL");
-  
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState<string>(
+    tabParam === "turmas" ? "turmas" : tabParam === "usuarios" ? "usuarios" : "instituicoes"
+  );
+  const [selectedUsersCityId, setSelectedUsersCityId] = useState<string>("");
+  const [citiesWithSlug, setCitiesWithSlug] = useState<CityWithSlug[]>([]);
+  const [domainCityId, setDomainCityId] = useState<string>("");
+
+  useEffect(() => {
+    if (tabParam === "turmas") setActiveTab("turmas");
+    else if (tabParam === "usuarios") setActiveTab("usuarios");
+  }, [tabParam]);
+
   const { toast } = useToast();
+
+  // Buscar cidades com slug para detectar município do subdomínio
+  useEffect(() => {
+    api.get("/city/").then((res) => {
+      let list = res.data || [];
+      if (user.role !== "admin") {
+        list = list.filter((c: CityWithSlug) => c.id === user.tenant_id);
+      }
+      setCitiesWithSlug(Array.isArray(list) ? list : []);
+    }).catch(() => setCitiesWithSlug([]));
+  }, [user.role, user.tenant_id]);
+
+  // Detectar município pelo subdomínio (jiparana.afirmeplay.com.br ou jiparana.localhost)
+  useEffect(() => {
+    if (typeof window === "undefined" || !citiesWithSlug.length) return;
+    const hostname = window.location.hostname;
+    const parts = hostname.split(".");
+    const first = (parts[0] || "").toLowerCase();
+    const reserved = ["www", "localhost", "127", "app"];
+    const isSubdomain = parts.length >= 2 && first && !reserved.includes(first);
+    const subdomain = isSubdomain ? first : "";
+    if (!subdomain) {
+      setDomainCityId("");
+      return;
+    }
+    const city = citiesWithSlug.find((c) => (c.slug || "").toLowerCase() === subdomain);
+    if (city) {
+      setDomainCityId(city.id);
+      setSelectedUsersCityId(city.id);
+    } else {
+      setDomainCityId("");
+    }
+  }, [citiesWithSlug]);
 
   const fetchInstituicoes = useCallback(async () => {
     setIsLoading(true);
@@ -420,24 +469,45 @@ export default function Instituicao() {
 
   return (
     <div className="space-y-6 p-4 md:p-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <School className="w-8 h-8 text-blue-600" />
-            Gerenciar Instituições
-          </h1>
-          <p className="text-muted-foreground text-sm md:text-base">
-            Cadastre e gerencie as instituições de ensino
-          </p>
-        </div>
-        {(user.role === 'admin' || user.role === 'tecadm') && (
-          <Button onClick={() => setIsAddDialogOpen(true)} className="w-full sm:w-auto">
-            <PlusCircle className="h-4 w-4 mr-2" />
-            Nova Instituição
-          </Button>
-        )}
+      {/* Header unificado */}
+      <div className="space-y-1">
+        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+          <School className="w-8 h-8 text-primary" />
+          Instituição
+        </h1>
+        <p className="text-muted-foreground text-sm md:text-base max-w-2xl">
+          Crie e gerencie escolas, usuários (alunos, professores, diretores e coordenadores) e turmas em um só lugar.
+        </p>
       </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full max-w-2xl grid-cols-3 h-11 bg-muted/50">
+          <TabsTrigger value="instituicoes" className="flex items-center gap-2">
+            <Building className="h-4 w-4" />
+            <span className="hidden sm:inline">Escolas</span>
+          </TabsTrigger>
+          <TabsTrigger value="turmas" className="flex items-center gap-2">
+            <GraduationCap className="h-4 w-4" />
+            <span className="hidden sm:inline">Turmas</span>
+          </TabsTrigger>
+          <TabsTrigger value="usuarios" className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            <span className="hidden sm:inline">Usuários</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="instituicoes" className="space-y-6 mt-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <p className="text-muted-foreground text-sm">
+              Liste as instituições de ensino, filtre por estado e município e acesse o gerenciamento completo em &quot;Gerenciar&quot;.
+            </p>
+            {(user.role === 'admin' || user.role === 'tecadm') && (
+              <Button onClick={() => setIsAddDialogOpen(true)} className="w-full sm:w-auto shrink-0">
+                <PlusCircle className="h-4 w-4 mr-2" />
+                Nova Instituição
+              </Button>
+            )}
+          </div>
 
       {/* Search and Filters */}
       <div className="space-y-3 sm:space-y-4">
@@ -720,6 +790,26 @@ export default function Instituicao() {
             </Card>
           )}
         </div>
+        </TabsContent>
+
+        <TabsContent value="turmas" className="mt-6">
+          <Turmas embedded />
+        </TabsContent>
+
+        <TabsContent value="usuarios" className="mt-6">
+          <InstituicaoUsersTab
+            cityId={
+              user.role === "tecadm"
+                ? (user.tenant_id ?? null)
+                : (selectedUsersCityId || null)
+            }
+            cities={(citiesWithSlug.length > 0 ? citiesWithSlug : availableCities).map((c) => ({ id: c.id, name: c.name }))}
+            selectedCityId={selectedUsersCityId}
+            onCityChange={setSelectedUsersCityId}
+            isAdmin={user.role === "admin"}
+          />
+        </TabsContent>
+      </Tabs>
 
       {/* Add/Edit Instituição Dialog */}
       {(isAddDialogOpen || selectedInstituicao) && (

@@ -14,10 +14,10 @@ import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { Loader2, Search, UserPlus, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/authContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Teacher {
@@ -142,13 +142,20 @@ export function LinkTeacherModal({
       );
 
       setTeachers(availableTeachers as Teacher[]);
-    } catch (error) {
-      console.error("Erro ao buscar professores:", error);
-      toast({
-        title: "Erro",
-        description: "Erro ao carregar professores disponíveis",
-        variant: "destructive",
-      });
+    } catch (error: unknown) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      // 404 ou sem usuários com a role: não exibir erro, apenas lista vazia
+      if (status === 404 || status === 204) {
+        setTeachers([]);
+      } else {
+        console.error("Erro ao buscar professores:", error);
+        toast({
+          title: "Erro",
+          description: "Erro ao carregar professores disponíveis",
+          variant: "destructive",
+        });
+        setTeachers([]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -283,38 +290,52 @@ export function LinkTeacherModal({
     }));
   };
 
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      setFormData({
+        nome: "",
+        email: "",
+        senha: "",
+        matricula: "",
+        birth_date: "",
+        city_id: ""
+      });
+      setSelectedTeachers([]);
+      onClose();
+    }
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="w-[95vw] max-w-6xl h-[95vh] max-h-[95vh] overflow-hidden flex flex-col p-0">
-        <DialogHeader className="px-4 sm:px-6 py-4 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
-          <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2 text-lg sm:text-xl">
-            <div className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
+        <DialogHeader className="px-4 sm:px-6 py-4 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40">
+          <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2 text-lg sm:text-xl text-foreground">
+            <span className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600 dark:text-blue-400 shrink-0" />
               <span className="font-semibold">Gerenciar Professores</span>
-            </div>
-            <span className="text-base sm:text-lg font-medium text-blue-700 sm:ml-2">
+            </span>
+            <span className="text-base sm:text-lg font-medium text-blue-700 dark:text-blue-300 sm:ml-2">
               {className}
             </span>
           </DialogTitle>
-          <DialogDescription className="text-sm sm:text-base text-gray-600 mt-2">
-            <div className="flex flex-col gap-1">
-              <span>Vincule professores existentes ou crie novos para a turma</span>
+          <DialogDescription asChild>
+            <p className="text-sm sm:text-base text-muted-foreground mt-1">
+              Vincule professores existentes ou crie novos para a turma.
               {['admin', 'tecadm'].includes(user?.role || '') && (
-                <span className="text-xs sm:text-sm text-blue-600 flex items-center gap-1">
-                  <span>⚡</span>
-                  <span>Visualizando todos os professores do sistema</span>
+                <span className="block mt-1 text-xs text-blue-600 dark:text-blue-400">
+                  ⚡ Visualizando todos os professores do sistema
                 </span>
               )}
-            </div>
+            </p>
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden px-4 sm:px-6">
+        <div className="flex-1 overflow-hidden px-4 sm:px-6 pb-4">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-            <TabsList className="grid w-full grid-cols-2 h-auto sm:h-10 p-1 bg-gray-100 rounded-lg my-4">
+            <TabsList className="grid w-full grid-cols-2 h-auto sm:h-10 p-1 bg-muted/60 rounded-lg my-4">
               <TabsTrigger 
                 value="link" 
-                className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-border rounded-md transition-all"
               >
                 <UserPlus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                 <span className="hidden xs:inline">Vincular Usuários</span>
@@ -322,7 +343,7 @@ export function LinkTeacherModal({
               </TabsTrigger>
               <TabsTrigger 
                 value="create" 
-                className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-border rounded-md transition-all"
               >
                 <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                 <span className="hidden xs:inline">Criar Novo Professor</span>
@@ -330,7 +351,7 @@ export function LinkTeacherModal({
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="link" className="flex-1 flex flex-col mt-0 overflow-hidden">
+            <TabsContent value="link" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=inactive]:hidden">
               {/* Search */}
               <div className="relative mb-4">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -343,21 +364,21 @@ export function LinkTeacherModal({
               </div>
 
               {/* Teachers List */}
-              <div className="flex-1 overflow-hidden border rounded-lg bg-white min-h-[400px] max-h-[500px]">
+              <div className="flex-1 overflow-hidden border border-border rounded-lg bg-card min-h-[400px] max-h-[500px]">
                 {isLoading ? (
                   <div className="flex flex-col items-center justify-center p-8 h-full">
                     <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-                    <span className="text-sm sm:text-base text-gray-600">Carregando professores...</span>
+                    <span className="text-sm sm:text-base text-muted-foreground">Carregando professores...</span>
                   </div>
                 ) : filteredTeachers.length === 0 ? (
                   <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full">
-                    <div className="bg-blue-50 p-4 rounded-full mb-4">
+                    <div className="bg-blue-50 dark:bg-blue-950/40 p-4 rounded-full mb-4">
                       <UserPlus className="h-8 w-8 sm:h-12 sm:w-12 text-blue-400" />
                     </div>
                     <h3 className="text-base sm:text-lg font-semibold mb-2 text-center">
                       {searchTerm ? "Nenhum professor encontrado" : "Nenhum professor disponível"}
                     </h3>
-                    <p className="text-sm sm:text-base text-gray-500 text-center max-w-sm">
+                    <p className="text-sm sm:text-base text-muted-foreground text-center max-w-sm">
                       {searchTerm 
                         ? "Tente ajustar os termos de busca ou criar um novo professor"
                         : "Todos os professores já estão vinculados a turmas ou crie um novo"
@@ -365,7 +386,7 @@ export function LinkTeacherModal({
                     </p>
                   </div>
                 ) : (
-                  <div className="h-full overflow-y-auto scrollbar-thin scrollbar-thumb-blue-300 scrollbar-track-blue-50 hover:scrollbar-thumb-blue-400 scroll-smooth">
+                  <div className="h-full overflow-y-auto scrollbar-thin scrollbar-thumb-blue-300 dark:scrollbar-thumb-blue-700 scrollbar-track-transparent scroll-smooth">
                     <div className="space-y-2 sm:space-y-3 p-3 sm:p-4">
                       {filteredTeachers.map((teacher) => (
                         <div
@@ -378,21 +399,21 @@ export function LinkTeacherModal({
                             className="flex-shrink-0"
                           />
                           <div className="flex-shrink-0">
-                            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                              <UserPlus className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
+                            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 dark:bg-blue-950/30 rounded-full flex items-center justify-center">
+                              <UserPlus className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-400" />
                             </div>
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mb-1">
-                              <span className="font-medium text-sm sm:text-base truncate text-gray-900">{teacher.name}</span>
-                              <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700 border-blue-200 w-fit">
+                              <span className="font-medium text-sm sm:text-base truncate text-foreground">{teacher.name}</span>
+                              <Badge variant="secondary" className="text-xs bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-200 border-blue-200 dark:border-blue-800 w-fit">
                                 Professor
                               </Badge>
                             </div>
-                            <div className="text-xs sm:text-sm text-gray-500 space-y-1">
+                            <div className="text-xs sm:text-sm text-muted-foreground space-y-1">
                               <div className="truncate">{teacher.email}</div>
                               {teacher.registration && (
-                                <div className="text-gray-400">Matrícula: {teacher.registration}</div>
+                                <div className="text-muted-foreground/70">Matrícula: {teacher.registration}</div>
                               )}
                             </div>
                           </div>
@@ -403,8 +424,8 @@ export function LinkTeacherModal({
                 )}
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t bg-gray-50/50 px-4 py-3 rounded-b-lg">
-                <div className="text-xs sm:text-sm text-gray-600 order-2 sm:order-1">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t bg-gray-50/50 dark:bg-muted px-4 py-3 rounded-b-lg">
+                <div className="text-xs sm:text-sm text-gray-600 dark:text-muted-foreground order-2 sm:order-1">
                   <span className="font-medium">{selectedTeachers.length}</span> professor(es) selecionado(s)
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 order-1 sm:order-2">
@@ -429,112 +450,100 @@ export function LinkTeacherModal({
               </div>
             </TabsContent>
 
-            <TabsContent value="create" className="flex-1 mt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400 pr-2 pb-4 scroll-smooth">
-              <Card className="mx-auto max-w-4xl">
-                <CardHeader className="pb-4">
-                  <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-                    <Plus className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
-                    Criar Novo Professor
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                    <div className="space-y-3">
-                      <Label htmlFor="nome" className="text-sm sm:text-base font-medium">Nome Completo *</Label>
-                      <Input
-                        id="nome"
-                        placeholder="Digite o nome completo"
-                        className="h-11 focus:ring-2 focus:ring-green-500"
-                        value={formData.nome}
-                        onChange={(e) => handleInputChange('nome', e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-3">
-                      <Label htmlFor="email" className="text-sm sm:text-base font-medium">Email *</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        placeholder="Digite o email"
-                        className="h-11 focus:ring-2 focus:ring-green-500"
-                        value={formData.email}
-                        onChange={(e) => handleInputChange('email', e.target.value)}
-                      />
-                    </div>
+            <TabsContent value="create" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=inactive]:hidden">
+              <div className="flex-1 overflow-y-auto border border-border rounded-lg bg-card min-h-[300px] p-4 sm:p-5">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Preencha os dados. A senha não será exibida após o cadastro.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="nome" className="text-sm font-medium text-foreground">Nome Completo *</Label>
+                    <Input
+                      id="nome"
+                      placeholder="Digite o nome completo"
+                      className="h-11 border-input bg-background focus:ring-2 focus:ring-blue-500"
+                      value={formData.nome}
+                      onChange={(e) => handleInputChange('nome', e.target.value)}
+                    />
                   </div>
-                  
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                    <div className="space-y-3">
-                      <Label htmlFor="senha" className="text-sm sm:text-base font-medium">Senha *</Label>
-                      <Input
-                        id="senha"
-                        type="password"
-                        placeholder="Digite a senha"
-                        className="h-11 focus:ring-2 focus:ring-green-500"
-                        value={formData.senha}
-                        onChange={(e) => handleInputChange('senha', e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-3">
-                      <Label htmlFor="matricula" className="text-sm sm:text-base font-medium">Matrícula (Opcional)</Label>
-                      <Input
-                        id="matricula"
-                        placeholder="Digite a matrícula"
-                        className="h-11 focus:ring-2 focus:ring-green-500"
-                        value={formData.matricula}
-                        onChange={(e) => handleInputChange('matricula', e.target.value)}
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email" className="text-sm font-medium text-foreground">Email *</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="Digite o email"
+                      className="h-11 border-input bg-background focus:ring-2 focus:ring-blue-500"
+                      value={formData.email}
+                      onChange={(e) => handleInputChange('email', e.target.value)}
+                    />
                   </div>
-                  
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                    <div className="space-y-3">
-                      <Label htmlFor="birth_date" className="text-sm sm:text-base font-medium">Data de Nascimento *</Label>
-                      <Input
-                        id="birth_date"
-                        type="date"
-                        className="h-11 focus:ring-2 focus:ring-green-500"
-                        value={formData.birth_date}
-                        onChange={(e) => handleInputChange('birth_date', e.target.value)}
-                      />
+                  <div className="space-y-2">
+                    <Label htmlFor="senha" className="text-sm font-medium text-foreground">Senha *</Label>
+                    <Input
+                      id="senha"
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="Digite a senha"
+                      className="h-11 border-input bg-background focus:ring-2 focus:ring-blue-500"
+                      value={formData.senha}
+                      onChange={(e) => handleInputChange('senha', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="matricula" className="text-sm font-medium text-foreground">Matrícula (Opcional)</Label>
+                    <Input
+                      id="matricula"
+                      placeholder="Digite a matrícula"
+                      className="h-11 border-input bg-background focus:ring-2 focus:ring-blue-500"
+                      value={formData.matricula}
+                      onChange={(e) => handleInputChange('matricula', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="birth_date" className="text-sm font-medium text-foreground">Data de Nascimento *</Label>
+                    <Input
+                      id="birth_date"
+                      type="date"
+                      className="h-11 border-input bg-background focus:ring-2 focus:ring-blue-500"
+                      value={formData.birth_date}
+                      onChange={(e) => handleInputChange('birth_date', e.target.value)}
+                    />
+                  </div>
+                  {['admin', 'tecadm'].includes(user?.role || '') && (
+                    <div className="space-y-2">
+                      <Label htmlFor="city_id" className="text-sm font-medium text-foreground">Município *</Label>
+                      <Select onValueChange={(value) => handleInputChange('city_id', value)} value={formData.city_id}>
+                        <SelectTrigger className="h-11">
+                          <SelectValue placeholder="Selecione um município" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {municipios.map((city) => (
+                            <SelectItem key={city.id} value={city.id.toString()}>{city.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    {['admin', 'tecadm'].includes(user?.role || '') && (
-                      <div className="space-y-3">
-                        <Label htmlFor="city_id" className="text-sm sm:text-base font-medium">Município *</Label>
-                        <Select onValueChange={(value) => handleInputChange('city_id', value)} value={formData.city_id}>
-                          <SelectTrigger className="h-11">
-                            <SelectValue placeholder="Selecione um município" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {municipios.map((city) => (
-                              <SelectItem key={city.id} value={city.id.toString()}>{city.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-6 border-t">
-                    <Button 
-                      variant="outline" 
-                      onClick={onClose} 
-                      disabled={isCreating}
-                      className="order-2 sm:order-1 h-11"
-                    >
-                      Cancelar
-                    </Button>
-                    <Button 
-                      onClick={handleCreateTeacher} 
-                      disabled={isCreating}
-                      className="order-1 sm:order-2 flex-1 h-11 bg-green-600 hover:bg-green-700"
-                    >
-                      {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      <Plus className="mr-2 h-4 w-4" />
-                      Criar Professor
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t bg-gray-50/50 dark:bg-muted px-4 py-3 rounded-b-lg">
+                <div className="text-xs sm:text-sm text-muted-foreground order-2 sm:order-1">
+                  Novo professor
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 order-1 sm:order-2">
+                  <Button variant="outline" onClick={onClose} disabled={isCreating} className="h-10 order-2 sm:order-1">
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={handleCreateTeacher}
+                    disabled={isCreating}
+                    className="h-10 order-1 sm:order-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400"
+                  >
+                    {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                    Criar Professor
+                  </Button>
+                </div>
+              </div>
             </TabsContent>
           </Tabs>
         </div>

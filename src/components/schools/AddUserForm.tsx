@@ -191,13 +191,10 @@ if (user.role === 'admin' || user.role === 'tecadm') return true;
                 try {
                     if (userType === 'aluno') {
                         response = await api.get(config.fetchEndpoint);
-                        users = Array.isArray(response.data) ? response.data : [];
+                        users = Array.isArray(response.data) ? response.data : response.data?.alunos ?? response.data?.students ?? [];
                     } else {
                         response = await api.get(config.fetchEndpoint);
-                        
-                        // Verificar se a resposta tem a estrutura esperada
                         if (response.data && config.responseKey && response.data[config.responseKey]) {
-                            // Usar a nova estrutura padronizada
                             users = response.data[config.responseKey];
                         } else if (Array.isArray(response.data)) {
                             users = response.data;
@@ -205,35 +202,36 @@ if (user.role === 'admin' || user.role === 'tecadm') return true;
                             users = [];
                         }
                     }
-                } catch (error) {
-                    console.error('First endpoint failed, trying alternative...');
-                    // Tentar endpoint alternativo
-                    try {
-                        response = await api.get('/users/');
-                        users = Array.isArray(response.data) ? response.data : [];
-                    } catch (secondError) {
-                        console.error('Both endpoints failed');
+                } catch (firstError: unknown) {
+                    const status = (firstError as { response?: { status?: number } })?.response?.status;
+                    // 404/204 = nenhum usuário com a role; não exibir erro
+                    if (status === 404 || status === 204) {
                         users = [];
+                    } else {
+                        try {
+                            response = await api.get('/users/');
+                            users = Array.isArray(response?.data) ? response.data : [];
+                        } catch {
+                            users = [];
+                        }
                     }
                 }
-                
-                // Mostrar todos os usuários disponíveis para permitir vinculação
-                const usersToShow = users;
-                
-                if (usersToShow.length > 0) {
-                    setAllUsers(usersToShow);
-                    setFilteredUsers(usersToShow);
-                } else {
-                    setAllUsers([]);
-                    setFilteredUsers([]);
+
+                const usersToShow = Array.isArray(users) ? users : [];
+                setAllUsers(usersToShow);
+                setFilteredUsers(usersToShow);
+            } catch (error: unknown) {
+                const status = (error as { response?: { status?: number } })?.response?.status;
+                if (status !== 404 && status !== 204) {
+                    console.error(`Error fetching ${userType}:`, error);
+                    toast({
+                        title: "Erro",
+                        description: `Erro ao carregar ${config.title.toLowerCase()}s`,
+                        variant: "destructive",
+                    });
                 }
-            } catch (error) {
-                console.error(`Error fetching ${userType}:`, error);
-                toast({
-                    title: "Erro",
-                    description: `Erro ao carregar ${config.title.toLowerCase()}s`,
-                    variant: "destructive",
-                });
+                setAllUsers([]);
+                setFilteredUsers([]);
             } finally {
                 setIsLoading(false);
             }
