@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { Loader2, Users, GraduationCap, Trash2, Plus, Eye, UserPlus } from "lucide-react";
+import { Loader2, Users, GraduationCap, Trash2, Plus, Eye, UserPlus, CheckCircle2, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { LinkTeacherModal } from "./LinkTeacherModal";
 import { LinkStudentModal } from "./LinkStudentModal";
@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { useEmailCheck, generatePasswordFromName } from "@/hooks/useEmailCheck";
 interface Teacher {
   id: string;
   name: string;
@@ -385,36 +386,21 @@ export function ManageClassModal({
     }));
   };
 
-  // Função para gerar email automático baseado no nome
-  const generateEmail = (name: string) => {
-    if (!name) return "";
-    
-    const words = name.toLowerCase().split(' ').filter(word => word.length > 0);
-    if (words.length === 0) return "";
-    
-    if (words.length === 1) {
-      return `${words[0]}@afirmeplay.com.br`;
+  const { checkedEmail, isChecking, isAvailable } = useEmailCheck(formData.name);
+
+  // Sincronizar email verificado com formData
+  useEffect(() => {
+    if (checkedEmail) {
+      setFormData(prev => ({ ...prev, email: checkedEmail }));
     }
-    
-    const initials = words.map(word => word.charAt(0)).join('');
-    return `${initials}@afirmeplay.com.br`;
-  };
+  }, [checkedEmail]);
 
-  // Função para gerar senha automática baseada no nome
-  const generatePassword = (name: string) => {
-    if (!name) return "";
-    
-    const firstName = name.toLowerCase().split(' ')[0];
-    return `${firstName}@afirmeplay`;
-  };
-
-  // Atualizar email e senha quando o nome mudar
+  // Atualizar nome e senha quando o nome mudar (email é gerenciado pelo hook)
   const handleNameChange = (value: string) => {
     setFormData(prevState => ({
       ...prevState,
       name: value,
-      email: generateEmail(value),
-      password: generatePassword(value)
+      password: generatePasswordFromName(value)
     }));
   };
 
@@ -675,7 +661,10 @@ export function ManageClassModal({
               <TabsContent value="create-student" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=inactive]:hidden">
                 <div className="flex-1 overflow-y-auto border border-border rounded-lg bg-card min-h-[300px] p-4 sm:p-5">
                   <p className="text-sm text-muted-foreground mb-4">
-                    E-mail e senha são gerados automaticamente a partir do nome e não são exibidos por segurança.
+                    E-mail e senha são gerados automaticamente a partir do nome.
+                    {!isChecking && isAvailable === false && (
+                      <span className="text-amber-600 ml-1">Email original em uso — usando sugestão disponível.</span>
+                    )}
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -809,13 +798,23 @@ export function ManageClassModal({
                           <Label htmlFor="teacher-email" className="text-sm font-medium text-muted-foreground">
                             Email (Gerado automaticamente)
                           </Label>
-                          <Input
-                            id="teacher-email"
-                            placeholder="Email será gerado automaticamente"
-                            className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed"
-                            value={formData.email}
-                            readOnly
-                          />
+                          <div className="relative">
+                            <Input
+                              id="teacher-email"
+                              placeholder="Email será gerado automaticamente"
+                              className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed pr-8"
+                              value={formData.email}
+                              readOnly
+                            />
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                              {isChecking && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                              {!isChecking && isAvailable === true && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                              {!isChecking && isAvailable === false && <AlertCircle className="h-4 w-4 text-amber-500" />}
+                            </div>
+                          </div>
+                          {!isChecking && isAvailable === false && (
+                            <p className="text-xs text-amber-600">Email original em uso. Usando sugestão disponível.</p>
+                          )}
                         </div>
                       </div>
                       

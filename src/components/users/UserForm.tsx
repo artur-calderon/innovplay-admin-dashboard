@@ -19,10 +19,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { useDataContext } from "@/context/dataContext";
+import { useEmailCheck } from "@/hooks/useEmailCheck";
 
 import { ROLE_DISPLAY_MAPPING } from "@/lib/constants";
 
@@ -112,27 +113,15 @@ export default function UserForm({ user, onSubmit, allowedRoles, showCitySelect 
     },
   });
 
-  // Função para gerar email automaticamente baseado no nome
-  const generateEmailFromName = (name: string) => {
-    if (!name.trim()) return "";
-    
-    const names = name.trim().split(" ");
-    const initials = names
-      .map(n => n.charAt(0).toLowerCase())
-      .join("");
-    
-    return `${initials}@afirmeplay.com.br`;
-  };
-
   // Watch para mudanças no campo nome (apenas para novos usuários)
   const watchedName = form.watch("name");
-  
+  const { checkedEmail, isChecking, isAvailable } = useEmailCheck(watchedName, !isEditing);
+
   useEffect(() => {
-    if (!isEditing && watchedName) {
-      const generatedEmail = generateEmailFromName(watchedName);
-      form.setValue("email", generatedEmail);
+    if (!isEditing && checkedEmail) {
+      form.setValue("email", checkedEmail);
     }
-  }, [watchedName, isEditing, form]);
+  }, [checkedEmail, isEditing, form]);
 
   // Handle form submission
   const handleSubmit = async (data: UserFormValues) => {
@@ -208,16 +197,29 @@ export default function UserForm({ user, onSubmit, allowedRoles, showCitySelect 
             <FormItem>
               <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input 
-                  type="email" 
-                  placeholder={isEditing ? "nome@escola.edu.br" : "Será gerado automaticamente"} 
-                  {...field}
-                  readOnly={!isEditing}
-                />
+                <div className="relative">
+                  <Input 
+                    type="email" 
+                    placeholder={isEditing ? "nome@escola.edu.br" : "Será gerado automaticamente"} 
+                    {...field}
+                    readOnly={!isEditing}
+                    className={!isEditing ? "pr-8" : ""}
+                  />
+                  {!isEditing && (
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                      {isChecking && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                      {!isChecking && isAvailable === true && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                      {!isChecking && isAvailable === false && <AlertCircle className="h-4 w-4 text-amber-500" />}
+                    </div>
+                  )}
+                </div>
               </FormControl>
               {!isEditing && (
                 <p className="text-xs text-muted-foreground">
-                  O email é gerado automaticamente baseado nas iniciais do nome + @afirmeplay.com.br
+                  {isChecking && "Verificando disponibilidade..."}
+                  {!isChecking && isAvailable === true && "Email disponível."}
+                  {!isChecking && isAvailable === false && "Email original em uso. Usando sugestão disponível."}
+                  {!isChecking && isAvailable === null && "O email é gerado automaticamente pelas iniciais do nome + @afirmeplay.com.br"}
                 </p>
               )}
               <FormMessage />
