@@ -406,9 +406,9 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                     : 1}
                   visibleFields={{
                     turma: false,
-                    habilidade: allQuestions.length <= 15, // ✅ NOVO: Ocultar habilidades se muitas questões
+                    habilidade: true, // Sempre exibir habilidades na tabela de alunos
                     questoes: true,
-                    percentualTurma: allQuestions.length <= 20, // ✅ NOVO: Ocultar % se muitas questões
+                    percentualTurma: allQuestions.length <= 20,
                     total: true,
                     nota: true,
                     proficiencia: true,
@@ -477,9 +477,9 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                         : allQuestions.length}
                       visibleFields={{
                         turma: false,
-                        habilidade: allQuestions.length <= 15, // ✅ NOVO: Ocultar habilidades se muitas questões
+                        habilidade: true, // Sempre exibir habilidades na tabela de alunos
                         questoes: true,
-                        percentualTurma: allQuestions.length <= 20, // ✅ NOVO: Ocultar % se muitas questões
+                        percentualTurma: allQuestions.length <= 20,
                         total: true,
                         nota: true,
                         proficiencia: true,
@@ -575,7 +575,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                     : 1}
                   visibleFields={{
                     turma: false,
-                    habilidade: disciplina.questoes.length <= 15, // ✅ NOVO: Ocultar habilidades se muitas questões
+                    habilidade: true, // Sempre exibir habilidades na tabela por disciplina
                     questoes: true,
                     percentualTurma: disciplina.questoes.length <= 20, // ✅ NOVO: Ocultar % se muitas questões
                     total: true,
@@ -643,9 +643,9 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                         : disciplina.questoes.length}
                       visibleFields={{
                         turma: false,
-                        habilidade: disciplina.questoes.length <= 15, // ✅ NOVO: Ocultar habilidades se muitas questões
+                        habilidade: true, // Sempre exibir habilidades na tabela por disciplina
                         questoes: true,
-                        percentualTurma: disciplina.questoes.length <= 20, // ✅ NOVO: Ocultar % se muitas questões
+                        percentualTurma: disciplina.questoes.length <= 20,
                         total: true,
                         nota: true,
                         proficiencia: true,
