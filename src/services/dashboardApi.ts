@@ -208,6 +208,78 @@ export class DashboardApiService {
   }
 
   /**
+   * Ranking de turmas (substitui ranking de escolas para admin/tecadm).
+   * GET /dashboard/ranking-turmas
+   * Requer contexto de cidade. Autenticação: JWT + roles admin, tecadm, diretor, coordenador.
+   * @param limit - máximo de turmas (padrão 20, máximo 100)
+   * @param offset - paginação (padrão 0)
+   */
+  static async getClassRanking(limit: number = 20, offset: number = 0): Promise<{
+    ranking: Array<{
+      posicao: number;
+      class_id: string;
+      turma: string;
+      serie: string;
+      media: number;
+      acerto: number;
+      acerto_percent: number;
+      conclusao: number;
+      alunos: number;
+      avaliacoes: number;
+    }>;
+    total: number;
+    limit: number;
+    offset: number;
+  } | null> {
+    try {
+      const safeLimit = Math.min(100, Math.max(1, limit));
+      const safeOffset = Math.max(0, offset);
+      const response = await api.get("/dashboard/ranking-turmas", {
+        params: { limit: safeLimit, offset: safeOffset },
+      });
+      return response.data ?? null;
+    } catch (error) {
+      console.error("Erro ao buscar ranking de turmas:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Ranking de alunos (dashboard).
+   * GET /dashboard/ranking-alunos
+   * Cada item inclui position, student_id, name, school_name, class_name, serie, media, completed_evaluations.
+   * @param limit - máximo de alunos (padrão 10, máximo 100)
+   * @param offset - paginação (padrão 0)
+   */
+  static async getStudentRanking(limit: number = 10, offset: number = 0): Promise<{
+    ranking: Array<{
+      position: number;
+      student_id: string;
+      name: string;
+      school_name: string;
+      class_name: string;
+      serie: string;
+      media: number;
+      completed_evaluations: number;
+    }>;
+    total?: number;
+    limit?: number;
+    offset?: number;
+  } | null> {
+    try {
+      const safeLimit = Math.min(100, Math.max(1, limit));
+      const safeOffset = Math.max(0, offset);
+      const response = await api.get("/dashboard/ranking-alunos", {
+        params: { limit: safeLimit, offset: safeOffset },
+      });
+      return response.data ?? null;
+    } catch (error) {
+      console.error("Erro ao buscar ranking de alunos:", error);
+      return null;
+    }
+  }
+
+  /**
    * Avaliações recentes (escopo do usuário: município, escola ou todos para admin).
    * Só retorna type = AVALIACAO (sem olimpíada/simulado).
    * GET /dashboard/avaliacoes-recentes

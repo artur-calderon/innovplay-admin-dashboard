@@ -106,6 +106,8 @@ export default function ListaFrequencia() {
   const [avaliacoes, setAvaliacoes] = useState<{ id: string; titulo: string }[]>([]);
   const [selectedAvaliacaoId, setSelectedAvaliacaoId] = useState('all');
   const [isLoadingAvaliacoes, setIsLoadingAvaliacoes] = useState(false);
+  /** Só exibir ausência (A) quando a prova já tiver expirado. Por turma = null (não aplicável). */
+  const [provaExpirada, setProvaExpirada] = useState<boolean | null>(null);
 
   // Carregar estados
   useEffect(() => {
@@ -310,6 +312,38 @@ export default function ListaFrequencia() {
     };
   }, [modoLista, selectedSchool, selectedSerie]);
 
+  // Quando a lista é por avaliação, verificar se a prova já expirou (para exibir ou não ausência)
+  useEffect(() => {
+    if (modoLista !== 'avaliacao') {
+      setProvaExpirada(null);
+      return;
+    }
+    if (!data?.length || !selectedAvaliacaoId || selectedAvaliacaoId === 'all') {
+      setProvaExpirada(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get<{ application_info?: { expiration?: string }; prova_expirada?: boolean }>(`/test/${selectedAvaliacaoId}`);
+        if (cancelled) return;
+        const exp = res.data?.application_info?.expiration;
+        if (typeof res.data?.prova_expirada === 'boolean') {
+          setProvaExpirada(res.data.prova_expirada);
+          return;
+        }
+        if (exp) {
+          setProvaExpirada(new Date(exp).getTime() < Date.now());
+          return;
+        }
+        setProvaExpirada(true); // sem informação: considerar expirada para manter comportamento atual
+      } catch {
+        if (!cancelled) setProvaExpirada(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [modoLista, data, selectedAvaliacaoId]);
+
   const handleGerarLista = async () => {
     setError(null);
     setIsLoadingLista(true);
@@ -392,12 +426,12 @@ export default function ListaFrequencia() {
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...pink);
-        doc.text(item.cabecalho.nome_prova_ano, margin, y);
+        doc.text(item.cabecalho.nome_prova_ano, pageWidth / 2, y, { align: 'center' });
         y += 7;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...textBlack);
-        doc.text(item.cabecalho.lista_presenca_curso, margin, y);
+        doc.text(item.cabecalho.lista_presenca_curso, pageWidth / 2, y, { align: 'center' });
         y += 8;
 
         const cab = item.cabecalho;
@@ -410,23 +444,20 @@ export default function ListaFrequencia() {
         doc.rect(margin, y, contentWidth, boxHeight, 'S');
         doc.setDrawColor(180, 180, 180);
         let boxY = y + 6;
-        doc.text(`MUNICÍPIO/UF: ${cab.municipio_uf}`, margin + 4, boxY);
+        doc.text(`MUNICÍPIO/UF: ${cab.municipio_uf}`, pageWidth / 2, boxY, { align: 'center' });
         boxY += 5;
-        doc.text(escolaLines, margin + 4, boxY);
+        doc.text(escolaLines, pageWidth / 2, boxY, { align: 'center' });
         boxY += escolaLines.length * 4.5;
-        doc.text(`SÉRIE: ${serieDisplay}`, margin + 4, boxY);
+        doc.text(`SÉRIE: ${serieDisplay}`, pageWidth / 2, boxY, { align: 'center' });
         boxY += 5;
-        doc.text(`TURMA: ${turmaDisplay}`, margin + 4, boxY);
+        doc.text(`TURMA: ${turmaDisplay}`, pageWidth / 2, boxY, { align: 'center' });
         boxY += 5;
         const disciplinaVal = cab.disciplina?.trim() ?? '';
-        doc.text('DISCIPLINA: ', margin + 4, boxY);
-        if (disciplinaVal) {
-          doc.text(disciplinaVal, margin + 4 + doc.getTextWidth('DISCIPLINA: '), boxY);
-        } else {
-          const lineX0 = margin + 4 + doc.getTextWidth('DISCIPLINA: ');
-          const lineLength = 50;
+        doc.text(disciplinaVal ? `DISCIPLINA: ${disciplinaVal}` : 'DISCIPLINA: ', pageWidth / 2, boxY, { align: 'center' });
+        if (!disciplinaVal) {
+          const lineX0 = pageWidth / 2 - 25;
           doc.setDrawColor(120, 120, 120);
-          doc.line(lineX0, boxY + 1.5, lineX0 + lineLength, boxY + 1.5);
+          doc.line(lineX0, boxY + 1.5, lineX0 + 50, boxY + 1.5);
         }
         y = boxY + 8;
 
@@ -434,12 +465,18 @@ export default function ListaFrequencia() {
         doc.setTextColor(...textGray);
         const legendaStr = `Legenda: ${formatLegenda(cab.legenda)}`;
         const legendaLines = doc.splitTextToSize(legendaStr, contentWidth);
-        doc.text(legendaLines, margin, y);
-        y += legendaLines.length * 4 + 4;
+        legendaLines.forEach((line: string) => {
+          doc.text(line, pageWidth / 2, y, { align: 'center' });
+          y += 4;
+        });
+        y += 4;
         doc.setFont('helvetica', 'italic');
         const instLines = doc.splitTextToSize(cab.instrucoes_aplicador, contentWidth);
-        doc.text(instLines, margin, y);
-        y += instLines.length * 4 + 6;
+        instLines.forEach((line: string) => {
+          doc.text(line, pageWidth / 2, y, { align: 'center' });
+          y += 4;
+        });
+        y += 6;
 
         const codigos = STATUS_ORDER.filter((c) => c in (cab.legenda || {}));
         const tableHead = [['N°', 'NOME DO ESTUDANTE', ...codigos, 'ASSINATURA']];
@@ -485,11 +522,15 @@ export default function ListaFrequencia() {
             const colIdx = data.column.index - statusColStart;
             const cod = codigos[colIdx];
             const est = item.estudantes[data.row.index];
-            const filled = est && est.status === cod;
+            const isAusente = cod === 'A';
+            const mostrarPreenchido =
+              est &&
+              est.status === cod &&
+              (!isAusente || provaExpirada === true);
             const cx = data.cell.x + data.cell.width / 2;
             const cy = data.cell.y + data.cell.height / 2;
             const r = 2;
-            if (filled) {
+            if (mostrarPreenchido) {
               data.doc.setFillColor(...pink);
               data.doc.circle(cx, cy, r, 'F');
               data.doc.setDrawColor(...pink);
@@ -776,16 +817,16 @@ export default function ListaFrequencia() {
                 className={`lista-frequencia-turma-section ${sectionIndex > 0 ? 'mt-8' : ''}`}
               >
                 {/* Cabeçalho */}
-                <header className="mb-6 text-left">
+                <header className="mb-6 text-center">
                   <h2 className="text-lg font-semibold">{item.cabecalho.nome_prova_ano}</h2>
-                  <p className="text-sm">{item.cabecalho.lista_presenca_curso}</p>
-                  <div className="mx-auto mt-4 max-w-4xl rounded border-2 border-pink-500/70 bg-zinc-800/80 p-4 text-left">
+                  <p className="text-sm mt-1">{item.cabecalho.lista_presenca_curso}</p>
+                  <div className="mx-auto mt-4 max-w-4xl rounded border-2 border-pink-500/70 bg-zinc-800/80 p-4 text-center">
                     <div className="space-y-1 text-sm">
                       <p>MUNICÍPIO/UF: {item.cabecalho.municipio_uf}</p>
                       <p>NOME DA ESCOLA*: {item.cabecalho.nome_escola}</p>
                       <p>SÉRIE: {getSerieTurmaDisplay(item.cabecalho).serie}</p>
                       <p>TURMA: {getSerieTurmaDisplay(item.cabecalho).turma}</p>
-                      <p className="flex items-baseline gap-1">
+                      <p className="flex items-baseline justify-center gap-1">
                         DISCIPLINA:{' '}
                         {item.cabecalho.disciplina?.trim() ? (
                           item.cabecalho.disciplina
@@ -795,10 +836,10 @@ export default function ListaFrequencia() {
                       </p>
                     </div>
                   </div>
-                  <p className="mt-3 text-left text-xs">
+                  <p className="mt-3 text-center text-xs">
                     Legenda: {formatLegenda(item.cabecalho.legenda)}
                   </p>
-                  <p className="mt-2 text-left text-xs italic">
+                  <p className="mt-2 text-center text-xs italic">
                     {item.cabecalho.instrucoes_aplicador}
                   </p>
                 </header>
@@ -839,20 +880,27 @@ export default function ListaFrequencia() {
                           <td className="border border-pink-500/50 px-2 py-1.5">
                             {est.nome_estudante}
                           </td>
-                          {codigosStatus.map((cod) => (
-                            <td
-                              key={cod}
-                              className="border border-pink-500/50 px-1 py-1.5 text-center"
-                            >
-                              <span
-                                className="inline-flex h-5 w-5 items-center justify-center rounded-full border-2 border-pink-400/80"
-                                style={{
-                                  backgroundColor:
-                                    est.status === cod ? 'rgba(236,72,153,0.6)' : 'transparent',
-                                }}
-                              />
-                            </td>
-                          ))}
+                          {codigosStatus.map((cod) => {
+                            const isAusente = cod === 'A';
+                            const mostrarPreenchido =
+                              est.status === cod &&
+                              (!isAusente || provaExpirada === true);
+                            return (
+                              <td
+                                key={cod}
+                                className="border border-pink-500/50 px-1 py-1.5 text-center"
+                              >
+                                <span
+                                  className="inline-flex h-5 w-5 items-center justify-center rounded-full border-2 border-pink-400/80"
+                                  style={{
+                                    backgroundColor: mostrarPreenchido
+                                      ? 'rgba(236,72,153,0.6)'
+                                      : 'transparent',
+                                  }}
+                                />
+                              </td>
+                            );
+                          })}
                           <td className="border border-pink-500/50 px-2 py-1.5" />
                         </tr>
                       ))}
@@ -861,11 +909,11 @@ export default function ListaFrequencia() {
                 </div>
 
                 {/* Rodapé por turma */}
-                <footer className="mt-8 border-t border-pink-500/50 pt-6">
-                  <div className="flex flex-wrap items-start justify-between gap-6">
+                <footer className="mt-8 border-t border-pink-500/50 pt-6 text-center">
+                  <div className="flex flex-wrap items-start justify-center gap-6">
                     <div>
                       <p className="mb-2 text-xs font-medium">CPF DO(A) APLICADOR(A)</p>
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 justify-center">
                         {Array.from({ length: 11 }).map((_, i) => (
                           <span
                             key={i}
@@ -880,7 +928,7 @@ export default function ListaFrequencia() {
                     </div>
                   </div>
                   <div className="mt-6 text-center">
-                    <div className="border-b border-dashed border-pink-400/60 pb-1" />
+                    <div className="border-b border-dashed border-pink-400/60 pb-1 mx-auto max-w-xs" />
                     <p className="mt-1 text-xs">ASSINATURA DO(A) APLICADOR(A)</p>
                   </div>
                 </footer>

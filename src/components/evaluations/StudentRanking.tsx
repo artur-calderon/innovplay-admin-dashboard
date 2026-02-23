@@ -13,6 +13,8 @@ interface Student {
   id: string;
   nome: string;
   turma: string;
+  escola?: string;
+  serie?: string;
   nota: number;
   proficiencia: number;
   classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
@@ -145,13 +147,18 @@ export function StudentRanking({
 
                     {/* Informações do aluno */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
                         <h3 className={`font-semibold truncate text-base ${positionColor}`}>
                           {student.nome}
                         </h3>
                         <Badge variant="outline" className="text-xs">
                           {student.turma}
                         </Badge>
+                        {(student.escola || student.serie) && (
+                          <span className="text-xs text-muted-foreground truncate max-w-[200px]" title={[student.escola, student.serie].filter(Boolean).join(' • ')}>
+                            {[student.escola, student.serie].filter(Boolean).join(' • ')}
+                          </span>
+                        )}
                         {position <= 3 && (
                           <Badge className="bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400 border-yellow-300 text-xs font-bold">
                             {position}º Lugar

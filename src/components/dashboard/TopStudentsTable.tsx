@@ -1,13 +1,15 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Trophy, Award, TrendingUp, BookOpen } from "lucide-react";
+import { Trophy, Award, BookOpen } from "lucide-react";
 import { api } from "@/lib/api";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import { DashboardApiService } from "@/services/dashboardApi";
 
 interface StudentRanking {
   position: number;
   studentName: string;
+  serie?: string;
   className: string;
   schoolName?: string;
   averageScore: number;
@@ -26,6 +28,23 @@ export default function TopStudentsTable() {
         setIsLoading(true);
         setError(null);
 
+        // Preferir endpoint do dashboard (ranking-alunos com serie e media)
+        const apiRanking = await DashboardApiService.getStudentRanking(10, 0);
+        if (apiRanking?.ranking?.length) {
+          const mapped: StudentRanking[] = apiRanking.ranking.map((item, index) => ({
+            position: item.position ?? index + 1,
+            studentName: item.name,
+            serie: item.serie,
+            className: item.class_name,
+            schoolName: item.school_name || undefined,
+            averageScore: item.media,
+            totalEvaluations: item.completed_evaluations,
+          }));
+          setRankings(mapped);
+          return;
+        }
+
+        // Fallback: montar ranking a partir de avaliações
         // 1. Buscar avaliações recentes (últimas 20 para performance)
         const evaluationsResponse = await api.get("/test/", {
           params: {
@@ -123,6 +142,7 @@ export default function TopStudentsTable() {
             return {
               position: 0,
               studentName: data.nome,
+              serie: undefined,
               className: data.turma,
               schoolName: data.escola,
               averageScore,
@@ -281,7 +301,7 @@ export default function TopStudentsTable() {
                     {student.studentName}
                   </h4>
                   <p className="text-xs text-muted-foreground truncate">
-                    {student.className}
+                    {[student.serie, student.className].filter(Boolean).join(" • ")}
                     {student.schoolName && ` • ${student.schoolName}`}
                   </p>
                 </div>

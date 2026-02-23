@@ -2104,21 +2104,33 @@ export default function AcertoNiveis() {
           return correct;
         });
         const values = counts.map(c => Math.round((c / denom) * 100));
-        const maxBarsPerRow = Math.max(8, Math.floor((w - 20) / 10));
+        // Com muitas questões: garantir altura mínima por linha e largura mínima por barra
+        const minRowHeight = 14;
+        const minBarWidth = 5;
+        const barGap = 2;
+        const areaW = w - 20;
+        const areaH = h - 20;
+        const maxRows = Math.max(1, Math.floor(areaH / minRowHeight));
+        const maxBarsPerRowByHeight = Math.ceil(values.length / maxRows);
+        const maxBarsPerRowByWidth = Math.floor(areaW / (minBarWidth + barGap));
+        const maxBarsPerRow = Math.min(
+          Math.max(8, maxBarsPerRowByHeight),
+          Math.max(8, maxBarsPerRowByWidth)
+        );
         const chunks: number[][] = [];
         for (let i = 0; i < values.length; i += maxBarsPerRow) {
           chunks.push(values.slice(i, i + maxBarsPerRow));
         }
-        const rowH = (h - 20) / chunks.length;
+        const numChunks = chunks.length;
+        const rowH = numChunks > 0 ? areaH / numChunks : areaH;
         doc.setFontSize(10);
         doc.setTextColor(0);
         doc.text('Acerto por Questão (%)', x, y - 3);
         chunks.forEach((vals, rowIndex) => {
           const chartTop = y + rowIndex * rowH;
           const chartBottom = chartTop + rowH - 6;
-          const chartHeight = chartBottom - chartTop - 10;
-          const barGap = 2;
-          const barW = Math.max(6, Math.min(16, Math.floor((w - 20) / vals.length) - barGap));
+          const chartHeight = Math.max(4, chartBottom - chartTop - 10);
+          const barW = Math.max(4, Math.min(16, Math.floor(areaW / vals.length) - barGap));
           // Grid
           doc.setDrawColor(220);
           [0, 50, 100].forEach(p => {
@@ -2136,17 +2148,14 @@ export default function AcertoNiveis() {
             const color = v >= 60 ? [22, 163, 74] : [239, 68, 68];
             doc.setFillColor(color[0], color[1], color[2]);
             doc.rect(barX, yy, barW, barH, 'F');
-            // Label Qn
-            const qNum = qs[rowIndex * maxBarsPerRow + idx]?.numero ?? idx + 1;
+            const globalIndex = rowIndex * maxBarsPerRow + idx;
+            const qNum = qs[globalIndex]?.numero ?? globalIndex + 1;
             doc.setFontSize(7);
             doc.setTextColor(60);
             doc.text(`Q${qNum}`, barX + barW / 2, chartBottom + 4, { align: 'center' });
-            // Quantidade de acertos acima da barra
-            const globalIndex = rowIndex * maxBarsPerRow + idx;
             const absoluteCorrect = counts[globalIndex] ?? 0;
-            doc.setFontSize(7);
             doc.setTextColor(30);
-            doc.text(String(absoluteCorrect), barX + barW / 2, Math.max(y + 6, yy - 1), { align: 'center' });
+            doc.text(String(absoluteCorrect), barX + barW / 2, Math.max(chartTop + 2, yy - 1), { align: 'center' });
           });
         });
       };
@@ -2242,252 +2251,217 @@ export default function AcertoNiveis() {
         addFooter(pageCount);
       };
 
-      // Função para gerar página detalhada (landscape) para uma turma específica
+      // Máximo de colunas de questões por página para caber na largura A4 landscape
+      const QUESTIONS_PER_PAGE = 24;
+
+      // Função para gerar página detalhada (landscape) para uma turma específica — tabela dividida em páginas quando há muitas questões
       const renderDetailedPageForTurma = (subtitle: string, turmaName: string, alunosTurma: StudentResult[], questoes: typeof detailedReport.questoes) => {
-        // Verificar se há alunos participantes (não apenas se há alunos)
         const alunosParticipantes = alunosTurma.filter(s => s.status === 'concluida');
         if (!questoes || questoes.length === 0 || alunosParticipantes.length === 0) return;
-        // Ordenar questões
         questoes = sortQuestoes(questoes);
-        
-        doc.addPage('landscape');
-        pageCount++;
-        
+
         const landscapeWidth = 297;
         const landscapeHeight = 210;
         const landscapeMargin = 10;
-        
-        // Título
-        let y = 15;
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(12);
-        doc.text(`${evaluationInfo.titulo} - ${subtitle}`, landscapeWidth / 2, y, { align: 'center' });
-        y += 5;
-        doc.setFontSize(10);
-        doc.text(`Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
-        y += 10;
-        
-        // Preparar cabeçalhos
-        const headerRow1 = ["Aluno"];
-        const headerRow2 = ["Habilidade"];
-        const headerRow3 = ["% Turma"];
-        
-        // Adicionar questões aos cabeçalhos
-        questoes.forEach(q => {
-          headerRow1.push(`Q${q.numero}`);
-          const habilidade = generateHabilidadeCode(q, skillsMapping);
-          headerRow2.push(habilidade);
-        });
-
-        // Recalcular % da turma baseado nas respostas reais (apenas alunos desta turma)
         const completedStudentsLocal = alunosTurma.filter(s => s.status === 'concluida');
         const denomLocal = Math.max(1, completedStudentsLocal.length);
-        questoes.forEach(q => {
-          let correct = 0;
-          completedStudentsLocal.forEach(s => { if (getAnswer(s, q.numero)) correct++; });
-          const pct = Math.round((correct / denomLocal) * 100);
-          headerRow3.push(`${pct}%`);
-        });
-        
-        // Adicionar colunas finais
-        headerRow1.push("Total", "Proficiência", "Nível");
-        headerRow2.push("", "", "");
-        headerRow3.push("", "", "");
-        
-        // Preparar dados dos alunos (apenas desta turma)
-        const bodyRows: (string | number)[][] = [];
-        const completedStudents = alunosTurma.filter(s => s.status === 'concluida');
-        
-        completedStudents.forEach(s => {
-          const row: (string | number)[] = [s.nome];
-          let acertos = 0;
-          
-          // Adicionar respostas usando a mesma função de cálculo
-          questoes.forEach(q => {
-            const resposta = getAnswer(s, q.numero);
-            if (resposta === true) {
-              row.push('\u2713'); // ✓ usando código Unicode
-              acertos++;
-            } else {
-              row.push('\u2717'); // ✗ usando código Unicode
-            }
+        const totalQuestoes = questoes.length;
+
+        const drawTableChunk = (
+          chunk: typeof questoes,
+          isLastChunk: boolean,
+          startY: number
+        ) => {
+          const headerRow1 = ["Aluno"];
+          const headerRow2 = ["Habilidade"];
+          const headerRow3 = ["% Turma"];
+          chunk.forEach(q => {
+            headerRow1.push(`Q${q.numero}`);
+            headerRow2.push(generateHabilidadeCode(q, skillsMapping));
+            let correct = 0;
+            completedStudentsLocal.forEach(s => { if (getAnswer(s, q.numero)) correct++; });
+            headerRow3.push(`${Math.round((correct / denomLocal) * 100)}%`);
           });
-          
-          // Adicionar totais
-          row.push(`${acertos}/${questoes.length}`);
-          
-          // Usar sempre a proficiência geral do backend
-          row.push(s.proficiencia.toFixed(1));
-          row.push(s.classificacao);
-          
-          bodyRows.push(row);
-        });
-        
-        // Calcular larguras das colunas dinamicamente (otimizado)
-        const availableWidth = landscapeWidth - (2 * landscapeMargin);
-        const nameColWidth = Math.min(45, availableWidth * 0.2); // Nome do aluno
-        const finalColsWidth = 20 + 25 + 30; // Total, Prof, Nível (reduzido)
-        const questionColWidth = Math.max(8, Math.min(12, (availableWidth - nameColWidth - finalColsWidth) / questoes.length));
-        
-        const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
-          0: { cellWidth: nameColWidth, halign: 'left' }
-        };
-        
-        // Configurar largura das colunas de questões (otimizado)
-        for (let i = 1; i <= questoes.length; i++) {
-          columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
-        }
-        
-        // Configurar colunas finais (reduzido)
-        columnStyles[questoes.length + 1] = { cellWidth: 20, halign: 'center' };
-        columnStyles[questoes.length + 2] = { cellWidth: 25, halign: 'center' };
-        columnStyles[questoes.length + 3] = { cellWidth: 30, halign: 'center' };
-        
-        // Gerar tabela
-        autoTable(doc, {
-          startY: y,
-          head: [headerRow1, headerRow2, headerRow3],
-          body: bodyRows,
-          theme: 'grid',
-          margin: { left: landscapeMargin, right: landscapeMargin },
-          tableWidth: 'auto',
-          showHead: 'everyPage',
-          styles: {
-            fontSize: 6,
-            cellPadding: 0.5,
-            lineColor: [200, 200, 200],
-            lineWidth: 0.05,
-            overflow: 'linebreak',
-            valign: 'middle',
-            halign: 'center'
-          },
-          headStyles: {
-            fillColor: [240, 240, 240],
-            textColor: [0, 0, 0],
-            fontStyle: 'bold',
-            halign: 'center',
-            fontSize: 6
-          },
-          columnStyles: columnStyles,
-          bodyStyles: { textColor: [33, 33, 33] },
-          alternateRowStyles: { fillColor: [252, 252, 252] },
-          didDrawCell: (data) => {
-            const { doc, cell, column, section, row } = data;
-            const val = Array.isArray(cell.text) ? cell.text[0] : cell.text;
+          if (isLastChunk) {
+            headerRow1.push("Total", "Proficiência", "Nível");
+            headerRow2.push("", "", "");
+            headerRow3.push("", "", "");
+          }
 
-            // Colorir células com símbolos ✓ ou ✗
-            if (section === 'body' && column.index > 0 && column.index <= questoes.length) {
-              const valStr = String(val);
-              if (valStr === '✓' || valStr === '\u2713' || valStr === '✗' || valStr === '\u2717') {
-                // Redesenhar o símbolo centralizado com cor apropriada
-                const centerX = cell.x + cell.width / 2;
-                const centerY = cell.y + cell.height / 2;
+          const bodyRows: (string | number)[][] = [];
+          completedStudentsLocal.forEach(s => {
+            const row: (string | number)[] = [s.nome];
+            let acertos = 0;
+            chunk.forEach(q => {
+              const resposta = getAnswer(s, q.numero);
+              if (resposta === true) {
+                row.push('\u2713');
+                acertos++;
+              } else row.push('\u2717');
+            });
+            if (isLastChunk) {
+              row.push(`${countCorrectFor(s, questoes)}/${totalQuestoes}`);
+              row.push(s.proficiencia.toFixed(1));
+              row.push(s.classificacao);
+            }
+            bodyRows.push(row);
+          });
 
-                // Apagar texto renderizado automaticamente
-                const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
-                doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
-                doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
+          const availableWidth = landscapeWidth - (2 * landscapeMargin);
+          const nameColWidth = Math.min(45, availableWidth * 0.2);
+          const finalColsWidth = isLastChunk ? 20 + 25 + 30 : 0;
+          const questionColWidth = Math.max(6, Math.min(12, (availableWidth - nameColWidth - finalColsWidth) / chunk.length));
 
-                // Renderizar símbolo vetorialmente
-                const iconSize = Math.min(cell.width, cell.height) / 4.5;
-                const isCorrect = valStr === '✓' || valStr === '\u2713';
-                
-                if (isCorrect) {
-                  // Desenha o '✓'
-                  doc.setDrawColor(22, 163, 74); // Verde escuro
-                  doc.setLineWidth(0.8);
-                  doc.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
-                  doc.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
-                } else {
-                  // Desenha o '✗'
-                  doc.setDrawColor(239, 68, 68); // Vermelho
-                  doc.setLineWidth(0.8);
-                  doc.line(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
-                  doc.line(centerX + iconSize, centerY - iconSize, centerX - iconSize, centerY + iconSize);
+          const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
+            0: { cellWidth: nameColWidth, halign: 'left' }
+          };
+          for (let i = 1; i <= chunk.length; i++) columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
+          if (isLastChunk) {
+            columnStyles[chunk.length + 1] = { cellWidth: 20, halign: 'center' };
+            columnStyles[chunk.length + 2] = { cellWidth: 25, halign: 'center' };
+            columnStyles[chunk.length + 3] = { cellWidth: 30, halign: 'center' };
+          }
+
+          const numQuestoesThisChunk = chunk.length;
+          autoTable(doc, {
+            startY: startY,
+            head: [headerRow1, headerRow2, headerRow3],
+            body: bodyRows,
+            theme: 'grid',
+            margin: { left: landscapeMargin, right: landscapeMargin },
+            tableWidth: 'auto',
+            showHead: 'everyPage',
+            styles: {
+              fontSize: 6,
+              cellPadding: 0.5,
+              lineColor: [200, 200, 200],
+              lineWidth: 0.05,
+              overflow: 'linebreak',
+              valign: 'middle',
+              halign: 'center'
+            },
+            headStyles: {
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+              fontStyle: 'bold',
+              halign: 'center',
+              fontSize: 6
+            },
+            columnStyles: columnStyles,
+            bodyStyles: { textColor: [33, 33, 33] },
+            alternateRowStyles: { fillColor: [252, 252, 252] },
+            didDrawCell: (data: CellHookData) => {
+              const { doc: d, cell, column, section, row } = data;
+              const val = Array.isArray(cell.text) ? cell.text[0] : cell.text;
+
+              if (section === 'body' && column.index > 0 && column.index <= numQuestoesThisChunk) {
+                const valStr = String(val);
+                if (valStr === '✓' || valStr === '\u2713' || valStr === '✗' || valStr === '\u2717') {
+                  const centerX = cell.x + cell.width / 2;
+                  const centerY = cell.y + cell.height / 2;
+                  const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
+                  d.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
+                  d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
+                  const iconSize = Math.min(cell.width, cell.height) / 4.5;
+                  const isCorrect = valStr === '✓' || valStr === '\u2713';
+                  if (isCorrect) {
+                    d.setDrawColor(22, 163, 74);
+                    d.setLineWidth(0.8);
+                    d.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
+                    d.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
+                  } else {
+                    d.setDrawColor(239, 68, 68);
+                    d.setLineWidth(0.8);
+                    d.line(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
+                    d.line(centerX + iconSize, centerY - iconSize, centerX - iconSize, centerY + iconSize);
+                  }
+                  d.setDrawColor(200, 200, 200);
+                  d.setLineWidth(0.05);
+                  d.rect(cell.x, cell.y, cell.width, cell.height);
                 }
-                
-                // Redesenhar bordas
-                doc.setDrawColor(200, 200, 200);
-                doc.setLineWidth(0.05);
-                doc.rect(cell.x, cell.y, cell.width, cell.height);
               }
-            }
-
-            // Lógica original para colorir outras células (habilidades, porcentagens, nível)
-            if (section === 'head' && row.index === 1) {
-              cell.styles.fillColor = [219, 234, 254];
-              cell.styles.fontSize = 5;
-              cell.styles.fontStyle = 'normal';
-              cell.styles.font = 'courier';
-            }
-
-            if (section === 'head' && row.index === 2 && column.index > 0 && column.index <= questoes.length) {
-              const textValue = Array.isArray(cell.text) ? cell.text[0] || '' : cell.text || '';
-              const pct = parseInt(textValue.replace(/[^0-9]/g, ''));
-              if (!isNaN(pct)) {
-                if (pct >= 60) {
-                  cell.styles.fillColor = [220, 252, 231];
-                  cell.styles.textColor = [22, 163, 74];
-                } else {
-                  cell.styles.fillColor = [254, 226, 226];
-                  cell.styles.textColor = [239, 68, 68];
-                }
-                cell.styles.fontStyle = 'bold';
+              if (section === 'head' && row.index === 1) {
+                cell.styles.fillColor = [219, 234, 254];
                 cell.styles.fontSize = 5;
+                cell.styles.fontStyle = 'normal';
+                cell.styles.font = 'courier';
               }
-            }
+              if (section === 'head' && row.index === 2 && column.index > 0 && column.index <= numQuestoesThisChunk) {
+                const textValue = Array.isArray(cell.text) ? cell.text[0] || '' : cell.text || '';
+                const pct = parseInt(String(textValue).replace(/[^0-9]/g, ''));
+                if (!isNaN(pct)) {
+                  cell.styles.fillColor = pct >= 60 ? [220, 252, 231] : [254, 226, 226];
+                  cell.styles.textColor = pct >= 60 ? [22, 163, 74] : [239, 68, 68];
+                  cell.styles.fontStyle = 'bold';
+                  cell.styles.fontSize = 5;
+                }
+              }
+              if (isLastChunk && section === 'body' && column.index === chunk.length + 3) {
+                const textValue = (Array.isArray(cell.text) ? cell.text[0] : cell.text || '').toString().trim();
+                const [r, g, b] = generateClassificationColor(textValue);
+                d.setFillColor(r, g, b);
+                d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
+                d.setTextColor(255, 255, 255);
+                d.setFont('helvetica', 'bold');
+                d.setFontSize(6);
+                d.text(textValue, cell.x + cell.width / 2, cell.y + cell.height / 2 + 1.5, { align: 'center' });
+                d.setDrawColor(200, 200, 200);
+                d.rect(cell.x, cell.y, cell.width, cell.height);
+              }
+            },
+          });
+        };
 
-            if (section === 'body' && column.index === questoes.length + 3) {
-              const textValue = (Array.isArray(cell.text) ? cell.text[0] : cell.text || '').toString().trim();
-              const [r, g, b] = generateClassificationColor(textValue);
+        for (let start = 0; start < totalQuestoes; start += QUESTIONS_PER_PAGE) {
+          const end = Math.min(start + QUESTIONS_PER_PAGE, totalQuestoes);
+          const chunk = questoes.slice(start, end);
+          const isLastChunk = end >= totalQuestoes;
 
-              doc.setFillColor(r, g, b);
-              doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
+          doc.addPage('landscape');
+          pageCount++;
 
-              doc.setTextColor(255, 255, 255);
-              doc.setFont('helvetica', 'bold');
-              doc.setFontSize(6);
-              doc.text(textValue, cell.x + cell.width / 2, cell.y + cell.height / 2 + 1.5, { align: 'center' });
+          let y = 15;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(12);
+          const pageLabel = totalQuestoes > QUESTIONS_PER_PAGE
+            ? ` (Questões ${start + 1}-${end})`
+            : '';
+          doc.text(`${evaluationInfo.titulo} - ${subtitle}${pageLabel}`, landscapeWidth / 2, y, { align: 'center' });
+          y += 5;
+          doc.setFontSize(10);
+          doc.text(`Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
+          y += 10;
 
-              doc.setDrawColor(200, 200, 200);
-              doc.rect(cell.x, cell.y, cell.width, cell.height);
-            }
-          },
-        });
-        
-        // Legenda com símbolos
-        const finalY = ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y) + 4;
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'normal');
+          drawTableChunk(chunk, isLastChunk, y);
 
-        let legendX = landscapeMargin;
+          if (isLastChunk) {
+            const finalY = ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y) + 4;
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            let legendX = landscapeMargin;
+            doc.setDrawColor(22, 163, 74);
+            doc.setLineWidth(0.8);
+            const iconSize = 2;
+            const legendY = finalY + 2;
+            doc.line(legendX - iconSize, legendY, legendX - iconSize / 2, legendY + iconSize);
+            doc.line(legendX - iconSize / 2, legendY + iconSize, legendX + iconSize, legendY - iconSize);
+            doc.setTextColor(90, 90, 90);
+            doc.text('Correto', legendX + 5, finalY + 3);
+            legendX += 24;
+            doc.setDrawColor(239, 68, 68);
+            doc.setLineWidth(0.8);
+            doc.line(legendX - iconSize, legendY - iconSize, legendX + iconSize, legendY + iconSize);
+            doc.line(legendX + iconSize, legendY - iconSize, legendX - iconSize, legendY + iconSize);
+            doc.setTextColor(90, 90, 90);
+            doc.text('Incorretas', legendX + 5, finalY + 3);
+          }
 
-        // Símbolo correto ✓
-        doc.setDrawColor(22, 163, 74); // Verde escuro
-        doc.setLineWidth(0.8);
-        const iconSize = 2;
-        const legendY = finalY + 2;
-        doc.line(legendX - iconSize, legendY, legendX - iconSize / 2, legendY + iconSize);
-        doc.line(legendX - iconSize / 2, legendY + iconSize, legendX + iconSize, legendY - iconSize);
-        doc.setTextColor(90, 90, 90);
-        doc.text('Correto', legendX + 5, finalY + 3);
-
-        legendX += 24;
-        
-        // Símbolo incorreto ✗
-        doc.setDrawColor(239, 68, 68); // Vermelho
-        doc.setLineWidth(0.8);
-        doc.line(legendX - iconSize, legendY - iconSize, legendX + iconSize, legendY + iconSize);
-        doc.line(legendX + iconSize, legendY - iconSize, legendX - iconSize, legendY + iconSize);
-        doc.setTextColor(90, 90, 90);
-        doc.text('Incorretas', legendX + 5, finalY + 3);
-        
-        // Rodapé
-        doc.setFontSize(8);
-        doc.setTextColor(100, 100, 100);
-        doc.text('Afirme Play Soluções Educativas', landscapeMargin, landscapeHeight - 8);
-        doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
-        doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
+          doc.setFontSize(8);
+          doc.setTextColor(100, 100, 100);
+          doc.text('Afirme Play Soluções Educativas', landscapeMargin, landscapeHeight - 8);
+          doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
+          doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
+        }
       };
 
       // Função para renderizar gráficos para uma turma específica
@@ -2523,27 +2497,13 @@ export default function AcertoNiveis() {
 
           // Ordenar questões por número
           const qs = [...disc.questoes].sort((a, b) => (a?.numero || 0) - (b?.numero || 0));
-
-          // Nova página em landscape
-          doc.addPage('landscape');
-          pageCount++;
+          const totalQuestoesDisc = qs.length;
 
           const landscapeWidth = 297;
           const landscapeHeight = 210;
           const landscapeMargin = 10;
-
-          // Título
-          let y = 15;
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(12);
-          const headerDisc = `DISCIPLINA: ${disc.nome || 'N/A'}`;
-          doc.text(`${evaluationInfo?.titulo || 'Avaliação'} - ${headerDisc}`, landscapeWidth / 2, y, { align: 'center' });
-          y += 5;
-          doc.setFontSize(10);
           const escolaText = selectedSchoolId ? (schools.find(s => s.id === selectedSchoolId)?.nome || '') : 'Todas as Escolas';
-          // Participantes (para série e % por questão) - apenas da turma específica
           const alunosParticipantes = alunosTurmaDisciplina.filter(al => Array.isArray(al.respostas_por_questao) && al.respostas_por_questao.some(r => r.respondeu));
-          // Série: priorizar seleção atual; depois heurística global; depois inferir pelas turmas dos participantes; por fim evaluationInfo
           const serieHeuristicaGlobal = getHeaderSerieText(studentsToUse);
           let serieText = selectedGradeId ? (grades.find(g => g.id === selectedGradeId)?.nome || '') : (serieHeuristicaGlobal || '');
           if (!serieText) {
@@ -2552,206 +2512,181 @@ export default function AcertoNiveis() {
               const ser = extractSerieFromTurma(a.turma);
               if (ser) setSeries.add(ser);
             });
-            if (setSeries.size === 1) {
-              serieText = Array.from(setSeries)[0];
-            } else if (evaluationInfo?.serie && evaluationInfo.serie !== 'N/A') {
-              serieText = evaluationInfo.serie;
-            }
+            if (setSeries.size === 1) serieText = Array.from(setSeries)[0];
+            else if (evaluationInfo?.serie && evaluationInfo.serie !== 'N/A') serieText = evaluationInfo.serie;
           }
-          doc.text(`Escola: ${escolaText}  •  Série: ${serieText || 'N/A'}  •  Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
-          y += 8;
-
-          // Cabeçalhos múltiplos
-          const headerRow1 = ['Aluno'];
-          const headerRow2 = ['Habilidade'];
-          const headerRow3 = ['% Turma'];
-          // Participantes já calculados acima (apenas da turma específica)
           const denomLocal = Math.max(1, alunosParticipantes.length);
-          qs.forEach(q => {
-            headerRow1.push(`Q${q.numero}`);
-            const hab = (q.codigo_habilidade || q.habilidade || '').toString();
-            headerRow2.push(hab);
-            // % Turma por questão (entre participantes da turma específica)
-            let correct = 0;
-            alunosParticipantes.forEach(s => {
-              const r = (s.respostas_por_questao || []).find(rr => rr.questao === q.numero);
-              if (r && r.respondeu && r.acertou) correct++;
+
+          for (let start = 0; start < totalQuestoesDisc; start += QUESTIONS_PER_PAGE) {
+            const end = Math.min(start + QUESTIONS_PER_PAGE, totalQuestoesDisc);
+            const chunk = qs.slice(start, end);
+            const isLastChunk = end >= totalQuestoesDisc;
+
+            doc.addPage('landscape');
+            pageCount++;
+
+            let y = 15;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(12);
+            const headerDisc = `DISCIPLINA: ${disc.nome || 'N/A'}`;
+            const pageLabel = totalQuestoesDisc > QUESTIONS_PER_PAGE ? ` (Questões ${start + 1}-${end})` : '';
+            doc.text(`${evaluationInfo?.titulo || 'Avaliação'} - ${headerDisc}${pageLabel}`, landscapeWidth / 2, y, { align: 'center' });
+            y += 5;
+            doc.setFontSize(10);
+            doc.text(`Escola: ${escolaText}  •  Série: ${serieText || 'N/A'}  •  Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
+            y += 8;
+
+            const headerRow1 = ['Aluno'];
+            const headerRow2 = ['Habilidade'];
+            const headerRow3 = ['% Turma'];
+            chunk.forEach(q => {
+              headerRow1.push(`Q${q.numero}`);
+              headerRow2.push((q.codigo_habilidade || q.habilidade || '').toString());
+              let correct = 0;
+              alunosParticipantes.forEach(s => {
+                const r = (s.respostas_por_questao || []).find(rr => rr.questao === q.numero);
+                if (r && r.respondeu && r.acertou) correct++;
+              });
+              headerRow3.push(`${Math.round((correct / denomLocal) * 100)}%`);
             });
-            const pct = Math.round((correct / denomLocal) * 100);
-            headerRow3.push(`${pct}%`);
-          });
-          headerRow1.push('Total', 'Nota', 'Proficiência', 'Nível');
-          headerRow2.push('', '', '', '');
-          headerRow3.push('', '', '', '');
+            if (isLastChunk) {
+              headerRow1.push('Total', 'Nota', 'Proficiência', 'Nível');
+              headerRow2.push('', '', '', '');
+              headerRow3.push('', '', '', '');
+            }
 
-          // Linhas de alunos (usar somente dados do backend, apenas da turma específica)
-          const bodyRows: (string | number)[][] = [];
-          alunosTurmaDisciplina.forEach(al => {
-            // Ignorar alunos faltosos: manter apenas quem respondeu ao menos uma questão
-            const hasAnsweredAny = Array.isArray(al.respostas_por_questao)
-              ? al.respostas_por_questao.some(r => r.respondeu)
-              : false;
-            if (!hasAnsweredAny) return;
-            const row: (string | number)[] = [al.nome];
-            let acertos = 0;
-
-            qs.forEach(q => {
-              const resp = (al.respostas_por_questao || []).find(r => r.questao === q.numero);
-              if (!resp) {
-                row.push('');
-                return;
+            const bodyRows: (string | number)[][] = [];
+            alunosTurmaDisciplina.forEach(al => {
+              const hasAnsweredAny = Array.isArray(al.respostas_por_questao) && al.respostas_por_questao.some(r => r.respondeu);
+              if (!hasAnsweredAny) return;
+              const row: (string | number)[] = [al.nome];
+              let acertosChunk = 0;
+              chunk.forEach(q => {
+                const resp = (al.respostas_por_questao || []).find(r => r.questao === q.numero);
+                if (!resp) { row.push(''); return; }
+                if (resp.respondeu) {
+                  if (resp.acertou) { row.push('\u2713'); acertosChunk++; }
+                  else row.push('\u2717');
+                } else row.push('');
+              });
+              if (isLastChunk) {
+                row.push(`${al.total_acertos ?? 0}/${totalQuestoesDisc}`);
+                row.push(Number(al.nota ?? 0).toFixed(1));
+                row.push(Number(al.proficiencia ?? 0).toFixed(1));
+                row.push(String(al.nivel_proficiencia || ''));
               }
-              if (resp.respondeu) {
-                if (resp.acertou) {
-                  row.push('\u2713'); // ✓ usando código Unicode
-                  acertos++;
-                } else {
-                  row.push('\u2717'); // ✗ usando código Unicode
-                }
-              } else {
-                row.push(''); // em branco
-              }
+              bodyRows.push(row);
             });
 
-            row.push(`${al.total_acertos ?? acertos}/${qs.length}`);
-            row.push(Number(al.nota ?? 0).toFixed(1));
-            row.push(Number(al.proficiencia ?? 0).toFixed(1));
-            row.push(String(al.nivel_proficiencia || ''));
-            bodyRows.push(row);
-          });
+            const availableWidth = landscapeWidth - (2 * landscapeMargin);
+            const nameColWidth = Math.min(45, availableWidth * 0.2);
+            const finalColsWidth = isLastChunk ? 20 + 20 + 25 + 30 : 0;
+            const questionColWidth = Math.max(6, Math.min(12, (availableWidth - nameColWidth - finalColsWidth) / chunk.length));
+            const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
+              0: { cellWidth: nameColWidth, halign: 'left' }
+            };
+            for (let i = 1; i <= chunk.length; i++) columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
+            if (isLastChunk) {
+              columnStyles[chunk.length + 1] = { cellWidth: 20, halign: 'center' };
+              columnStyles[chunk.length + 2] = { cellWidth: 20, halign: 'center' };
+              columnStyles[chunk.length + 3] = { cellWidth: 25, halign: 'center' };
+              columnStyles[chunk.length + 4] = { cellWidth: 30, halign: 'center' };
+            }
+            const numQuestoesThisChunk = chunk.length;
 
-          // Larguras
-          const availableWidth = landscapeWidth - (2 * landscapeMargin);
-          const nameColWidth = Math.min(45, availableWidth * 0.2);
-          const finalColsWidth = 20 + 20 + 25 + 30; // Total, Nota, Prof, Nível
-          const questionColWidth = Math.max(8, Math.min(12, (availableWidth - nameColWidth - finalColsWidth) / qs.length));
-
-          const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
-            0: { cellWidth: nameColWidth, halign: 'left' }
-          };
-          for (let i = 1; i <= qs.length; i++) columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
-          columnStyles[qs.length + 1] = { cellWidth: 20, halign: 'center' }; // Total
-          columnStyles[qs.length + 2] = { cellWidth: 20, halign: 'center' }; // Nota
-          columnStyles[qs.length + 3] = { cellWidth: 25, halign: 'center' }; // Prof
-          columnStyles[qs.length + 4] = { cellWidth: 30, halign: 'center' }; // Nível
-
-          // Tabela
-          autoTable(doc, {
-            startY: y,
-            head: [headerRow1, headerRow2, headerRow3],
-            body: bodyRows,
-            theme: 'grid',
-            margin: { left: landscapeMargin, right: landscapeMargin },
-            tableWidth: 'auto',
-            showHead: 'everyPage',
-            styles: {
-              fontSize: 6,
-              cellPadding: 0.5,
-              lineColor: [200, 200, 200],
-              lineWidth: 0.05,
-              overflow: 'linebreak',
-              valign: 'middle',
-              halign: 'center'
-            },
-            headStyles: {
-              fillColor: [240, 240, 240],
-              textColor: [0, 0, 0],
-              fontStyle: 'bold',
-              halign: 'center',
-              fontSize: 6
-            },
-            columnStyles: columnStyles,
-            bodyStyles: { textColor: [33, 33, 33] },
-            alternateRowStyles: { fillColor: [252, 252, 252] },
-            didDrawCell: (data) => {
-              const { doc, cell, column, section, row } = data;
-              const val = Array.isArray(cell.text) ? cell.text[0] : cell.text;
-              // Colorir células com símbolos ✓ ou ✗
-              if (section === 'body' && column.index > 0 && column.index <= qs.length) {
-                const valStr = String(val);
-                if (valStr === '✓' || valStr === '\u2713' || valStr === '✗' || valStr === '\u2717') {
-                  const centerX = cell.x + cell.width / 2;
-                  const centerY = cell.y + cell.height / 2;
-                  
-                  // Apagar texto renderizado automaticamente
-                  const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
-                  doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
-                  doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-                  
-                  // Renderizar símbolo vetorialmente
-                  const iconSize = Math.min(cell.width, cell.height) / 4.5;
-                  const isCorrect = valStr === '✓' || valStr === '\u2713';
-                  
-                  if (isCorrect) {
-                    // Desenha o '✓'
-                    doc.setDrawColor(22, 163, 74); // Verde escuro
-                    doc.setLineWidth(0.8);
-                    doc.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
-                    doc.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
-                  } else {
-                    // Desenha o '✗'
-                    doc.setDrawColor(239, 68, 68); // Vermelho
-                    doc.setLineWidth(0.8);
-                    doc.line(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
-                    doc.line(centerX + iconSize, centerY - iconSize, centerX - iconSize, centerY + iconSize);
+            autoTable(doc, {
+              startY: y,
+              head: [headerRow1, headerRow2, headerRow3],
+              body: bodyRows,
+              theme: 'grid',
+              margin: { left: landscapeMargin, right: landscapeMargin },
+              tableWidth: 'auto',
+              showHead: 'everyPage',
+              styles: {
+                fontSize: 6,
+                cellPadding: 0.5,
+                lineColor: [200, 200, 200],
+                lineWidth: 0.05,
+                overflow: 'linebreak',
+                valign: 'middle',
+                halign: 'center'
+              },
+              headStyles: {
+                fillColor: [240, 240, 240],
+                textColor: [0, 0, 0],
+                fontStyle: 'bold',
+                halign: 'center',
+                fontSize: 6
+              },
+              columnStyles: columnStyles,
+              bodyStyles: { textColor: [33, 33, 33] },
+              alternateRowStyles: { fillColor: [252, 252, 252] },
+              didDrawCell: (data: CellHookData) => {
+                const { doc: d, cell, column, section, row } = data;
+                const val = Array.isArray(cell.text) ? cell.text[0] : cell.text;
+                if (section === 'body' && column.index > 0 && column.index <= numQuestoesThisChunk) {
+                  const valStr = String(val);
+                  if (valStr === '✓' || valStr === '\u2713' || valStr === '✗' || valStr === '\u2717') {
+                    const centerX = cell.x + cell.width / 2;
+                    const centerY = cell.y + cell.height / 2;
+                    const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
+                    d.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
+                    d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
+                    const iconSize = Math.min(cell.width, cell.height) / 4.5;
+                    const isCorrect = valStr === '✓' || valStr === '\u2713';
+                    if (isCorrect) {
+                      d.setDrawColor(22, 163, 74);
+                      d.setLineWidth(0.8);
+                      d.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
+                      d.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
+                    } else {
+                      d.setDrawColor(239, 68, 68);
+                      d.setLineWidth(0.8);
+                      d.line(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
+                      d.line(centerX + iconSize, centerY - iconSize, centerX - iconSize, centerY + iconSize);
+                    }
+                    d.setDrawColor(200, 200, 200);
+                    d.setLineWidth(0.05);
+                    d.rect(cell.x, cell.y, cell.width, cell.height);
                   }
-                  
-                  // Redesenhar bordas
-                  doc.setDrawColor(200, 200, 200);
-                  doc.setLineWidth(0.05);
-                  doc.rect(cell.x, cell.y, cell.width, cell.height);
                 }
-              }
-
-              // Colorir coluna de nível
-              if (section === 'body' && column.index === qs.length + 4) {
-                const textValue = (Array.isArray(cell.text) ? cell.text[0] : cell.text || '').toString().trim();
-                const [r, g, b] = generateClassificationColor(textValue);
-
-                doc.setFillColor(r, g, b);
-                doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-
-                doc.setTextColor(255, 255, 255);
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(6);
-                doc.text(textValue, cell.x + cell.width / 2, cell.y + cell.height / 2 + 1.5, { align: 'center' });
-
-                doc.setDrawColor(200, 200, 200);
-                doc.rect(cell.x, cell.y, cell.width, cell.height);
-              }
-
-              // Linha de habilidades (segunda linha do head)
-              if (section === 'head' && row.index === 1) {
-                cell.styles.fillColor = [219, 234, 254];
-                cell.styles.fontSize = 5;
-                cell.styles.fontStyle = 'normal';
-                cell.styles.font = 'courier';
-              }
-              // Linha de % Turma (terceira linha do head)
-              if (section === 'head' && row.index === 2 && column.index > 0 && column.index <= qs.length) {
-                const textValue = Array.isArray(cell.text) ? cell.text[0] || '' : cell.text || '';
-                const pct = parseInt((textValue as string).replace(/[^0-9]/g, ''));
-                if (!isNaN(pct)) {
-                  if (pct >= 60) {
-                    cell.styles.fillColor = [220, 252, 231];
-                    cell.styles.textColor = [22, 163, 74];
-                  } else {
-                    cell.styles.fillColor = [254, 226, 226];
-                    cell.styles.textColor = [239, 68, 68];
-                  }
-                  cell.styles.fontStyle = 'bold';
+                if (isLastChunk && section === 'body' && column.index === chunk.length + 4) {
+                  const textValue = (Array.isArray(cell.text) ? cell.text[0] : cell.text || '').toString().trim();
+                  const [r, g, b] = generateClassificationColor(textValue);
+                  d.setFillColor(r, g, b);
+                  d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
+                  d.setTextColor(255, 255, 255);
+                  d.setFont('helvetica', 'bold');
+                  d.setFontSize(6);
+                  d.text(textValue, cell.x + cell.width / 2, cell.y + cell.height / 2 + 1.5, { align: 'center' });
+                  d.setDrawColor(200, 200, 200);
+                  d.rect(cell.x, cell.y, cell.width, cell.height);
+                }
+                if (section === 'head' && row.index === 1) {
+                  cell.styles.fillColor = [219, 234, 254];
                   cell.styles.fontSize = 5;
+                  cell.styles.fontStyle = 'normal';
+                  cell.styles.font = 'courier';
                 }
-              }
-            },
-          });
+                if (section === 'head' && row.index === 2 && column.index > 0 && column.index <= numQuestoesThisChunk) {
+                  const textValue = Array.isArray(cell.text) ? cell.text[0] || '' : cell.text || '';
+                  const pct = parseInt(String(textValue).replace(/[^0-9]/g, ''));
+                  if (!isNaN(pct)) {
+                    cell.styles.fillColor = pct >= 60 ? [220, 252, 231] : [254, 226, 226];
+                    cell.styles.textColor = pct >= 60 ? [22, 163, 74] : [239, 68, 68];
+                    cell.styles.fontStyle = 'bold';
+                    cell.styles.fontSize = 5;
+                  }
+                }
+              },
+            });
 
-          // Rodapé
-          doc.setFontSize(8);
-          doc.setTextColor(100, 100, 100);
-          doc.text('Afirme Play Soluções Educativas', landscapeMargin, landscapeHeight - 8);
-          doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
-          doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
+            doc.setFontSize(8);
+            doc.setTextColor(100, 100, 100);
+            doc.text('Afirme Play Soluções Educativas', landscapeMargin, landscapeHeight - 8);
+            doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
+            doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
+          }
         });
       };
 
