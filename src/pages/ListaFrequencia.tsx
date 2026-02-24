@@ -443,19 +443,20 @@ export default function ListaFrequencia() {
         doc.setLineWidth(0.4);
         doc.rect(margin, y, contentWidth, boxHeight, 'S');
         doc.setDrawColor(180, 180, 180);
+        const boxX = margin + 4;
         let boxY = y + 6;
-        doc.text(`MUNICÍPIO/UF: ${cab.municipio_uf}`, pageWidth / 2, boxY, { align: 'center' });
+        doc.text(`MUNICÍPIO/UF: ${cab.municipio_uf}`, boxX, boxY, { align: 'left' });
         boxY += 5;
-        doc.text(escolaLines, pageWidth / 2, boxY, { align: 'center' });
+        doc.text(escolaLines, boxX, boxY, { align: 'left' });
         boxY += escolaLines.length * 4.5;
-        doc.text(`SÉRIE: ${serieDisplay}`, pageWidth / 2, boxY, { align: 'center' });
+        doc.text(`SÉRIE: ${serieDisplay}`, boxX, boxY, { align: 'left' });
         boxY += 5;
-        doc.text(`TURMA: ${turmaDisplay}`, pageWidth / 2, boxY, { align: 'center' });
+        doc.text(`TURMA: ${turmaDisplay}`, boxX, boxY, { align: 'left' });
         boxY += 5;
         const disciplinaVal = cab.disciplina?.trim() ?? '';
-        doc.text(disciplinaVal ? `DISCIPLINA: ${disciplinaVal}` : 'DISCIPLINA: ', pageWidth / 2, boxY, { align: 'center' });
+        doc.text(disciplinaVal ? `DISCIPLINA: ${disciplinaVal}` : 'DISCIPLINA: ', boxX, boxY, { align: 'left' });
         if (!disciplinaVal) {
-          const lineX0 = pageWidth / 2 - 25;
+          const lineX0 = boxX + doc.getTextWidth('DISCIPLINA: ');
           doc.setDrawColor(120, 120, 120);
           doc.line(lineX0, boxY + 1.5, lineX0 + 50, boxY + 1.5);
         }
@@ -554,13 +555,13 @@ export default function ListaFrequencia() {
         for (let i = 0; i < 11; i++) {
           doc.rect(margin + i * (boxW + 1), cpfBoxY, boxW, boxH, 'S');
         }
-        doc.text('DATA: ___/___/_______', pageWidth - margin - 45, y);
-        y = cpfBoxY + boxH + 10;
+        doc.text('DATA: ___/___/_______', pageWidth - margin, y, { align: 'right' });
+        y = cpfBoxY + boxH + 18;
         doc.setDrawColor(180, 180, 180);
         doc.setLineDashPattern([2, 2], 0);
         doc.line(margin, y, pageWidth - margin, y);
         doc.setLineDashPattern([], 0);
-        y += 5;
+        y += 6;
         doc.text('ASSINATURA DO(A) APLICADOR(A)', pageWidth / 2, y, { align: 'center' });
       });
 
@@ -820,13 +821,13 @@ export default function ListaFrequencia() {
                 <header className="mb-6 text-center">
                   <h2 className="text-lg font-semibold">{item.cabecalho.nome_prova_ano}</h2>
                   <p className="text-sm mt-1">{item.cabecalho.lista_presenca_curso}</p>
-                  <div className="mx-auto mt-4 max-w-4xl rounded border-2 border-pink-500/70 bg-zinc-800/80 p-4 text-center">
+                  <div className="mx-auto mt-4 max-w-4xl rounded border-2 border-pink-500/70 bg-zinc-800/80 p-4 text-left">
                     <div className="space-y-1 text-sm">
                       <p>MUNICÍPIO/UF: {item.cabecalho.municipio_uf}</p>
                       <p>NOME DA ESCOLA*: {item.cabecalho.nome_escola}</p>
                       <p>SÉRIE: {getSerieTurmaDisplay(item.cabecalho).serie}</p>
                       <p>TURMA: {getSerieTurmaDisplay(item.cabecalho).turma}</p>
-                      <p className="flex items-baseline justify-center gap-1">
+                      <p className="flex items-baseline gap-1">
                         DISCIPLINA:{' '}
                         {item.cabecalho.disciplina?.trim() ? (
                           item.cabecalho.disciplina
@@ -908,12 +909,12 @@ export default function ListaFrequencia() {
                   </table>
                 </div>
 
-                {/* Rodapé por turma */}
-                <footer className="mt-8 border-t border-pink-500/50 pt-6 text-center">
-                  <div className="flex flex-wrap items-start justify-center gap-6">
-                    <div>
+                {/* Rodapé por turma: CPF à esquerda, Assinatura no meio, Data à direita */}
+                <footer className="mt-8 border-t border-pink-500/50 pt-6">
+                  <div className="grid grid-cols-3 gap-4 items-start">
+                    <div className="text-left">
                       <p className="mb-2 text-xs font-medium">CPF DO(A) APLICADOR(A)</p>
-                      <div className="flex gap-1 justify-center">
+                      <div className="flex gap-1">
                         {Array.from({ length: 11 }).map((_, i) => (
                           <span
                             key={i}
@@ -923,13 +924,13 @@ export default function ListaFrequencia() {
                         ))}
                       </div>
                     </div>
-                    <div>
+                    <div className="text-center flex flex-col items-center mt-8">
+                      <div className="border-b-2 border-dashed border-pink-400/60 pb-1 w-72 min-w-[200px]" />
+                      <p className="mt-2 text-xs">ASSINATURA DO(A) APLICADOR(A)</p>
+                    </div>
+                    <div className="text-right">
                       <p className="text-xs font-medium">DATA: ___/___/_______</p>
                     </div>
-                  </div>
-                  <div className="mt-6 text-center">
-                    <div className="border-b border-dashed border-pink-400/60 pb-1 mx-auto max-w-xs" />
-                    <p className="mt-1 text-xs">ASSINATURA DO(A) APLICADOR(A)</p>
                   </div>
                 </footer>
               </div>
