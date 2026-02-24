@@ -952,7 +952,15 @@ export default function AnaliseAvaliacoes() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-8">
-                  {Object.entries(apiData.acertos_por_habilidade).map(([disciplina, dadosDisciplina]) => (
+                  {Object.entries(apiData.acertos_por_habilidade)
+                    .sort(([aKey, aVal], [bKey, bVal]) => {
+                      if (aKey === 'GERAL') return -1;
+                      if (bKey === 'GERAL') return 1;
+                      const aMin = Math.min(...(aVal.questoes?.map((q) => q.numero_questao) ?? [Infinity]));
+                      const bMin = Math.min(...(bVal.questoes?.map((q) => q.numero_questao) ?? [Infinity]));
+                      return aMin - bMin;
+                    })
+                    .map(([disciplina, dadosDisciplina]) => (
                     <div key={disciplina} className="space-y-4">
                       <h4 className="text-xl font-bold text-foreground text-center uppercase">
                         {disciplina}

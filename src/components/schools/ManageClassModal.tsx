@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { Loader2, Users, GraduationCap, Trash2, Plus, Eye, UserPlus } from "lucide-react";
+import { Loader2, Users, GraduationCap, Trash2, Plus, Eye, UserPlus, CheckCircle2, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { LinkTeacherModal } from "./LinkTeacherModal";
 import { LinkStudentModal } from "./LinkStudentModal";
@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { useEmailCheck, generatePasswordFromName } from "@/hooks/useEmailCheck";
 interface Teacher {
   id: string;
   name: string;
@@ -385,36 +386,21 @@ export function ManageClassModal({
     }));
   };
 
-  // Função para gerar email automático baseado no nome
-  const generateEmail = (name: string) => {
-    if (!name) return "";
-    
-    const words = name.toLowerCase().split(' ').filter(word => word.length > 0);
-    if (words.length === 0) return "";
-    
-    if (words.length === 1) {
-      return `${words[0]}@afirmeplay.com.br`;
+  const { checkedEmail, isChecking, isAvailable } = useEmailCheck(formData.name);
+
+  // Sincronizar email verificado com formData
+  useEffect(() => {
+    if (checkedEmail) {
+      setFormData(prev => ({ ...prev, email: checkedEmail }));
     }
-    
-    const initials = words.map(word => word.charAt(0)).join('');
-    return `${initials}@afirmeplay.com.br`;
-  };
+  }, [checkedEmail]);
 
-  // Função para gerar senha automática baseada no nome
-  const generatePassword = (name: string) => {
-    if (!name) return "";
-    
-    const firstName = name.toLowerCase().split(' ')[0];
-    return `${firstName}@afirmeplay`;
-  };
-
-  // Atualizar email e senha quando o nome mudar
+  // Atualizar nome e senha quando o nome mudar (email é gerenciado pelo hook)
   const handleNameChange = (value: string) => {
     setFormData(prevState => ({
       ...prevState,
       name: value,
-      email: generateEmail(value),
-      password: generatePassword(value)
+      password: generatePasswordFromName(value)
     }));
   };
 
@@ -675,7 +661,10 @@ export function ManageClassModal({
               <TabsContent value="create-student" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=inactive]:hidden">
                 <div className="flex-1 overflow-y-auto border border-border rounded-lg bg-card min-h-[300px] p-4 sm:p-5">
                   <p className="text-sm text-muted-foreground mb-4">
-                    E-mail e senha são gerados automaticamente a partir do nome e não são exibidos por segurança.
+                    E-mail e senha são gerados automaticamente a partir do nome.
+                    {!isChecking && isAvailable === false && (
+                      <span className="text-amber-600 ml-1">Email original em uso — usando sugestão disponível.</span>
+                    )}
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -730,85 +719,168 @@ export function ManageClassModal({
                 </div>
               </TabsContent>
 
-              <TabsContent value="create-teacher" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=inactive]:hidden">
-                <div className="flex-1 overflow-y-auto border border-border rounded-lg bg-card min-h-[300px] p-4 sm:p-5">
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Preencha os dados. A senha não será exibida após o cadastro.
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="teacher-nome" className="text-sm font-medium text-foreground">Nome Completo *</Label>
-                      <Input
-                        id="teacher-nome"
-                        placeholder="Digite o nome completo"
-                        className="h-11 border-input bg-background focus:ring-2 focus:ring-blue-500"
-                        value={formData.name}
-                        onChange={(e) => handleInputChange('name', e.target.value)}
-                      />
+              <TabsContent value="create-teacher" className="flex-1 mt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-700 dark:scrollbar-track-gray-900 hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 pr-2 pb-4 scroll-smooth">
+                <Card className="mx-auto max-w-4xl">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                      <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600 dark:text-blue-300" />
+                      Criar Novo Professor
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/40 dark:via-indigo-950/30 dark:to-purple-950/20 p-4 sm:p-6 rounded-xl border border-blue-200 dark:border-blue-900/60">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-8 h-8 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center">
+                          <GraduationCap className="h-4 w-4 text-blue-600 dark:text-blue-300" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-semibold text-blue-800 dark:text-blue-200 text-sm sm:text-base mb-2">
+                            Informações do Professor
+                          </p>
+                          <p className="text-xs sm:text-sm text-blue-700 dark:text-blue-300">
+                            Preencha os dados do novo professor que será vinculado à escola e poderá ser associado a esta turma.
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="teacher-email" className="text-sm font-medium text-foreground">Email *</Label>
-                      <Input
-                        id="teacher-email"
-                        type="email"
-                        placeholder="Digite o email"
-                        className="h-11 border-input bg-background focus:ring-2 focus:ring-blue-500"
-                        value={formData.email}
-                        onChange={(e) => handleInputChange('email', e.target.value)}
-                      />
+
+                    {/* Credenciais Automáticas (mesmo layout do Novo Aluno) */}
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:via-indigo-950/30 dark:to-indigo-950/20 p-4 sm:p-6 rounded-xl border border-blue-200 dark:border-blue-900/60">
+                      <div className="flex items-start gap-3 mb-4">
+                        <div className="flex-shrink-0 w-8 h-8 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center">
+                          <span className="text-blue-600 dark:text-blue-300 text-lg">📧</span>
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-semibold text-blue-800 dark:text-blue-200 text-sm sm:text-base mb-2">
+                            Credenciais Automáticas
+                          </p>
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs sm:text-sm">
+                            <div className="bg-white/70 dark:bg-white/10 p-3 rounded-lg">
+                              <p className="font-medium text-foreground mb-1">
+                                <strong>Email:</strong> Iniciais do nome + "@afirmeplay.com.br"
+                              </p>
+                              <p className="text-blue-600 dark:text-blue-300 font-mono text-xs">
+                                Ex: "João Silva" → js@afirmeplay.com.br
+                              </p>
+                            </div>
+                            <div className="bg-white/70 dark:bg-white/10 p-3 rounded-lg">
+                              <p className="font-medium text-foreground mb-1">
+                                <strong>Senha:</strong> Primeiro nome + "@afirmeplay"
+                              </p>
+                              <p className="text-blue-600 dark:text-blue-300 font-mono text-xs">
+                                Ex: "João Silva" → joão@afirmeplay
+                              </p>
+                            </div>
+                          </div>
+                          <p className="text-xs sm:text-sm mt-3 text-blue-700 dark:text-blue-300 font-medium flex items-center gap-1">
+                            <span>✨</span>
+                            As credenciais aparecerão automaticamente conforme você digita o nome
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="teacher-senha" className="text-sm font-medium text-foreground">Senha *</Label>
-                      <Input
-                        id="teacher-senha"
-                        type="password"
-                        autoComplete="new-password"
-                        placeholder="Digite a senha"
-                        className="h-11 border-input bg-background focus:ring-2 focus:ring-blue-500"
-                        value={formData.password}
-                        onChange={(e) => handleInputChange('password', e.target.value)}
-                      />
+
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                        <div className="space-y-3">
+                          <Label htmlFor="teacher-nome" className="text-sm sm:text-base font-medium text-foreground">
+                            Nome Completo *
+                          </Label>
+                          <Input
+                            id="teacher-nome"
+                            placeholder="Digite o nome completo"
+                            className="h-11 focus:ring-2 focus:ring-blue-500"
+                            value={formData.name}
+                            onChange={(e) => handleNameChange(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-3">
+                          <Label htmlFor="teacher-email" className="text-sm font-medium text-muted-foreground">
+                            Email (Gerado automaticamente)
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="teacher-email"
+                              placeholder="Email será gerado automaticamente"
+                              className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed pr-8"
+                              value={formData.email}
+                              readOnly
+                            />
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                              {isChecking && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                              {!isChecking && isAvailable === true && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                              {!isChecking && isAvailable === false && <AlertCircle className="h-4 w-4 text-amber-500" />}
+                            </div>
+                          </div>
+                          {!isChecking && isAvailable === false && (
+                            <p className="text-xs text-amber-600">Email original em uso. Usando sugestão disponível.</p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                        <div className="space-y-3">
+                          <Label htmlFor="teacher-senha" className="text-sm font-medium text-muted-foreground">
+                            Senha (Gerada automaticamente)
+                          </Label>
+                          <Input
+                            id="teacher-senha"
+                            type="text"
+                            placeholder="Senha será gerada automaticamente"
+                            className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed"
+                            value={formData.password}
+                            readOnly
+                          />
+                        </div>
+                        <div className="space-y-3">
+                          <Label htmlFor="teacher-matricula" className="text-sm sm:text-base font-medium text-foreground">
+                            Matrícula (Opcional)
+                          </Label>
+                          <Input
+                            id="teacher-matricula"
+                            placeholder="Digite a matrícula"
+                            className="h-11 focus:ring-2 focus:ring-blue-500"
+                            value={formData.registration}
+                            onChange={(e) => handleInputChange('registration', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        <Label htmlFor="teacher-birth_date" className="text-sm sm:text-base font-medium text-foreground">
+                          Data de Nascimento *
+                        </Label>
+                        <Input
+                          id="teacher-birth_date"
+                          type="date"
+                          className="h-11 focus:ring-2 focus:ring-blue-500 max-w-xs"
+                          value={formData.birth_date}
+                          onChange={(e) => handleInputChange('birth_date', e.target.value)}
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="teacher-matricula" className="text-sm font-medium text-foreground">Matrícula (Opcional)</Label>
-                      <Input
-                        id="teacher-matricula"
-                        placeholder="Digite a matrícula"
-                        className="h-11 border-input bg-background focus:ring-2 focus:ring-blue-500"
-                        value={formData.registration}
-                        onChange={(e) => handleInputChange('registration', e.target.value)}
-                      />
+                    
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-6 border-t border-border/60">
+                      <Button 
+                        variant="outline" 
+                        onClick={onClose} 
+                        disabled={isCreating}
+                        className="order-2 sm:order-1 h-11"
+                      >
+                        Cancelar
+                      </Button>
+                      <Button 
+                        onClick={handleCreateTeacher} 
+                        disabled={isCreating}
+                        className="order-1 sm:order-2 flex-1 h-11 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400"
+                      >
+                        {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        <UserPlus className="mr-2 h-4 w-4" />
+                        Criar Professor
+                      </Button>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="teacher-birth_date" className="text-sm font-medium text-foreground">Data de Nascimento *</Label>
-                      <Input
-                        id="teacher-birth_date"
-                        type="date"
-                        className="h-11 border-input bg-background focus:ring-2 focus:ring-blue-500"
-                        value={formData.birth_date}
-                        onChange={(e) => handleInputChange('birth_date', e.target.value)}
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t bg-gray-50/50 dark:bg-muted px-4 py-3 rounded-b-lg">
-                  <div className="text-xs sm:text-sm text-muted-foreground order-2 sm:order-1">
-                    Novo professor
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 order-1 sm:order-2">
-                    <Button variant="outline" onClick={onClose} disabled={isCreating} className="h-10 order-2 sm:order-1">
-                      Cancelar
-                    </Button>
-                    <Button
-                      onClick={handleCreateTeacher}
-                      disabled={isCreating}
-                      className="h-10 order-1 sm:order-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400"
-                    >
-                      {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
-                      Criar Professor
-                    </Button>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               </TabsContent>
             </Tabs>
           </div>

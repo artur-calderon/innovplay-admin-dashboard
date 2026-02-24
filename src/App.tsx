@@ -32,6 +32,7 @@ const SchoolDetails = React.lazy(() => import("./components/schools/SchoolDetail
 const CreateEvaluation = React.lazy(() => import("./pages/CreateEvaluation"));
 const EditEvaluation = React.lazy(() => import("./pages/EditEvaluation"));
 const Cities = React.lazy(() => import("./pages/Cities"));
+const Users = React.lazy(() => import("./pages/Users"));
 const EditQuickLinks = React.lazy(() => import("./pages/EditQuickLinks"));
 const ViewEvaluation = React.lazy(() => import("./pages/ViewEvaluation"));
 const CreateQuestionPage = React.lazy(() => import("./pages/CreateQuestionPage"));
@@ -296,7 +297,8 @@ const App = () => {
               <Route path="/app/city" element={<PrivateRoute><RoleRoute allowed={["admin", "tecadm"]}><Cities /></RoleRoute></PrivateRoute>} />
               <Route path="/app/turma/:id" element={<PrivateRoute><ClassDetails /></PrivateRoute>} />
               <Route path="/app/escola/:id" element={<PrivateRoute><SchoolDetails /></PrivateRoute>} />
-              <Route path="/app/usuarios" element={<Navigate to="/app/cadastros/instituicao" replace />} />
+              <Route path="/app/usuarios" element={<Navigate to="/app/cadastros/usuarios" replace />} />
+              <Route path="/app/cadastros/usuarios" element={<PrivateRoute><RoleRoute allowed={["admin", "tecadm"]}><Users /></RoleRoute></PrivateRoute>} />
               <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/app/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
               <Route path="/app/configuracoes" element={<PrivateRoute><Settings /></PrivateRoute>} />

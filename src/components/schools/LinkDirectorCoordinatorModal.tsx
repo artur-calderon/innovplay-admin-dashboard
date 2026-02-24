@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useEmailCheck, generatePasswordFromName } from "@/hooks/useEmailCheck";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { Loader2, Search, UserPlus, Building, Plus } from "lucide-react";
+import { Loader2, Search, UserPlus, Building, Plus, CheckCircle2, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/context/authContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -74,6 +75,25 @@ export function LinkDirectorCoordinatorModal({
   });
   const { toast } = useToast();
   const { user } = useAuth();
+
+  const { checkedEmail, isChecking, isAvailable } = useEmailCheck(formData.name, activeTab === "create");
+
+  useEffect(() => {
+    if (activeTab !== "create") return;
+    if (checkedEmail) {
+      setFormData(prev => ({ ...prev, email: checkedEmail }));
+    }
+  }, [checkedEmail, activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "create" || !formData.name) return;
+    setFormData(prev => ({ ...prev, password: generatePasswordFromName(prev.name) }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.name, activeTab]);
+
+  const handleNameChange = (value: string) => {
+    setFormData(prev => ({ ...prev, name: value }));
+  };
 
   // Verificar permissões para vincular diretores/coordenadores
   const canLinkUsers = () => {
@@ -195,7 +215,7 @@ export function LinkDirectorCoordinatorModal({
   };
 
   const handleCreateUser = async () => {
-    if (!formData.name || !formData.email || !formData.password || !formData.birth_date) {
+    if (!formData.name || !formData.email || !formData.password || !formData.birth_date || isChecking) {
       toast({
         title: "Erro",
         description: "Preencha todos os campos obrigatórios",
@@ -449,30 +469,37 @@ export function LinkDirectorCoordinatorModal({
                       placeholder="Digite o nome completo"
                       className={`h-11 border-input bg-background focus:ring-2 ${userType === 'diretor' ? 'focus:ring-red-500' : 'focus:ring-orange-500'}`}
                       value={formData.name}
-                      onChange={(e) => handleInputChange('name', e.target.value)}
+                      onChange={(e) => handleNameChange(e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="email" className="text-sm font-medium text-foreground">Email *</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="exemplo@email.com"
-                      className={`h-11 border-input bg-background focus:ring-2 ${userType === 'diretor' ? 'focus:ring-red-500' : 'focus:ring-orange-500'}`}
-                      value={formData.email}
-                      onChange={(e) => handleInputChange('email', e.target.value)}
-                    />
+                    <Label htmlFor="email" className="text-sm text-muted-foreground">Email (Gerado automaticamente)</Label>
+                    <div className="relative">
+                      <Input
+                        id="email"
+                        value={formData.email}
+                        readOnly
+                        className="h-11 bg-muted border-border font-mono text-sm cursor-not-allowed pr-8"
+                        placeholder="Será gerado ao digitar o nome"
+                      />
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                        {isChecking && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                        {!isChecking && isAvailable === true && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                        {!isChecking && isAvailable === false && <AlertCircle className="h-4 w-4 text-amber-500" />}
+                      </div>
+                    </div>
+                    {!isChecking && isAvailable === false && (
+                      <p className="text-xs text-amber-600">Email original em uso. Usando sugestão disponível.</p>
+                    )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="password" className="text-sm font-medium text-foreground">Senha *</Label>
+                    <Label htmlFor="password" className="text-sm text-muted-foreground">Senha (Gerada automaticamente)</Label>
                     <Input
                       id="password"
-                      type="password"
-                      autoComplete="new-password"
-                      placeholder="Digite uma senha segura"
-                      className={`h-11 border-input bg-background focus:ring-2 ${userType === 'diretor' ? 'focus:ring-red-500' : 'focus:ring-orange-500'}`}
                       value={formData.password}
-                      onChange={(e) => handleInputChange('password', e.target.value)}
+                      readOnly
+                      className="h-11 bg-muted border-border font-mono text-sm cursor-not-allowed"
+                      placeholder="Será gerada ao digitar o nome"
                     />
                   </div>
                   <div className="space-y-2">
@@ -506,7 +533,7 @@ export function LinkDirectorCoordinatorModal({
                     </Button>
                     <Button
                       onClick={handleCreateUser}
-                      disabled={isCreating}
+                      disabled={isCreating || isChecking || !formData.email}
                       className={`flex-1 h-11 ${userType === 'diretor' ? 'bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-400' : 'bg-orange-600 hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-400'}`}
                     >
                       {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useAuth } from "@/context/authContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
@@ -1029,18 +1030,22 @@ const StudentDashboard = () => {
           {evaluations.length > 0 && (
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-foreground">Avaliação:</label>
-              <select
+              <Select
                 value={selectedEvaluation || ''}
-                onChange={(e) => handleEvaluationChange(e.target.value)}
+                onValueChange={handleEvaluationChange}
                 disabled={isLoadingEvaluations}
-                className="px-3 py-1.5 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
               >
-                {evaluations.map((evaluation) => (
-                  <option key={evaluation.id} value={evaluation.id}>
-                    {evaluation.titulo} - {evaluation.disciplina}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full min-w-[200px] md:min-w-[240px]">
+                  <SelectValue placeholder="Selecione uma avaliação" />
+                </SelectTrigger>
+                <SelectContent>
+                  {evaluations.map((evaluation) => (
+                    <SelectItem key={evaluation.id} value={evaluation.id}>
+                      {evaluation.titulo}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
           {selectedEvaluation && (
