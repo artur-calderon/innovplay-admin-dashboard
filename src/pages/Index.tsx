@@ -3,7 +3,7 @@ import Layout from "@/components/layout/Layout";
 // Componentes antigos removidos - substituídos pelos novos componentes da Fase 1
 
 // Novos componentes da Fase 1
-import SchoolRankingTable from "@/components/dashboard/SchoolRankingTable";
+import ClassRankingTable from "@/components/dashboard/ClassRankingTable";
 import TopStudentsTable from "@/components/dashboard/TopStudentsTable";
 import RecentEvaluationsTable from "@/components/dashboard/RecentEvaluationsTable";
 import QuestionsList from "@/components/dashboard/QuestionsList";
@@ -358,7 +358,7 @@ const Index = () => {
         </div>
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <SchoolRankingTable />
+          <ClassRankingTable />
           <TopStudentsTable />
         </div>
         
