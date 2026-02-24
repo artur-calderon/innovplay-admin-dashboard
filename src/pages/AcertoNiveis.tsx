@@ -5,17 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Loader2, BarChart3 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from "recharts";
+import { FileText, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext } from "@/utils/userHierarchy";
@@ -509,22 +499,6 @@ export default function AcertoNiveis() {
 
     return filtered;
   }, [allStudents, allTabelaDetalhada, selectedSchoolId, selectedGradeId, selectedClassId, schools, grades, classes]);
-
-  /** Acertos por questão (até 40) com porcentagem, para gráfico e PDF */
-  const MAX_QUESTIONS_CHART = 40;
-  const acertosPorQuestao = useMemo(() => {
-    const qs = detailedReport?.questoes;
-    if (!qs || qs.length === 0) return [];
-    const sorted = [...qs].sort((a, b) => (a?.numero ?? 0) - (b?.numero ?? 0));
-    const slice = sorted.slice(0, MAX_QUESTIONS_CHART);
-    const completed = filteredStudents.filter((s) => s.status === "concluida");
-    const totalAlunos = Math.max(1, completed.length);
-    return slice.map((q) => {
-      const acertos = completed.filter((s) => s.respostas?.[`q${q.numero}`] === true).length;
-      const percent = Math.round((acertos / totalAlunos) * 100);
-      return { numero: q.numero, acertos, total: totalAlunos, percent };
-    });
-  }, [detailedReport?.questoes, filteredStudents]);
 
   // ✅ OTIMIZAÇÃO: Limpar timeout quando componente for desmontado
   useEffect(() => {
@@ -2111,9 +2085,6 @@ export default function AcertoNiveis() {
         doc.text('Distribuição por Classificação', x, y - 3);
       };
 
-      const MAX_QUESTIONS_PDF = 40;
-      const BARS_PER_ROW_PDF = 10;
-
       const drawQuestionAccuracyChart = (
         x: number,
         y: number,
@@ -2123,21 +2094,29 @@ export default function AcertoNiveis() {
         studentsToUse: StudentResult[] = students
       ) => {
         if (!qs || qs.length === 0) return;
-        const qsLimited = qs.slice(0, MAX_QUESTIONS_PDF);
         // Recalcular % de acerto usando a mesma regra dos ícones (getAnswer)
         const completed = studentsToUse.filter(s => s.status === 'concluida');
         const denom = Math.max(1, completed.length);
         // counts: número absoluto de acertos por questão; values: percentual
-        const counts = qsLimited.map(q => {
+        const counts = qs.map(q => {
           let correct = 0;
           completed.forEach(s => { if (getAnswer(s, q.numero)) correct++; });
           return correct;
         });
         const values = counts.map(c => Math.round((c / denom) * 100));
+        // Com muitas questões: garantir altura mínima por linha e largura mínima por barra
+        const minRowHeight = 14;
+        const minBarWidth = 5;
+        const barGap = 2;
         const areaW = w - 20;
         const areaH = h - 20;
-        const barGap = 2;
-        const maxBarsPerRow = BARS_PER_ROW_PDF;
+        const maxRows = Math.max(1, Math.floor(areaH / minRowHeight));
+        const maxBarsPerRowByHeight = Math.ceil(values.length / maxRows);
+        const maxBarsPerRowByWidth = Math.floor(areaW / (minBarWidth + barGap));
+        const maxBarsPerRow = Math.min(
+          Math.max(8, maxBarsPerRowByHeight),
+          Math.max(8, maxBarsPerRowByWidth)
+        );
         const chunks: number[][] = [];
         for (let i = 0; i < values.length; i += maxBarsPerRow) {
           chunks.push(values.slice(i, i + maxBarsPerRow));
@@ -2170,7 +2149,7 @@ export default function AcertoNiveis() {
             doc.setFillColor(color[0], color[1], color[2]);
             doc.rect(barX, yy, barW, barH, 'F');
             const globalIndex = rowIndex * maxBarsPerRow + idx;
-            const qNum = qsLimited[globalIndex]?.numero ?? globalIndex + 1;
+            const qNum = qs[globalIndex]?.numero ?? globalIndex + 1;
             doc.setFontSize(7);
             doc.setTextColor(60);
             doc.text(`Q${qNum}`, barX + barW / 2, chartBottom + 4, { align: 'center' });
@@ -3535,75 +3514,6 @@ export default function AcertoNiveis() {
                            Turma: {classes.find(c => c.id === selectedClassId)?.nome || 'Selecionada'}
                          </Badge>
                        )}
-                     </div>
-                   </div>
-                 )}
-
-                 {/* Gráfico: Acertos por questão (%) — layout até 40 questões */}
-                 {acertosPorQuestao.length > 0 && (
-                   <div className="border-t pt-6 mt-6">
-                     <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                       <BarChart3 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                       Gráficos
-                     </h3>
-                     <div className="rounded-lg border border-border bg-card p-4">
-                       <h4 className="text-sm font-medium text-foreground mb-3">Acertos por questão (%)</h4>
-                       <div className="h-[320px] w-full min-w-0" style={{ maxWidth: '100%' }}>
-                         <ResponsiveContainer width="100%" height="100%">
-                           <BarChart
-                             data={acertosPorQuestao.map((item) => ({
-                               name: `Q${item.numero}`,
-                               percent: item.percent,
-                               acertos: item.acertos,
-                               total: item.total,
-                             }))}
-                             margin={{ top: 8, right: 8, left: 8, bottom: 24 }}
-                           >
-                             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                             <XAxis
-                               dataKey="name"
-                               tick={{ fontSize: 10 }}
-                               interval={0}
-                               angle={acertosPorQuestao.length > 20 ? -45 : 0}
-                               textAnchor={acertosPorQuestao.length > 20 ? 'end' : 'middle'}
-                             />
-                             <YAxis
-                               domain={[0, 100]}
-                               tick={{ fontSize: 10 }}
-                               tickFormatter={(v) => `${v}%`}
-                             />
-                             <Tooltip
-                               content={({ active, payload }) => {
-                                 if (!active || !payload?.length) return null;
-                                 const p = payload[0].payload;
-                                 return (
-                                   <div className="rounded-md border border-border bg-card px-3 py-2 text-sm shadow-md">
-                                     <div className="font-medium">{p.name}</div>
-                                     <div className="text-muted-foreground">
-                                       {p.acertos}/{p.total} — {p.percent}%
-                                     </div>
-                                   </div>
-                                 );
-                               }}
-                             />
-                             <Bar dataKey="percent" radius={[2, 2, 0, 0]} maxBarSize={32}>
-                               {acertosPorQuestao.map((_, index) => (
-                                 <Cell
-                                   key={index}
-                                   fill={
-                                     acertosPorQuestao[index].percent >= 60
-                                       ? '#22c55e'
-                                       : '#ef4444'
-                                   }
-                                 />
-                               ))}
-                             </Bar>
-                           </BarChart>
-                         </ResponsiveContainer>
-                       </div>
-                       <p className="text-xs text-muted-foreground mt-2">
-                         Até {MAX_QUESTIONS_CHART} questões. Verde: ≥60% de acertos; vermelho: &lt;60%.
-                       </p>
                      </div>
                    </div>
                  )}
