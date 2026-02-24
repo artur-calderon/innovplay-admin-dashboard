@@ -5,17 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Loader2, BarChart3 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from "recharts";
+import { FileText, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext } from "@/utils/userHierarchy";
@@ -204,7 +194,12 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
 
   const geralIds = new Set(tabela?.geral?.alunos?.map((aluno) => aluno.id) ?? []);
 
+  // Offset global por disciplina para numerar questões 1..N em todas as disciplinas (ex.: LP 1-20, MAT 21-40)
+  let questionOffset = 0;
+
   tabela?.disciplinas?.forEach((disciplina) => {
+    const numQuestoesDisc = disciplina.questoes?.length ?? 0;
+
     disciplina.alunos?.forEach((aluno) => {
       let student = studentsMap.get(aluno.id);
 
@@ -237,7 +232,8 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
       aluno.respostas_por_questao?.forEach((resp) => {
         const numeroQuestao = Number(resp.questao);
         if (Number.isNaN(numeroQuestao) || numeroQuestao <= 0) return;
-        const key = `q${numeroQuestao}`;
+        const globalNumero = questionOffset + numeroQuestao;
+        const key = `q${globalNumero}`;
 
         if (!resp.respondeu) {
           if (!(key in respostasMap)) {
@@ -250,7 +246,7 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
 
       // Verificar se o aluno respondeu alguma questão para determinar status
       const hasAnsweredAny = Array.isArray(aluno.respostas_por_questao) && aluno.respostas_por_questao.some(r => r.respondeu);
-      
+
       if (!geralIds.has(aluno.id)) {
         const totalQuestoesDisciplina =
           aluno.total_questoes_disciplina ?? aluno.respostas_por_questao?.length ?? 0;
@@ -262,7 +258,7 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
         student.acertos += totalAcertos;
         student.erros += totalErros;
         student.questoes_respondidas += totalRespondidas || totalQuestoesDisciplina;
-        
+
         // Marcar como concluida se participou
         if (hasAnsweredAny && student.status !== 'concluida') {
           student.status = 'concluida';
@@ -285,12 +281,14 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
         }
       }
     });
+
+    questionOffset += numQuestoesDisc;
   });
 
   const mappedStudents = Array.from(studentsMap.values()).sort((a, b) =>
     a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
   );
-  
+
   return mappedStudents;
 };
 
@@ -329,6 +327,16 @@ export default function AcertoNiveis() {
   const [tabelaDetalhada, setTabelaDetalhada] = useState<TabelaDetalhadaPorDisciplina>(null);
   // Ref para debounce dos filtros
   const filterTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Cache de fetchEvaluationData para evitar requisições idênticas (mesma avaliação + filtros)
+  type FetchEvaluationDataResult = {
+    students: StudentResult[];
+    report: DetailedReport | null;
+    tabelaDetalhada: TabelaDetalhadaPorDisciplina | null;
+    estatisticas: { [key: string]: unknown } | null;
+    opcoesProximosFiltros: { [key: string]: unknown } | null;
+  };
+  const fetchEvaluationDataCacheRef = useRef<Map<string, FetchEvaluationDataResult>>(new Map());
+  const fetchEvaluationDataInFlightRef = useRef<Map<string, Promise<FetchEvaluationDataResult>>>(new Map());
   // Estado para estatísticas gerais (similar ao apiData em Results.tsx)
   const [estatisticasGerais, setEstatisticasGerais] = useState<{
     serie?: string;
@@ -346,6 +354,14 @@ export default function AcertoNiveis() {
     series?: Array<{ id: string; name: string }>;
     [key: string]: unknown;
   } | null>(null);
+
+  // Total de questões a partir da tabela (soma de todas as disciplinas: ex. 20 LP + 20 MAT = 40)
+  const totalQuestoesFromTabela = React.useMemo(() => {
+    const t = allTabelaDetalhada || tabelaDetalhada;
+    if (!t?.disciplinas?.length) return 0;
+    return t.disciplinas.reduce((acc, d) => acc + (d.questoes?.length ?? 0), 0);
+  }, [allTabelaDetalhada, tabelaDetalhada]);
+
   // Utilitários para tratar habilidades
   const normalizeUUID = (value?: string) => (value || '').replace(/[{}]/g, '').trim().toLowerCase();
   const looksLikeRealSkillCode = (value?: string) => {
@@ -390,59 +406,71 @@ export default function AcertoNiveis() {
     async (
       evaluationId: string,
       overrides: { schoolId?: string; gradeId?: string; classId?: string } = {}
-    ) => {
-      const filters = buildUnifiedFilters(evaluationId, overrides);
+    ): Promise<FetchEvaluationDataResult> => {
+      const cacheKey = `${evaluationId}|${overrides.schoolId ?? ''}|${overrides.gradeId ?? ''}|${overrides.classId ?? ''}`;
 
-      try {
-        const unifiedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 1, filters);
+      // Reutilizar requisição já em andamento (evita duplicatas)
+      const inFlight = fetchEvaluationDataInFlightRef.current.get(cacheKey);
+      if (inFlight) return inFlight;
 
-      const tabelaDetalhada =
-        unifiedResponse?.tabela_detalhada &&
-        Array.isArray(unifiedResponse.tabela_detalhada.disciplinas)
-          ? {
-              ...unifiedResponse.tabela_detalhada,
-              disciplinas: unifiedResponse.tabela_detalhada.disciplinas.map((disciplina) => ({
-                ...disciplina,
-                alunos: [...(disciplina.alunos || [])].sort((a, b) =>
-                  a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
-                )
-              })),
-              geral: unifiedResponse.tabela_detalhada.geral
-                ? {
+      // Retornar cache se existir (evita nova requisição idêntica)
+      const cached = fetchEvaluationDataCacheRef.current.get(cacheKey);
+      if (cached) return cached;
+
+      const doFetch = async (): Promise<FetchEvaluationDataResult> => {
+        const filters = buildUnifiedFilters(evaluationId, overrides);
+        try {
+          const unifiedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 1, filters);
+
+          const tabelaDetalhada =
+            unifiedResponse?.tabela_detalhada &&
+              Array.isArray(unifiedResponse.tabela_detalhada.disciplinas)
+              ? {
+                ...unifiedResponse.tabela_detalhada,
+                disciplinas: unifiedResponse.tabela_detalhada.disciplinas.map((disciplina) => ({
+                  ...disciplina,
+                  alunos: [...(disciplina.alunos || [])].sort((a, b) =>
+                    a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
+                  )
+                })),
+                geral: unifiedResponse.tabela_detalhada.geral
+                  ? {
                     alunos: [...(unifiedResponse.tabela_detalhada.geral.alunos || [])].sort((a, b) =>
                       a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
                     )
                   }
-                : undefined
-            }
-          : null;
+                  : undefined
+              }
+              : null;
 
-        const studentsMapped = tabelaDetalhada ? mapUnifiedStudents(tabelaDetalhada) : [];
+          const studentsMapped = tabelaDetalhada ? mapUnifiedStudents(tabelaDetalhada) : [];
 
-        const detailedReport = await EvaluationResultsApiService.getDetailedReport(evaluationId).catch(
-          () => null
-        );
+          const result: FetchEvaluationDataResult = {
+            students: studentsMapped,
+            report: null,
+            tabelaDetalhada,
+            estatisticas: unifiedResponse?.estatisticas_gerais || null,
+            opcoesProximosFiltros: unifiedResponse?.opcoes_proximos_filtros || null
+          };
+          fetchEvaluationDataCacheRef.current.set(cacheKey, result);
+          return result;
+        } catch (error) {
+          console.error('Erro ao carregar dados unificados:', error);
+          return {
+            students: [],
+            report: null,
+            tabelaDetalhada: null,
+            estatisticas: null,
+            opcoesProximosFiltros: null
+          };
+        } finally {
+          fetchEvaluationDataInFlightRef.current.delete(cacheKey);
+        }
+      };
 
-        return {
-          students: studentsMapped,
-          report: detailedReport,
-          tabelaDetalhada,
-          estatisticas: unifiedResponse?.estatisticas_gerais || null,
-          opcoesProximosFiltros: unifiedResponse?.opcoes_proximos_filtros || null
-        };
-      } catch (error) {
-        console.error('Erro ao carregar dados unificados:', error);
-        const detailedReport = await EvaluationResultsApiService.getDetailedReport(evaluationId).catch(
-          () => null
-        );
-        return {
-          students: mapDetailedStudentsToResults(detailedReport?.alunos),
-          report: detailedReport,
-          tabelaDetalhada: null,
-          estatisticas: null,
-          opcoesProximosFiltros: null
-        };
-      }
+      const promise = doFetch();
+      fetchEvaluationDataInFlightRef.current.set(cacheKey, promise);
+      return promise;
     },
     [buildUnifiedFilters]
   );
@@ -466,17 +494,17 @@ export default function AcertoNiveis() {
     // Isso reduz o dataset antes de aplicar o filtro de turma (mais eficiente)
     if ((selectedSchoolId || selectedGradeId) && allTabelaDetalhada?.disciplinas) {
       const validIds = new Set<string>();
-      
+
       // Pré-calcular valores de comparação para evitar múltiplos finds
       const selectedSchool = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId) : null;
       const selectedGrade = selectedGradeId ? grades.find(g => g.id === selectedGradeId) : null;
       const escolaNome = selectedSchool?.nome;
       const serieNome = selectedGrade?.nome;
-      
+
       // Otimização: iterar apenas uma vez sobre todas as disciplinas
       for (const disciplina of allTabelaDetalhada.disciplinas) {
         if (!disciplina.alunos) continue;
-        
+
         for (const aluno of disciplina.alunos) {
           // Verificar escola
           if (selectedSchoolId) {
@@ -484,18 +512,18 @@ export default function AcertoNiveis() {
               continue; // Pular este aluno
             }
           }
-          
+
           // Verificar série
           if (selectedGradeId) {
             if (serieNome && aluno.serie !== serieNome && aluno.serie !== selectedGradeId) {
               continue; // Pular este aluno
             }
           }
-          
+
           validIds.add(aluno.id);
         }
       }
-      
+
       filtered = filtered.filter(s => validIds.has(s.id));
     }
 
@@ -509,22 +537,6 @@ export default function AcertoNiveis() {
 
     return filtered;
   }, [allStudents, allTabelaDetalhada, selectedSchoolId, selectedGradeId, selectedClassId, schools, grades, classes]);
-
-  /** Acertos por questão (até 40) com porcentagem, para gráfico e PDF */
-  const MAX_QUESTIONS_CHART = 40;
-  const acertosPorQuestao = useMemo(() => {
-    const qs = detailedReport?.questoes;
-    if (!qs || qs.length === 0) return [];
-    const sorted = [...qs].sort((a, b) => (a?.numero ?? 0) - (b?.numero ?? 0));
-    const slice = sorted.slice(0, MAX_QUESTIONS_CHART);
-    const completed = filteredStudents.filter((s) => s.status === "concluida");
-    const totalAlunos = Math.max(1, completed.length);
-    return slice.map((q) => {
-      const acertos = completed.filter((s) => s.respostas?.[`q${q.numero}`] === true).length;
-      const percent = Math.round((acertos / totalAlunos) * 100);
-      return { numero: q.numero, acertos, total: totalAlunos, percent };
-    });
-  }, [detailedReport?.questoes, filteredStudents]);
 
   // ✅ OTIMIZAÇÃO: Limpar timeout quando componente for desmontado
   useEffect(() => {
@@ -556,14 +568,14 @@ export default function AcertoNiveis() {
         // Pre-selecionar filtros baseado na hierarquia
         if (context.municipality) {
           setSelectedMunicipality(context.municipality.id);
-          
+
           // Carregar estado baseado no município
           const statesResp = await EvaluationResultsApiService.getFilterStates();
           setStates(statesResp); // ← ADICIONAR esta linha
           const userState = statesResp.find(s => s.nome === context.municipality.state);
           if (userState) {
             setSelectedState(userState.id);
-            
+
             // Carregar municípios do estado pré-selecionado
             try {
               const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id);
@@ -571,12 +583,12 @@ export default function AcertoNiveis() {
             } catch (error) {
               console.error('Erro ao carregar municípios do estado pré-selecionado:', error);
             }
-            
+
             // Carregar avaliações do município pré-selecionado
             try {
-              const avs = await EvaluationResultsApiService.getFilterEvaluations({ 
-                estado: userState.id, 
-                municipio: context.municipality.id 
+              const avs = await EvaluationResultsApiService.getFilterEvaluations({
+                estado: userState.id,
+                municipio: context.municipality.id
               });
               setEvaluations(avs);
             } catch (error) {
@@ -592,9 +604,9 @@ export default function AcertoNiveis() {
             const municipalityResponse = await api.get(`/city/${context.school.municipality_id}`);
             const municipalityData = municipalityResponse.data;
             console.log('🔍 Dados do município:', municipalityData);
-            
+
             setSelectedMunicipality(municipalityData.id);
-            
+
             // Carregar estado baseado no município
             const statesResp = await EvaluationResultsApiService.getFilterStates();
             setStates(statesResp); // ← ADICIONAR esta linha
@@ -603,7 +615,7 @@ export default function AcertoNiveis() {
             console.log('🔍 Estado encontrado:', userState);
             if (userState) {
               setSelectedState(userState.id);
-              
+
               // Carregar municípios do estado pré-selecionado
               try {
                 const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id);
@@ -612,12 +624,12 @@ export default function AcertoNiveis() {
               } catch (error) {
                 console.error('Erro ao carregar municípios do estado pré-selecionado:', error);
               }
-              
+
               // Carregar avaliações do município pré-selecionado
               try {
-                const avs = await EvaluationResultsApiService.getFilterEvaluations({ 
-                  estado: userState.id, 
-                  municipio: municipalityData.id 
+                const avs = await EvaluationResultsApiService.getFilterEvaluations({
+                  estado: userState.id,
+                  municipio: municipalityData.id
                 });
                 setEvaluations(avs);
                 console.log('🔍 Avaliações carregadas:', avs);
@@ -646,22 +658,22 @@ export default function AcertoNiveis() {
           try {
             // Buscar escolas do município via API de escolas
             const schoolMeta = context.municipality?.id ? { meta: { cityId: context.municipality.id } } : {};
-            const schoolsResponse = await api.get(`/school`, schoolMeta);
-            const allSchools = Array.isArray(schoolsResponse.data) 
-              ? schoolsResponse.data 
+            const schoolsResponse = await api.get(`/school`, schoolMeta as any);
+            const allSchools = Array.isArray(schoolsResponse.data)
+              ? schoolsResponse.data
               : (schoolsResponse.data?.data || []);
-            
+
             // Filtrar escolas do município
             const municipalitySchools = allSchools.filter(
               (school: { city_id?: string }) => school.city_id === context.municipality.id
             );
-            
+
             // Converter para formato esperado pelo componente
             const schoolsFormatted = municipalitySchools.map((school: { id: string; name?: string; nome?: string }) => ({
               id: school.id,
               nome: school.name || school.nome
             }));
-            
+
             setSchools(schoolsFormatted);
             console.log('🔍 Escolas disponíveis para seleção:', schoolsFormatted);
           } catch (error) {
@@ -672,14 +684,14 @@ export default function AcertoNiveis() {
         // Para professor, carregar escolas das suas turmas
         if (context.classes && context.classes.length > 0) {
           console.log('🔍 Processando turmas do professor:', context.classes);
-          
+
           const uniqueSchools = Array.from(
             new Set(context.classes.map(c => ({ id: c.school_id, name: c.school_name })))
           ).map(s => ({ id: s.id, nome: s.name }));
-          
+
           setSchools(uniqueSchools);
           console.log('🔍 Escolas únicas do professor:', uniqueSchools);
-          
+
           // Se só tem uma escola, pre-selecionar
           if (uniqueSchools.length === 1) {
             setSelectedSchoolId(uniqueSchools[0].id);
@@ -707,7 +719,7 @@ export default function AcertoNiveis() {
     const loadStates = async () => {
       // Pular se já foi carregado no useEffect anterior
       if (states.length > 0) return;
-      
+
       // Carregar apenas para admin
       if (user?.role !== 'admin' || states.length > 0) return;
 
@@ -827,7 +839,7 @@ export default function AcertoNiveis() {
     setSelectedClassId("");
     setGrades([]);
     setClasses([]);
-    
+
     // Se escola foi limpa (valor vazio), usar dados completos já carregados
     if (!schoolId || schoolId === "") {
       if (allStudents.length > 0 && allTabelaDetalhada) {
@@ -836,7 +848,7 @@ export default function AcertoNiveis() {
         setTabelaDetalhada(allTabelaDetalhada);
         return;
       }
-      
+
       // Se não temos dados carregados, fazer requisição
       if (!selectedState || !selectedMunicipality || !selectedEvaluationId) return;
       try {
@@ -858,9 +870,9 @@ export default function AcertoNiveis() {
       }
       return;
     }
-    
+
     if (!selectedState || !selectedMunicipality || !selectedEvaluationId) return;
-    
+
     // ✅ OTIMIZAÇÃO: Usar dados já carregados quando possível
     if (allStudents.length > 0 && allTabelaDetalhada) {
       // Filtrar dados localmente sem fazer nova requisição
@@ -877,7 +889,7 @@ export default function AcertoNiveis() {
         });
         const filtered = allStudents.filter(s => escolaIds.has(s.id));
         setStudents(filtered);
-        
+
         // ✅ OTIMIZAÇÃO: Tentar usar séries de opcoes_proximos_filtros primeiro
         // Se não estiver disponível, fazer requisição (requisição leve, apenas lista)
         // Fazer isso de forma assíncrona para não bloquear a UI
@@ -897,15 +909,15 @@ export default function AcertoNiveis() {
             console.error('Erro ao carregar séries:', e);
           }
         })();
-        
+
         return; // Não fazer requisição adicional
       }
     }
-    
+
     // Se não temos dados carregados, fazer requisição
     try {
       setIsLoading(true);
-      
+
       // Carregar séries para a escola selecionada
       const series = await EvaluationResultsApiService.getFilterGradesByEvaluation({
         estado: selectedState,
@@ -914,7 +926,7 @@ export default function AcertoNiveis() {
         escola: schoolId
       });
       setGrades(series);
-      
+
       const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
         selectedEvaluationId,
         { schoolId }
@@ -927,7 +939,7 @@ export default function AcertoNiveis() {
       setTabelaDetalhada(tabela || null);
       if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
       if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
-      
+
     } catch (e) {
       console.error('Erro em handleSelectSchool:', e);
       toast({ title: "Erro", description: "Não foi possível carregar dados da escola", variant: "destructive" });
@@ -940,7 +952,7 @@ export default function AcertoNiveis() {
     setSelectedGradeId(gradeId || "");
     setSelectedClassId("");
     setClasses([]);
-    
+
     // Se série foi limpa (valor vazio), usar dados já carregados
     if (!gradeId || gradeId === "") {
       if (allStudents.length > 0 && allTabelaDetalhada) {
@@ -968,28 +980,28 @@ export default function AcertoNiveis() {
       }
       return;
     }
-    
+
     if (!selectedState || !selectedMunicipality || !selectedEvaluationId || !selectedSchoolId) return;
-    
+
     // ✅ OTIMIZAÇÃO: Filtrar localmente primeiro (sem requisição)
     if (allStudents.length > 0 && allTabelaDetalhada) {
       const selectedSchool = schools.find(s => s.id === selectedSchoolId);
       const selectedGrade = grades.find(g => g.id === gradeId);
-      
+
       if (selectedSchool && selectedGrade && allTabelaDetalhada?.disciplinas) {
         // Filtrar dados localmente imediatamente (sem esperar requisição)
         const validIds = new Set<string>();
         allTabelaDetalhada.disciplinas.forEach(disciplina => {
           disciplina.alunos?.forEach(aluno => {
             if ((aluno.escola === selectedSchool.nome || aluno.escola === selectedSchoolId) &&
-                (aluno.serie === selectedGrade.nome || aluno.serie === gradeId)) {
+              (aluno.serie === selectedGrade.nome || aluno.serie === gradeId)) {
               validIds.add(aluno.id);
             }
           });
         });
         const filtered = allStudents.filter(s => validIds.has(s.id));
         setStudents(filtered);
-        
+
         // Carregar turmas em paralelo (requisição leve, apenas lista)
         // Não bloquear a UI esperando isso
         EvaluationResultsApiService.getFilterClassesByEvaluation({
@@ -1003,15 +1015,15 @@ export default function AcertoNiveis() {
         }).catch(e => {
           console.error('Erro ao carregar turmas:', e);
         });
-        
+
         return; // Não fazer requisição adicional
       }
     }
-    
+
     // Se não temos dados carregados, fazer requisição completa
     try {
       setIsLoading(true);
-      
+
       // Carregar turmas e dados em paralelo
       const [turmas, dataResult] = await Promise.all([
         EvaluationResultsApiService.getFilterClassesByEvaluation({
@@ -1023,11 +1035,11 @@ export default function AcertoNiveis() {
         }),
         fetchEvaluationData(selectedEvaluationId, { schoolId: selectedSchoolId, gradeId })
       ]);
-      
+
       setClasses(turmas);
-      
+
       const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = dataResult;
-      
+
       setAllStudents(fetchedStudents);
       setAllTabelaDetalhada(tabela || null);
       setStudents(fetchedStudents);
@@ -1035,7 +1047,7 @@ export default function AcertoNiveis() {
       setTabelaDetalhada(tabela || null);
       if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
       if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
-      
+
     } catch (e) {
       console.error('Erro em handleSelectGrade:', e);
       toast({ title: "Erro", description: "Não foi possível carregar dados da série", variant: "destructive" });
@@ -1048,7 +1060,7 @@ export default function AcertoNiveis() {
 
   const handleSelectClass = async (classId: string) => {
     setSelectedClassId(classId || "");
-    
+
     // ✅ OTIMIZAÇÃO: Usar filteredStudents do useMemo (já calculado e memoizado)
     // Se turma foi limpa (valor vazio), usar dados já carregados
     if (!classId || classId === "") {
@@ -1060,9 +1072,9 @@ export default function AcertoNiveis() {
       }
       return;
     }
-    
+
     if (!selectedState || !selectedMunicipality || !selectedEvaluationId || !selectedSchoolId || !selectedGradeId) return;
-    
+
     // ✅ OTIMIZAÇÃO: Usar filteredStudents do useMemo (já tem todos os filtros aplicados)
     // O useMemo já calcula os dados filtrados incluindo turma quando selectedClassId muda
     if (allStudents.length > 0 && classes.length > 0) {
@@ -1074,21 +1086,21 @@ export default function AcertoNiveis() {
         return;
       }
     }
-    
+
     // Caso contrário, buscar da API (só acontece se dados não estiverem carregados)
     try {
       setIsLoading(true);
-      
+
       // Obter nome da turma a partir do ID para passar ao filtro
       const selectedClass = classes.find(c => c.id === classId);
       const className = selectedClass?.nome || classId;
-      
+
       // Recarregar dados com filtro de turma (usando nome da turma)
       const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
         selectedEvaluationId,
         { schoolId: selectedSchoolId, gradeId: selectedGradeId, classId: className }
       );
-      
+
       setAllStudents(fetchedStudents);
       setAllTabelaDetalhada(tabela || null);
       setStudents(fetchedStudents);
@@ -1096,7 +1108,7 @@ export default function AcertoNiveis() {
       setTabelaDetalhada(tabela || null);
       if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
       if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
-      
+
     } catch (e) {
       console.error('Erro em handleSelectClass:', e);
       toast({ title: "Erro", description: "Não foi possível carregar dados da turma", variant: "destructive" });
@@ -1115,20 +1127,23 @@ export default function AcertoNiveis() {
     setClasses([]);
     setEstatisticasGerais(null);
     setOpcoesProximosFiltros(null);
-    
+    // Limpar cache ao trocar de avaliação para não reutilizar dados de outra avaliação
+    fetchEvaluationDataCacheRef.current.clear();
+    fetchEvaluationDataInFlightRef.current.clear();
+
     if (!evaluationId) {
       setIsLoadingSchools(false);
       return;
     }
-    
+
     // ✅ Indicador de carregamento de escolas - ATIVAR IMEDIATAMENTE com flushSync para renderização síncrona
     flushSync(() => {
       setIsLoadingSchools(true);
     });
-    
+
     try {
       setIsLoading(true);
-      
+
       // Buscar dados da avaliação em paralelo
       const [info, skills] = await Promise.all([
         EvaluationResultsApiService.getEvaluationById(evaluationId),
@@ -1139,21 +1154,21 @@ export default function AcertoNiveis() {
 
       // Processar informações da avaliação primeiro
       const evaluationData = info as unknown as Record<string, unknown>;
-      
+
       // ✅ OTIMIZAÇÃO: Carregar escolas em paralelo com fetchEvaluationData
       const [fetchDataResult, escolasFromApi] = await Promise.all([
         fetchEvaluationData(evaluationId),
         (selectedState && selectedMunicipality && evaluationId)
           ? EvaluationResultsApiService.getFilterSchoolsByEvaluation({
-              estado: selectedState,
-              municipio: selectedMunicipality,
-              avaliacao: evaluationId
-            }).catch(() => [])
+            estado: selectedState,
+            municipio: selectedMunicipality,
+            avaliacao: evaluationId
+          }).catch(() => [])
           : Promise.resolve([])
       ]);
 
       const { students: unifiedStudents, report, tabelaDetalhada: tabelaDetalhadaUnificada, estatisticas, opcoesProximosFiltros: opcoes } = fetchDataResult;
-      
+
       // ✅ OTIMIZAÇÃO: Popular escolas imediatamente - priorizar opcoes, senão usar API
       if (opcoes?.escolas && Array.isArray(opcoes.escolas) && opcoes.escolas.length > 0) {
         const escolasFromOpcoes = opcoes.escolas.map((esc: { id: string; name: string }) => ({
@@ -1164,24 +1179,24 @@ export default function AcertoNiveis() {
       } else if (Array.isArray(escolasFromApi) && escolasFromApi.length > 0) {
         setSchools(escolasFromApi);
       }
-      
+
       setIsLoadingSchools(false);
-      
+
       // ✅ OTIMIZAÇÃO: Armazenar todos os dados carregados para filtragem no frontend
       setAllStudents(unifiedStudents);
       setAllTabelaDetalhada(tabelaDetalhadaUnificada);
-      
+
       // Armazenar estatísticas gerais e opcoes_proximos_filtros para uso na exibição
-        if (estatisticas) {
-          setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
-        }
-        if (opcoes) {
-          setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
-        }
+      if (estatisticas) {
+        setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
+      }
+      if (opcoes) {
+        setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
+      }
 
       // Priorizar série do endpoint antes de usar extractSerie
       let serieExtraida = 'N/A';
-      
+
       // 1. Tentar obter série das estatísticas gerais do endpoint
       if (estatisticas?.serie && estatisticas.serie !== 'N/A' && estatisticas.serie !== '') {
         serieExtraida = estatisticas.serie;
@@ -1202,7 +1217,7 @@ export default function AcertoNiveis() {
               return serie;
             }
           }
-          
+
           // 2. Tentar campo grade ou nível (prioridade sobre título)
           if (data.grade && data.grade !== 'N/A' && data.grade !== '') {
             const grade = data.grade as string;
@@ -1216,7 +1231,7 @@ export default function AcertoNiveis() {
               return nivel;
             }
           }
-          
+
           // 3. Título da avaliação como ÚLTIMO recurso (pode conter números que não correspondem à série real)
           // Exemplo: "4° avalie teotonio" pode ser para 5° ano
           if (data.titulo) {
@@ -1224,10 +1239,10 @@ export default function AcertoNiveis() {
             const serieMatch = titulo.match(/(\d+º|\d+º ano|\d+ ano)/i);
             if (serieMatch) return serieMatch[1];
           }
-          
+
           // 4. NÃO usar campo curso como fallback genérico (retorna "1º ao 5º ano" que é muito genérico)
           // Retornar 'N/A' para que seja extraído de outras fontes (alunos, escolas, estatisticas_gerais) depois
-          
+
           return 'N/A';
         };
 
@@ -1258,7 +1273,7 @@ export default function AcertoNiveis() {
           }
         }
       }
-      
+
       setEvaluationInfo({
         id: info.id,
         titulo: (evaluationData.titulo as string) || 'Avaliação',
@@ -1274,7 +1289,7 @@ export default function AcertoNiveis() {
       setStudents(unifiedStudents);
       setDetailedReport(report || null);
       setTabelaDetalhada(tabelaDetalhadaUnificada || null);
-      
+
       // Tentar extrair série dos alunos se não estiver na avaliação
       if (serieExtraida === 'N/A' && unifiedStudents.length > 0) {
         const alunosComSerie = unifiedStudents.filter(
@@ -1339,13 +1354,13 @@ export default function AcertoNiveis() {
       toast({ title: "Atenção", description: "Selecione uma avaliação.", variant: "destructive" });
       return;
     }
-    
+
     // Verificação mais robusta: checar múltiplas fontes de dados
     let hasStudentsInState = students.length > 0;
     const hasStudentsInDetailed = detailedReport?.alunos && detailedReport.alunos.length > 0;
     const hasStudentsInTabela = tabelaDetalhada?.geral?.alunos && tabelaDetalhada.geral.alunos.length > 0;
     const hasStudentsInDisciplinas = tabelaDetalhada?.disciplinas?.some(d => d.alunos && d.alunos.length > 0);
-    
+
     // Se students estiver vazio mas tabelaDetalhada tiver dados, reconstruir students
     if (!hasStudentsInState && tabelaDetalhada && (hasStudentsInTabela || hasStudentsInDisciplinas)) {
       console.log('Reconstruindo lista de alunos a partir de tabelaDetalhada...');
@@ -1356,9 +1371,9 @@ export default function AcertoNiveis() {
         console.log(`Reconstruídos ${reconstructedStudents.length} alunos`);
       }
     }
-    
+
     const hasAnyStudents = hasStudentsInState || hasStudentsInDetailed || hasStudentsInTabela || hasStudentsInDisciplinas;
-    
+
     if (!hasAnyStudents) {
       console.log('Debug - Dados disponíveis:', {
         students: students.length,
@@ -1367,11 +1382,11 @@ export default function AcertoNiveis() {
         tabelaDisciplinas: tabelaDetalhada?.disciplinas?.length || 0,
         filtros: { selectedSchoolId, selectedGradeId, selectedClassId }
       });
-      
-      toast({ 
-        title: "Atenção", 
-        description: "Nenhum aluno encontrado para os filtros selecionados. Tente remover alguns filtros.", 
-        variant: "destructive" 
+
+      toast({
+        title: "Atenção",
+        description: "Nenhum aluno encontrado para os filtros selecionados. Tente remover alguns filtros.",
+        variant: "destructive"
       });
       return;
     }
@@ -1395,30 +1410,14 @@ export default function AcertoNiveis() {
         return;
       }
     }
-    
-    // Se não há detailedReport, tentar carregar dados básicos para o PDF
-    if (!detailedReport) {
+
+    // Carregar relatório detalhado só ao gerar PDF (uso local; evita estado para não depender de setState assíncrono)
+    let reportParaPdf: DetailedReport | null = detailedReport;
+    if (!reportParaPdf) {
       try {
         setIsLoading(true);
-        const fallbackReport = await EvaluationResultsApiService.getDetailedReport(evaluationInfo.id);
-        if (fallbackReport) {
-          setDetailedReport(fallbackReport);
-        }
-      } catch (error) {
-        console.warn('Não foi possível carregar relatório detalhado, continuando com dados básicos');
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    
-    // Se não há detailedReport, tentar carregar dados básicos para o PDF
-    if (!detailedReport) {
-      try {
-        setIsLoading(true);
-        const fallbackReport = await EvaluationResultsApiService.getDetailedReport(evaluationInfo.id);
-        if (fallbackReport) {
-          setDetailedReport(fallbackReport);
-        }
+        reportParaPdf = await EvaluationResultsApiService.getDetailedReport(evaluationInfo.id);
+        if (reportParaPdf) setDetailedReport(reportParaPdf);
       } catch (error) {
         console.warn('Não foi possível carregar relatório detalhado, continuando com dados básicos');
       } finally {
@@ -1426,8 +1425,9 @@ export default function AcertoNiveis() {
       }
     }
     try {
-      // Garantir que a tabela detalhada foi carregada quando possível
-      if (!tabelaDetalhada && selectedState && selectedMunicipality && selectedEvaluationId) {
+      // Garantir que a tabela detalhada foi carregada quando possível (evitar requisição extra se já temos allTabelaDetalhada ou tabelaDetalhada)
+      const jaTemTabela = tabelaDetalhada ?? allTabelaDetalhada;
+      if (!jaTemTabela && selectedState && selectedMunicipality && selectedEvaluationId) {
         try {
           setIsLoading(true);
           const resp = await EvaluationResultsApiService.getEvaluationsList(1, 10, {
@@ -1450,28 +1450,24 @@ export default function AcertoNiveis() {
       const jsPDF = (await import('jspdf')).default;
       const autoTable = (await import('jspdf-autotable')).default;
 
-      // Carregar logo e obter dimensões reais
+      // Carregar logo com uma única requisição: fetch -> blob -> dimensões (Image) + DataURL (FileReader)
       let logoDataUrl = '';
       let logoWidth = 0;
       let logoHeight = 0;
       try {
         const logoPath = '/LOGO-1-menor.png';
-        const logoImg = new Image();
-        const logoPromise = new Promise<void>((resolve, reject) => {
-          logoImg.onload = () => resolve();
-          logoImg.onerror = reject;
-          logoImg.src = logoPath;
-        });
-        
-        await logoPromise;
-        
-        // Obter dimensões reais da imagem
-        logoWidth = logoImg.width;
-        logoHeight = logoImg.height;
-        
-        // Converter para DataURL
         const response = await fetch(logoPath);
         const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const logoImg = new Image();
+        await new Promise<void>((resolve, reject) => {
+          logoImg.onload = () => resolve();
+          logoImg.onerror = reject;
+          logoImg.src = objectUrl;
+        });
+        URL.revokeObjectURL(objectUrl);
+        logoWidth = logoImg.width;
+        logoHeight = logoImg.height;
         logoDataUrl = await new Promise<string>((resolve) => {
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result as string);
@@ -1483,7 +1479,7 @@ export default function AcertoNiveis() {
 
       // Documento começa em landscape para a capa inicial
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-      
+
       // Paleta de cores institucional (baseada em institutional_test_hybrid.html)
       const COLORS = {
         primary: [124, 62, 237] as [number, number, number],      // #7c3aed - roxo principal
@@ -1493,7 +1489,7 @@ export default function AcertoNiveis() {
         bgLight: [250, 250, 250] as [number, number, number],      // #fafafa - fundo claro
         white: [255, 255, 255] as [number, number, number]         // branco
       };
-      
+
       let pageCount = 0;
       const margin = 15;
       let pageWidth = doc.internal.pageSize.getWidth();
@@ -1529,7 +1525,7 @@ export default function AcertoNiveis() {
         // Garantir fundo branco limpo - desenhar primeiro e cobrir toda a página
         doc.setFillColor(...COLORS.white);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
-        
+
         const centerX = pageWidth / 2;
         let y = 20;
 
@@ -1590,7 +1586,7 @@ export default function AcertoNiveis() {
         const cardWidth = pageWidth - 120; // Reduzido: mais estreito
         const cardHeight = 60; // Reduzido: mais baixo
         const cardX = (pageWidth - cardWidth) / 2;
-        
+
         // Centralizar verticalmente melhor na página
         const availableHeight = pageHeight - y - 20;
         if (cardHeight < availableHeight) {
@@ -1600,7 +1596,7 @@ export default function AcertoNiveis() {
         // Fundo do card
         doc.setFillColor(...COLORS.bgLight);
         doc.rect(cardX, y, cardWidth, cardHeight, 'F');
-        
+
         // Borda do card
         doc.setDrawColor(...COLORS.borderLight);
         doc.setLineWidth(0.5);
@@ -1650,8 +1646,8 @@ export default function AcertoNiveis() {
         doc.text('ESCOLA:', leftColX, cardY);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...COLORS.textDark);
-        const escolaText = selectedSchoolId 
-          ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' 
+        const escolaText = selectedSchoolId
+          ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada'
           : 'Todas as Escolas';
         const escolaLines = doc.splitTextToSize(escolaText.toUpperCase(), cardWidth - labelWidth - 24);
         doc.text(escolaLines, leftColX + labelWidth, cardY);
@@ -1704,7 +1700,7 @@ export default function AcertoNiveis() {
         // Garantir fundo branco limpo - desenhar primeiro e cobrir toda a página
         doc.setFillColor(...COLORS.white);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
-        
+
         const centerX = pageWidth / 2;
         let y = 20;
 
@@ -1768,11 +1764,11 @@ export default function AcertoNiveis() {
         const cardWidth = pageWidth - 120; // Reduzido: mais estreito
         const cardHeight = 40; // Reduzido: mais baixo
         const cardX = (pageWidth - cardWidth) / 2;
-        
+
         // Garantir que o card não fique muito próximo do final da página
         const minSpaceAtBottom = 20;
         const maxCardY = pageHeight - cardHeight - minSpaceAtBottom;
-        
+
         // Apenas ajustar se realmente necessário (card muito próximo do final)
         if (y + cardHeight > maxCardY) {
           y = maxCardY;
@@ -1781,7 +1777,7 @@ export default function AcertoNiveis() {
         // Fundo do card
         doc.setFillColor(...COLORS.bgLight);
         doc.rect(cardX, y, cardWidth, cardHeight, 'F');
-        
+
         // Borda do card
         doc.setDrawColor(...COLORS.borderLight);
         doc.setLineWidth(0.5);
@@ -1815,11 +1811,11 @@ export default function AcertoNiveis() {
       };
 
       // Função para adicionar capa de turma
-      const addTurmaCover = (turmaName: string, alunosTurma: StudentResult[]) => {
+      const addTurmaCover = (turmaName: string, alunosTurma: StudentResult[], totalQuestoes?: number) => {
         // Garantir fundo branco limpo - desenhar primeiro e cobrir toda a página
         doc.setFillColor(...COLORS.white);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
-        
+
         const centerX = pageWidth / 2;
         let y = 25;
 
@@ -1851,23 +1847,28 @@ export default function AcertoNiveis() {
 
         y += 20;
 
-        // Nome da turma a ser avaliada (abaixo do título)
-        doc.setFontSize(48);
+        // Nome da turma (fonte menor para textos longos como "VISÃO GERAL (TODAS AS TURMAS)")
+        const len = (turmaName || '').length;
+        const subtitleSize = len > 28 ? 14 : len > 20 ? 18 : len > 12 ? 22 : 26;
+        doc.setFontSize(subtitleSize);
         doc.setTextColor(...COLORS.primary); // Roxo para destaque
         doc.setFont('helvetica', 'bold');
-        doc.text(turmaName.toUpperCase(), centerX, y, { align: 'center' });
+        const maxWidth = pageWidth - 40;
+        const lines = doc.splitTextToSize(turmaName.toUpperCase(), maxWidth);
+        lines.forEach((line: string, i: number) => {
+          doc.text(line, centerX, y + i * (subtitleSize * 0.5), { align: 'center' });
+        });
+        y += Math.max(18, lines.length * subtitleSize * 0.5) + 8;
 
-        y += 25;
-
-        // Card de estatísticas - tamanho reduzido
-        const cardWidth = pageWidth - 120; // Reduzido: mais estreito
-        const cardHeight = 60; // Reduzido: mais baixo
+        // Card de estatísticas (altura fixa para incluir TOTAL DE QUESTÕES)
+        const cardWidth = pageWidth - 120;
+        const cardHeight = 65;
         const cardX = (pageWidth - cardWidth) / 2;
-        
+
         // Garantir que o card não fique muito próximo do final da página
         const minSpaceAtBottom = 20;
         const maxCardY = pageHeight - cardHeight - minSpaceAtBottom;
-        
+
         // Apenas ajustar se realmente necessário (card muito próximo do final)
         if (y + cardHeight > maxCardY) {
           y = maxCardY;
@@ -1876,7 +1877,7 @@ export default function AcertoNiveis() {
         // Fundo do card
         doc.setFillColor(...COLORS.bgLight);
         doc.rect(cardX, y, cardWidth, cardHeight, 'F');
-        
+
         // Borda do card
         doc.setDrawColor(...COLORS.borderLight);
         doc.setLineWidth(0.5);
@@ -1896,13 +1897,13 @@ export default function AcertoNiveis() {
         // Calcular estatísticas
         const concluidos = alunosTurma.filter(s => s.status === 'concluida');
         const totalAlunos = alunosTurma.length;
-        const mediaNota = concluidos.length > 0 
+        const mediaNota = concluidos.length > 0
           ? (concluidos.reduce((sum, s) => sum + s.nota, 0) / concluidos.length).toFixed(1)
           : '0.0';
         const mediaProficiencia = concluidos.length > 0
           ? (concluidos.reduce((sum, s) => sum + s.proficiencia, 0) / concluidos.length).toFixed(1)
           : '0.0';
-        const taxaParticipacao = totalAlunos > 0 
+        const taxaParticipacao = totalAlunos > 0
           ? ((concluidos.length / totalAlunos) * 100).toFixed(1)
           : '0.0';
 
@@ -1956,29 +1957,38 @@ export default function AcertoNiveis() {
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...COLORS.textDark);
         doc.text(`${taxaParticipacao}%`, leftColX + labelWidth, cardY);
+
+        // TOTAL DE QUESTÕES (sempre exibir para consistência; "—" quando não informado)
+        cardY += 5;
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.primary);
+        doc.text('TOTAL DE QUESTÕES:', leftColX, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(typeof totalQuestoes === 'number' ? `${totalQuestoes}` : '—', leftColX + labelWidth, cardY);
       };
 
       // Função para adicionar rodapé
       const addFooter = (pageNum: number) => {
         const centerX = pageWidth / 2;
         const footerY = pageHeight - 10;
-        
+
         // Linha sutil acima do rodapé
         doc.setDrawColor(220, 220, 220);
         doc.setLineWidth(0.3);
         doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
-        
+
         // Configuração de texto do rodapé
         doc.setFontSize(8);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(100, 100, 100);
-        
+
         // Esquerda: Nome da empresa
         doc.text('Afirme Play Soluções Educativas', margin, footerY);
-        
+
         // Centro: Número da página
         doc.text(`Página ${pageNum}`, centerX, footerY, { align: 'center' });
-        
+
         // Direita: Data e hora formatada
         const now = new Date();
         const dateTimeStr = now.toLocaleString('pt-BR', {
@@ -1996,50 +2006,97 @@ export default function AcertoNiveis() {
       const addHeader = (title: string, turmaOverride?: string): number => {
         const centerX = pageWidth / 2;
         let y = 20;
-        
+
         // Título da prefeitura
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(13);
         doc.setTextColor(...COLORS.textDark); // Preto institucional
         doc.text(`PREFEITURA DE ${evaluationInfo.municipio?.toUpperCase() || 'MUNICÍPIO'}`, centerX, y, { align: 'center' });
         y += 10;
-        
+
         // Informações da escola, série e turma em linhas separadas
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
         doc.setTextColor(...COLORS.textGray); // Cinza institucional
-        
+
         const escolaText = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas';
         doc.text(`Escola: ${escolaText}`, centerX, y, { align: 'center' });
         y += 5;
-        
+
         const serieText = getHeaderSerieText(studentsToUse);
         if (serieText) {
           doc.text(`Série: ${serieText}`, centerX, y, { align: 'center' });
           y += 5;
         }
-        
+
         const turmaText = turmaOverride !== undefined ? turmaOverride : (selectedClassId ? classes.find(c => c.id === selectedClassId)?.nome || 'Selecionada' : (studentsToUse[0]?.turma || 'Todas'));
         doc.text(`Turma: ${turmaText}`, centerX, y, { align: 'center' });
         y += 10;
-        
+
         // Título da seção
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(14);
         doc.setTextColor(...COLORS.textDark); // Preto institucional
         doc.text(title, centerX, y, { align: 'center' });
-        
+
         return y + 10;
       };
 
-      // Utilitário: ordenar questões por número
-      const sortQuestoes = (qs: typeof detailedReport.questoes) =>
+      // Tipo mínimo de questão para o PDF (id, dificuldade, habilidade, tipo, % acertos/erros) — reduz memória e processamento
+      type QuestaoMinima = {
+        id: string;
+        numero: number;
+        dificuldade: 'Fácil' | 'Médio' | 'Difícil';
+        habilidade: string;
+        codigo_habilidade: string;
+        tipo: 'multipleChoice' | 'open' | 'trueFalse';
+        porcentagem_acertos: number;
+        porcentagem_erros: number;
+      };
+      const mapToMinimal = (q: NonNullable<DetailedReport['questoes']>[number]): QuestaoMinima => ({
+        id: q.id,
+        numero: q.numero,
+        dificuldade: q.dificuldade,
+        habilidade: q.habilidade,
+        codigo_habilidade: q.codigo_habilidade,
+        tipo: q.tipo,
+        porcentagem_acertos: q.porcentagem_acertos,
+        porcentagem_erros: q.porcentagem_erros
+      });
+
+      const sortQuestoes = (qs: QuestaoMinima[]) =>
         [...(qs || [])].sort((a, b) => (a?.numero || 0) - (b?.numero || 0));
 
-      // Sem separação por disciplina: usaremos apenas a visão geral
+      const buildQuestoesFallback = (): QuestaoMinima[] => {
+        // Unificar questões de todas as disciplinas com numero global (1..N), evitando colisão quando LP e MAT têm 1-20 cada
+        const list: QuestaoMinima[] = [];
+        let globalNumero = 0;
+        tabelaDetalhada?.disciplinas?.forEach(disc => {
+          const sorted = [...(disc.questoes || [])].sort((a, b) => (a?.numero ?? 0) - (b?.numero ?? 0));
+          sorted.forEach(q => {
+            globalNumero += 1;
+            list.push({
+              id: q.question_id || String(globalNumero),
+              numero: globalNumero,
+              habilidade: q.habilidade || '',
+              codigo_habilidade: q.codigo_habilidade || '',
+              tipo: 'multipleChoice',
+              dificuldade: 'Médio',
+              porcentagem_acertos: 0,
+              porcentagem_erros: 0
+            });
+          });
+        });
+        return list;
+      };
+
+      const questoesParaUsar: QuestaoMinima[] =
+        reportParaPdf?.questoes?.length
+          ? reportParaPdf.questoes.map(mapToMinimal)
+          : buildQuestoesFallback();
 
       // Total de questões para fallback determinístico
-      const totalQuestionsAll = (detailedReport?.questoes?.length || 0);
+      const totalQuestionsAll = questoesParaUsar.length;
 
       // Utilitário: obter resposta coerente (detalhado -> fallback determinístico)
       const getAnswer = (student: StudentResult, questionNumber: number): boolean => {
@@ -2066,7 +2123,7 @@ export default function AcertoNiveis() {
         return cache.get(questionNumber) ?? false;
       };
 
-      const countCorrectFor = (student: StudentResult, qs: typeof detailedReport.questoes): number => {
+      const countCorrectFor = (student: StudentResult, qs: QuestaoMinima[]): number => {
         if (!qs || qs.length === 0) return 0;
         let count = 0;
         qs.forEach(q => { if (getAnswer(student, q.numero)) count++; });
@@ -2086,13 +2143,16 @@ export default function AcertoNiveis() {
         const counts = categorias.map(c => concluidos.filter(s => s.classificacao === c).length);
         const total = Math.max(1, concluidos.length);
         const barAreaW = w - 80; // espaço para labels e números
-        const barH = Math.min(12, Math.max(8, Math.floor((h - 20) / categorias.length) - 6));
-        const gap = 6;
+        const topPadding = 10;
+        const availableH = Math.max(1, h - topPadding);
+        const rowStep = availableH / categorias.length;
+        const gap = Math.min(5, Math.max(2, rowStep * 0.2));
+        const barH = Math.max(4, rowStep - gap);
         doc.setFontSize(9);
         categorias.forEach((cat, i) => {
           const count = counts[i];
           const perc = Math.round((count / total) * 100);
-          const yRow = y + i * (barH + gap) + 8;
+          const yRow = y + topPadding + i * (barH + gap);
           // Label
           doc.setTextColor(60);
           doc.text(cat, x, yRow + barH / 2, { align: 'left' } as unknown as Record<string, unknown>);
@@ -2111,33 +2171,38 @@ export default function AcertoNiveis() {
         doc.text('Distribuição por Classificação', x, y - 3);
       };
 
-      const MAX_QUESTIONS_PDF = 40;
-      const BARS_PER_ROW_PDF = 10;
-
       const drawQuestionAccuracyChart = (
         x: number,
         y: number,
         w: number,
         h: number,
-        qs: typeof detailedReport.questoes,
+        qs: QuestaoMinima[],
         studentsToUse: StudentResult[] = students
       ) => {
         if (!qs || qs.length === 0) return;
-        const qsLimited = qs.slice(0, MAX_QUESTIONS_PDF);
         // Recalcular % de acerto usando a mesma regra dos ícones (getAnswer)
         const completed = studentsToUse.filter(s => s.status === 'concluida');
         const denom = Math.max(1, completed.length);
         // counts: número absoluto de acertos por questão; values: percentual
-        const counts = qsLimited.map(q => {
+        const counts = qs.map(q => {
           let correct = 0;
           completed.forEach(s => { if (getAnswer(s, q.numero)) correct++; });
           return correct;
         });
         const values = counts.map(c => Math.round((c / denom) * 100));
+        // Com muitas questões: garantir altura mínima por linha e largura mínima por barra
+        const minRowHeight = 14;
+        const minBarWidth = 5;
+        const barGap = 2;
         const areaW = w - 20;
         const areaH = h - 20;
-        const barGap = 2;
-        const maxBarsPerRow = BARS_PER_ROW_PDF;
+        const maxRows = Math.max(1, Math.floor(areaH / minRowHeight));
+        const maxBarsPerRowByHeight = Math.ceil(values.length / maxRows);
+        const maxBarsPerRowByWidth = Math.floor(areaW / (minBarWidth + barGap));
+        const maxBarsPerRow = Math.min(
+          Math.max(8, maxBarsPerRowByHeight),
+          Math.max(8, maxBarsPerRowByWidth)
+        );
         const chunks: number[][] = [];
         for (let i = 0; i < values.length; i += maxBarsPerRow) {
           chunks.push(values.slice(i, i + maxBarsPerRow));
@@ -2170,7 +2235,7 @@ export default function AcertoNiveis() {
             doc.setFillColor(color[0], color[1], color[2]);
             doc.rect(barX, yy, barW, barH, 'F');
             const globalIndex = rowIndex * maxBarsPerRow + idx;
-            const qNum = qsLimited[globalIndex]?.numero ?? globalIndex + 1;
+            const qNum = qs[globalIndex]?.numero ?? globalIndex + 1;
             doc.setFontSize(7);
             doc.setTextColor(60);
             doc.text(`Q${qNum}`, barX + barW / 2, chartBottom + 4, { align: 'center' });
@@ -2184,32 +2249,33 @@ export default function AcertoNiveis() {
       // Função para gerar página de resumo para uma turma específica
       const renderSummaryPageForTurma = (turmaName: string, alunosTurma: StudentResult[], isFirstTurma: boolean = false) => {
         if (alunosTurma.length === 0) return;
-        
-        // Adicionar nova página (sempre, pois vem após a capa da turma)
+
         doc.addPage('landscape');
         pageCount++;
-        
+
         const title = `RELATÓRIO DE DESEMPENHO GERAL`;
-        const questoes: typeof detailedReport.questoes = detailedReport?.questoes || [];
-        
+        const questoes: QuestaoMinima[] = sortQuestoes(questoesParaUsar);
+
         const startY = addHeader(title, turmaName);
         const availableWidth = pageWidth - (2 * margin);
+        const MIN_NIVEL_MM = 28;
         const nameWidth = Math.min(140, availableWidth * 0.5);
-        const otherWidth = (availableWidth - nameWidth) / 3;
-        
+        const restWidth = availableWidth - nameWidth - MIN_NIVEL_MM;
+        const otherWidth = Math.max(20, restWidth / 2);
+
         // Preparar dados da tabela (usando sempre a mesma regra de acerto)
         const bodyRows: (string | number)[][] = [];
         const completedStudents = alunosTurma.filter(s => s.status === 'concluida');
-        
+
         completedStudents.forEach((s, i) => {
           const subset = questoes;
           const acertos = countCorrectFor(s, subset);
           const total = subset.length;
-          
+
           const row = [
             `${i + 1}. ${s.nome}`,
             `${acertos}/${total}`,
-             s.proficiencia.toFixed(1),
+            s.proficiencia.toFixed(1),
             s.classificacao
           ];
           bodyRows.push(row);
@@ -2241,7 +2307,7 @@ export default function AcertoNiveis() {
             0: { cellWidth: nameWidth, halign: 'left' },
             1: { cellWidth: otherWidth, halign: 'center' },
             2: { cellWidth: otherWidth, halign: 'center' },
-            3: { cellWidth: otherWidth, halign: 'center' }
+            3: { cellWidth: MIN_NIVEL_MM, halign: 'center' }
           },
           didDrawCell: (data: CellHookData) => {
             if (data.section !== 'body' || data.column.index !== 3) return;
@@ -2256,11 +2322,13 @@ export default function AcertoNiveis() {
 
             data.doc.setTextColor(255, 255, 255);
             data.doc.setFont('helvetica', 'bold');
-            data.doc.setFontSize(9);
+            const bodyFontSize = 9;
+            data.doc.setFontSize(bodyFontSize);
+            const nivelY = data.cell.y + Math.min(3, data.cell.height * 0.35) + (bodyFontSize * 0.35);
             data.doc.text(
               textValue,
               data.cell.x + data.cell.width / 2,
-              data.cell.y + data.cell.height / 2 + 2.5,
+              nivelY,
               { align: 'center' }
             );
 
@@ -2268,25 +2336,23 @@ export default function AcertoNiveis() {
             data.doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height);
           }
         });
-        
+
         addFooter(pageCount);
       };
 
-      // Máximo de colunas de questões por página para caber na largura A4 landscape
-      const QUESTIONS_PER_PAGE = 24;
-
-      // Função para gerar página detalhada (landscape) para uma turma específica — tabela dividida em páginas quando há muitas questões
-      const renderDetailedPageForTurma = (subtitle: string, turmaName: string, alunosTurma: StudentResult[], questoes: typeof detailedReport.questoes) => {
-        const alunosParticipantes = alunosTurma.filter(s => s.status === 'concluida');
-        if (!questoes || questoes.length === 0 || alunosParticipantes.length === 0) return;
+      // Uma única página por tabela: todas as questões na mesma página, com fonte e colunas adaptáveis
+      // Função para gerar página detalhada (landscape) para uma turma específica — todas as questões em uma página
+      const renderDetailedPageForTurma = (subtitle: string, turmaName: string, alunosTurma: StudentResult[], questoes: QuestaoMinima[]) => {
+        const completedStudentsLocal = alunosTurma.filter(s => s.status === 'concluida');
+        if (!questoes || questoes.length === 0 || completedStudentsLocal.length === 0) return;
         questoes = sortQuestoes(questoes);
 
         const landscapeWidth = 297;
         const landscapeHeight = 210;
         const landscapeMargin = 10;
-        const completedStudentsLocal = alunosTurma.filter(s => s.status === 'concluida');
         const denomLocal = Math.max(1, completedStudentsLocal.length);
         const totalQuestoes = questoes.length;
+        const acertosPorAluno = completedStudentsLocal.map(s => countCorrectFor(s, questoes));
 
         const drawTableChunk = (
           chunk: typeof questoes,
@@ -2304,43 +2370,53 @@ export default function AcertoNiveis() {
             headerRow3.push(`${Math.round((correct / denomLocal) * 100)}%`);
           });
           if (isLastChunk) {
-            headerRow1.push("Total", "Proficiência", "Nível");
+            headerRow1.push("Total de acertos", "Proficiência", "Nível");
             headerRow2.push("", "", "");
             headerRow3.push("", "", "");
           }
 
           const bodyRows: (string | number)[][] = [];
-          completedStudentsLocal.forEach(s => {
+          completedStudentsLocal.forEach((s, idx) => {
             const row: (string | number)[] = [s.nome];
-            let acertos = 0;
             chunk.forEach(q => {
               const resposta = getAnswer(s, q.numero);
-              if (resposta === true) {
-                row.push('\u2713');
-                acertos++;
-              } else row.push('\u2717');
+              if (resposta === true) row.push('\u2713');
+              else row.push('\u2717');
             });
             if (isLastChunk) {
-              row.push(`${countCorrectFor(s, questoes)}/${totalQuestoes}`);
+              row.push(`${acertosPorAluno[idx]}/${totalQuestoes}`);
               row.push(s.proficiencia.toFixed(1));
-              row.push(s.classificacao);
+              row.push(String(s.classificacao ?? '—'));
             }
             bodyRows.push(row);
           });
 
           const availableWidth = landscapeWidth - (2 * landscapeMargin);
-          const nameColWidth = Math.min(45, availableWidth * 0.2);
-          const finalColsWidth = isLastChunk ? 20 + 25 + 30 : 0;
-          const questionColWidth = Math.max(6, Math.min(12, (availableWidth - nameColWidth - finalColsWidth) / chunk.length));
+          const nameColWidth = Math.min(45, Math.max(25, availableWidth * (chunk.length > 28 ? 0.10 : 0.15)));
+          const MIN_NIVEL_WIDTH_MM = 28; // Garantir que "Abaixo do Básico" / "Avançado" apareçam por completo
+          const colTotalAcertos = chunk.length > 28 ? 10 : 15;
+          const colProficiencia = chunk.length > 28 ? 12 : 18;
+          const colNivel = Math.max(MIN_NIVEL_WIDTH_MM, chunk.length > 28 ? 18 : 24);
+          const finalColsWidth = isLastChunk ? (colTotalAcertos + colProficiencia + colNivel) : 0;
+
+          const numCols = Math.max(1, chunk.length);
+          const spaceForQuestions = Math.max(0, availableWidth - nameColWidth - finalColsWidth);
+          const questionColWidth = spaceForQuestions / numCols;
+
+          // Escala de fonte adaptável: menor quando há muitas questões para caber em uma página
+          const dynamicFontSize = Math.max(2.0, Math.min(6, 5.5 * (18 / numCols)));
+          const dynamicCellPadding = Math.max(0.3, Math.min(0.5, 0.5 * (18 / numCols)));
+          const dynamicIconScale = Math.max(1.5, Math.min(4.5, 4.5 * (18 / numCols)));
 
           const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
             0: { cellWidth: nameColWidth, halign: 'left' }
           };
           for (let i = 1; i <= chunk.length; i++) columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
+
           if (isLastChunk) {
-            columnStyles[chunk.length + 1] = { cellWidth: 20, halign: 'center' };
-            columnStyles[chunk.length + 2] = { cellWidth: 25, halign: 'center' };
-            columnStyles[chunk.length + 3] = { cellWidth: 30, halign: 'center' };
+            columnStyles[chunk.length + 1] = { cellWidth: colTotalAcertos, halign: 'center' };
+            columnStyles[chunk.length + 2] = { cellWidth: colProficiencia, halign: 'center' };
+            columnStyles[chunk.length + 3] = { cellWidth: colNivel, halign: 'center' };
           }
 
           const numQuestoesThisChunk = chunk.length;
@@ -2353,11 +2429,11 @@ export default function AcertoNiveis() {
             tableWidth: 'auto',
             showHead: 'everyPage',
             styles: {
-              fontSize: 6,
-              cellPadding: 0.5,
+              fontSize: dynamicFontSize,
+              cellPadding: dynamicCellPadding,
               lineColor: [200, 200, 200],
               lineWidth: 0.05,
-              overflow: 'linebreak',
+              overflow: 'hidden',
               valign: 'middle',
               halign: 'center'
             },
@@ -2366,7 +2442,7 @@ export default function AcertoNiveis() {
               textColor: [0, 0, 0],
               fontStyle: 'bold',
               halign: 'center',
-              fontSize: 6
+              fontSize: dynamicFontSize
             },
             columnStyles: columnStyles,
             bodyStyles: { textColor: [33, 33, 33] },
@@ -2383,11 +2459,11 @@ export default function AcertoNiveis() {
                   const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
                   d.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
                   d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-                  const iconSize = Math.min(cell.width, cell.height) / 4.5;
-                  const isCorrect = valStr === '✓' || valStr === '\u2713';
+                  const iconSize = Math.min(cell.width, cell.height) / dynamicIconScale;
+                  const isCorrect = (valStr as string) === '✓' || (valStr as string) === '\u2713';
                   if (isCorrect) {
                     d.setDrawColor(22, 163, 74);
-                    d.setLineWidth(0.8);
+                    d.setLineWidth(Math.max(0.4, 0.8 * (dynamicFontSize / 6)));
                     d.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
                     d.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
                   } else {
@@ -2403,7 +2479,7 @@ export default function AcertoNiveis() {
               }
               if (section === 'head' && row.index === 1) {
                 cell.styles.fillColor = [219, 234, 254];
-                cell.styles.fontSize = 5;
+                cell.styles.fontSize = Math.max(3, dynamicFontSize - 1);
                 cell.styles.fontStyle = 'normal';
                 cell.styles.font = 'courier';
               }
@@ -2414,18 +2490,22 @@ export default function AcertoNiveis() {
                   cell.styles.fillColor = pct >= 60 ? [220, 252, 231] : [254, 226, 226];
                   cell.styles.textColor = pct >= 60 ? [22, 163, 74] : [239, 68, 68];
                   cell.styles.fontStyle = 'bold';
-                  cell.styles.fontSize = 5;
+                  cell.styles.fontSize = Math.max(3, dynamicFontSize - 1);
                 }
               }
               if (isLastChunk && section === 'body' && column.index === chunk.length + 3) {
-                const textValue = (Array.isArray(cell.text) ? cell.text[0] : cell.text || '').toString().trim();
-                const [r, g, b] = generateClassificationColor(textValue);
+                const raw = (Array.isArray(cell.text) ? cell.text[0] : cell.text ?? '').toString().trim();
+                const textValue = raw || '—';
+                const [r, g, b] = generateClassificationColor(raw || 'Abaixo do Básico');
                 d.setFillColor(r, g, b);
                 d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
                 d.setTextColor(255, 255, 255);
                 d.setFont('helvetica', 'bold');
-                d.setFontSize(6);
-                d.text(textValue, cell.x + cell.width / 2, cell.y + cell.height / 2 + 1.5, { align: 'center' });
+                d.setFontSize(dynamicFontSize);
+                const centerX = cell.x + cell.width / 2;
+                const nivelY = cell.y + Math.min(3, cell.height * 0.32) + (dynamicFontSize * 0.35);
+                const lines = d.splitTextToSize(textValue, cell.width - 2);
+                d.text(lines, centerX, nivelY, { align: 'center' });
                 d.setDrawColor(200, 200, 200);
                 d.rect(cell.x, cell.y, cell.width, cell.height);
               }
@@ -2433,62 +2513,51 @@ export default function AcertoNiveis() {
           });
         };
 
-        for (let start = 0; start < totalQuestoes; start += QUESTIONS_PER_PAGE) {
-          const end = Math.min(start + QUESTIONS_PER_PAGE, totalQuestoes);
-          const chunk = questoes.slice(start, end);
-          const isLastChunk = end >= totalQuestoes;
+        doc.addPage('landscape');
+        pageCount++;
 
-          doc.addPage('landscape');
-          pageCount++;
+        let y = 15;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text(`${evaluationInfo.titulo} - ${subtitle}`, landscapeWidth / 2, y, { align: 'center' });
+        y += 5;
+        doc.setFontSize(10);
+        doc.text(`Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
+        y += 10;
 
-          let y = 15;
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(12);
-          const pageLabel = totalQuestoes > QUESTIONS_PER_PAGE
-            ? ` (Questões ${start + 1}-${end})`
-            : '';
-          doc.text(`${evaluationInfo.titulo} - ${subtitle}${pageLabel}`, landscapeWidth / 2, y, { align: 'center' });
-          y += 5;
-          doc.setFontSize(10);
-          doc.text(`Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
-          y += 10;
+        drawTableChunk(questoes, true, y);
 
-          drawTableChunk(chunk, isLastChunk, y);
+        const finalY = ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y) + 4;
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        let legendX = landscapeMargin;
+        doc.setDrawColor(22, 163, 74);
+        doc.setLineWidth(0.8);
+        const iconSize = 2;
+        const legendY = finalY + 2;
+        doc.line(legendX - iconSize, legendY, legendX - iconSize / 2, legendY + iconSize);
+        doc.line(legendX - iconSize / 2, legendY + iconSize, legendX + iconSize, legendY - iconSize);
+        doc.setTextColor(90, 90, 90);
+        doc.text('Correto', legendX + 5, finalY + 3);
+        legendX += 24;
+        doc.setDrawColor(239, 68, 68);
+        doc.setLineWidth(0.8);
+        doc.line(legendX - iconSize, legendY - iconSize, legendX + iconSize, legendY + iconSize);
+        doc.line(legendX + iconSize, legendY - iconSize, legendX - iconSize, legendY + iconSize);
+        doc.setTextColor(90, 90, 90);
+        doc.text('Incorretas', legendX + 5, finalY + 3);
 
-          if (isLastChunk) {
-            const finalY = ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y) + 4;
-            doc.setFontSize(8);
-            doc.setFont('helvetica', 'normal');
-            let legendX = landscapeMargin;
-            doc.setDrawColor(22, 163, 74);
-            doc.setLineWidth(0.8);
-            const iconSize = 2;
-            const legendY = finalY + 2;
-            doc.line(legendX - iconSize, legendY, legendX - iconSize / 2, legendY + iconSize);
-            doc.line(legendX - iconSize / 2, legendY + iconSize, legendX + iconSize, legendY - iconSize);
-            doc.setTextColor(90, 90, 90);
-            doc.text('Correto', legendX + 5, finalY + 3);
-            legendX += 24;
-            doc.setDrawColor(239, 68, 68);
-            doc.setLineWidth(0.8);
-            doc.line(legendX - iconSize, legendY - iconSize, legendX + iconSize, legendY + iconSize);
-            doc.line(legendX + iconSize, legendY - iconSize, legendX - iconSize, legendY + iconSize);
-            doc.setTextColor(90, 90, 90);
-            doc.text('Incorretas', legendX + 5, finalY + 3);
-          }
-
-          doc.setFontSize(8);
-          doc.setTextColor(100, 100, 100);
-          doc.text('Afirme Play Soluções Educativas', landscapeMargin, landscapeHeight - 8);
-          doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
-          doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
-        }
+        doc.setFontSize(8);
+        doc.setTextColor(100, 100, 100);
+        doc.text('Afirme Play Soluções Educativas', landscapeMargin, landscapeHeight - 8);
+        doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
+        doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
       };
 
       // Função para renderizar gráficos para uma turma específica
       const renderChartsForTurma = (turmaName: string, alunosTurma: StudentResult[]) => {
         if (alunosTurma.length === 0) return;
-        
+
         doc.addPage('landscape');
         pageCount++;
         const yCharts = addHeader('VISÃO GRÁFICA DOS RESULTADOS', turmaName);
@@ -2496,18 +2565,21 @@ export default function AcertoNiveis() {
         const chartsLeft = margin;
         const chartsWidth = pageWidth - 2 * margin;
         const chartsHeight = pageHeight - chartsTop - margin - 6;
-        // Metade superior: distribuição por classificação
-        drawClassificationChart(chartsLeft, chartsTop, chartsWidth, Math.floor(chartsHeight * 0.38), alunosTurma);
-        // Metade inferior: acerto por questão geral
-        const qsAll = sortQuestoes(detailedReport?.questoes || []);
-        drawQuestionAccuracyChart(chartsLeft, chartsTop + Math.floor(chartsHeight * 0.55), chartsWidth, Math.floor(chartsHeight * 0.4), qsAll, alunosTurma);
+        const classificationChartMinH = 40;
+        const classificationChartH = Math.max(classificationChartMinH, Math.floor(chartsHeight * 0.38));
+        const questionChartStartY = chartsTop + classificationChartH + 4;
+        const questionChartH = Math.max(20, pageHeight - questionChartStartY - margin - 6);
+        drawClassificationChart(chartsLeft, chartsTop, chartsWidth, classificationChartH, alunosTurma);
+        const qsAll = sortQuestoes(questoesParaUsar);
+        drawQuestionAccuracyChart(chartsLeft, questionChartStartY, chartsWidth, questionChartH, qsAll, alunosTurma);
         addFooter(pageCount);
       };
 
       // ====== Páginas por disciplina (consumindo diretamente tabela_detalhada) ======
-      const renderDisciplineTablesPagesForTurma = (turmaName: string, alunosTurma: StudentResult[]) => {
-        if (!tabelaDetalhada || !Array.isArray(tabelaDetalhada.disciplinas)) return;
-        const disciplinas = tabelaDetalhada.disciplinas;
+      const renderDisciplineTablesPagesForTurma = (turmaName: string, alunosTurma: StudentResult[], customTabela?: typeof tabelaDetalhada) => {
+        const activeTabela = customTabela !== undefined ? customTabela : tabelaDetalhada;
+        if (!activeTabela || !Array.isArray(activeTabela.disciplinas)) return;
+        const disciplinas = activeTabela.disciplinas;
 
         disciplinas.forEach((disc) => {
           if (!Array.isArray(disc.questoes) || disc.questoes.length === 0) return;
@@ -2538,24 +2610,22 @@ export default function AcertoNiveis() {
           }
           const denomLocal = Math.max(1, alunosParticipantes.length);
 
-          for (let start = 0; start < totalQuestoesDisc; start += QUESTIONS_PER_PAGE) {
-            const end = Math.min(start + QUESTIONS_PER_PAGE, totalQuestoesDisc);
-            const chunk = qs.slice(start, end);
-            const isLastChunk = end >= totalQuestoesDisc;
+          // Uma única página por disciplina: todas as questões na mesma página, tabela adaptável
+          const chunk = qs;
+          const isLastChunk = true;
 
-            doc.addPage('landscape');
-            pageCount++;
+          doc.addPage('landscape');
+          pageCount++;
 
-            let y = 15;
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(12);
-            const headerDisc = `DISCIPLINA: ${disc.nome || 'N/A'}`;
-            const pageLabel = totalQuestoesDisc > QUESTIONS_PER_PAGE ? ` (Questões ${start + 1}-${end})` : '';
-            doc.text(`${evaluationInfo?.titulo || 'Avaliação'} - ${headerDisc}${pageLabel}`, landscapeWidth / 2, y, { align: 'center' });
-            y += 5;
-            doc.setFontSize(10);
-            doc.text(`Escola: ${escolaText}  •  Série: ${serieText || 'N/A'}  •  Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
-            y += 8;
+          let y = 15;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(12);
+          const headerDisc = `DISCIPLINA: ${disc.nome || 'N/A'}`;
+          doc.text(`${evaluationInfo?.titulo || 'Avaliação'} - ${headerDisc}`, landscapeWidth / 2, y, { align: 'center' });
+          y += 5;
+          doc.setFontSize(10);
+          doc.text(`Escola: ${escolaText}  •  Série: ${serieText || 'N/A'}  •  Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
+          y += 8;
 
             const headerRow1 = ['Aluno'];
             const headerRow2 = ['Habilidade'];
@@ -2571,7 +2641,7 @@ export default function AcertoNiveis() {
               headerRow3.push(`${Math.round((correct / denomLocal) * 100)}%`);
             });
             if (isLastChunk) {
-              headerRow1.push('Total', 'Nota', 'Proficiência', 'Nível');
+              headerRow1.push('Total de acertos', 'Nota', 'Proficiência', 'Nível');
               headerRow2.push('', '', '', '');
               headerRow3.push('', '', '', '');
             }
@@ -2594,24 +2664,38 @@ export default function AcertoNiveis() {
                 row.push(`${al.total_acertos ?? 0}/${totalQuestoesDisc}`);
                 row.push(Number(al.nota ?? 0).toFixed(1));
                 row.push(Number(al.proficiencia ?? 0).toFixed(1));
-                row.push(String(al.nivel_proficiencia || ''));
+                row.push(String(al.nivel_proficiencia ?? '—'));
               }
               bodyRows.push(row);
             });
 
             const availableWidth = landscapeWidth - (2 * landscapeMargin);
-            const nameColWidth = Math.min(45, availableWidth * 0.2);
-            const finalColsWidth = isLastChunk ? 20 + 20 + 25 + 30 : 0;
-            const questionColWidth = Math.max(6, Math.min(12, (availableWidth - nameColWidth - finalColsWidth) / chunk.length));
+            const nameColWidth = Math.min(45, Math.max(25, availableWidth * (chunk.length > 28 ? 0.10 : 0.15)));
+            const MIN_NIVEL_WIDTH_MM_DISC = 28; // Garantir que nível (ex.: "Avançado") apareça por completo
+            const colTotalAcertosDisc = chunk.length > 28 ? 10 : 15;
+            const colNotaDisc = chunk.length > 28 ? 10 : 15;
+            const colProficienciaDisc = chunk.length > 28 ? 12 : 18;
+            const colNivelDisc = Math.max(MIN_NIVEL_WIDTH_MM_DISC, chunk.length > 28 ? 18 : 24);
+            const finalColsWidth = isLastChunk ? (colTotalAcertosDisc + colNotaDisc + colProficienciaDisc + colNivelDisc) : 0;
+
+            const numColsDisc = Math.max(1, chunk.length);
+            const spaceForQuestionsDisc = Math.max(0, availableWidth - nameColWidth - finalColsWidth);
+            const questionColWidth = spaceForQuestionsDisc / numColsDisc;
+
+            // Escala fontes para caber em uma página com todas as questões
+            const dynamicFontSize = Math.max(2.0, Math.min(6, 5.5 * (18 / numColsDisc)));
+            const dynamicCellPadding = Math.max(0.3, Math.min(0.5, 0.5 * (18 / numColsDisc)));
+            const dynamicIconScale = Math.max(1.5, Math.min(4.5, 4.5 * (18 / numColsDisc)));
+
             const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
               0: { cellWidth: nameColWidth, halign: 'left' }
             };
             for (let i = 1; i <= chunk.length; i++) columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
             if (isLastChunk) {
-              columnStyles[chunk.length + 1] = { cellWidth: 20, halign: 'center' };
-              columnStyles[chunk.length + 2] = { cellWidth: 20, halign: 'center' };
-              columnStyles[chunk.length + 3] = { cellWidth: 25, halign: 'center' };
-              columnStyles[chunk.length + 4] = { cellWidth: 30, halign: 'center' };
+              columnStyles[chunk.length + 1] = { cellWidth: colTotalAcertosDisc, halign: 'center' };
+              columnStyles[chunk.length + 2] = { cellWidth: colNotaDisc, halign: 'center' };
+              columnStyles[chunk.length + 3] = { cellWidth: colProficienciaDisc, halign: 'center' };
+              columnStyles[chunk.length + 4] = { cellWidth: colNivelDisc, halign: 'center' };
             }
             const numQuestoesThisChunk = chunk.length;
 
@@ -2624,11 +2708,11 @@ export default function AcertoNiveis() {
               tableWidth: 'auto',
               showHead: 'everyPage',
               styles: {
-                fontSize: 6,
-                cellPadding: 0.5,
+                fontSize: dynamicFontSize,
+                cellPadding: dynamicCellPadding,
                 lineColor: [200, 200, 200],
                 lineWidth: 0.05,
-                overflow: 'linebreak',
+                overflow: 'hidden',
                 valign: 'middle',
                 halign: 'center'
               },
@@ -2637,7 +2721,7 @@ export default function AcertoNiveis() {
                 textColor: [0, 0, 0],
                 fontStyle: 'bold',
                 halign: 'center',
-                fontSize: 6
+                fontSize: dynamicFontSize
               },
               columnStyles: columnStyles,
               bodyStyles: { textColor: [33, 33, 33] },
@@ -2653,11 +2737,11 @@ export default function AcertoNiveis() {
                     const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
                     d.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
                     d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-                    const iconSize = Math.min(cell.width, cell.height) / 4.5;
-                    const isCorrect = valStr === '✓' || valStr === '\u2713';
+                    const iconSize = Math.min(cell.width, cell.height) / dynamicIconScale;
+                    const isCorrect = (valStr as string) === '✓' || (valStr as string) === '\u2713';
                     if (isCorrect) {
                       d.setDrawColor(22, 163, 74);
-                      d.setLineWidth(0.8);
+                      d.setLineWidth(Math.max(0.4, 0.8 * (dynamicFontSize / 6)));
                       d.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
                       d.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
                     } else {
@@ -2672,20 +2756,23 @@ export default function AcertoNiveis() {
                   }
                 }
                 if (isLastChunk && section === 'body' && column.index === chunk.length + 4) {
-                  const textValue = (Array.isArray(cell.text) ? cell.text[0] : cell.text || '').toString().trim();
-                  const [r, g, b] = generateClassificationColor(textValue);
+                  const raw = (Array.isArray(cell.text) ? cell.text[0] : cell.text ?? '').toString().trim();
+                  const textValue = raw || '—';
+                  const [r, g, b] = generateClassificationColor(raw || 'Abaixo do Básico');
                   d.setFillColor(r, g, b);
                   d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
                   d.setTextColor(255, 255, 255);
                   d.setFont('helvetica', 'bold');
-                  d.setFontSize(6);
-                  d.text(textValue, cell.x + cell.width / 2, cell.y + cell.height / 2 + 1.5, { align: 'center' });
+                  d.setFontSize(dynamicFontSize);
+                  const centerX = cell.x + cell.width / 2;
+                  const nivelY = cell.y + Math.min(3, cell.height * 0.32) + (dynamicFontSize * 0.35);
+                  d.text(textValue, centerX, nivelY, { align: 'center' });
                   d.setDrawColor(200, 200, 200);
                   d.rect(cell.x, cell.y, cell.width, cell.height);
                 }
                 if (section === 'head' && row.index === 1) {
                   cell.styles.fillColor = [219, 234, 254];
-                  cell.styles.fontSize = 5;
+                  cell.styles.fontSize = Math.max(3, dynamicFontSize - 1);
                   cell.styles.fontStyle = 'normal';
                   cell.styles.font = 'courier';
                 }
@@ -2696,7 +2783,7 @@ export default function AcertoNiveis() {
                     cell.styles.fillColor = pct >= 60 ? [220, 252, 231] : [254, 226, 226];
                     cell.styles.textColor = pct >= 60 ? [22, 163, 74] : [239, 68, 68];
                     cell.styles.fontStyle = 'bold';
-                    cell.styles.fontSize = 5;
+                    cell.styles.fontSize = Math.max(3, dynamicFontSize - 1);
                   }
                 }
               },
@@ -2707,7 +2794,6 @@ export default function AcertoNiveis() {
             doc.text('Afirme Play Soluções Educativas', landscapeMargin, landscapeHeight - 8);
             doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
             doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
-          }
         });
       };
 
@@ -2716,153 +2802,131 @@ export default function AcertoNiveis() {
       // IMPORTANTE: Usar allTabelaDetalhada para obter TODOS os alunos, incluindo faltosos
       let studentsToUse = students;
       const tabelaParaUsar = allTabelaDetalhada || tabelaDetalhada;
-      
+
       // Se não temos alunos ou precisamos incluir faltosos, reconstruir a partir de allTabelaDetalhada
       if (studentsToUse.length === 0 && tabelaParaUsar) {
         studentsToUse = mapUnifiedStudents(tabelaParaUsar);
       }
-      
-      if (studentsToUse.length === 0 && detailedReport?.alunos) {
-        studentsToUse = mapDetailedStudentsToResults(detailedReport.alunos);
+
+      if (studentsToUse.length === 0 && reportParaPdf?.alunos) {
+        studentsToUse = mapDetailedStudentsToResults(reportParaPdf.alunos);
       }
-      
+
       // Função auxiliar para normalizar nome de turma (case-insensitive, trim)
       const normalizeTurmaName = (nome: string | undefined): string => {
         return (nome || '').trim().toUpperCase();
       };
-      
-      // Função auxiliar para obter TODOS os alunos de uma turma (incluindo faltosos) de allTabelaDetalhada
-      const obterTodosAlunosTurma = (turmaNome: string): StudentResult[] => {
-        const alunos: StudentResult[] = [];
-        const alunosIdsProcessados = new Set<string>();
-        const turmaNormalizada = normalizeTurmaName(turmaNome);
-        
-        if (!tabelaParaUsar) return alunos;
-        
-        // Buscar em geral.alunos
+
+      // Construir mapa turma -> alunos uma única vez (evita N chamadas a obterTodosAlunosTurma)
+      const alunosPorTurmaMap = new Map<string, StudentResult[]>();
+      if (tabelaParaUsar) {
+        const idsByTurma = new Map<string, Set<string>>();
+        const addToMap = (turmaNorm: string, aluno: StudentResult) => {
+          if (!turmaNorm) return;
+          let list = alunosPorTurmaMap.get(turmaNorm);
+          let ids = idsByTurma.get(turmaNorm);
+          if (!list) {
+            list = [];
+            ids = new Set<string>();
+            alunosPorTurmaMap.set(turmaNorm, list);
+            idsByTurma.set(turmaNorm, ids);
+          }
+          if (!ids!.has(aluno.id)) {
+            ids!.add(aluno.id);
+            list.push(aluno);
+          }
+        };
         tabelaParaUsar.geral?.alunos?.forEach(aluno => {
-          const turmaAlunoNormalizada = normalizeTurmaName(aluno.turma);
-          if (turmaAlunoNormalizada === turmaNormalizada && !alunosIdsProcessados.has(aluno.id)) {
-            alunosIdsProcessados.add(aluno.id);
-            const totalQuestoes = aluno.total_questoes_geral ?? aluno.total_respondidas_geral ?? 0;
-            const totalRespondidas = aluno.total_respondidas_geral ?? totalQuestoes;
-            const totalAcertos = aluno.total_acertos_geral ?? 0;
-            const totalEmBranco = aluno.total_em_branco_geral ?? Math.max(0, totalQuestoes - totalRespondidas);
-            const totalErros = Math.max(0, totalRespondidas - totalAcertos - totalEmBranco);
-            const participou = totalRespondidas > 0 || totalAcertos > 0 || totalErros > 0;
-            const statusFinal = participou ? 'concluida' : 'pendente';
-            
-            alunos.push({
+          const turmaNorm = normalizeTurmaName(aluno.turma);
+          const totalQuestoes = aluno.total_questoes_geral ?? aluno.total_respondidas_geral ?? 0;
+          const totalRespondidas = aluno.total_respondidas_geral ?? totalQuestoes;
+          const totalAcertos = aluno.total_acertos_geral ?? 0;
+          const totalEmBranco = aluno.total_em_branco_geral ?? Math.max(0, totalQuestoes - totalRespondidas);
+          const totalErros = Math.max(0, totalRespondidas - totalAcertos - totalEmBranco);
+          const participou = totalRespondidas > 0 || totalAcertos > 0 || totalErros > 0;
+          addToMap(turmaNorm, {
+            id: aluno.id,
+            nome: aluno.nome,
+            turma: aluno.turma || '',
+            nota: Number(aluno.nota_geral ?? 0),
+            proficiencia: Number(aluno.proficiencia_geral ?? 0),
+            classificacao: (aluno.nivel_proficiencia_geral || 'Abaixo do Básico') as StudentResult['classificacao'],
+            acertos: totalAcertos,
+            erros: totalErros,
+            questoes_respondidas: totalRespondidas || totalQuestoes,
+            status: participou ? 'concluida' : 'pendente',
+            respostas: {}
+          });
+        });
+        tabelaParaUsar.disciplinas?.forEach(disciplina => {
+          disciplina.alunos?.forEach(aluno => {
+            const turmaNorm = normalizeTurmaName(aluno.turma);
+            const totalQuestoesDisciplina = aluno.total_questoes_disciplina ?? aluno.respostas_por_questao?.length ?? 0;
+            const totalRespondidas = aluno.total_respondidas ?? totalQuestoesDisciplina;
+            const totalAcertos = aluno.total_acertos ?? 0;
+            const totalEmBranco = Math.max(0, totalQuestoesDisciplina - totalRespondidas);
+            const totalErros = aluno.total_erros ?? Math.max(0, totalRespondidas - totalAcertos - totalEmBranco);
+            const participou = Array.isArray(aluno.respostas_por_questao) && aluno.respostas_por_questao.some(r => r.respondeu);
+            addToMap(turmaNorm, {
               id: aluno.id,
               nome: aluno.nome,
               turma: aluno.turma || '',
-              nota: Number(aluno.nota_geral ?? 0),
-              proficiencia: Number(aluno.proficiencia_geral ?? 0),
-              classificacao: (aluno.nivel_proficiencia_geral || 'Abaixo do Básico') as StudentResult['classificacao'],
+              nota: Number(aluno.nota ?? 0),
+              proficiencia: Number(aluno.proficiencia ?? 0),
+              classificacao: (aluno.nivel_proficiencia || 'Abaixo do Básico') as StudentResult['classificacao'],
               acertos: totalAcertos,
               erros: totalErros,
-              questoes_respondidas: totalRespondidas || totalQuestoes,
-              status: statusFinal,
+              questoes_respondidas: totalRespondidas,
+              status: participou ? 'concluida' : 'pendente',
               respostas: {}
             });
-          }
-        });
-        
-        // Buscar em disciplinas
-        tabelaParaUsar.disciplinas?.forEach(disciplina => {
-          disciplina.alunos?.forEach(aluno => {
-            const turmaAlunoNormalizada = normalizeTurmaName(aluno.turma);
-            if (turmaAlunoNormalizada === turmaNormalizada && !alunosIdsProcessados.has(aluno.id)) {
-              alunosIdsProcessados.add(aluno.id);
-              const totalQuestoesDisciplina = aluno.total_questoes_disciplina ?? aluno.respostas_por_questao?.length ?? 0;
-              const totalRespondidas = aluno.total_respondidas ?? totalQuestoesDisciplina;
-              const totalAcertos = aluno.total_acertos ?? 0;
-              const totalEmBranco = Math.max(0, totalQuestoesDisciplina - totalRespondidas);
-              const totalErros = aluno.total_erros ?? Math.max(0, totalRespondidas - totalAcertos - totalEmBranco);
-              const participou = Array.isArray(aluno.respostas_por_questao) && 
-                                 aluno.respostas_por_questao.some(r => r.respondeu);
-              const statusFinal = participou ? 'concluida' : 'pendente';
-              
-              alunos.push({
-                id: aluno.id,
-                nome: aluno.nome,
-                turma: aluno.turma || '',
-                nota: Number(aluno.nota ?? 0),
-                proficiencia: Number(aluno.proficiencia ?? 0),
-                classificacao: (aluno.nivel_proficiencia || 'Abaixo do Básico') as StudentResult['classificacao'],
-                acertos: totalAcertos,
-                erros: totalErros,
-                questoes_respondidas: totalRespondidas,
-                status: statusFinal,
-                respostas: {}
-              });
-            }
           });
         });
-        
-        return alunos;
+      }
+
+      const obterTodosAlunosTurma = (turmaNome: string): StudentResult[] => {
+        return alunosPorTurmaMap.get(normalizeTurmaName(turmaNome)) ?? [];
       };
-      
-      // Aplicar filtros de escola e série antes de processar turmas
+
+      // Aplicar filtros de escola e série: construir Set de ids que passam em uma única passagem
       if ((selectedSchoolId || selectedGradeId) && tabelaParaUsar) {
         const selectedSchool = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId) : null;
         const selectedGrade = selectedGradeId ? grades.find(g => g.id === selectedGradeId) : null;
         const escolaNome = selectedSchool?.nome;
         const serieNome = selectedGrade?.nome;
-        
-        studentsToUse = studentsToUse.filter(s => {
-          if (selectedSchoolId && escolaNome) {
-            // Verificar se o aluno pertence à escola (precisa verificar em tabelaParaUsar)
-            let alunoNaEscola = false;
-            tabelaParaUsar.disciplinas?.forEach(disciplina => {
-              disciplina.alunos?.forEach(aluno => {
-                if (aluno.id === s.id && (aluno.escola === escolaNome || aluno.escola === selectedSchoolId)) {
-                  alunoNaEscola = true;
-                }
-              });
-            });
-            if (!alunoNaEscola) return false;
-          }
-          
-          if (selectedGradeId && serieNome) {
-            // Verificar se o aluno pertence à série (precisa verificar em tabelaParaUsar)
-            let alunoNaSerie = false;
-            tabelaParaUsar.disciplinas?.forEach(disciplina => {
-              disciplina.alunos?.forEach(aluno => {
-                if (aluno.id === s.id && (aluno.serie === serieNome || aluno.serie === selectedGradeId)) {
-                  alunoNaSerie = true;
-                }
-              });
-            });
-            if (!alunoNaSerie) return false;
-          }
-          
-          return true;
+        const idsPassamFiltro = new Set<string>();
+        tabelaParaUsar.disciplinas?.forEach(disciplina => {
+          disciplina.alunos?.forEach(aluno => {
+            const passaEscola = !selectedSchoolId || !escolaNome || aluno.escola === escolaNome || aluno.escola === selectedSchoolId;
+            const passaSerie = !selectedGradeId || !serieNome || aluno.serie === serieNome || aluno.serie === selectedGradeId;
+            if (passaEscola && passaSerie) idsPassamFiltro.add(aluno.id);
+          });
         });
+        studentsToUse = studentsToUse.filter(s => idsPassamFiltro.has(s.id));
       }
-      
+
       // Aplicar filtro de turma se uma turma foi selecionada
       if (selectedClassId) {
         const selectedClass = classes.find(c => c.id === selectedClassId);
         if (selectedClass) {
           const turmaSelecionadaNormalizada = normalizeTurmaName(selectedClass.nome);
-          
+
           // Filtrar com comparação normalizada (otimizado: normalizar uma vez e comparar)
           studentsToUse = studentsToUse.filter(s => {
             const turmaAlunoNormalizada = normalizeTurmaName(s.turma);
             return turmaAlunoNormalizada === turmaSelecionadaNormalizada;
           });
-          
+
           // Se não encontrou alunos em studentsToUse, buscar TODOS os alunos da turma (incluindo faltosos)
           if (studentsToUse.length === 0 && tabelaParaUsar) {
             studentsToUse = obterTodosAlunosTurma(selectedClass.nome);
           }
         }
       }
-      
+
       // Não bloquear geração de PDF mesmo se não houver alunos participantes
       // Turmas com todos os alunos faltosos ainda devem aparecer no relatório
-      
+
       // Agrupar alunos por turma (incluindo turmas com apenas faltosos)
       const turmasMap = new Map<string, StudentResult[]>();
       studentsToUse.forEach(s => {
@@ -2872,7 +2936,7 @@ export default function AcertoNiveis() {
         }
         turmasMap.get(turma)!.push(s);
       });
-      
+
       // Se uma turma específica foi selecionada e não encontramos alunos em studentsToUse,
       // mas a turma existe na lista de turmas, garantir que ela apareça no relatório
       if (selectedClassId && studentsToUse.length === 0) {
@@ -2886,66 +2950,30 @@ export default function AcertoNiveis() {
           }
         }
       }
-      
+
       // IMPORTANTE: Quando filtro "todos" está ativo, garantir que TODAS as turmas sejam incluídas,
       // mesmo as que têm apenas faltosos (sem participantes)
       if (!selectedClassId && tabelaParaUsar) {
         const todasTurmas = new Set<string>();
-        
-        // Coletar todas as turmas de geral.alunos
+        const _school = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId) : null;
+        const _grade = selectedGradeId ? grades.find(g => g.id === selectedGradeId) : null;
+
+        const passaFiltrosAluno = (aluno: { escola?: string; serie?: string; turma?: string }) => {
+          if (!aluno.turma) return false;
+          if (selectedSchoolId && _school && aluno.escola !== _school.nome && aluno.escola !== selectedSchoolId) return false;
+          if (selectedGradeId && _grade && aluno.serie !== _grade.nome && aluno.serie !== selectedGradeId) return false;
+          return true;
+        };
+
         tabelaParaUsar.geral?.alunos?.forEach(aluno => {
-          if (aluno.turma) {
-            // Aplicar filtros de escola e série
-            let passaFiltros = true;
-            
-            if (selectedSchoolId) {
-              const selectedSchool = schools.find(s => s.id === selectedSchoolId);
-              if (selectedSchool && aluno.escola !== selectedSchool.nome && aluno.escola !== selectedSchoolId) {
-                passaFiltros = false;
-              }
-            }
-            
-            if (selectedGradeId && passaFiltros) {
-              const selectedGrade = grades.find(g => g.id === selectedGradeId);
-              if (selectedGrade && aluno.serie !== selectedGrade.nome && aluno.serie !== selectedGradeId) {
-                passaFiltros = false;
-              }
-            }
-            
-            if (passaFiltros) {
-              todasTurmas.add(aluno.turma);
-            }
-          }
+          if (passaFiltrosAluno(aluno)) todasTurmas.add(aluno.turma!);
         });
-        
-        // Coletar todas as turmas de disciplinas
         tabelaParaUsar.disciplinas?.forEach(disciplina => {
           disciplina.alunos?.forEach(aluno => {
-            if (aluno.turma) {
-              // Aplicar filtros de escola e série
-              let passaFiltros = true;
-              
-              if (selectedSchoolId) {
-                const selectedSchool = schools.find(s => s.id === selectedSchoolId);
-                if (selectedSchool && aluno.escola !== selectedSchool.nome && aluno.escola !== selectedSchoolId) {
-                  passaFiltros = false;
-                }
-              }
-              
-              if (selectedGradeId && passaFiltros) {
-                const selectedGrade = grades.find(g => g.id === selectedGradeId);
-                if (selectedGrade && aluno.serie !== selectedGrade.nome && aluno.serie !== selectedGradeId) {
-                  passaFiltros = false;
-                }
-              }
-              
-              if (passaFiltros) {
-                todasTurmas.add(aluno.turma);
-              }
-            }
+            if (passaFiltrosAluno(aluno)) todasTurmas.add(aluno.turma!);
           });
         });
-        
+
         // Garantir que todas as turmas estejam no turmasMap
         todasTurmas.forEach(turmaNome => {
           if (!turmasMap.has(turmaNome)) {
@@ -2960,25 +2988,64 @@ export default function AcertoNiveis() {
           }
         });
       }
-      
-      
+
+
       // Ordenar turmas alfabeticamente
       const turmasOrdenadas = Array.from(turmasMap.keys()).sort((a, b) => a.localeCompare(b));
-      
+
       // Adicionar capa inicial (já em landscape)
       addInitialCover();
       pageCount++;
-      
+
+      // === SEÇÃO GERAL (Todas as Escolas / Turmas) ===
+      // Renderiza um consolidado geral se o usuário não filtrou por uma turma específica
+      // e há alunos participantes no total.
+      const todosAlunosParticipantes = studentsToUse.filter(s => s.status === 'concluida');
+
+      if (!selectedClassId && todosAlunosParticipantes.length > 0 && questoesParaUsar.length > 0) {
+        // Adicionar capa da seção Geral
+        doc.addPage('landscape');
+        pageWidth = doc.internal.pageSize.getWidth();
+        pageHeight = doc.internal.pageSize.getHeight();
+        doc.setFillColor(...COLORS.white);
+        doc.rect(0, 0, pageWidth, pageHeight, 'F');
+        addTurmaCover('VISÃO GERAL (TODAS AS TURMAS)', studentsToUse, questoesParaUsar.length);
+        pageCount++;
+
+        // 1. Resumo Geral
+        renderSummaryPageForTurma('VISÃO GERAL', todosAlunosParticipantes, true);
+
+        // 2. Gráficos Gerais
+        renderChartsForTurma('VISÃO GERAL', todosAlunosParticipantes);
+
+        // 3. Tabela Detalhada Geral
+        renderDetailedPageForTurma('GERAL', 'VISÃO GERAL', todosAlunosParticipantes, questoesParaUsar);
+
+        // 4. Resultado por disciplina Geral
+        if (tabelaDetalhada && Array.isArray(tabelaDetalhada.disciplinas) && tabelaDetalhada.disciplinas.length > 0) {
+          const fakeTurmaName = 'VISÃO GERAL';
+          // Create a temporary mapping so the discipline render function works
+          const previousDisciplinas = tabelaDetalhada.disciplinas.map(d => ({
+            ...d,
+            alunos: d.alunos?.map(a => ({ ...a, originalTurma: a.turma, turma: fakeTurmaName }))
+          }));
+          const temporarioTabelaDetalhada = { ...tabelaDetalhada, disciplinas: previousDisciplinas };
+          const alunosParticipantesCopiados = todosAlunosParticipantes.map(a => ({ ...a, turma: fakeTurmaName }));
+
+          renderDisciplineTablesPagesForTurma(fakeTurmaName, alunosParticipantesCopiados, temporarioTabelaDetalhada as any);
+        }
+      }
+
       // Para cada turma, renderizar todas as seções na ordem correta
       // IMPORTANTE: Incluir turmas mesmo quando todos os alunos são faltosos
       turmasOrdenadas.forEach((turmaName, turmaIndex) => {
         const alunosTurma = turmasMap.get(turmaName) || [];
         // Remover verificação que impedia turmas vazias - agora incluímos turmas com todos os alunos faltosos
         // if (alunosTurma.length === 0) return;
-        
+
         // Filtrar alunos participantes uma única vez
         const alunosParticipantesTurma = alunosTurma.filter(s => s.status === 'concluida');
-        
+
         // Adicionar capa da turma (em landscape)
         doc.addPage('landscape');
         pageWidth = doc.internal.pageSize.getWidth();
@@ -2986,75 +3053,75 @@ export default function AcertoNiveis() {
         // Garantir fundo branco limpo na nova página antes de desenhar a capa
         doc.setFillColor(...COLORS.white);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
-        addTurmaCover(turmaName, alunosTurma);
+        addTurmaCover(turmaName, alunosTurma, questoesParaUsar.length);
         pageCount++;
-        
+
         // 1. RELATÓRIO DE DESEMPENHO GERAL (resumo)
         // Renderizar resumo apenas se houver alunos participantes
-        if ((detailedReport?.questoes?.length || 0) > 0 && alunosParticipantesTurma.length > 0) {
+        if (questoesParaUsar.length > 0 && alunosParticipantesTurma.length > 0) {
           renderSummaryPageForTurma(turmaName, alunosParticipantesTurma, false);
         }
-        
+
         // 2. VISÃO GRÁFICA DOS RESULTADOS (gráficos)
         // Renderizar gráficos apenas se houver alunos participantes
         if (alunosParticipantesTurma.length > 0) {
           renderChartsForTurma(turmaName, alunosParticipantesTurma);
         }
-        
+
         // 3. Resultado geral (tabela detalhada landscape)
         // Renderizar apenas se houver alunos participantes
-        if ((detailedReport?.questoes?.length || 0) > 0 && alunosParticipantesTurma.length > 0) {
-          renderDetailedPageForTurma('GERAL', turmaName, alunosParticipantesTurma, detailedReport?.questoes || []);
+        if (questoesParaUsar.length > 0 && alunosParticipantesTurma.length > 0) {
+          renderDetailedPageForTurma('GERAL', turmaName, alunosParticipantesTurma, questoesParaUsar);
         }
-        
+
         // 4. Resultado por disciplina (tabelas por disciplina)
         // Renderizar apenas se houver alunos participantes
         if (tabelaDetalhada && Array.isArray(tabelaDetalhada.disciplinas) && tabelaDetalhada.disciplinas.length > 0 && alunosParticipantesTurma.length > 0) {
           renderDisciplineTablesPagesForTurma(turmaName, alunosParticipantesTurma);
         }
-        
+
         // 5. ALUNOS FALTOSOS DA TURMA
         // Renderizar faltosos desta turma específica
         const renderFaltososTurma = () => {
           if (!tabelaParaUsar) return;
-          
+
           // Obter faltosos apenas desta turma
           const faltososTurma: Array<{ nome: string; turma: string }> = [];
           const alunosIdsProcessados = new Set<string>();
           const turmaNormalizada = normalizeTurmaName(turmaName);
-          
+
           // Função auxiliar para verificar se aluno passa nos filtros
           const passaFiltros = (aluno: { escola?: string; serie?: string; turma?: string }): boolean => {
             const alunoTurmaNormalizada = normalizeTurmaName(aluno.turma);
             if (alunoTurmaNormalizada !== turmaNormalizada) return false;
-            
+
             if (selectedSchoolId) {
               const selectedSchool = schools.find(s => s.id === selectedSchoolId);
               if (selectedSchool && aluno.escola !== selectedSchool.nome && aluno.escola !== selectedSchoolId) {
                 return false;
               }
             }
-            
+
             if (selectedGradeId) {
               const selectedGrade = grades.find(g => g.id === selectedGradeId);
               if (selectedGrade && aluno.serie !== selectedGrade.nome && aluno.serie !== selectedGradeId) {
                 return false;
               }
             }
-            
+
             return true;
           };
-          
+
           // Buscar faltosos em geral.alunos
           tabelaParaUsar.geral?.alunos?.forEach(aluno => {
             if (!passaFiltros(aluno) || alunosIdsProcessados.has(aluno.id)) return;
-            
+
             const totalQuestoes = aluno.total_questoes_geral ?? aluno.total_respondidas_geral ?? 0;
             const totalRespondidas = aluno.total_respondidas_geral ?? totalQuestoes;
             const totalAcertos = aluno.total_acertos_geral ?? 0;
             const totalErros = Math.max(0, totalRespondidas - totalAcertos);
             const participou = totalRespondidas > 0 || totalAcertos > 0 || totalErros > 0;
-            
+
             if (!participou && aluno.turma) {
               alunosIdsProcessados.add(aluno.id);
               faltososTurma.push({
@@ -3063,15 +3130,15 @@ export default function AcertoNiveis() {
               });
             }
           });
-          
+
           // Buscar faltosos em disciplinas
           tabelaParaUsar.disciplinas?.forEach(disciplina => {
             disciplina.alunos?.forEach(aluno => {
               if (!passaFiltros(aluno) || alunosIdsProcessados.has(aluno.id)) return;
-              
-              const participou = Array.isArray(aluno.respostas_por_questao) && 
-                                 aluno.respostas_por_questao.some(r => r.respondeu);
-              
+
+              const participou = Array.isArray(aluno.respostas_por_questao) &&
+                aluno.respostas_por_questao.some(r => r.respondeu);
+
               if (!participou && aluno.turma) {
                 alunosIdsProcessados.add(aluno.id);
                 faltososTurma.push({
@@ -3081,29 +3148,29 @@ export default function AcertoNiveis() {
               }
             });
           });
-          
+
           if (faltososTurma.length === 0) return;
-          
+
           // Adicionar capa de faltosos da turma
           doc.addPage('landscape');
           pageCount++;
           pageWidth = doc.internal.pageSize.getWidth();
           pageHeight = doc.internal.pageSize.getHeight();
           addFaltososCover(turmaName, faltososTurma.length);
-          
+
           // Nova página para a tabela
           doc.addPage('portrait');
           pageCount++;
           pageWidth = doc.internal.pageSize.getWidth();
           pageHeight = doc.internal.pageSize.getHeight();
-          
+
           let y = 20;
-          
+
           // Preparar dados da tabela
           const bodyRows: string[][] = faltososTurma
             .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
             .map(faltoso => [faltoso.nome, faltoso.turma]);
-          
+
           // Gerar tabela
           autoTable(doc, {
             startY: y,
@@ -3130,11 +3197,11 @@ export default function AcertoNiveis() {
               1: { halign: 'center', cellWidth: (pageWidth - 2 * margin) * 0.3 }
             }
           });
-          
+
           // Rodapé
           addFooter(pageCount);
         };
-        
+
         // Renderizar faltosos desta turma
         renderFaltososTurma();
       });
@@ -3144,7 +3211,7 @@ export default function AcertoNiveis() {
       const fileName = `relatorio-${evaluationInfo.titulo?.replace(/[^a-zA-Z0-9]/g, '-') || 'avaliacao'}-${new Date().toISOString().split('T')[0]}.pdf`;
       doc.save(fileName);
       toast({ title: 'PDF gerado com sucesso!', description: `Relatório salvo como ${fileName}` });
-      
+
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);
       toast({ title: 'Erro ao gerar PDF', description: 'Não foi possível gerar o relatório', variant: 'destructive' });
@@ -3168,450 +3235,347 @@ export default function AcertoNiveis() {
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-sm">
-            {user?.role === 'admin' ? 'Administrador' : 
-             user?.role === 'professor' ? 'Professor' :
-             user?.role === 'diretor' ? 'Diretor' :
-             user?.role === 'coordenador' ? 'Coordenador' : 'Técnico Administrativo'}
+            {user?.role === 'admin' ? 'Administrador' :
+              user?.role === 'professor' ? 'Professor' :
+                user?.role === 'diretor' ? 'Diretor' :
+                  user?.role === 'coordenador' ? 'Coordenador' : 'Técnico Administrativo'}
           </Badge>
         </div>
       </div>
 
-             <Card>
-         <CardHeader>
-           <CardTitle className="flex items-center gap-2">Filtros de Seleção</CardTitle>
-         </CardHeader>
-         <CardContent>
-           {/* Filtros Principais */}
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-             <div>
-               <div className="text-sm font-medium mb-2 flex items-center gap-2">
-                 Estado
-                 {userHierarchyContext?.restrictions.canSelectState === false && (
-                   <Badge variant="secondary" className="text-xs">Pré-selecionado</Badge>
-                 )}
-               </div>
-               <Select 
-                 value={selectedState} 
-                 onValueChange={handleChangeState}
-                 disabled={isLoading || userHierarchyContext?.restrictions.canSelectState === false}
-               >
-                 <SelectTrigger className="w-full">
-                   <SelectValue placeholder="Selecione um estado" />
-                 </SelectTrigger>
-                 <SelectContent>
-                   {states.map(st => (
-                     <SelectItem key={st.id} value={st.id}>{st.nome}</SelectItem>
-                   ))}
-                 </SelectContent>
-               </Select>
-             </div>
-             <div>
-               <div className="text-sm font-medium mb-2 flex items-center gap-2">
-                 Município
-                 {userHierarchyContext?.restrictions.canSelectMunicipality === false && (
-                   <Badge variant="secondary" className="text-xs">Pré-selecionado</Badge>
-                 )}
-               </div>
-               <Select 
-                 value={selectedMunicipality} 
-                 onValueChange={handleChangeMunicipality} 
-                 disabled={isLoading || !selectedState || userHierarchyContext?.restrictions.canSelectMunicipality === false}
-               >
-                 <SelectTrigger className="w-full">
-                   <SelectValue placeholder={selectedState ? "Selecione um município" : "Primeiro selecione um estado"} />
-                 </SelectTrigger>
-                 <SelectContent>
-                   {municipalities.map(m => (
-                     <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>
-                   ))}
-                 </SelectContent>
-               </Select>
-             </div>
-             <div>
-               <div className="text-sm font-medium mb-2">Avaliação</div>
-               <Select value={selectedEvaluationId} onValueChange={handleSelectEvaluation} disabled={!selectedMunicipality}>
-                 <SelectTrigger className="w-full">
-                   <SelectValue placeholder={selectedMunicipality ? "Selecione uma avaliação" : "Primeiro selecione um município"} />
-                 </SelectTrigger>
-                 <SelectContent>
-                   {evaluations.map(ev => (
-                     <SelectItem key={ev.id} value={ev.id}>
-                       <div className="flex flex-col">
-                         <span className="font-medium">{ev.titulo}</span>
-                         {ev.data_aplicacao && (
-                           <span className="text-xs text-muted-foreground">
-                             {new Date(ev.data_aplicacao).toLocaleDateString('pt-BR')}
-                           </span>
-                         )}
-                       </div>
-                     </SelectItem>
-                   ))}
-                 </SelectContent>
-               </Select>
-             </div>
-           </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">Filtros de Seleção</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* Filtros Principais */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div>
+              <div className="text-sm font-medium mb-2 flex items-center gap-2">
+                Estado
+                {userHierarchyContext?.restrictions.canSelectState === false && (
+                  <Badge variant="secondary" className="text-xs">Pré-selecionado</Badge>
+                )}
+              </div>
+              <Select
+                value={selectedState}
+                onValueChange={handleChangeState}
+                disabled={isLoading || userHierarchyContext?.restrictions.canSelectState === false}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione um estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  {states.map(st => (
+                    <SelectItem key={st.id} value={st.id}>{st.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <div className="text-sm font-medium mb-2 flex items-center gap-2">
+                Município
+                {userHierarchyContext?.restrictions.canSelectMunicipality === false && (
+                  <Badge variant="secondary" className="text-xs">Pré-selecionado</Badge>
+                )}
+              </div>
+              <Select
+                value={selectedMunicipality}
+                onValueChange={handleChangeMunicipality}
+                disabled={isLoading || !selectedState || userHierarchyContext?.restrictions.canSelectMunicipality === false}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={selectedState ? "Selecione um município" : "Primeiro selecione um estado"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {municipalities.map(m => (
+                    <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <div className="text-sm font-medium mb-2">Avaliação</div>
+              <Select value={selectedEvaluationId} onValueChange={handleSelectEvaluation} disabled={!selectedMunicipality}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={selectedMunicipality ? "Selecione uma avaliação" : "Primeiro selecione um município"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {evaluations.map(ev => (
+                    <SelectItem key={ev.id} value={ev.id}>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{ev.titulo}</span>
+                        {ev.data_aplicacao && (
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(ev.data_aplicacao).toLocaleDateString('pt-BR')}
+                          </span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
-                        {/* Filtros Específicos (apenas quando avaliação selecionada) */}
-             {selectedEvaluationId && (
-               <div className="border-t pt-6">
-                 <div className="flex items-center justify-between mb-4">
-                   <h3 className="text-lg font-semibold">Filtros Específicos</h3>
-                   {(selectedSchoolId || selectedGradeId || selectedClassId) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={async () => {
-                         setSelectedSchoolId("");
-                         setSelectedGradeId("");
-                         setSelectedClassId("");
-                         
-                         // ✅ OTIMIZAÇÃO: Usar dados já carregados quando possível
-                        if (allStudents.length > 0 && allTabelaDetalhada) {
-                          setStudents(allStudents);
-                          setTabelaDetalhada(allTabelaDetalhada);
-                        } else if (selectedEvaluationId) {
-                          try {
-                            setIsLoading(true);
-                            const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
-                              selectedEvaluationId
-                            );
-                            setAllStudents(fetchedStudents);
-                            setAllTabelaDetalhada(tabela || null);
-                            setStudents(fetchedStudents);
-                            setDetailedReport(report || null);
-                            setTabelaDetalhada(tabela || null);
-                            if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
-                            if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
-                          } catch (error) {
-                            toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
-                          } finally {
-                            setIsLoading(false);
-                          }
+          {/* Filtros Específicos (apenas quando avaliação selecionada) */}
+          {selectedEvaluationId && (
+            <div className="border-t pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Filtros Específicos</h3>
+                {(selectedSchoolId || selectedGradeId || selectedClassId) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      setSelectedSchoolId("");
+                      setSelectedGradeId("");
+                      setSelectedClassId("");
+
+                      // ✅ OTIMIZAÇÃO: Usar dados já carregados quando possível
+                      if (allStudents.length > 0 && allTabelaDetalhada) {
+                        setStudents(allStudents);
+                        setTabelaDetalhada(allTabelaDetalhada);
+                      } else if (selectedEvaluationId) {
+                        try {
+                          setIsLoading(true);
+                          const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
+                            selectedEvaluationId
+                          );
+                          setAllStudents(fetchedStudents);
+                          setAllTabelaDetalhada(tabela || null);
+                          setStudents(fetchedStudents);
+                          setDetailedReport(report || null);
+                          setTabelaDetalhada(tabela || null);
+                          if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
+                          if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
+                        } catch (error) {
+                          toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
+                        } finally {
+                          setIsLoading(false);
                         }
-                       }}
-                       className="text-xs"
-                     >
-                       Limpar Filtros
-                     </Button>
-                   )}
-                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                   <div>
-                     <div className="text-sm font-medium mb-2 flex items-center gap-2">
-                       Escola
-                       {userHierarchyContext?.restrictions.canSelectSchool === false && (
-                         <Badge variant="secondary" className="text-xs">Pré-selecionado</Badge>
-                       )}
-                     </div>
-                     <Select 
-                       value={selectedSchoolId || "all"} 
-                       onValueChange={(value) => handleSelectSchool(value === "all" ? "" : value)}
-                       disabled={!selectedEvaluationId || isLoadingSchools || userHierarchyContext?.restrictions.canSelectSchool === false}
-                     >
-                       <SelectTrigger className="w-full">
-                         {isLoadingSchools && selectedEvaluationId ? (
-                           <div className="flex items-center gap-2 text-muted-foreground w-full">
-                             <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
-                             <span className="truncate">Carregando escolas...</span>
-                           </div>
-                         ) : (
-                           <SelectValue placeholder={selectedEvaluationId ? "Todas as escolas" : "Primeiro selecione uma avaliação"} />
-                         )}
-                       </SelectTrigger>
-                       {!isLoadingSchools && (
-                         <SelectContent>
-                           <SelectItem value="all">Todas</SelectItem>
-                           {schools.map(sc => (
-                             <SelectItem key={sc.id} value={sc.id}>{sc.nome}</SelectItem>
-                           ))}
-                         </SelectContent>
-                       )}
-                     </Select>
-                   </div>
-                   <div>
-                     <div className="text-sm font-medium mb-2">Série</div>
-                     <Select value={selectedGradeId || "all"} onValueChange={(value) => handleSelectGrade(value === "all" ? "" : value)} disabled={!selectedSchoolId}>
-                       <SelectTrigger className="w-full">
-                         <SelectValue placeholder={selectedSchoolId ? "Todas as séries" : "Primeiro selecione uma escola"} />
-                       </SelectTrigger>
-                       <SelectContent>
-                         <SelectItem value="all">Todas</SelectItem>
-                         {grades.map(gr => (
-                           <SelectItem key={gr.id} value={gr.id}>{gr.nome}</SelectItem>
-                         ))}
-                       </SelectContent>
-                     </Select>
-                   </div>
-                    <div>
-                      <div className="text-sm font-medium mb-2">Turma</div>
-                      <Select value={selectedClassId || "all"} onValueChange={(value) => handleSelectClass(value === "all" ? "" : value)} disabled={!selectedGradeId}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder={selectedGradeId ? "Todas as turmas" : "Primeiro selecione uma série"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Todas</SelectItem>
-                          {classes.map(cls => (
-                            <SelectItem key={cls.id} value={cls.id}>{cls.nome}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      }
+                    }}
+                    className="text-xs"
+                  >
+                    Limpar Filtros
+                  </Button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <div className="text-sm font-medium mb-2 flex items-center gap-2">
+                    Escola
+                    {userHierarchyContext?.restrictions.canSelectSchool === false && (
+                      <Badge variant="secondary" className="text-xs">Pré-selecionado</Badge>
+                    )}
+                  </div>
+                  <Select
+                    value={selectedSchoolId || "all"}
+                    onValueChange={(value) => handleSelectSchool(value === "all" ? "" : value)}
+                    disabled={!selectedEvaluationId || isLoadingSchools || userHierarchyContext?.restrictions.canSelectSchool === false}
+                  >
+                    <SelectTrigger className="w-full">
+                      {isLoadingSchools && selectedEvaluationId ? (
+                        <div className="flex items-center gap-2 text-muted-foreground w-full">
+                          <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+                          <span className="truncate">Carregando escolas...</span>
+                        </div>
+                      ) : (
+                        <SelectValue placeholder={selectedEvaluationId ? "Todas as escolas" : "Primeiro selecione uma avaliação"} />
+                      )}
+                    </SelectTrigger>
+                    {!isLoadingSchools && (
+                      <SelectContent>
+                        <SelectItem value="all">Todas</SelectItem>
+                        {schools.map(sc => (
+                          <SelectItem key={sc.id} value={sc.id}>{sc.nome}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    )}
+                  </Select>
+                </div>
+                <div>
+                  <div className="text-sm font-medium mb-2">Série</div>
+                  <Select value={selectedGradeId || "all"} onValueChange={(value) => handleSelectGrade(value === "all" ? "" : value)} disabled={!selectedSchoolId}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={selectedSchoolId ? "Todas as séries" : "Primeiro selecione uma escola"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas</SelectItem>
+                      {grades.map(gr => (
+                        <SelectItem key={gr.id} value={gr.id}>{gr.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <div className="text-sm font-medium mb-2">Turma</div>
+                  <Select value={selectedClassId || "all"} onValueChange={(value) => handleSelectClass(value === "all" ? "" : value)} disabled={!selectedGradeId}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={selectedGradeId ? "Todas as turmas" : "Primeiro selecione uma série"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas</SelectItem>
+                      {classes.map(cls => (
+                        <SelectItem key={cls.id} value={cls.id}>{cls.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Informações de Status */}
+          <div className="mt-6 p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400 text-sm">
+            <div className="flex items-start gap-2">
+              <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
+              <div>
+                <span className="font-semibold">Hierarquia dos Filtros:</span> Estado → Município → Avaliação
+                <br />
+                <span className="text-xs">Os filtros específicos (Escola, Série, Turma) são opcionais e permitem refinar os resultados.</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Botão de Geração */}
+          <div className="mt-6 flex justify-end">
+            <Button
+              onClick={handleGeneratePDF}
+              disabled={!selectedEvaluationId || isLoading || (!allTabelaDetalhada && !detailedReport && allStudents.length === 0)}
+              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+              Gerar Relatório PDF
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {evaluationInfo && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full"></div>
+              Resumo da Avaliação Selecionada
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {/* Informações Básicas */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-6">
+              <div className="p-3 bg-muted rounded-lg">
+                <span className="text-muted-foreground text-xs uppercase tracking-wide">Avaliação</span>
+                <div className="font-semibold text-foreground mt-1">{evaluationInfo.titulo}</div>
+              </div>
+              <div className="p-3 bg-muted rounded-lg">
+                <span className="text-muted-foreground text-xs uppercase tracking-wide">Escola</span>
+                <div className="font-semibold text-foreground mt-1">
+                  {selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas'}
+                </div>
+              </div>
+              <div className="p-3 bg-muted rounded-lg">
+                <span className="text-muted-foreground text-xs uppercase tracking-wide">Município</span>
+                <div className="font-semibold text-foreground mt-1">{evaluationInfo.municipio}</div>
+              </div>
+              <div className="p-3 bg-muted rounded-lg">
+                <span className="text-muted-foreground text-xs uppercase tracking-wide">Série</span>
+                <div className="font-semibold text-foreground mt-1">
+                  {estatisticasGerais?.serie ||
+                    (opcoesProximosFiltros?.series?.length === 1
+                      ? opcoesProximosFiltros.series[0].name
+                      : null) ||
+                    evaluationInfo?.serie ||
+                    (selectedGradeId ? grades.find(g => g.id === selectedGradeId)?.nome : null) ||
+                    'Série não informada'}
+                </div>
+              </div>
+            </div>
+
+            {/* Estatísticas da Avaliação — único bloco de cards (sem repetir Informações Gerais) */}
+            {(detailedReport || students.length > 0 || estatisticasGerais) && (
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-semibold mb-4">Estatísticas da Avaliação</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+                  <div className="text-center p-4 bg-slate-50 dark:bg-slate-900/40 rounded-lg">
+                    <div className="text-2xl font-bold text-slate-700 dark:text-slate-300">
+                      {totalQuestoesFromTabela || detailedReport?.questoes?.length || 0}
                     </div>
-                 </div>
-               </div>
-             )}
-
-           {/* Informações de Status */}
-           <div className="mt-6 p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400 text-sm">
-             <div className="flex items-start gap-2">
-               <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
-               <div>
-                 <span className="font-semibold">Hierarquia dos Filtros:</span> Estado → Município → Avaliação
-                 <br />
-                 <span className="text-xs">Os filtros específicos (Escola, Série, Turma) são opcionais e permitem refinar os resultados.</span>
-               </div>
-             </div>
-           </div>
-
-           {/* Botão de Geração */}
-           <div className="mt-6 flex justify-end">
-             <Button 
-               onClick={handleGeneratePDF} 
-               disabled={!selectedEvaluationId || isLoading || (!allTabelaDetalhada && !detailedReport && allStudents.length === 0)} 
-               className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-             >
-               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-               Gerar Relatório PDF
-             </Button>
-           </div>
-         </CardContent>
-       </Card>
-
-             {evaluationInfo && (
-         <Card>
-           <CardHeader>
-             <CardTitle className="flex items-center gap-2">
-               <div className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full"></div>
-               Resumo da Avaliação Selecionada
-             </CardTitle>
-           </CardHeader>
-           <CardContent>
-             {/* Informações Básicas */}
-             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-6">
-               <div className="p-3 bg-muted rounded-lg">
-                 <span className="text-muted-foreground text-xs uppercase tracking-wide">Avaliação</span>
-                 <div className="font-semibold text-foreground mt-1">{evaluationInfo.titulo}</div>
-               </div>
-                  <div className="p-3 bg-muted rounded-lg">
-                  <span className="text-muted-foreground text-xs uppercase tracking-wide">Escola</span>
-                  <div className="font-semibold text-foreground mt-1">
-                    {selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas'}
+                    <div className="text-sm text-muted-foreground mt-1">Total de Questões</div>
+                  </div>
+                  <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                      {students.length > 0
+                        ? students.length
+                        : (typeof estatisticasGerais?.total_alunos === 'number' ? estatisticasGerais.total_alunos : 0)}
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-1">Total de Alunos</div>
+                  </div>
+                  <div className="text-center p-4 bg-green-50 dark:bg-green-950/30 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                      {students.length > 0
+                        ? students.filter(s => s.status === 'concluida').length
+                        : (typeof estatisticasGerais?.alunos_participantes === 'number' ? estatisticasGerais.alunos_participantes : 0)}
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-1">Participantes</div>
+                  </div>
+                  <div className="text-center p-4 bg-red-50 dark:bg-red-950/30 rounded-lg">
+                    <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                      {typeof estatisticasGerais?.alunos_ausentes === 'number' ? estatisticasGerais.alunos_ausentes : 0}
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-1">Faltosos</div>
+                  </div>
+                  <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                      {(() => {
+                        const totalAlunos = typeof estatisticasGerais?.total_alunos === 'number' ? estatisticasGerais.total_alunos : (students.length || 0);
+                        const participantes = typeof estatisticasGerais?.alunos_participantes === 'number' ? estatisticasGerais.alunos_participantes : (students.filter(s => s.status === 'concluida').length || 0);
+                        return totalAlunos > 0 ? ((participantes / totalAlunos) * 100).toFixed(1) : '0';
+                      })()}%
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-1">Taxa de Participação</div>
+                  </div>
+                  <div className="text-center p-4 bg-purple-50 dark:bg-purple-950/30 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                      {Number(estatisticasGerais?.media_nota_geral ?? 0).toFixed(1)}
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-1">Nota Geral</div>
+                  </div>
+                  <div className="text-center p-4 bg-orange-50 dark:bg-orange-950/30 rounded-lg">
+                    <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                      {Number(estatisticasGerais?.media_proficiencia_geral ?? 0).toFixed(1)}
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-1">Proficiência</div>
                   </div>
                 </div>
-               <div className="p-3 bg-muted rounded-lg">
-                 <span className="text-muted-foreground text-xs uppercase tracking-wide">Município</span>
-                 <div className="font-semibold text-foreground mt-1">{evaluationInfo.municipio}</div>
-               </div>
-                <div className="p-3 bg-muted rounded-lg">
-                  <span className="text-muted-foreground text-xs uppercase tracking-wide">Série</span>
-                  <div className="font-semibold text-foreground mt-1">
-                    {estatisticasGerais?.serie || 
-                     (opcoesProximosFiltros?.series?.length === 1 
-                       ? opcoesProximosFiltros.series[0].name 
-                       : null) ||
-                     evaluationInfo?.serie || 
-                     (selectedGradeId ? grades.find(g => g.id === selectedGradeId)?.nome : null) ||
-                     'Série não informada'}
+
+                {(selectedSchoolId || selectedGradeId || selectedClassId) && (
+                  <div className="mt-6 p-4 bg-muted rounded-lg">
+                    <h4 className="font-medium text-foreground mb-2">Filtros Aplicados:</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedSchoolId && (
+                        <Badge variant="secondary" className="text-xs">
+                          Escola: {schools.find(s => s.id === selectedSchoolId)?.nome || 'Selecionada'}
+                        </Badge>
+                      )}
+                      {selectedGradeId && (
+                        <Badge variant="secondary" className="text-xs">
+                          Série: {grades.find(g => g.id === selectedGradeId)?.nome || 'Selecionada'}
+                        </Badge>
+                      )}
+                      {selectedClassId && (
+                        <Badge variant="secondary" className="text-xs">
+                          Turma: {classes.find(c => c.id === selectedClassId)?.nome || 'Selecionada'}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                </div>
-             </div>
-
-             {/* Informações Gerais - Mostrar quando escola for selecionada */}
-             {selectedSchoolId && estatisticasGerais && (
-               <div className="border-t pt-6">
-                 <h3 className="text-lg font-semibold mb-4">Informações Gerais</h3>
-                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                   <div className="space-y-2">
-                     <div className="text-sm font-medium text-muted-foreground">Total de Alunos</div>
-                     <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                       {typeof estatisticasGerais.total_alunos === 'number' ? estatisticasGerais.total_alunos : 0}
-                     </div>
-                   </div>
-                   <div className="space-y-2">
-                     <div className="text-sm font-medium text-muted-foreground">Participantes</div>
-                     <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                       {typeof estatisticasGerais.alunos_participantes === 'number' ? estatisticasGerais.alunos_participantes : 0}
-                     </div>
-                   </div>
-                   <div className="space-y-2">
-                     <div className="text-sm font-medium text-muted-foreground">Faltosos</div>
-                     <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-                       {typeof estatisticasGerais.alunos_ausentes === 'number' ? estatisticasGerais.alunos_ausentes : 0}
-                     </div>
-                   </div>
-                   <div className="space-y-2">
-                     <div className="text-sm font-medium text-muted-foreground">Taxa de Participação</div>
-                     <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                       {(() => {
-                         const totalAlunos = typeof estatisticasGerais.total_alunos === 'number' ? estatisticasGerais.total_alunos : 0;
-                         const participantes = typeof estatisticasGerais.alunos_participantes === 'number' ? estatisticasGerais.alunos_participantes : 0;
-                         return totalAlunos > 0 ? ((participantes / totalAlunos) * 100).toFixed(1) : '0.0';
-                       })()}%
-                     </div>
-                   </div>
-                   <div className="space-y-2">
-                     <div className="text-sm font-medium text-muted-foreground">Nota Geral</div>
-                     <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                       {Number(estatisticasGerais.media_nota_geral || 0).toFixed(1)}
-                     </div>
-                   </div>
-                   <div className="space-y-2">
-                     <div className="text-sm font-medium text-muted-foreground">Proficiência</div>
-                     <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                       {Number(estatisticasGerais.media_proficiencia_geral || 0).toFixed(1)}
-                     </div>
-                   </div>
-                 </div>
-               </div>
-             )}
-
-             {/* Estatísticas Detalhadas */}
-             {(detailedReport || students.length > 0 || estatisticasGerais) && (
-               <div className="border-t pt-6">
-                 <h3 className="text-lg font-semibold mb-4">Estatísticas da Avaliação</h3>
-                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                   <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
-                     <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                       {detailedReport?.questoes?.length || 0}
-                     </div>
-                     <div className="text-sm text-muted-foreground mt-1">Total de Questões</div>
-                   </div>
-                   <div className="text-center p-4 bg-green-50 dark:bg-green-950/30 rounded-lg">
-                     <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                       {students.length > 0 
-                         ? students.filter(s => s.status === 'concluida').length
-                         : (typeof estatisticasGerais?.alunos_participantes === 'number' ? estatisticasGerais.alunos_participantes : 0)}
-                     </div>
-                     <div className="text-sm text-muted-foreground mt-1">Alunos Concluíram</div>
-                   </div>
-                   <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-950/30 rounded-lg">
-                     <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
-                       {students.length > 0 
-                         ? students.length 
-                         : (typeof estatisticasGerais?.total_alunos === 'number' ? estatisticasGerais.total_alunos : 0)}
-                     </div>
-                     <div className="text-sm text-muted-foreground mt-1">Total de Alunos</div>
-                   </div>
-                   <div className="text-center p-4 bg-purple-50 dark:bg-purple-950/30 rounded-lg">
-                     <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                       {students.length > 0 
-                         ? ((students.filter(s => s.status === 'concluida').length / students.length) * 100).toFixed(1)
-                         : (() => {
-                             const totalAlunos = typeof estatisticasGerais?.total_alunos === 'number' ? estatisticasGerais.total_alunos : 0;
-                             const participantes = typeof estatisticasGerais?.alunos_participantes === 'number' ? estatisticasGerais.alunos_participantes : 0;
-                             return totalAlunos > 0 ? ((participantes / totalAlunos) * 100).toFixed(1) : '0';
-                           })()}%
-                     </div>
-                     <div className="text-sm text-muted-foreground mt-1">Taxa de Participação</div>
-                   </div>
-                 </div>
-
-                 {/* Filtros Aplicados */}
-                 {(selectedSchoolId || selectedGradeId || selectedClassId) && (
-                   <div className="mt-6 p-4 bg-muted rounded-lg">
-                     <h4 className="font-medium text-foreground mb-2">Filtros Aplicados:</h4>
-                     <div className="flex flex-wrap gap-2">
-                       {selectedSchoolId && (
-                         <Badge variant="secondary" className="text-xs">
-                           Escola: {schools.find(s => s.id === selectedSchoolId)?.nome || 'Selecionada'}
-                         </Badge>
-                       )}
-                       {selectedGradeId && (
-                         <Badge variant="secondary" className="text-xs">
-                           Série: {grades.find(g => g.id === selectedGradeId)?.nome || 'Selecionada'}
-                         </Badge>
-                       )}
-                       {selectedClassId && (
-                         <Badge variant="secondary" className="text-xs">
-                           Turma: {classes.find(c => c.id === selectedClassId)?.nome || 'Selecionada'}
-                         </Badge>
-                       )}
-                     </div>
-                   </div>
-                 )}
-
-                 {/* Gráfico: Acertos por questão (%) — layout até 40 questões */}
-                 {acertosPorQuestao.length > 0 && (
-                   <div className="border-t pt-6 mt-6">
-                     <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                       <BarChart3 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                       Gráficos
-                     </h3>
-                     <div className="rounded-lg border border-border bg-card p-4">
-                       <h4 className="text-sm font-medium text-foreground mb-3">Acertos por questão (%)</h4>
-                       <div className="h-[320px] w-full min-w-0" style={{ maxWidth: '100%' }}>
-                         <ResponsiveContainer width="100%" height="100%">
-                           <BarChart
-                             data={acertosPorQuestao.map((item) => ({
-                               name: `Q${item.numero}`,
-                               percent: item.percent,
-                               acertos: item.acertos,
-                               total: item.total,
-                             }))}
-                             margin={{ top: 8, right: 8, left: 8, bottom: 24 }}
-                           >
-                             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                             <XAxis
-                               dataKey="name"
-                               tick={{ fontSize: 10 }}
-                               interval={0}
-                               angle={acertosPorQuestao.length > 20 ? -45 : 0}
-                               textAnchor={acertosPorQuestao.length > 20 ? 'end' : 'middle'}
-                             />
-                             <YAxis
-                               domain={[0, 100]}
-                               tick={{ fontSize: 10 }}
-                               tickFormatter={(v) => `${v}%`}
-                             />
-                             <Tooltip
-                               content={({ active, payload }) => {
-                                 if (!active || !payload?.length) return null;
-                                 const p = payload[0].payload;
-                                 return (
-                                   <div className="rounded-md border border-border bg-card px-3 py-2 text-sm shadow-md">
-                                     <div className="font-medium">{p.name}</div>
-                                     <div className="text-muted-foreground">
-                                       {p.acertos}/{p.total} — {p.percent}%
-                                     </div>
-                                   </div>
-                                 );
-                               }}
-                             />
-                             <Bar dataKey="percent" radius={[2, 2, 0, 0]} maxBarSize={32}>
-                               {acertosPorQuestao.map((_, index) => (
-                                 <Cell
-                                   key={index}
-                                   fill={
-                                     acertosPorQuestao[index].percent >= 60
-                                       ? '#22c55e'
-                                       : '#ef4444'
-                                   }
-                                 />
-                               ))}
-                             </Bar>
-                           </BarChart>
-                         </ResponsiveContainer>
-                       </div>
-                       <p className="text-xs text-muted-foreground mt-2">
-                         Até {MAX_QUESTIONS_CHART} questões. Verde: ≥60% de acertos; vermelho: &lt;60%.
-                       </p>
-                     </div>
-                   </div>
-                 )}
-               </div>
-             )}
-           </CardContent>
-         </Card>
-       )}
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

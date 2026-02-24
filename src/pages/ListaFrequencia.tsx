@@ -357,11 +357,7 @@ export default function ListaFrequencia() {
         const classId =
           selectedTurma && selectedTurma !== 'all' ? selectedTurma : undefined;
         const res = await getListaFrequenciaPorAvaliacao(selectedAvaliacaoId, classId);
-        const list = (res.estudantes?.length ?? 0) > 0 ? [res] : [];
-        setData(list.length ? list : null);
-        if (list.length === 0) {
-          toast({ title: 'Aviso', description: 'Esta turma/avaliação não possui alunos na lista.', variant: 'destructive' });
-        }
+        setData([res]);
       } else {
         if (!selectedSchool || selectedSchool === 'all') {
           setError('Selecione a escola.');
@@ -386,19 +382,7 @@ export default function ListaFrequencia() {
         const results = await Promise.all(
           classIds.map((c) => getListaFrequencia(c.id, 'avaliacao'))
         );
-        const comAlunos = results.filter((item) => (item.estudantes?.length ?? 0) > 0);
-        const omitidas = results.length - comAlunos.length;
-        setData(comAlunos.length > 0 ? comAlunos : null);
-        if (omitidas > 0) {
-          toast({
-            title: 'Turmas sem alunos omitidas',
-            description: `${omitidas} ${omitidas === 1 ? 'turma não tem' : 'turmas não têm'} alunos e ${omitidas === 1 ? 'foi omitida' : 'foram omitidas'} da lista.`,
-          });
-        }
-        if (comAlunos.length === 0 && results.length > 0) {
-          setError('Nenhuma das turmas selecionadas possui alunos.');
-          toast({ title: 'Aviso', description: 'Nenhuma das turmas possui alunos na lista.', variant: 'destructive' });
-        }
+        setData(results);
       }
     } catch (err: unknown) {
       const ax = err as { response?: { status?: number; data?: { erro?: string } } };
@@ -459,19 +443,20 @@ export default function ListaFrequencia() {
         doc.setLineWidth(0.4);
         doc.rect(margin, y, contentWidth, boxHeight, 'S');
         doc.setDrawColor(180, 180, 180);
+        const boxX = margin + 4;
         let boxY = y + 6;
-        doc.text(`MUNICÍPIO/UF: ${cab.municipio_uf}`, pageWidth / 2, boxY, { align: 'center' });
+        doc.text(`MUNICÍPIO/UF: ${cab.municipio_uf}`, boxX, boxY, { align: 'left' });
         boxY += 5;
-        doc.text(escolaLines, pageWidth / 2, boxY, { align: 'center' });
+        doc.text(escolaLines, boxX, boxY, { align: 'left' });
         boxY += escolaLines.length * 4.5;
-        doc.text(`SÉRIE: ${serieDisplay}`, pageWidth / 2, boxY, { align: 'center' });
+        doc.text(`SÉRIE: ${serieDisplay}`, boxX, boxY, { align: 'left' });
         boxY += 5;
-        doc.text(`TURMA: ${turmaDisplay}`, pageWidth / 2, boxY, { align: 'center' });
+        doc.text(`TURMA: ${turmaDisplay}`, boxX, boxY, { align: 'left' });
         boxY += 5;
         const disciplinaVal = cab.disciplina?.trim() ?? '';
-        doc.text(disciplinaVal ? `DISCIPLINA: ${disciplinaVal}` : 'DISCIPLINA: ', pageWidth / 2, boxY, { align: 'center' });
+        doc.text(disciplinaVal ? `DISCIPLINA: ${disciplinaVal}` : 'DISCIPLINA: ', boxX, boxY, { align: 'left' });
         if (!disciplinaVal) {
-          const lineX0 = pageWidth / 2 - 25;
+          const lineX0 = boxX + doc.getTextWidth('DISCIPLINA: ');
           doc.setDrawColor(120, 120, 120);
           doc.line(lineX0, boxY + 1.5, lineX0 + 50, boxY + 1.5);
         }
@@ -570,13 +555,13 @@ export default function ListaFrequencia() {
         for (let i = 0; i < 11; i++) {
           doc.rect(margin + i * (boxW + 1), cpfBoxY, boxW, boxH, 'S');
         }
-        doc.text('DATA: ___/___/_______', pageWidth - margin - 45, y);
-        y = cpfBoxY + boxH + 10;
+        doc.text('DATA: ___/___/_______', pageWidth - margin, y, { align: 'right' });
+        y = cpfBoxY + boxH + 18;
         doc.setDrawColor(180, 180, 180);
         doc.setLineDashPattern([2, 2], 0);
         doc.line(margin, y, pageWidth - margin, y);
         doc.setLineDashPattern([], 0);
-        y += 5;
+        y += 6;
         doc.text('ASSINATURA DO(A) APLICADOR(A)', pageWidth / 2, y, { align: 'center' });
       });
 
@@ -601,8 +586,8 @@ export default function ListaFrequencia() {
       {/* Header */}
       <div className="no-print flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3 text-foreground">
-            <ClipboardList className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <ClipboardList className="w-8 h-8 text-blue-600" />
             Lista de Frequência
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -622,7 +607,7 @@ export default function ListaFrequencia() {
         <CardContent>
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Modo</label>
+              <label className="text-sm font-medium">Modo</label>
               <Select value={modoLista} onValueChange={(v) => setModoLista(v as 'turma' | 'avaliacao')}>
                 <SelectTrigger className="max-w-xs">
                   <SelectValue />
@@ -636,7 +621,7 @@ export default function ListaFrequencia() {
 
             {modoLista === 'avaliacao' && (
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Avaliação</label>
+                <label className="text-sm font-medium">Avaliação</label>
                 <Select
                   value={selectedAvaliacaoId}
                   onValueChange={setSelectedAvaliacaoId}
@@ -672,7 +657,7 @@ export default function ListaFrequencia() {
             )}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Estado</label>
+              <label className="text-sm font-medium">Estado</label>
               <Select
                 value={selectedEstado}
                 onValueChange={setSelectedEstado}
@@ -692,7 +677,7 @@ export default function ListaFrequencia() {
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Município</label>
+              <label className="text-sm font-medium">Município</label>
               <Select
                 value={selectedMunicipio}
                 onValueChange={setSelectedMunicipio}
@@ -712,7 +697,7 @@ export default function ListaFrequencia() {
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Escola</label>
+              <label className="text-sm font-medium">Escola</label>
               <Select
                 value={selectedSchool}
                 onValueChange={setSelectedSchool}
@@ -732,7 +717,7 @@ export default function ListaFrequencia() {
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Série</label>
+              <label className="text-sm font-medium">Série</label>
               <Select
                 value={selectedSerie}
                 onValueChange={setSelectedSerie}
@@ -752,7 +737,7 @@ export default function ListaFrequencia() {
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Turma</label>
+              <label className="text-sm font-medium">Turma</label>
               <Select
                 value={selectedTurma}
                 onValueChange={setSelectedTurma}
@@ -825,7 +810,7 @@ export default function ListaFrequencia() {
               {isGeneratingPDF ? 'Gerando PDF...' : 'Imprimir / Gerar PDF'}
             </Button>
           </div>
-          <div id="lista-frequencia-print" className="rounded-lg overflow-hidden bg-card text-card-foreground border border-border shadow-lg">
+          <div id="lista-frequencia-print" className="rounded-lg overflow-hidden bg-zinc-900 text-white shadow-lg">
           <div className="p-6">
             {data.map((item, sectionIndex) => (
               <div
@@ -834,28 +819,28 @@ export default function ListaFrequencia() {
               >
                 {/* Cabeçalho */}
                 <header className="mb-6 text-center">
-                  <h2 className="text-lg font-semibold text-foreground">{item.cabecalho.nome_prova_ano}</h2>
-                  <p className="text-sm mt-1 text-muted-foreground">{item.cabecalho.lista_presenca_curso}</p>
-                  <div className="mx-auto mt-4 max-w-4xl rounded border-2 border-pink-500/70 dark:border-pink-500/70 bg-muted/80 dark:bg-muted/50 p-4 text-center">
-                    <div className="space-y-1 text-sm text-foreground">
+                  <h2 className="text-lg font-semibold">{item.cabecalho.nome_prova_ano}</h2>
+                  <p className="text-sm mt-1">{item.cabecalho.lista_presenca_curso}</p>
+                  <div className="mx-auto mt-4 max-w-4xl rounded border-2 border-pink-500/70 bg-zinc-800/80 p-4 text-left">
+                    <div className="space-y-1 text-sm">
                       <p>MUNICÍPIO/UF: {item.cabecalho.municipio_uf}</p>
                       <p>NOME DA ESCOLA*: {item.cabecalho.nome_escola}</p>
                       <p>SÉRIE: {getSerieTurmaDisplay(item.cabecalho).serie}</p>
                       <p>TURMA: {getSerieTurmaDisplay(item.cabecalho).turma}</p>
-                      <p className="flex items-baseline justify-center gap-1">
+                      <p className="flex items-baseline gap-1">
                         DISCIPLINA:{' '}
                         {item.cabecalho.disciplina?.trim() ? (
                           item.cabecalho.disciplina
                         ) : (
-                          <span className="inline-block min-w-[200px] border-b border-border" aria-hidden />
+                          <span className="inline-block min-w-[200px] border-b border-white/40" aria-hidden />
                         )}
                       </p>
                     </div>
                   </div>
-                  <p className="mt-3 text-center text-xs text-muted-foreground">
+                  <p className="mt-3 text-center text-xs">
                     Legenda: {formatLegenda(item.cabecalho.legenda)}
                   </p>
-                  <p className="mt-2 text-center text-xs italic text-muted-foreground">
+                  <p className="mt-2 text-center text-xs italic">
                     {item.cabecalho.instrucoes_aplicador}
                   </p>
                 </header>
@@ -864,22 +849,22 @@ export default function ListaFrequencia() {
                 <div className="lista-frequencia-table-wrap overflow-x-auto">
                   <table className="w-full border-collapse text-sm">
                     <thead>
-                      <tr className="bg-pink-600 dark:bg-pink-600/90 text-white">
-                        <th className="border border-pink-500/70 dark:border-pink-500/70 px-2 py-2 text-left font-medium">
+                      <tr className="bg-pink-600/80">
+                        <th className="border border-pink-500/70 px-2 py-2 text-left font-medium">
                           N°
                         </th>
-                        <th className="border border-pink-500/70 dark:border-pink-500/70 px-2 py-2 text-left font-medium">
+                        <th className="border border-pink-500/70 px-2 py-2 text-left font-medium">
                           NOME DO ESTUDANTE
                         </th>
                         {codigosStatus.map((cod) => (
                           <th
                             key={cod}
-                            className="w-10 border border-pink-500/70 dark:border-pink-500/70 px-1 py-2 text-center font-medium"
+                            className="w-10 border border-pink-500/70 px-1 py-2 text-center font-medium"
                           >
                             {cod}
                           </th>
                         ))}
-                        <th className="min-w-[120px] border border-pink-500/70 dark:border-pink-500/70 px-2 py-2 text-left font-medium">
+                        <th className="min-w-[120px] border border-pink-500/70 px-2 py-2 text-left font-medium">
                           ASSINATURA DO ESTUDANTE
                         </th>
                       </tr>
@@ -888,12 +873,12 @@ export default function ListaFrequencia() {
                       {item.estudantes.map((est: Estudante, idx: number) => (
                         <tr
                           key={`${sectionIndex}-${est.numero}-${idx}`}
-                          className={idx % 2 === 0 ? 'bg-muted/50 dark:bg-muted/40' : 'bg-background dark:bg-muted/20'}
+                          className={idx % 2 === 0 ? 'bg-zinc-800' : 'bg-zinc-800/60'}
                         >
-                          <td className="border border-border px-2 py-1.5 text-foreground">
+                          <td className="border border-pink-500/50 px-2 py-1.5">
                             {est.numero}.
                           </td>
-                          <td className="border border-border px-2 py-1.5 text-foreground">
+                          <td className="border border-pink-500/50 px-2 py-1.5">
                             {est.nome_estudante}
                           </td>
                           {codigosStatus.map((cod) => {
@@ -904,10 +889,10 @@ export default function ListaFrequencia() {
                             return (
                               <td
                                 key={cod}
-                                className="border border-border px-1 py-1.5 text-center"
+                                className="border border-pink-500/50 px-1 py-1.5 text-center"
                               >
                                 <span
-                                  className="inline-flex h-5 w-5 items-center justify-center rounded-full border-2 border-pink-500/80 dark:border-pink-400/80 bg-transparent"
+                                  className="inline-flex h-5 w-5 items-center justify-center rounded-full border-2 border-pink-400/80"
                                   style={{
                                     backgroundColor: mostrarPreenchido
                                       ? 'rgba(236,72,153,0.6)'
@@ -917,35 +902,35 @@ export default function ListaFrequencia() {
                               </td>
                             );
                           })}
-                          <td className="border border-border px-2 py-1.5" />
+                          <td className="border border-pink-500/50 px-2 py-1.5" />
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
 
-                {/* Rodapé por turma */}
-                <footer className="mt-8 border-t border-border pt-6 text-center">
-                  <div className="flex flex-wrap items-start justify-center gap-6">
-                    <div>
-                      <p className="mb-2 text-xs font-medium text-foreground">CPF DO(A) APLICADOR(A)</p>
-                      <div className="flex gap-1 justify-center">
+                {/* Rodapé por turma: CPF à esquerda, Assinatura no meio, Data à direita */}
+                <footer className="mt-8 border-t border-pink-500/50 pt-6">
+                  <div className="grid grid-cols-3 gap-4 items-start">
+                    <div className="text-left">
+                      <p className="mb-2 text-xs font-medium">CPF DO(A) APLICADOR(A)</p>
+                      <div className="flex gap-1">
                         {Array.from({ length: 11 }).map((_, i) => (
                           <span
                             key={i}
-                            className="h-8 w-6 border border-border bg-transparent"
+                            className="h-8 w-6 border border-white/40 bg-transparent"
                             aria-hidden
                           />
                         ))}
                       </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-medium text-foreground">DATA: ___/___/_______</p>
+                    <div className="text-center flex flex-col items-center mt-8">
+                      <div className="border-b-2 border-dashed border-pink-400/60 pb-1 w-72 min-w-[200px]" />
+                      <p className="mt-2 text-xs">ASSINATURA DO(A) APLICADOR(A)</p>
                     </div>
-                  </div>
-                  <div className="mt-6 text-center">
-                    <div className="border-b border-dashed border-border pb-1 mx-auto max-w-xs" />
-                    <p className="mt-1 text-xs text-muted-foreground">ASSINATURA DO(A) APLICADOR(A)</p>
+                    <div className="text-right">
+                      <p className="text-xs font-medium">DATA: ___/___/_______</p>
+                    </div>
                   </div>
                 </footer>
               </div>
