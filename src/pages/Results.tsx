@@ -124,6 +124,8 @@ interface RankingItemWithAluno {
   aluno_id: string;
   nome: string;
   turma: string;
+  escola?: string;
+  serie?: string;
   nota_geral: number;
   proficiencia_geral: number;
   classificacao_geral: string;
@@ -1072,19 +1074,17 @@ export default function Results() {
     perPage
   ]);
 
-  // Verificar se é usuário com restrições (professor, diretor, coordenador)
-  const isRestrictedUser = user?.role === 'professor' || 
-                          user?.role === 'diretor' || 
+  // Usuários com restrição: obrigatório selecionar Escola. Admin e tecadmin usam o mesmo fluxo (Estado, Município, Avaliação).
+  const isRestrictedUser = user?.role === 'professor' ||
+                          user?.role === 'diretor' ||
                           user?.role === 'coordenador';
-  
+
   // Verificar se é professor especificamente (para mensagens específicas)
   const isProfessor = user?.role === 'professor';
 
-  // ✅ CORRIGIDO: Carregar dados APENAS quando os filtros obrigatórios estiverem preenchidos
+  // ✅ Carregar dados quando os filtros obrigatórios estiverem preenchidos.
+  // Admin e tecadmin: Estado, Município e Avaliação. Professor/diretor/coordenador: + Escola obrigatória.
   useEffect(() => {
-    // Verificar se os filtros obrigatórios estão preenchidos
-    // Para professores, diretores e coordenadores: Estado, Município, Avaliação e Escola
-    // Para outros: Estado, Município e Avaliação
     const requiredFiltersFilled = selectedState !== 'all' && 
                                  selectedMunicipality !== 'all' && 
                                  selectedEvaluation !== 'all' &&
@@ -1529,6 +1529,8 @@ export default function Results() {
           id: aluno.id,
           nome: aluno.nome,
           turma: aluno.turma || 'N/A',
+          escola: aluno.escola ?? '',
+          serie: aluno.serie ?? '',
           nota: aluno.nota_geral,
           proficiencia: aluno.proficiencia_geral,
           classificacao: aluno.nivel_proficiencia_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
@@ -1558,6 +1560,8 @@ export default function Results() {
           id: item.aluno_id,
           nome: item.nome,
           turma: item.turma || 'N/A',
+          escola: item.escola ?? '',
+          serie: item.serie ?? '',
           nota: item.nota_geral || 0,
           proficiencia: item.proficiencia_geral || 0,
           classificacao: item.classificacao_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
@@ -2432,23 +2436,26 @@ export default function Results() {
                   
                   {apiData && apiData.estatisticas_gerais && apiData.resultados_por_disciplina ? (
                     (() => {
-                      // ✅ CORREÇÃO: Calcular médias reais a partir dos dados das disciplinas
-                      const media_nota_geral = apiData.estatisticas_gerais?.media_nota_geral ||
-                        (apiData.resultados_por_disciplina && apiData.resultados_por_disciplina.length > 0
-                          ? apiData.resultados_por_disciplina.reduce((sum, item) => sum + (Number(item.media_nota) || 0), 0) / apiData.resultados_por_disciplina.length
-                          : 0);
-
-                      const media_proficiencia_geral = apiData.estatisticas_gerais?.media_proficiencia_geral ||
-                        (apiData.resultados_por_disciplina && apiData.resultados_por_disciplina.length > 0
-                          ? apiData.resultados_por_disciplina.reduce((sum, item) => sum + (Number(item.media_proficiencia) || 0), 0) / apiData.resultados_por_disciplina.length
-                          : 0);
-                      
+                      const hasSpecificFilters = selectedClass !== 'all' || selectedGrade !== 'all' || selectedSchool !== 'all';
+                      const media_nota_geral = hasSpecificFilters
+                        ? derivedStats.mediaNota
+                        : (apiData.estatisticas_gerais?.media_nota_geral ??
+                            (apiData.resultados_por_disciplina?.length
+                              ? apiData.resultados_por_disciplina.reduce((sum, item) => sum + (Number(item.media_nota) || 0), 0) / apiData.resultados_por_disciplina.length
+                              : 0));
+                      const media_proficiencia_geral = hasSpecificFilters
+                        ? derivedStats.mediaProficiencia
+                        : (apiData.estatisticas_gerais?.media_proficiencia_geral ??
+                            (apiData.resultados_por_disciplina?.length
+                              ? apiData.resultados_por_disciplina.reduce((sum, item) => sum + (Number(item.media_proficiencia) || 0), 0) / apiData.resultados_por_disciplina.length
+                              : 0));
                       return (
                         <ResultsCharts
                           apiData={{
                             estatisticas_gerais: {
-                              media_nota_geral: media_nota_geral,
-                              media_proficiencia_geral: media_proficiencia_geral
+                              ...apiData.estatisticas_gerais,
+                              media_nota_geral,
+                              media_proficiencia_geral
                             },
                             resultados_por_disciplina: apiData.resultados_por_disciplina
                           }}
@@ -2693,40 +2700,48 @@ export default function Results() {
                  </TabsContent>
 
                 <TabsContent value="statistics" className="space-y-6">
-                  <ClassStatistics apiData={apiData ? {
-                    ...apiData,
-                    tabela_detalhada: apiData.tabela_detalhada ? {
-                      ...apiData.tabela_detalhada,
-                      geral: apiData.tabela_detalhada.geral ? {
-                        alunos: apiData.tabela_detalhada.geral.alunos.map(aluno => ({
-                          id: aluno.id,
-                          nome: aluno.nome,
-                          turma: aluno.turma || '',
-                          nivel_proficiencia_geral: aluno.nivel_proficiencia_geral || '',
-                          nota_geral: aluno.nota_geral || 0,
-                          proficiencia_geral: aluno.proficiencia_geral || 0,
-                          total_acertos_geral: aluno.total_acertos_geral || 0,
-                          total_erros_geral: (aluno.total_questoes_geral || 0) - (aluno.total_acertos_geral || 0) - (aluno.total_em_branco_geral || 0),
-                          total_respondidas_geral: aluno.total_respondidas_geral || 0
-                        }))
+                  <ClassStatistics apiData={apiData ? (() => {
+                    const hasSpecificFilters = selectedClass !== 'all' || selectedGrade !== 'all' || selectedSchool !== 'all';
+                    const base = {
+                      ...apiData,
+                      tabela_detalhada: apiData.tabela_detalhada ? {
+                        ...apiData.tabela_detalhada,
+                        geral: apiData.tabela_detalhada.geral ? {
+                          alunos: apiData.tabela_detalhada.geral.alunos.map(aluno => ({
+                            id: aluno.id,
+                            nome: aluno.nome,
+                            turma: aluno.turma || '',
+                            nivel_proficiencia_geral: aluno.nivel_proficiencia_geral || '',
+                            nota_geral: aluno.nota_geral || 0,
+                            proficiencia_geral: aluno.proficiencia_geral || 0,
+                            total_acertos_geral: aluno.total_acertos_geral || 0,
+                            total_erros_geral: (aluno.total_questoes_geral || 0) - (aluno.total_acertos_geral || 0) - (aluno.total_em_branco_geral || 0),
+                            total_respondidas_geral: aluno.total_respondidas_geral || 0
+                          }))
+                        } : undefined
                       } : undefined
-                    } : undefined
-                  } : null} />
+                    };
+                    if (hasSpecificFilters && apiData.estatisticas_gerais) {
+                      base.estatisticas_gerais = {
+                        ...apiData.estatisticas_gerais,
+                        total_alunos: derivedStats.totalAlunos,
+                        alunos_participantes: derivedStats.participantes,
+                        alunos_ausentes: derivedStats.ausentes,
+                        media_nota_geral: derivedStats.mediaNota,
+                        media_proficiencia_geral: derivedStats.mediaProficiencia
+                      };
+                    }
+                    return base;
+                  })() : null} />
                 </TabsContent>
 
                 {selectedEvaluation !== 'all' && (
                   <TabsContent value="ranking" className="space-y-6">
-                    {(() => {
-                      // ✅ NOVO: Usar dados do ranking diretamente do backend
-                      const rankingStudents = processRankingData();
-                      
-                      return (
-                        <StudentRanking 
-                          students={rankingStudents.length > 0 ? rankingStudents : filteredStudents}
-                          maxStudents={100}
-                        />
-                      );
-                    })()}
+                    {/* Usar sempre a mesma lista da página (tabela/cards): evita ranking vazio ao filtrar por escola/turma/série */}
+                    <StudentRanking
+                      students={filteredStudents}
+                      maxStudents={100}
+                    />
                   </TabsContent>
                 )}
               </Tabs>

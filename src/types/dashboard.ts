@@ -30,12 +30,30 @@ export interface SchoolRanking {
   total_evaluations: number;
 }
 
+/** Entrada do ranking de turmas (dashboard admin/tecadm). */
+export interface DashboardClassRankingEntry {
+  position?: number;
+  posicao?: number;
+  class_id: string;
+  turma: string;
+  serie: string;
+  media: number;
+  acerto: number;
+  acerto_percent: number;
+  conclusao: number;
+  alunos: number;
+  avaliacoes: number;
+}
+
 export interface StudentRanking {
+  position?: number;
   student_id: string;
   name: string;
   school_name: string;
   class_name: string;
-  average_score: number;
+  serie: string;
+  media: number;
+  average_score?: number;
   completed_evaluations: number;
 }
 
@@ -122,7 +140,8 @@ export interface AdminDashboard {
   kpis: DashboardKPI[];
   secondary_cards: SecondaryCard[];
   rankings: {
-    schools: SchoolRanking[];
+    classes: DashboardClassRankingEntry[];
+    schools?: SchoolRanking[];
     students: StudentRanking[];
     teacher_rankings: TeacherRanking[];
   };

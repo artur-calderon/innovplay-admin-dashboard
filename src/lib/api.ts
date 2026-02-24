@@ -9,7 +9,9 @@ declare module 'axios' {
 
 // Configuração da base URL da API
 // Em desenvolvimento, use o proxy do Vite (\"/api\") para evitar CORS
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
+// Remove barra final para evitar URL duplicada (ex: ...com.br//subdomain/check -> 404)
+const rawBase = import.meta.env.VITE_API_BASE_URL || '/api'
+const BASE_URL = rawBase.replace(/\/+$/, '') || '/api'
 
 export const api = axios.create({
     baseURL: BASE_URL,
