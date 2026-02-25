@@ -221,10 +221,10 @@ export default function IdebMetaCalculator() {
         };
         setMunicipalityData(newData);
         setActiveEntity(newData);
-      } else if (activeEntity && municipalityData) {
-        const updatedEscolas = municipalityData.escolas?.map(s => 
-          s.id === activeEntity.id 
-            ? { ...s, historico: sorted, ideb: latest.ideb } 
+      } else if (activeEntity && municipalityData && 'id' in activeEntity) {
+        const updatedEscolas = municipalityData.escolas?.map(s =>
+          s.id === activeEntity.id
+            ? { ...s, historico: sorted, ideb: latest.ideb }
             : s
         );
         const newMunicipality = { ...municipalityData, escolas: updatedEscolas };
@@ -459,7 +459,7 @@ export default function IdebMetaCalculator() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-gray-50 p-6 rounded-lg text-center">
                       <p className="text-xs font-semibold text-gray-500 uppercase mb-2">
-                        IDEB {activeEntity.ano}
+                        IDEB {'ano' in activeEntity ? activeEntity.ano : municipalityData?.ano}
                       </p>
                       <p className="text-4xl font-bold text-gray-900">
                         {activeEntity.ideb.toFixed(1)}
@@ -498,7 +498,7 @@ export default function IdebMetaCalculator() {
                               </TableHead>
                             ))}
                             <TableHead className="text-center bg-gray-900 text-white">
-                              {activeEntity.ano}
+                              {'ano' in activeEntity ? activeEntity.ano : municipalityData?.ano}
                             </TableHead>
                             <TableHead className="text-center bg-blue-950 text-white">
                               Meta

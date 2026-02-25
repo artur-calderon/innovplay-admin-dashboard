@@ -11,6 +11,7 @@ import { FormFiltersApiService } from '@/services/formFiltersApi';
 import {
   getListaFrequencia,
   getListaFrequenciaPorAvaliacao,
+  getListaFrequenciaPorAvaliacaoTodasTurmas,
 } from '@/services/listaFrequenciaApi';
 import type {
   ListaFrequenciaResponse,
@@ -106,6 +107,9 @@ export default function ListaFrequencia() {
   const [avaliacoes, setAvaliacoes] = useState<{ id: string; titulo: string }[]>([]);
   const [selectedAvaliacaoId, setSelectedAvaliacaoId] = useState('all');
   const [isLoadingAvaliacoes, setIsLoadingAvaliacoes] = useState(false);
+  /** Turmas vinculadas à avaliação selecionada (GET /test/:id/classes). No modo avaliação, o dropdown usa esta lista para mostrar todas as turmas da série aplicadas. */
+  const [turmasAvaliacao, setTurmasAvaliacao] = useState<{ id: string; name: string }[]>([]);
+  const [isLoadingTurmasAvaliacao, setIsLoadingTurmasAvaliacao] = useState(false);
   /** Só exibir ausência (A) quando a prova já tiver expirado. Por turma = null (não aplicável). */
   const [provaExpirada, setProvaExpirada] = useState<boolean | null>(null);
 
@@ -312,6 +316,46 @@ export default function ListaFrequencia() {
     };
   }, [modoLista, selectedSchool, selectedSerie]);
 
+  // No modo avaliação: ao selecionar uma avaliação, carregar as turmas vinculadas a ela (todas as turmas da série aplicadas)
+  useEffect(() => {
+    if (modoLista !== 'avaliacao' || !selectedAvaliacaoId || selectedAvaliacaoId === 'all') {
+      setTurmasAvaliacao([]);
+      setSelectedTurma('all');
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingTurmasAvaliacao(true);
+    api
+      .get<Array<{ class?: { id: string; name?: string }; class_id?: string; class_test_id?: string }>>(`/test/${selectedAvaliacaoId}/classes`)
+      .then((res) => {
+        if (cancelled) return;
+        const data = res.data;
+        if (!data || !Array.isArray(data)) {
+          setTurmasAvaliacao([]);
+          return;
+        }
+        const list = data.map((item) => {
+          const cls = item.class ?? item;
+          const id = typeof cls === 'object' && cls !== null ? (cls as { id?: string }).id ?? (item as { class_id?: string }).class_id : (item as { class_id?: string }).class_id;
+          const name = typeof cls === 'object' && cls !== null ? (cls as { name?: string }).name ?? '' : '';
+          return { id: String(id ?? ''), name: name || String(id ?? '') };
+        }).filter((t) => t.id);
+        setTurmasAvaliacao(list);
+        const stillExists = selectedTurma === 'all' || list.some((t) => t.id === selectedTurma);
+        if (!stillExists) setSelectedTurma('all');
+      })
+      .catch((err) => {
+        console.error(err);
+        if (!cancelled) setTurmasAvaliacao([]);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingTurmasAvaliacao(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [modoLista, selectedAvaliacaoId]);
+
   // Quando a lista é por avaliação, verificar se a prova já expirou (para exibir ou não ausência)
   useEffect(() => {
     if (modoLista !== 'avaliacao') {
@@ -356,8 +400,17 @@ export default function ListaFrequencia() {
         }
         const classId =
           selectedTurma && selectedTurma !== 'all' ? selectedTurma : undefined;
-        const res = await getListaFrequenciaPorAvaliacao(selectedAvaliacaoId, classId);
-        setData([res]);
+        if (classId) {
+          const res = await getListaFrequenciaPorAvaliacao(selectedAvaliacaoId, classId);
+          setData([res]);
+        } else {
+          // Todas as turmas: uma única chamada GET /lista-frequencia/?test_id=... (resposta { turmas: [...] })
+          const gradeId = selectedSerie && selectedSerie !== 'all' ? selectedSerie : undefined;
+          const results = await getListaFrequenciaPorAvaliacaoTodasTurmas(selectedAvaliacaoId, {
+            grade_id: gradeId,
+          });
+          setData(results.length > 0 ? results : null);
+        }
       } else {
         if (!selectedSchool || selectedSchool === 'all') {
           setError('Selecione a escola.');
@@ -741,14 +794,18 @@ export default function ListaFrequencia() {
               <Select
                 value={selectedTurma}
                 onValueChange={setSelectedTurma}
-                disabled={!selectedSerie || selectedSerie === 'all' || isLoadingTurmas}
+                disabled={
+                  modoLista === 'avaliacao' && turmasAvaliacao.length > 0
+                    ? isLoadingTurmasAvaliacao
+                    : !selectedSerie || selectedSerie === 'all' || isLoadingTurmas
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a turma" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  {turmas.map((t) => (
+                  {(modoLista === 'avaliacao' && turmasAvaliacao.length > 0 ? turmasAvaliacao : turmas).map((t) => (
                     <SelectItem key={t.id} value={t.id}>
                       {t.name}
                     </SelectItem>

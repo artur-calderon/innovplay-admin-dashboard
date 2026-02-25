@@ -31,8 +31,10 @@ import {
   Clock,
   Loader2,
   Trash2,
+  MapPin,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { MultiSelect } from '@/components/ui/multi-select';
 import { AnswerSheetConfig, StudentAnswerSheet, School as SchoolType, Serie, Turma, Estado, Municipio, Gabarito, GabaritosResponse } from '@/types/answer-sheet';
 
 type Step = 1 | 2;
@@ -55,9 +57,9 @@ export default function AnswerSheetGenerator() {
   interface SelectedFilters {
     state?: string;
     city?: string;
-    school_id?: string;
-    grade_id?: string;
-    class_id?: string;
+    school_ids?: string[];
+    grade_ids?: string[];
+    class_ids?: string[];
   }
 
   const [estados, setEstados] = useState<Estado[]>([]);
@@ -140,7 +142,7 @@ export default function AnswerSheetGenerator() {
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Estados para cartões gerados
-  const [gabaritos, setGabaritos] = useState<any[]>([]);
+  const [gabaritos, setGabaritos] = useState<Gabarito[]>([]);
   const [isLoadingGabaritos, setIsLoadingGabaritos] = useState(false);
   const [downloadingGabaritoId, setDownloadingGabaritoId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -253,24 +255,18 @@ export default function AnswerSheetGenerator() {
   const loadNextFilterOptions = async (filters: SelectedFilters) => {
     try {
       setIsLoadingOptions(true);
-      
-      // Construir query string com nomes em português
+      const firstSchoolId = filters.school_ids?.[0];
+      const firstGradeId = filters.grade_ids?.[0];
       const params = new URLSearchParams();
       if (filters.state) params.append('estado', filters.state);
       if (filters.city) params.append('municipio', filters.city);
-      if (filters.school_id) params.append('escola', filters.school_id);
-      if (filters.grade_id) params.append('serie', filters.grade_id);
-      if (filters.class_id) params.append('turma', filters.class_id);
-      
+      if (firstSchoolId) params.append('escola', firstSchoolId);
+      if (firstGradeId) params.append('serie', firstGradeId);
+      if (filters.class_ids?.length) params.append('turma', filters.class_ids[0]);
       const queryString = params.toString();
       const url = `/answer-sheets/opcoes-filtros${queryString ? '?' + queryString : ''}`;
       const response = await api.get(url);
       const data = response.data;
-      
-      console.log('Response from loadNextFilterOptions:', data);
-      
-      // Resposta agora contém: { estados, municipios, escolas, series, turmas }
-      // Determinar qual nível mostrar baseado no que foi selecionado
       if (!filters.state && data.estados) {
         const normalized = normalizeOptions(data.estados);
         setStateOptions(normalized);
@@ -279,15 +275,15 @@ export default function AnswerSheetGenerator() {
         const normalized = normalizeOptions(data.municipios);
         setCityOptions(normalized);
         setAvailableOptions(normalized);
-      } else if (filters.city && !filters.school_id && data.escolas) {
+      } else if (filters.city && !(filters.school_ids?.length) && data.escolas) {
         const normalized = normalizeOptions(data.escolas);
         setSchoolOptions(normalized);
         setAvailableOptions(normalized);
-      } else if (filters.school_id && !filters.grade_id && data.series) {
+      } else if (filters.school_ids?.length && !(filters.grade_ids?.length) && data.series) {
         const normalized = normalizeOptions(data.series);
         setGradeOptions(normalized);
         setAvailableOptions(normalized);
-      } else if (filters.grade_id && !filters.class_id && data.turmas) {
+      } else if (filters.grade_ids?.length && !(filters.class_ids?.length) && data.turmas) {
         const normalized = normalizeOptions(data.turmas);
         setClassOptions(normalized);
         setAvailableOptions(normalized);
@@ -305,42 +301,52 @@ export default function AnswerSheetGenerator() {
     }
   };
 
-  // NOVO: Selecionar um filtro e carregar próximos
+  // Selecionar filtro (apenas estado e município são single-select)
   const handleSelectFilter = async (level: FilterLevel, optionId: string, optionName: string) => {
-    const newFilters = { ...selectedFilters, [level]: optionId };
-    
-    // Mapear níveis para chaves corretas
+    if (level !== 'state' && level !== 'city') return;
+    const newFilters: SelectedFilters = { ...selectedFilters };
     if (level === 'state') {
       newFilters.state = optionId;
-    } else if (level === 'city') {
-      newFilters.city = optionId;
-    } else if (level === 'school') {
-      newFilters.school_id = optionId;
-    } else if (level === 'grade') {
-      newFilters.grade_id = optionId;
-    } else if (level === 'class') {
-      newFilters.class_id = optionId;
-    }
-    
-    setSelectedFilters(newFilters);
-    
-    // Atualizar label e carregar próximas opções
-    setFilterLabels(prev => ({ ...prev, [level]: optionName }));
-    
-    // Se não for class, carregar próximo nível
-    if (level !== 'class') {
-      await loadNextFilterOptions(newFilters);
+      newFilters.city = undefined;
+      newFilters.school_ids = undefined;
+      newFilters.grade_ids = undefined;
+      newFilters.class_ids = undefined;
     } else {
-      // Se for class, parar aqui
-      setCurrentFilterLevel('class');
+      newFilters.city = optionId;
+      newFilters.school_ids = undefined;
+      newFilters.grade_ids = undefined;
+      newFilters.class_ids = undefined;
     }
+    setSelectedFilters(newFilters);
+    setFilterLabels(prev => ({ ...prev, [level]: optionName, city: level === 'state' ? '' : prev.city, school: '', grade: '', class: '' }));
+    if (level === 'state') setFilterLabels(prev => ({ ...prev, state: optionName }));
+    await loadNextFilterOptions(newFilters);
   };
 
-  // NOVO: Limpar um nível de filtro
+  // Handlers para multi-select (escola, série, turma)
+  const handleSchoolIdsChange = useCallback((ids: string[]) => {
+    const newFilters: SelectedFilters = { ...selectedFilters, school_ids: ids.length ? ids : undefined, grade_ids: undefined, class_ids: undefined };
+    setSelectedFilters(newFilters);
+    setFilterLabels(prev => ({ ...prev, grade: '', class: '' }));
+    if (ids.length > 0) loadNextFilterOptions(newFilters);
+    else { setGradeOptions([]); setClassOptions([]); }
+  }, [selectedFilters]);
+
+  const handleGradeIdsChange = useCallback((ids: string[]) => {
+    const newFilters: SelectedFilters = { ...selectedFilters, grade_ids: ids.length ? ids : undefined, class_ids: undefined };
+    setSelectedFilters(newFilters);
+    setFilterLabels(prev => ({ ...prev, class: '' }));
+    if (ids.length > 0) loadNextFilterOptions(newFilters);
+    else setClassOptions([]);
+  }, [selectedFilters]);
+
+  const handleClassIdsChange = useCallback((ids: string[]) => {
+    setSelectedFilters(prev => ({ ...prev, class_ids: ids.length ? ids : undefined }));
+  }, []);
+
+  // Limpar um nível de filtro
   const handleClearFilter = (level: FilterLevel) => {
     const newFilters = { ...selectedFilters };
-    
-    // Remover este nível e todos os posteriores
     if (level === 'state') {
       setSelectedFilters({});
       setAvailableOptions(stateOptions);
@@ -352,9 +358,9 @@ export default function AnswerSheetGenerator() {
       setClassOptions([]);
     } else if (level === 'city') {
       delete newFilters.city;
-      delete newFilters.school_id;
-      delete newFilters.grade_id;
-      delete newFilters.class_id;
+      newFilters.school_ids = undefined;
+      newFilters.grade_ids = undefined;
+      newFilters.class_ids = undefined;
       setSelectedFilters(newFilters);
       setAvailableOptions(cityOptions);
       setCurrentFilterLevel('city');
@@ -363,9 +369,9 @@ export default function AnswerSheetGenerator() {
       setGradeOptions([]);
       setClassOptions([]);
     } else if (level === 'school') {
-      delete newFilters.school_id;
-      delete newFilters.grade_id;
-      delete newFilters.class_id;
+      newFilters.school_ids = undefined;
+      newFilters.grade_ids = undefined;
+      newFilters.class_ids = undefined;
       setSelectedFilters(newFilters);
       setAvailableOptions(schoolOptions);
       setCurrentFilterLevel('school');
@@ -373,15 +379,15 @@ export default function AnswerSheetGenerator() {
       setGradeOptions([]);
       setClassOptions([]);
     } else if (level === 'grade') {
-      delete newFilters.grade_id;
-      delete newFilters.class_id;
+      newFilters.grade_ids = undefined;
+      newFilters.class_ids = undefined;
       setSelectedFilters(newFilters);
       setAvailableOptions(gradeOptions);
       setCurrentFilterLevel('grade');
       setFilterLabels(prev => ({ ...prev, grade: '', class: '' }));
       setClassOptions([]);
     } else if (level === 'class') {
-      delete newFilters.class_id;
+      newFilters.class_ids = undefined;
       setSelectedFilters(newFilters);
       setAvailableOptions(classOptions);
       setCurrentFilterLevel('class');
@@ -871,9 +877,9 @@ export default function AnswerSheetGenerator() {
 
 
 
-  // NOVO: Validação para Etapa 1
+  // Validação para Etapa 1 (estado e município obrigatórios)
   const isStep1Valid = () => {
-    const hasValidFilters = Object.keys(selectedFilters).length > 0;
+    const hasValidFilters = Boolean(selectedFilters.state && selectedFilters.city);
     
     if (!hasValidFilters || !provaTitulo || !department) {
       return false;
@@ -1188,12 +1194,12 @@ export default function AnswerSheetGenerator() {
     }, 30 * 60 * 1000); // 30 minutos
   };
 
-  // NOVO: Gerar cartões usando endpoint hierárquico
+  // Gerar cartões usando endpoint hierárquico (escopo em school_ids, grade_ids, class_ids)
   const handleGenerateCards = async () => {
-    if (Object.keys(selectedFilters).length === 0) {
+    if (!selectedFilters.state || !selectedFilters.city) {
       toast({
         title: 'Erro',
-        description: 'Selecione pelo menos um filtro antes de gerar os cartões.',
+        description: 'Selecione estado e município antes de gerar os cartões.',
         variant: 'destructive',
       });
       return;
@@ -1205,20 +1211,10 @@ export default function AnswerSheetGenerator() {
       setJobProgress({ completed_tasks: 0, total_tasks: 0, percentage: 0 });
       setJobDownloadUrl(null);
 
-      // Preparar payload hierárquico - NOVA ESTRUTURA
       const payload: any = {
-        // Filtros de escopo (hierarquia)
-        state: selectedFilters.state,
-        city: selectedFilters.city,
-        school_id: selectedFilters.school_id,
-        grade_id: selectedFilters.grade_id,
-        class_id: selectedFilters.class_id,
-
-        // Dados do teste
+        title: provaTitulo,
         num_questions: totalQuestoes,
         correct_answers: gabaritoManual,
-
-        // Configuração de blocos
         use_blocks: useBlocks,
         ...(useBlocks && !separateBySubject && {
           blocks_config: {
@@ -1237,16 +1233,17 @@ export default function AnswerSheetGenerator() {
             }))
           }
         }),
-
-        // Opções de perguntas
         questions_options: buildQuestionsOptions() || {},
-
-        // Dados do teste (título e departamento)
         test_data: {
           title: provaTitulo,
           department: department,
+          municipality: filterLabels.city || undefined,
+          state: filterLabels.state || undefined,
         },
       };
+      if (selectedFilters.school_ids?.length) payload.school_ids = selectedFilters.school_ids;
+      if (selectedFilters.grade_ids?.length) payload.grade_ids = selectedFilters.grade_ids;
+      if (selectedFilters.class_ids?.length) payload.class_ids = selectedFilters.class_ids;
 
       console.log('Payload enviado para /answer-sheets/generate:', payload);
 
@@ -1549,7 +1546,7 @@ export default function AnswerSheetGenerator() {
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Exibir breadcrumb com filtros selecionados */}
-              {Object.keys(selectedFilters).length > 0 && (
+              {(selectedFilters.state || selectedFilters.city || (selectedFilters.school_ids?.length ?? 0) > 0 || (selectedFilters.grade_ids?.length ?? 0) > 0 || (selectedFilters.class_ids?.length ?? 0) > 0) && (
                 <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg p-4">
                   <p className="text-sm font-semibold mb-2 text-blue-900 dark:text-blue-100">Filtros Selecionados:</p>
                   <div className="flex flex-wrap gap-2">
@@ -1575,9 +1572,9 @@ export default function AnswerSheetGenerator() {
                         </button>
                       </div>
                     )}
-                    {filterLabels.school && (
+                    {(selectedFilters.school_ids?.length ?? 0) > 0 && (
                       <div className="bg-purple-100 dark:bg-purple-900 text-purple-900 dark:text-purple-100 px-3 py-1 rounded-full text-sm flex items-center gap-2">
-                        <span>🏫 {filterLabels.school}</span>
+                        <span>🏫 {schoolOptions.filter(o => selectedFilters.school_ids!.includes(o.id)).map(o => o.name).join(', ') || `${selectedFilters.school_ids!.length} escola(s)`}</span>
                         <button
                           onClick={() => handleClearFilter('school')}
                           className="ml-1 hover:text-red-600 font-bold"
@@ -1586,9 +1583,9 @@ export default function AnswerSheetGenerator() {
                         </button>
                       </div>
                     )}
-                    {filterLabels.grade && (
+                    {(selectedFilters.grade_ids?.length ?? 0) > 0 && (
                       <div className="bg-orange-100 dark:bg-orange-900 text-orange-900 dark:text-orange-100 px-3 py-1 rounded-full text-sm flex items-center gap-2">
-                        <span>📚 {filterLabels.grade}</span>
+                        <span>📚 {gradeOptions.filter(o => selectedFilters.grade_ids!.includes(o.id)).map(o => o.name).join(', ') || `${selectedFilters.grade_ids!.length} série(s)`}</span>
                         <button
                           onClick={() => handleClearFilter('grade')}
                           className="ml-1 hover:text-red-600 font-bold"
@@ -1597,9 +1594,9 @@ export default function AnswerSheetGenerator() {
                         </button>
                       </div>
                     )}
-                    {filterLabels.class && (
+                    {(selectedFilters.class_ids?.length ?? 0) > 0 && (
                       <div className="bg-red-100 dark:bg-red-900 text-red-900 dark:text-red-100 px-3 py-1 rounded-full text-sm flex items-center gap-2">
-                        <span>👥 {filterLabels.class}</span>
+                        <span>👥 {classOptions.filter(o => selectedFilters.class_ids!.includes(o.id)).map(o => o.name).join(', ') || `${selectedFilters.class_ids!.length} turma(s)`}</span>
                         <button
                           onClick={() => handleClearFilter('class')}
                           className="ml-1 hover:text-red-600 font-bold"
@@ -1675,110 +1672,101 @@ export default function AnswerSheetGenerator() {
                   </div>
                 )}
 
-                {/* School Selector */}
+                {/* School Multi-Select (opcional: vazio = todas as escolas do município) */}
                 {selectedFilters.city && (
                   <div className="space-y-2 pl-4 border-l-2 border-green-300">
-                    <Label>Escola {selectedFilters.school_id ? '(Selecionada ✓)' : '(Opcional)'}</Label>
-                    {isLoadingOptions ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>Escola(s) {(selectedFilters.school_ids?.length ?? 0) > 0 ? `(${selectedFilters.school_ids!.length} selecionada(s))` : '(Opcional — todas)'}</Label>
+                      {schoolOptions.length > 0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => handleSchoolIdsChange(schoolOptions.map(o => o.id))}
+                        >
+                          Selecionar todas
+                        </Button>
+                      )}
+                    </div>
+                    {isLoadingOptions && schoolOptions.length === 0 ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <Select
-                        value={selectedFilters.school_id || ''}
-                        onValueChange={(value) => {
-                          if (value === '__back') {
-                            handleClearFilter('school');
-                          } else {
-                            const option = schoolOptions.find(o => o.id === value);
-                            if (option) {
-                              handleSelectFilter('school', value, option.name);
-                            }
-                          }
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione a escola..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__back">← Voltar para município</SelectItem>
-                          {schoolOptions.map(option => (
-                            <SelectItem key={option.id} value={option.id}>
-                              {option.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <MultiSelect
+                        options={schoolOptions.map(o => ({ id: o.id, name: o.name }))}
+                        selected={selectedFilters.school_ids ?? []}
+                        onChange={handleSchoolIdsChange}
+                        placeholder="Selecione uma ou mais escolas (ou deixe vazio para todas)"
+                        label=""
+                        mode="popover"
+                        className="w-full"
+                      />
                     )}
                   </div>
                 )}
 
-                {/* Grade Selector */}
-                {selectedFilters.school_id && (
+                {/* Grade Multi-Select (ex.: só 5º ano das escolas selecionadas) */}
+                {(selectedFilters.school_ids?.length ?? 0) > 0 && (
                   <div className="space-y-2 pl-4 border-l-2 border-purple-300">
-                    <Label>Série/Ano {selectedFilters.grade_id ? '(Selecionado ✓)' : '(Opcional)'}</Label>
-                    {isLoadingOptions ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>Série(s)/Ano(s) {(selectedFilters.grade_ids?.length ?? 0) > 0 ? `(${selectedFilters.grade_ids!.length} selecionada(s))` : '(Opcional)'}</Label>
+                      {gradeOptions.length > 0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => handleGradeIdsChange(gradeOptions.map(o => o.id))}
+                        >
+                          Selecionar todas
+                        </Button>
+                      )}
+                    </div>
+                    {isLoadingOptions && gradeOptions.length === 0 ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <Select
-                        value={selectedFilters.grade_id || ''}
-                        onValueChange={(value) => {
-                          if (value === '__back') {
-                            handleClearFilter('grade');
-                          } else {
-                            const option = gradeOptions.find(o => o.id === value);
-                            if (option) {
-                              handleSelectFilter('grade', value, option.name);
-                            }
-                          }
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione a série/ano..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__back">← Voltar para escola</SelectItem>
-                          {gradeOptions.map(option => (
-                            <SelectItem key={option.id} value={option.id}>
-                              {option.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <MultiSelect
+                        options={gradeOptions.map(o => ({ id: o.id, name: o.name }))}
+                        selected={selectedFilters.grade_ids ?? []}
+                        onChange={handleGradeIdsChange}
+                        placeholder="Selecione uma ou mais séries (ou deixe vazio para todas)"
+                        label=""
+                        mode="popover"
+                        className="w-full"
+                      />
                     )}
                   </div>
                 )}
 
-                {/* Class Selector */}
-                {selectedFilters.grade_id && (
+                {/* Class Multi-Select */}
+                {(selectedFilters.grade_ids?.length ?? 0) > 0 && (
                   <div className="space-y-2 pl-4 border-l-2 border-orange-300">
-                    <Label>Turma {selectedFilters.class_id ? '(Selecionada ✓)' : '(Opcional)'}</Label>
-                    {isLoadingOptions ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>Turma(s) {(selectedFilters.class_ids?.length ?? 0) > 0 ? `(${selectedFilters.class_ids!.length} selecionada(s))` : '(Opcional)'}</Label>
+                      {classOptions.length > 0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => handleClassIdsChange(classOptions.map(o => o.id))}
+                        >
+                          Selecionar todas
+                        </Button>
+                      )}
+                    </div>
+                    {isLoadingOptions && classOptions.length === 0 ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <Select
-                        value={selectedFilters.class_id || ''}
-                        onValueChange={(value) => {
-                          if (value === '__back') {
-                            handleClearFilter('class');
-                          } else {
-                            const option = classOptions.find(o => o.id === value);
-                            if (option) {
-                              handleSelectFilter('class', value, option.name);
-                            }
-                          }
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione a turma..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__back">← Voltar para série/ano</SelectItem>
-                          {classOptions.map(option => (
-                            <SelectItem key={option.id} value={option.id}>
-                              {option.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <MultiSelect
+                        options={classOptions.map(o => ({ id: o.id, name: o.name }))}
+                        selected={selectedFilters.class_ids ?? []}
+                        onChange={handleClassIdsChange}
+                        placeholder="Selecione uma ou mais turmas (ou deixe vazio para todas)"
+                        label=""
+                        mode="popover"
+                        className="w-full"
+                      />
                     )}
                   </div>
                 )}
@@ -2435,25 +2423,31 @@ export default function AnswerSheetGenerator() {
                       <span className="text-slate-600 dark:text-slate-400">{filterLabels.city}</span>
                     </div>
                   )}
-                  {filterLabels.school && (
+                  {(selectedFilters.school_ids?.length ?? 0) > 0 && (
                     <div className="flex items-center gap-2">
                       <span className="bg-purple-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">3</span>
-                      <span className="font-medium">Escola:</span>
-                      <span className="text-slate-600 dark:text-slate-400">{filterLabels.school}</span>
+                      <span className="font-medium">Escola(s):</span>
+                      <span className="text-slate-600 dark:text-slate-400">
+                        {schoolOptions.filter(o => selectedFilters.school_ids!.includes(o.id)).map(o => o.name).join(', ') || `${selectedFilters.school_ids!.length} escola(s)`}
+                      </span>
                     </div>
                   )}
-                  {filterLabels.grade && (
+                  {(selectedFilters.grade_ids?.length ?? 0) > 0 && (
                     <div className="flex items-center gap-2">
                       <span className="bg-orange-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">4</span>
-                      <span className="font-medium">Série/Ano:</span>
-                      <span className="text-slate-600 dark:text-slate-400">{filterLabels.grade}</span>
+                      <span className="font-medium">Série(s)/Ano(s):</span>
+                      <span className="text-slate-600 dark:text-slate-400">
+                        {gradeOptions.filter(o => selectedFilters.grade_ids!.includes(o.id)).map(o => o.name).join(', ') || `${selectedFilters.grade_ids!.length} série(s)`}
+                      </span>
                     </div>
                   )}
-                  {filterLabels.class && (
+                  {(selectedFilters.class_ids?.length ?? 0) > 0 && (
                     <div className="flex items-center gap-2">
                       <span className="bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">5</span>
-                      <span className="font-medium">Turma:</span>
-                      <span className="text-slate-600 dark:text-slate-400">{filterLabels.class}</span>
+                      <span className="font-medium">Turma(s):</span>
+                      <span className="text-slate-600 dark:text-slate-400">
+                        {classOptions.filter(o => selectedFilters.class_ids!.includes(o.id)).map(o => o.name).join(', ') || `${selectedFilters.class_ids!.length} turma(s)`}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -2734,18 +2728,24 @@ export default function AnswerSheetGenerator() {
                                     {gabarito.grade_name}
                                   </Badge>
                                 )}
-                                {gabarito.scope_type === 'school' && gabarito.school_name && (
+                                {gabarito.scope_type === 'school' && (gabarito.school_name ?? '') && (
                                   <Badge variant="secondary" className="flex items-center gap-1 border-purple-500 text-purple-700">
                                     <School className="h-3 w-3" />
                                     {gabarito.school_name}
                                   </Badge>
                                 )}
+                                {gabarito.scope_type === 'city' && (gabarito.municipality || gabarito.state) && (
+                                  <Badge variant="secondary" className="flex items-center gap-1 border-emerald-600 text-emerald-700">
+                                    <MapPin className="h-3 w-3" />
+                                    {[gabarito.municipality, gabarito.state].filter(Boolean).join(' - ')}
+                                  </Badge>
+                                )}
                                 
                                 {/* Contagem de alunos e turmas */}
                                 <Badge variant="outline">
-                                  {gabarito.students_count || 0} aluno(s)
+                                  {gabarito.students_count ?? 0} aluno(s)
                                 </Badge>
-                                {gabarito.classes_count > 1 && (
+                                {(gabarito.classes_count ?? 0) >= 1 && (
                                   <Badge variant="outline">
                                     {gabarito.classes_count} turma(s)
                                   </Badge>
@@ -2780,6 +2780,22 @@ export default function AnswerSheetGenerator() {
                                 </p>
                               </div>
                             </div>
+                            {gabarito.scope_type === 'city' && gabarito.schools_summary && gabarito.schools_summary.length > 0 && (
+                              <div className="mt-3 pt-3 border-t">
+                                <p className="text-muted-foreground text-sm font-medium mb-2">Escolas no município</p>
+                                <ul className="space-y-1 text-sm">
+                                  {gabarito.schools_summary.map((s) => (
+                                    <li key={s.school_id} className="flex items-center gap-2">
+                                      <School className="h-3.5 w-3 text-muted-foreground shrink-0" />
+                                      <span className="font-medium truncate">{s.school_name}</span>
+                                      <span className="text-muted-foreground shrink-0">
+                                        ({s.classes_count} turma(s), {s.students_count} aluno(s))
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
                             </div>
                           </div>
                           
