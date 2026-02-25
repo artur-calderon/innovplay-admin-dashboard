@@ -33,4 +33,13 @@ export interface ListaFrequenciaResponse {
   estudantes: Estudante[];
 }
 
+/** Resposta do GET /lista-frequencia/?test_id=... (todas as turmas da avaliação) */
+export interface ListaFrequenciaTurmasResponse {
+  turmas: Array<{
+    class_id: string;
+    cabecalho: Cabecalho;
+    estudantes: Estudante[];
+  }>;
+}
+
 export type TipoListaFrequencia = 'avaliacao' | 'prova_fisica' | 'frequencia_diaria';

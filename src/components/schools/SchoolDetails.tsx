@@ -13,6 +13,7 @@ import { LinkDirectorCoordinatorModal } from "./LinkDirectorCoordinatorModal";
 import { ManageSchoolLinksModal } from "./ManageSchoolLinksModal";
 import { BulkUploadStudentsModal } from "./BulkUploadStudentsModal";
 import { PasswordReportModal } from "./PasswordReportModal";
+import { SchoolCoursesTab } from "./SchoolCoursesTab";
 import {
   Table,
   TableBody,
@@ -782,9 +783,10 @@ export default function SchoolDetails() {
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="classes">Turmas</TabsTrigger>
+          <TabsTrigger value="courses">Cursos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -1145,6 +1147,10 @@ export default function SchoolDetails() {
           </Card>
 
 
+        </TabsContent>
+
+        <TabsContent value="courses" className="space-y-6">
+          <SchoolCoursesTab schoolId={school.id} schoolName={school.name} />
         </TabsContent>
       </Tabs>
 
