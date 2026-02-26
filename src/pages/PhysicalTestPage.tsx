@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,6 +74,28 @@ import { useToast } from "@/hooks/use-toast";
 import { useBatchCorrection } from "@/hooks/useBatchCorrection";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
+import { MultiSelect } from "@/components/ui/multi-select";
+
+/** Resposta GET /physical-tests/test/<test_id>/scope */
+interface TestScopeClass {
+  id: string;
+  name: string;
+}
+interface TestScopeGrade {
+  id: string;
+  name: string;
+  classes: TestScopeClass[];
+}
+interface TestScopeSchool {
+  id: string;
+  name: string;
+  grades: TestScopeGrade[];
+}
+interface TestScopeResponse {
+  test_id: string;
+  test_title: string;
+  schools: TestScopeSchool[];
+}
 
 interface PhysicalTestStatus {
   applied_applications: number;
@@ -145,6 +167,12 @@ export default function PhysicalTestPage() {
   const [questionsPerBlock, setQuestionsPerBlock] = useState(5);
   const [separateBySubject, setSeparateBySubject] = useState(false);
 
+  // Escopo da prova (GET /scope) e seleção para geração
+  const [testScope, setTestScope] = useState<TestScopeResponse | null>(null);
+  const [generateScopeSchoolIds, setGenerateScopeSchoolIds] = useState<string[]>([]);
+  const [generateScopeGradeIds, setGenerateScopeGradeIds] = useState<string[]>([]);
+  const [generateScopeClassIds, setGenerateScopeClassIds] = useState<string[]>([]);
+
   // Estados para informações da avaliação (para validação)
   const [testTotalQuestions, setTestTotalQuestions] = useState<number | null>(null);
   const [testSubjects, setTestSubjects] = useState<string[]>([]);
@@ -183,6 +211,44 @@ export default function PhysicalTestPage() {
   const [totalStudents, setTotalStudents] = useState(0);
   const [classes, setClasses] = useState<any[]>([]);
 
+  // Listas planas do escopo (para multi-selects), deduplicadas por id
+  const scopeSchoolsList = useMemo(() => {
+    if (!testScope?.schools?.length) return [];
+    return testScope.schools.map((s) => ({ id: s.id, name: s.name }));
+  }, [testScope]);
+
+  const scopeGradesList = useMemo(() => {
+    if (!testScope?.schools?.length) return [];
+    const seen = new Set<string>();
+    const list: { id: string; name: string }[] = [];
+    for (const school of testScope.schools) {
+      for (const g of school.grades || []) {
+        if (!seen.has(g.id)) {
+          seen.add(g.id);
+          list.push({ id: g.id, name: g.name });
+        }
+      }
+    }
+    return list;
+  }, [testScope]);
+
+  const scopeClassesList = useMemo(() => {
+    if (!testScope?.schools?.length) return [];
+    const seen = new Set<string>();
+    const list: { id: string; name: string }[] = [];
+    for (const school of testScope.schools) {
+      for (const g of school.grades || []) {
+        for (const c of g.classes || []) {
+          if (!seen.has(c.id)) {
+            seen.add(c.id);
+            list.push({ id: c.id, name: c.name });
+          }
+        }
+      }
+    }
+    return list;
+  }, [testScope]);
+
   // Carregar dados iniciais
   useEffect(() => {
     if (id) {
@@ -219,6 +285,15 @@ export default function PhysicalTestPage() {
         answer_sheet_sent_at: form.answer_sheet_sent_at || null
       }));
       setGeneratedForms(forms);
+
+      // Carregar escopo da prova (escolas/séries/turmas) para filtro de geração
+      try {
+        const scopeResponse = await api.get(`/physical-tests/test/${id}/scope`);
+        setTestScope(scopeResponse.data as TestScopeResponse);
+      } catch (scopeErr) {
+        console.warn("Não foi possível carregar escopo da prova:", scopeErr);
+        setTestScope(null);
+      }
 
       // Buscar informações da avaliação para validação de blocos
       try {
@@ -445,6 +520,10 @@ export default function PhysicalTestPage() {
 
       // Adicionar use_hybrid ao payload
       payload.use_hybrid = true;
+
+      if (generateScopeSchoolIds.length > 0) payload.school_ids = generateScopeSchoolIds;
+      if (generateScopeGradeIds.length > 0) payload.grade_ids = generateScopeGradeIds;
+      if (generateScopeClassIds.length > 0) payload.class_ids = generateScopeClassIds;
 
       // 1. DISPARAR GERAÇÃO (retorna imediatamente com 202)
       const response = await api.post(`/physical-tests/test/${id}/generate-forms`, payload, {
@@ -1138,14 +1217,105 @@ export default function PhysicalTestPage() {
                         Gerar Avaliações
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[500px]">
+                    <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
                         <DialogTitle>Configurar Geração de Avaliações</DialogTitle>
                         <DialogDescription>
-                          Configure as opções de blocos para a geração das avaliações físicas.
+                          Escolha para qual escopo gerar e configure as opções de blocos.
                         </DialogDescription>
                       </DialogHeader>
                       <div className="space-y-6 py-4">
+                        {/* Gerar para escopo (escolas/séries/turmas) */}
+                        {testScope && (
+                          <div className="space-y-4 rounded-lg border border-slate-200 dark:border-slate-800 p-4 bg-slate-50/50 dark:bg-slate-900/30">
+                            <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Gerar para escopo</h4>
+                            <p className="text-xs text-muted-foreground">
+                              Deixe em branco para gerar para todo o escopo da prova. Selecione escolas, séries ou turmas para gerar apenas para elas.
+                            </p>
+                            {scopeSchoolsList.length === 0 ? (
+                              <p className="text-xs text-muted-foreground">Nenhuma turma com aplicação para esta prova.</p>
+                            ) : (
+                              <>
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <Label className="text-sm">Escola(s)</Label>
+                                    {scopeSchoolsList.length > 0 && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                                        onClick={() => setGenerateScopeSchoolIds(scopeSchoolsList.map((o) => o.id))}
+                                      >
+                                        Selecionar todas
+                                      </Button>
+                                    )}
+                                  </div>
+                                  <MultiSelect
+                                    options={scopeSchoolsList}
+                                    selected={generateScopeSchoolIds}
+                                    onChange={setGenerateScopeSchoolIds}
+                                    placeholder="Todas as escolas"
+                                    label=""
+                                    mode="popover"
+                                    className="w-full"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <Label className="text-sm">Série(s)/Ano(s)</Label>
+                                    {scopeGradesList.length > 0 && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                                        onClick={() => setGenerateScopeGradeIds(scopeGradesList.map((o) => o.id))}
+                                      >
+                                        Selecionar todas
+                                      </Button>
+                                    )}
+                                  </div>
+                                  <MultiSelect
+                                    options={scopeGradesList}
+                                    selected={generateScopeGradeIds}
+                                    onChange={setGenerateScopeGradeIds}
+                                    placeholder="Todas as séries"
+                                    label=""
+                                    mode="popover"
+                                    className="w-full"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <Label className="text-sm">Turma(s)</Label>
+                                    {scopeClassesList.length > 0 && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                                        onClick={() => setGenerateScopeClassIds(scopeClassesList.map((o) => o.id))}
+                                      >
+                                        Selecionar todas
+                                      </Button>
+                                    )}
+                                  </div>
+                                  <MultiSelect
+                                    options={scopeClassesList}
+                                    selected={generateScopeClassIds}
+                                    onChange={setGenerateScopeClassIds}
+                                    placeholder="Todas as turmas"
+                                    label=""
+                                    mode="popover"
+                                    className="w-full"
+                                  />
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+
                         {/* Opção de usar blocos */}
                         <div className="flex items-center space-x-2">
                           <Checkbox

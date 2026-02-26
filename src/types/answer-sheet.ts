@@ -76,18 +76,28 @@ export interface Student {
   escola_id?: string;
 }
 
+/** Resumo de escola (apenas quando scope_type === 'city') */
+export interface GabaritoSchoolSummary {
+  school_id: string;
+  school_name: string;
+  classes_count: number;
+  students_count: number;
+}
+
 export interface Gabarito {
   id: string;
   test_id: string | null;
-  class_id?: string;
-  class_name?: string;
+  class_id?: string | null;
+  class_name?: string | null;
+  grade_id?: string | null;
+  grade_name?: string;
   num_questions?: number;
   use_blocks?: boolean;
   title: string;
-  school_name: string;
+  school_id?: string | null;
+  school_name?: string;
   municipality?: string;
   state?: string;
-  grade_name?: string;
   institution?: string;
   created_at: string;
   created_by?: string;
@@ -95,13 +105,15 @@ export interface Gabarito {
   // Novos campos para batch
   is_batch?: boolean;
   batch_id?: string | null;
-  // Formato lista (GET /gabaritos): escopo escola/série — classes_count só turmas que geraram PDF
-  scope_type?: 'class' | 'grade' | 'school';
+  // Formato lista (GET /gabaritos): escopo escola/série/city
+  scope_type?: 'class' | 'grade' | 'school' | 'city';
   classes_count?: number;
   students_count?: number;
   generation_status?: string;
   can_download?: boolean;
   minio_url?: string;
+  /** Apenas quando scope_type === 'city' */
+  schools_summary?: GabaritoSchoolSummary[];
 }
 
 export interface GabaritosResponse {

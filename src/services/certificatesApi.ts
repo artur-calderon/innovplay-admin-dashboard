@@ -25,8 +25,9 @@ export class CertificatesApiService {
 
   /**
    * Buscar avaliações da escola do diretor com contagem de alunos aprovados
-   * Se isAdmin for true, busca todas as avaliações do sistema usando /test/
-   * Caso contrário, usa /evaluation-results/avaliacoes com filtros
+   * - Admin: GET /test/ (todas as avaliações)
+   * - Tecadm: GET /test/ com types=AVALIACAO,SIMULADO (backend retorna escopo do município)
+   * - Diretor/coordenador: GET /evaluation-results/avaliacoes com filtros
    */
   static async getEvaluationsBySchool(
     schoolId?: string, 
@@ -35,31 +36,30 @@ export class CertificatesApiService {
   ): Promise<EvaluationWithCertificates[]> {
     try {
       let evaluations: any[] = [];
-      
-      if (isAdmin) {
-        // Para admin, buscar todas as avaliações usando /test/
-        console.log('Buscando avaliações para admin via /test/');
+      const isTecadm = !isAdmin && !!municipalityId && !schoolId;
+
+      if (isAdmin || isTecadm) {
+        // Admin e tecadm: usar /test/ (backend já filtra por escopo; tecadm vê do município)
+        console.log(isAdmin ? 'Buscando avaliações para admin via /test/' : 'Buscando avaliações para tecadm via /test/');
         const response = await api.get('/test/', {
           params: {
             page: 1,
-            per_page: 1000  // Buscar muitas avaliações
+            per_page: 1000,
+            ...(isTecadm ? { types: 'AVALIACAO,SIMULADO' } : {})
           }
         });
-        
+
         const testsData = response.data?.data || response.data || [];
         evaluations = Array.isArray(testsData) ? testsData : testsData.tests || [];
-        console.log(`Admin: ${evaluations.length} avaliações encontradas`);
+        console.log(`${isAdmin ? 'Admin' : 'Tecadm'}: ${evaluations.length} avaliações encontradas`);
       } else {
-        // Para diretor/coordenador, usar endpoint com filtros
-        // Primeiro, precisamos buscar um estado e município válidos
-        // Como o endpoint requer esses parâmetros, vamos buscar através do endpoint de avaliações aplicadas
-        
-        if (!schoolId || !municipalityId) {
-          console.log('Diretor: faltando schoolId ou municipalityId');
+        // Para diretor/coordenador/tecadm: diretor/coordenador têm escola; tecadm tem só município
+        if (!municipalityId) {
+          console.log('Faltando municipalityId');
           return [];
         }
         
-        console.log(`Buscando avaliações para diretor: escola=${schoolId}, municipio=${municipalityId}`);
+        console.log(`Buscando avaliações: escola=${schoolId ?? '(todas)'}, municipio=${municipalityId}`);
         
         // Buscar o município para obter o estado
         try {
@@ -70,7 +70,7 @@ export class CertificatesApiService {
             estado: municipalityData.state || '',
             municipio: municipalityId,
             avaliacao: 'all',
-            escola: schoolId,
+            escola: schoolId ?? '', // vazio = todas as escolas do município (tecadm)
             page: '1',
             per_page: '1000'
           };
