@@ -10,8 +10,11 @@ import { Button } from '@/components/ui/button';
 import { 
   Calculator, Search, Loader2, 
   Zap, CheckCircle2, Layout, 
-  Edit3, Save, School, Plus, Trash2, Target, TrendingUp, Calendar
+  Edit3, Save, School, Plus, Trash2, Target, TrendingUp, Calendar,
+  LineChart as LineChartIcon, BarChart3
 } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, BarChart, Bar } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/authContext';
 import { getUserHierarchyContext, type UserHierarchyContext } from '@/utils/userHierarchy';
@@ -489,6 +492,22 @@ export default function IdebMetaCalculator() {
     return municipalityData?.escolas?.filter(s => s.level === selectedLevel) || [];
   }, [municipalityData, selectedLevel]);
 
+  const serieHistoricaChartData = useMemo(() => {
+    if (!growthInfo?.years?.length || !growthInfo?.values?.length) return [];
+    return growthInfo.years.map((ano, i) => ({
+      ano: String(ano),
+      ideb: growthInfo.values[i] ?? 0,
+    }));
+  }, [growthInfo]);
+
+  const crescimentoBienalChartData = useMemo(() => {
+    if (!growthInfo?.years?.length || !growthInfo?.diffs?.length) return [];
+    return growthInfo.diffs.map((diff, i) => ({
+      periodo: `${growthInfo.years[i]}-${growthInfo.years[i + 1]}`,
+      crescimento: diff,
+    }));
+  }, [growthInfo]);
+
   const activeEntityDisplayName = useMemo(() => {
     if (!activeEntity) return '';
     if ('municipio' in activeEntity) return activeEntity.municipio;
@@ -500,7 +519,7 @@ export default function IdebMetaCalculator() {
   const lockFilters = (showSchoolResult || userRole === 'tecadm') && !!userHierarchyContext?.municipality;
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6 max-w-full overflow-x-hidden">
+    <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6 max-w-full min-w-0">
       {/* Header */}
       <div className="space-y-2 min-w-0">
         <h1 className="text-xl sm:text-3xl font-bold tracking-tight flex items-center gap-2 sm:gap-3 flex-wrap">
@@ -698,7 +717,7 @@ export default function IdebMetaCalculator() {
         </div>
 
         {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-6 min-w-0">
           {!activeEntity ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center p-6 sm:p-12 text-center min-h-[400px]">
@@ -787,8 +806,8 @@ export default function IdebMetaCalculator() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="overflow-x-auto -mx-2 sm:mx-0">
-                      <Table className="min-w-[480px]">
+                    <div className="w-full min-w-0 overflow-x-auto -mx-2 sm:mx-0 px-2 sm:px-0 [-webkit-overflow-scrolling:touch]">
+                      <Table className="min-w-[480px] w-max">
                         <TableHeader>
                           <TableRow>
                             <TableHead className="w-[60px] sm:w-[80px] min-w-[60px]">Ano</TableHead>
@@ -833,6 +852,115 @@ export default function IdebMetaCalculator() {
                           </TableRow>
                         </TableBody>
                       </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Série histórica - Gráfico de evolução do IDEB (rolagem horizontal para separar os anos) */}
+              {growthInfo && serieHistoricaChartData.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <LineChartIcon className="w-5 h-5" />
+                      Série histórica
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      Evolução do IDEB por ano. Role horizontalmente para ver todos os anos.
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="w-full min-w-0 overflow-x-auto [-webkit-overflow-scrolling:touch]">
+                      <ChartContainer
+                        config={{
+                          ano: { label: 'Ano' },
+                          ideb: { label: 'IDEB', color: 'hsl(var(--chart-1))' },
+                        }}
+                        className="h-[280px] w-full"
+                        style={{ minWidth: Math.max(320, serieHistoricaChartData.length * 56) }}
+                      >
+                        <LineChart data={serieHistoricaChartData} margin={{ left: 12, right: 12, top: 8, bottom: 8 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                          <XAxis
+                            dataKey="ano"
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
+                            tick={{ fontSize: 11 }}
+                            interval={0}
+                          />
+                          <YAxis
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
+                            tick={{ fontSize: 11 }}
+                            domain={[0, 10]}
+                            tickFormatter={(v) => v.toFixed(1)}
+                          />
+                          <ChartTooltip content={<ChartTooltipContent />} />
+                          <Line
+                            type="monotone"
+                            dataKey="ideb"
+                            stroke="var(--color-ideb)"
+                            strokeWidth={2}
+                            dot={{ r: 4 }}
+                            activeDot={{ r: 6 }}
+                          />
+                        </LineChart>
+                      </ChartContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Crescimento bienal - Gráfico de barras (rolagem horizontal para separar os períodos) */}
+              {growthInfo && crescimentoBienalChartData.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5" />
+                      Crescimento bienal
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      Variação do IDEB entre edições (∆ bienal). Role horizontalmente para ver todos os períodos.
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="w-full min-w-0 overflow-x-auto [-webkit-overflow-scrolling:touch]">
+                      <ChartContainer
+                        config={{
+                          periodo: { label: 'Período' },
+                          crescimento: { label: '∆ Bienal', color: 'hsl(var(--chart-2))' },
+                        }}
+                        className="h-[280px] w-full"
+                        style={{ minWidth: Math.max(320, crescimentoBienalChartData.length * 72) }}
+                      >
+                        <BarChart data={crescimentoBienalChartData} margin={{ left: 12, right: 12, top: 8, bottom: 8 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                          <XAxis
+                            dataKey="periodo"
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
+                            tick={{ fontSize: 11 }}
+                            interval={0}
+                          />
+                          <YAxis
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
+                            tick={{ fontSize: 11 }}
+                            tickFormatter={(v) => (v >= 0 ? `+${v}` : String(v))}
+                          />
+                          <ChartTooltip content={<ChartTooltipContent />} />
+                          <Bar
+                            dataKey="crescimento"
+                            fill="var(--color-crescimento)"
+                            radius={[4, 4, 0, 0]}
+                            nameKey="∆ Bienal"
+                          />
+                        </BarChart>
+                      </ChartContainer>
                     </div>
                   </CardContent>
                 </Card>
