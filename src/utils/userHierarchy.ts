@@ -9,6 +9,7 @@ export interface UserHierarchyContext {
   school?: {
     id: string;
     name: string;
+    nome?: string;
     municipality_id: string;
   };
   classes?: Array<{
@@ -109,12 +110,14 @@ export async function getUserHierarchyContext(
               
               console.log('🔍 Escolas do município:', municipalitySchools);
               
+              const schoolName = (s: any) => s?.name ?? s?.nome ?? s?.school_name ?? '';
+
               // Se há apenas 1 escola, selecionar automaticamente
               if (municipalitySchools.length === 1) {
                 const context = {
                   school: {
                     id: municipalitySchools[0].id,
-                    name: municipalitySchools[0].name || municipalitySchools[0].nome,
+                    name: schoolName(municipalitySchools[0]),
                     municipality_id: municipalitySchools[0].city_id
                   },
                   municipality: {
@@ -127,9 +130,34 @@ export async function getUserHierarchyContext(
                 console.log('🔍 Contexto hierárquico retornado (escola única):', context);
                 return context;
               }
-              
-              // Se há múltiplas escolas, retornar só o município
-              // Usuário escolherá a escola manualmente
+
+              // Múltiplas escolas: tentar obter a escola vinculada ao usuário (school_id, escola_id, escolas_ids)
+              const userSchoolId = userData.school_id ?? userData.escola_id ?? userData.escolas_ids?.[0];
+              if (userSchoolId) {
+                try {
+                  const schoolResponse = await api.get(`/school/${userSchoolId}`);
+                  const schoolData = schoolResponse.data;
+                  const context = {
+                    school: {
+                      id: schoolData.id ?? userSchoolId,
+                      name: schoolName(schoolData),
+                      municipality_id: schoolData.city_id ?? municipalityData.id
+                    },
+                    municipality: {
+                      id: municipalityData.id,
+                      name: municipalityData.name,
+                      state: municipalityData.state
+                    },
+                    restrictions
+                  };
+                  console.log('🔍 Contexto hierárquico retornado (escola do usuário):', context);
+                  return context;
+                } catch (err) {
+                  console.warn('Erro ao buscar escola do usuário:', err);
+                }
+              }
+
+              // Sem escola definida: retornar só o município
               const context = {
                 municipality: {
                   id: municipalityData.id,
@@ -138,7 +166,7 @@ export async function getUserHierarchyContext(
                 },
                 restrictions
               };
-              console.log('🔍 Contexto hierárquico retornado (múltiplas escolas):', context);
+              console.log('🔍 Contexto hierárquico retornado (múltiplas escolas, sem escola definida):', context);
               return context;
             } catch (error) {
               console.error('🔍 Erro ao buscar município/escolas:', error);
