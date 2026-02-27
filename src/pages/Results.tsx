@@ -389,7 +389,7 @@ export default function Results() {
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
 
 
-  // ✅ CORRIGIDO: Função para carregar alunos faltosos baseada em alunos selecionados para a avaliação
+  // ✅ CORRIGIDO: Carregar alunos faltosos = alunos selecionados para a avaliação (no escopo) que não participaram
   const loadAbsentStudents = useCallback(async () => {
     if (!selectedEvaluation || selectedEvaluation === 'all') {
       setAbsentStudents([]);
@@ -398,124 +398,72 @@ export default function Results() {
 
     try {
       setIsLoadingAbsentStudents(true);
-      
-      // ✅ NOVO: Obter nomes dos filtros selecionados (com verificação de disponibilidade)
+
       const selectedSchoolName = selectedSchool !== 'all' && schools.length > 0
-        ? schools.find(s => s.id === selectedSchool)?.name 
+        ? schools.find(s => s.id === selectedSchool)?.name
         : null;
       const selectedGradeName = selectedGrade !== 'all' && grades.length > 0
-        ? grades.find(g => g.id === selectedGrade)?.name 
+        ? grades.find(g => g.id === selectedGrade)?.name
         : null;
       const selectedClassName = selectedClass !== 'all' && classes.length > 0
-        ? classes.find(c => c.id === selectedClass)?.name 
+        ? classes.find(c => c.id === selectedClass)?.name
         : null;
 
-      // ✅ CORRIGIDO: Se tabela_detalhada disponível, usar dados completos com filtros
+      // Participantes = quem respondeu ao menos uma questão (ranking + tabela_detalhada)
+      const participatingIds = new Set<string>();
+      if (apiData?.ranking?.length) {
+        apiData.ranking.forEach((item: RankingItemWithAluno) => participatingIds.add(item.aluno_id));
+      }
       if (apiData?.tabela_detalhada?.disciplinas?.length) {
-        // Coletar todos os alunos únicos da tabela_detalhada
-        const alunosMap = new Map<string, {
-          id: string;
-          nome: string;
-          turma: string;
-          serie: string;
-          escola: string;
-          participou: boolean;
-        }>();
-
-        apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
-          disciplina.alunos.forEach(aluno => {
-            // ✅ NOVO: Aplicar filtros de turma/série/escola (apenas se filtro estiver selecionado E nome disponível)
-            if (selectedClassName && aluno.turma !== selectedClassName) return;
-            if (selectedGradeName && aluno.serie !== selectedGradeName) return;
-            if (selectedSchoolName && aluno.escola !== selectedSchoolName) return;
-
-            // Verificar se o aluno respondeu pelo menos uma questão
-            const hasAnsweredAnyQuestion = aluno.respostas_por_questao.some(resposta => resposta.respondeu);
-            
-            if (!alunosMap.has(aluno.id)) {
-              alunosMap.set(aluno.id, {
-                id: aluno.id,
-                nome: aluno.nome,
-                turma: aluno.turma,
-                serie: aluno.serie,
-                escola: aluno.escola,
-                participou: hasAnsweredAnyQuestion
-              });
-            } else {
-              // Se já existe, atualizar status de participação (se participou em qualquer disciplina)
-              const existing = alunosMap.get(aluno.id)!;
-              if (hasAnsweredAnyQuestion) {
-                existing.participou = true;
-              }
-            }
+        apiData.tabela_detalhada.disciplinas.forEach((d: { alunos: Array<{ id: string; respostas_por_questao?: Array<{ respondeu: boolean }> }> }) => {
+          d.alunos.forEach((aluno: { id: string; respostas_por_questao?: Array<{ respondeu: boolean }> }) => {
+            const participou = aluno.respostas_por_questao?.some((r: { respondeu: boolean }) => r.respondeu);
+            if (participou) participatingIds.add(aluno.id);
           });
         });
-
-        // ✅ NOVO: Filtrar apenas alunos faltosos (não participaram)
-        const absentStudentsList = Array.from(alunosMap.values())
-          .filter(aluno => !aluno.participou)
-          .map(aluno => ({
-            id: aluno.id,
-            nome: aluno.nome,
-            turma: aluno.turma,
-            escola: aluno.escola || selectedSchoolName || evaluationInfo?.escola || apiData?.estatisticas_gerais?.escola || 'Escola não informada',
-            serie: aluno.serie || selectedGradeName || evaluationInfo?.serie || apiData?.estatisticas_gerais?.serie || 'Série não informada'
-          }))
-          .sort((a, b) => a.nome.localeCompare(b.nome));
-
-        setAbsentStudents(absentStudentsList);
-        return;
       }
 
-      // ✅ FALLBACK: Se tabela_detalhada não disponível, usar getStudentsByEvaluation
-      const selectedStudentsResponse = await EvaluationResultsApiService.getStudentsByEvaluation(selectedEvaluation);
-      
+      // Lista de selecionados no escopo atual (com filtros para performance e correção)
+      const filters: { municipio?: string; escola?: string; serie?: string; turma?: string } = {};
+      if (selectedMunicipality && selectedMunicipality !== 'all') filters.municipio = selectedMunicipality;
+      if (selectedSchool && selectedSchool !== 'all') filters.escola = selectedSchool;
+      if (selectedGrade && selectedGrade !== 'all') filters.serie = selectedGrade;
+      if (selectedClass && selectedClass !== 'all') filters.turma = selectedClass;
+
+      const selectedStudentsResponse = await EvaluationResultsApiService.getStudentsByEvaluation(
+        selectedEvaluation,
+        Object.keys(filters).length > 0 ? filters : undefined
+      );
+
       if (!selectedStudentsResponse || selectedStudentsResponse.length === 0) {
         setAbsentStudents([]);
         return;
       }
 
-      // ✅ NOVO: Obter lista de alunos que participaram (responderam pelo menos uma questão)
-      const participatingStudents = new Set<string>();
-      
-      // Tentar obter participantes de outras fontes se disponível
-      if (apiData?.ranking?.length) {
-        apiData.ranking.forEach((item: RankingItemWithAluno) => {
-          participatingStudents.add(item.aluno_id);
-        });
-      }
-
-      // ✅ CORRIGIDO: Obter escola e série das fontes disponíveis (com prioridade nos filtros)
-      const escolaNome = 
+      const escolaNome =
         selectedSchoolName ||
-        evaluationInfo?.escola || 
+        evaluationInfo?.escola ||
         apiData?.estatisticas_gerais?.escola ||
         'Escola não informada';
-
-      const serieNome = 
+      const serieNome =
         selectedGradeName ||
         evaluationInfo?.serie ||
         apiData?.estatisticas_gerais?.serie ||
         'Série não informada';
 
-      // ✅ NOVO: Calcular alunos faltosos = selecionados - participantes, aplicando filtros
       const absentStudentsList = selectedStudentsResponse
-        .filter(selectedStudent => {
-          // Filtrar por turma se selecionada
-          if (selectedClassName && selectedStudent.turma !== selectedClassName) {
-            return false;
-          }
-          // Verificar se não participou
-          return !participatingStudents.has(selectedStudent.id);
+        .filter((s: { id: string; turma?: string }) => {
+          if (selectedClassName && s.turma !== selectedClassName) return false;
+          return !participatingIds.has(s.id);
         })
-        .map(selectedStudent => ({
-          id: selectedStudent.id,
-          nome: selectedStudent.nome,
-          turma: selectedStudent.turma,
-          escola: escolaNome,
-          serie: serieNome
+        .map((s: { id: string; nome: string; turma?: string; escola?: string; serie?: string }) => ({
+          id: s.id,
+          nome: s.nome,
+          turma: s.turma ?? '',
+          escola: s.escola || escolaNome,
+          serie: s.serie || serieNome
         }))
-        .sort((a, b) => a.nome.localeCompare(b.nome));
+        .sort((a: { nome: string }, b: { nome: string }) => a.nome.localeCompare(b.nome));
 
       setAbsentStudents(absentStudentsList);
     } catch (error) {
@@ -524,12 +472,13 @@ export default function Results() {
     } finally {
       setIsLoadingAbsentStudents(false);
     }
-  }, [selectedEvaluation, apiData, evaluationInfo, schools, grades, classes, selectedSchool, selectedGrade, selectedClass]);
+  }, [selectedEvaluation, apiData, evaluationInfo, schools, grades, classes, selectedSchool, selectedGrade, selectedClass, selectedMunicipality]);
 
-  // Handler para mostrar modal de alunos faltosos
-  const handleViewAbsent = useCallback(async () => {
-    await loadAbsentStudents();
+  // Handler para mostrar modal de alunos faltosos (abre o modal na hora e carrega os dados dentro)
+  const handleViewAbsent = useCallback(() => {
     setShowAbsentStudentsModal(true);
+    setAbsentStudents([]);
+    loadAbsentStudents();
   }, [loadAbsentStudents]);
 
 
@@ -2369,9 +2318,9 @@ export default function Results() {
                         variant="ghost"
                         size="sm"
                         onClick={handleViewAbsent}
-                        className="h-7 px-2 text-xs text-red-600 hover:text-red-700"
+                        className="h-7 px-2 text-xs text-red-600 hover:text-red-700 dark:hover:text-red-400"
                         aria-label="Ver faltosos"
-                        disabled={derivedStats.ausentes === 0}
+                        disabled={!isRestrictedUser && derivedStats.ausentes === 0}
                       >
                         Ver faltosos
                       </Button>

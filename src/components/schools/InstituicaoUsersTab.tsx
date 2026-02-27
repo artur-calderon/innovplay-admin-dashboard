@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Users, Eye, Pencil, Building, MapPin } from "lucide-react";
+import { Loader2, Users, Eye, Pencil, Building, MapPin, School } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,8 +23,25 @@ import {
 import { getRoleDisplayName } from "@/lib/constants";
 import UserForm from "@/components/users/UserForm";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/authContext";
 
-const ROLE_ORDER = ["admin", "diretor", "coordenador", "professor", "tecadm", "aluno"];
+const ROLE_ORDER = ["admin", "tecadm", "diretor", "coordenador", "professor", "aluno"];
+
+/** Mapeia nome de exibição ou slug da API para chave canônica (para ordenação) */
+function toCanonicalRole(role: string): string {
+  const r = (role || "").trim().toLowerCase();
+  const byDisplay: Record<string, string> = {
+    "administrador": "admin",
+    "técnico administrativo": "tecadm",
+    "técnico administrador": "tecadm",
+    "tec adm": "tecadm",
+    "diretor": "diretor",
+    "coordenador": "coordenador",
+    "professor": "professor",
+    "aluno": "aluno",
+  };
+  return byDisplay[r] || r || "outro";
+}
 
 interface MunicipioUser {
   id: string;
@@ -34,6 +51,30 @@ interface MunicipioUser {
   role: string;
   city_id: string;
   created_at?: string;
+  /** Nome da escola (quando vindo da API) */
+  school_name?: string;
+  school_id?: string;
+  school?: { id: string; name: string };
+  schools?: Array<{ id: string; name: string }>;
+  /** Município do tec admin (GET /managers → city) */
+  city_name?: string;
+  city?: { id: string; name: string };
+}
+
+const ROLES_WITH_SCHOOL = ["diretor", "coordenador", "professor", "aluno"];
+const ROLES_WITH_CITY = ["tecadm"];
+
+function getSchoolDisplay(u: MunicipioUser): string | null {
+  if (u.school_name) return u.school_name;
+  if (u.school?.name) return u.school.name;
+  if (u.schools?.length) return u.schools.map((s) => s.name).join(", ");
+  return null;
+}
+
+function getCityDisplay(u: MunicipioUser): string | null {
+  if (u.city_name) return u.city_name;
+  if (u.city?.name) return u.city.name;
+  return null;
 }
 
 interface MunicipioUsersResponse {
@@ -71,16 +112,195 @@ export function InstituicaoUsersTab({
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewingUser, setViewingUser] = useState<MunicipioUser | null>(null);
+  const [viewingUserSchool, setViewingUserSchool] = useState<string | null>(null);
+  const [loadingViewDetails, setLoadingViewDetails] = useState(false);
   const [editingUser, setEditingUser] = useState<MunicipioUser | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
+  const { user: authUser } = useAuth();
+  const canFetchSchoolEnrichment = authUser?.role === "admin" || authUser?.role === "tecadm";
+
+  // Ao abrir o modal "Ver", buscar detalhes do usuário (incl. escola) para diretor/coordenador/professor/aluno
+  useEffect(() => {
+    if (!viewingUser || !ROLES_WITH_SCHOOL.includes(toCanonicalRole(viewingUser.role))) {
+      setViewingUserSchool(null);
+      return;
+    }
+    const already = getSchoolDisplay(viewingUser);
+    if (already) {
+      setViewingUserSchool(already);
+      return;
+    }
+    let cancelled = false;
+    setLoadingViewDetails(true);
+    setViewingUserSchool(null);
+    api
+      .get(`/users/${viewingUser.id}`)
+      .then((res) => {
+        if (cancelled) return;
+        const d = res.data?.user ?? res.data;
+        const name =
+          d?.student?.school?.name ??
+          d?.student?.school?.nome ??
+          d?.school?.name ??
+          d?.school?.nome ??
+          (Array.isArray(d?.schools) && d.schools.length > 0
+            ? d.schools.map((s: { name?: string; nome?: string }) => s?.name ?? s?.nome).filter(Boolean).join(", ")
+            : null);
+        setViewingUserSchool(name || null);
+      })
+      .catch(() => {
+        if (!cancelled) setViewingUserSchool(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingViewDetails(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewingUser?.id, viewingUser?.role]);
 
   const fetchUsers = useCallback(async () => {
     if (!cityId) return;
     setIsLoading(true);
     try {
       const res = await api.get<MunicipioUsersResponse>(`/city/${cityId}/users`);
-      setData(res.data);
+      let users: MunicipioUser[] = Array.isArray(res.data?.users) ? [...res.data.users] : [];
+
+      if (canFetchSchoolEnrichment && users.length > 0) {
+        const managersSchoolMap = new Map<string, { id: string; name: string }>();
+        const managersCityMap = new Map<string, { id: string; name: string }>();
+        const professorSchoolsMap = new Map<string, Array<{ id: string; name: string }>>();
+        const studentSchoolMap = new Map<string, { id: string; name: string }>();
+
+        try {
+          const managersRes = await api.get(`/managers`);
+          const allManagers = Array.isArray(managersRes.data) ? managersRes.data : managersRes.data?.managers ?? [];
+          for (const item of allManagers) {
+            const userId = item.user?.id;
+            const role = (item.user?.role ?? "").toLowerCase();
+            const school = item.school;
+            const city = item.city;
+            if (userId && (role === "diretor" || role === "coordenador") && school) {
+              managersSchoolMap.set(userId, {
+                id: school.id,
+                name: school.name ?? school.nome ?? "Escola",
+              });
+            }
+            if (userId && role === "tecadm" && city) {
+              managersCityMap.set(userId, {
+                id: city.id,
+                name: city.name ?? city.nome ?? "Município",
+              });
+            }
+          }
+        } catch (e) {
+          console.warn("Erro ao carregar managers (escola/cidade):", e);
+        }
+
+        try {
+          const managersCityRes = await api.get(`/managers/city/${cityId}`);
+          const managersList = Array.isArray(managersCityRes.data) ? managersCityRes.data : managersCityRes.data?.managers ?? [];
+          for (const item of managersList) {
+            const userId = item.user?.id;
+            const school = item.school;
+            if (userId && school && !managersSchoolMap.has(userId)) {
+              managersSchoolMap.set(userId, {
+                id: school.id,
+                name: school.name ?? school.nome ?? "Escola",
+              });
+            }
+          }
+        } catch (e) {
+          console.warn("Erro ao carregar managers da cidade (escola por diretor/coordenador):", e);
+        }
+
+        try {
+          const studentsRes = await api.get("/students");
+          const studentsList = Array.isArray(studentsRes.data) ? studentsRes.data : studentsRes.data?.data ?? studentsRes.data?.alunos ?? studentsRes.data?.students ?? [];
+          for (const s of studentsList) {
+            const school = s.school;
+            if (!school) continue;
+            const schoolCityId = school.city_id;
+            if (schoolCityId && schoolCityId !== cityId) continue;
+            const userId = s.user_id ?? s.usuario_id ?? s.user?.id ?? s.id;
+            if (userId) {
+              studentSchoolMap.set(userId, {
+                id: school.id,
+                name: school.name ?? school.nome ?? "Escola",
+              });
+            }
+          }
+        } catch (e) {
+          console.warn("Erro ao carregar alunos/escolas:", e);
+        }
+
+        try {
+          const teacherRes = await api.get("/teacher");
+          const teachersList = Array.isArray(teacherRes.data)
+            ? teacherRes.data
+            : teacherRes.data?.data ?? teacherRes.data?.professores ?? [];
+          const teacherIdToUserId = new Map<string, string>();
+          for (const t of teachersList) {
+            const uid = t.user_id ?? t.usuario_id ?? t.user?.id;
+            if (uid && t.id) teacherIdToUserId.set(t.id, uid);
+            const vinculos = t.vinculos ?? t.vínculos ?? t.schools ?? [];
+            if (uid && vinculos.length > 0) {
+              const schools = vinculos.map((v: { school_id?: string; school_name?: string; school?: { id: string; name: string } }) =>
+                v.school ? v.school : { id: v.school_id ?? "", name: v.school_name ?? "" }
+              ).filter((s: { id: string; name: string }) => s.id || s.name);
+              if (schools.length) {
+                const existing = professorSchoolsMap.get(uid) ?? [];
+                professorSchoolsMap.set(uid, [...existing, ...schools]);
+              }
+            }
+          }
+          if (professorSchoolsMap.size === 0) {
+            const linksRes = await api.get("/school-teacher");
+            const links = Array.isArray(linksRes.data) ? linksRes.data : linksRes.data?.data ?? linksRes.data?.vinculos ?? [];
+            for (const link of links) {
+              const teacherId = link.teacher_id ?? link.professor?.id;
+              const escola = link.escola ?? link.school;
+              if (!teacherId || !escola) continue;
+              const userId = teacherIdToUserId.get(teacherId);
+              if (userId) {
+                const arr = professorSchoolsMap.get(userId) ?? [];
+                if (!arr.some((s) => s.id === escola.id)) {
+                  professorSchoolsMap.set(userId, [...arr, { id: escola.id, name: escola.name ?? escola.nome ?? "" }]);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Erro ao carregar professores/escolas:", e);
+        }
+
+        users = users.map((u) => {
+          const roleCanon = toCanonicalRole(u.role);
+          if (roleCanon === "diretor" || roleCanon === "coordenador") {
+            const school = managersSchoolMap.get(u.id);
+            if (school) return { ...u, school, school_name: school.name, school_id: school.id };
+          }
+          if (roleCanon === "professor") {
+            const schools = professorSchoolsMap.get(u.id);
+            if (schools?.length) {
+              const schoolName = schools.map((s) => s.name).filter(Boolean).join(", ");
+              return { ...u, schools, school_name: schoolName, school: schools[0], school_id: schools[0].id };
+            }
+          }
+          if (roleCanon === "aluno") {
+            const school = studentSchoolMap.get(u.id);
+            if (school) return { ...u, school, school_name: school.name, school_id: school.id };
+          }
+          if (roleCanon === "tecadm") {
+            const city = managersCityMap.get(u.id);
+            if (city) return { ...u, city, city_name: city.name };
+          }
+          return u;
+        });
+      }
+
+      setData({ ...res.data, users });
     } catch (err) {
       console.error("Erro ao carregar usuários do município:", err);
       toast({
@@ -92,7 +312,7 @@ export function InstituicaoUsersTab({
     } finally {
       setIsLoading(false);
     }
-  }, [cityId, toast]);
+  }, [cityId, toast, canFetchSchoolEnrichment]);
 
   useEffect(() => {
     fetchUsers();
@@ -113,11 +333,15 @@ export function InstituicaoUsersTab({
     }
   };
 
-  const users = data?.users ?? [];
+  const rawUsers = data?.users ?? [];
+  const users =
+    authUser?.role === "professor"
+      ? rawUsers.filter((u) => toCanonicalRole(u.role) === "aluno")
+      : rawUsers;
   const byRole = users.reduce<Record<string, MunicipioUser[]>>((acc, u) => {
-    const r = u.role || "outro";
-    if (!acc[r]) acc[r] = [];
-    acc[r].push(u);
+    const canonical = toCanonicalRole(u.role || "");
+    if (!acc[canonical]) acc[canonical] = [];
+    acc[canonical].push(u);
     return acc;
   }, {});
 
@@ -238,6 +462,18 @@ export function InstituicaoUsersTab({
                                   {u.registration && (
                                     <p className="text-xs text-muted-foreground/80 mt-0.5">Matrícula: {u.registration}</p>
                                   )}
+                                  {ROLES_WITH_SCHOOL.includes(toCanonicalRole(u.role)) && getSchoolDisplay(u) && (
+                                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                      <School className="h-3 w-3 flex-shrink-0" />
+                                      <span className="truncate">{getSchoolDisplay(u)}</span>
+                                    </p>
+                                  )}
+                                  {ROLES_WITH_CITY.includes(toCanonicalRole(u.role)) && getCityDisplay(u) && (
+                                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                      <MapPin className="h-3 w-3 flex-shrink-0" />
+                                      <span className="truncate">{getCityDisplay(u)}</span>
+                                    </p>
+                                  )}
                                   <Badge variant="outline" className="mt-2 text-xs">
                                     {getRoleDisplayName(u.role)}
                                   </Badge>
@@ -251,7 +487,7 @@ export function InstituicaoUsersTab({
                                   >
                                     <Eye className="h-4 w-4" />
                                   </Button>
-                                  {(isAdmin || u.role !== "admin") && (
+                                  {authUser?.role !== "professor" && (isAdmin || toCanonicalRole(u.role) !== "admin") && (
                                     <Button
                                       variant="ghost"
                                       size="icon"
@@ -306,6 +542,30 @@ export function InstituicaoUsersTab({
                 <p className="text-sm font-medium text-muted-foreground">Perfil</p>
                 <p className="text-base text-foreground">{getRoleDisplayName(viewingUser.role)}</p>
               </div>
+              {ROLES_WITH_SCHOOL.includes(toCanonicalRole(viewingUser.role)) && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                    <School className="h-3.5 w-3.5" /> Escola(s)
+                  </p>
+                  {loadingViewDetails ? (
+                    <p className="text-base text-muted-foreground flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Carregando...
+                    </p>
+                  ) : (
+                    <p className="text-base text-foreground">
+                      {viewingUserSchool ?? getSchoolDisplay(viewingUser) ?? "—"}
+                    </p>
+                  )}
+                </div>
+              )}
+              {ROLES_WITH_CITY.includes(toCanonicalRole(viewingUser.role)) && getCityDisplay(viewingUser) && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5" /> Município atribuído
+                  </p>
+                  <p className="text-base text-foreground">{getCityDisplay(viewingUser)}</p>
+                </div>
+              )}
               {data?.municipio && (
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
@@ -321,24 +581,42 @@ export function InstituicaoUsersTab({
 
       {/* Modal Editar usuário */}
       <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Editar usuário</DialogTitle>
-            <DialogDescription>Altere os dados e salve.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#7B3FE4]/10">
+                <Pencil className="h-4 w-4 text-[#7B3FE4]" />
+              </div>
+              Editar usuário
+            </DialogTitle>
+            <DialogDescription>
+              Altere nome, e-mail, matrícula, função ou senha. Os campos marcados com * são obrigatórios.
+            </DialogDescription>
           </DialogHeader>
           {editingUser && (
-            <UserForm
-              user={{
-                id: Number(editingUser.id),
-                name: editingUser.name,
-                email: editingUser.email,
-                role: editingUser.role,
-                registration: editingUser.registration,
-                city_id: editingUser.city_id,
-              }}
-              onSubmit={handleEditUser}
-              showCitySelect={isAdmin}
-            />
+            <div className="space-y-6 pt-2">
+              {ROLES_WITH_SCHOOL.includes(editingUser.role) && getSchoolDisplay(editingUser) && (
+                <div className="rounded-lg border border-[#E5D5EA] dark:border-white/10 bg-muted/30 px-4 py-3">
+                  <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1">
+                    <School className="h-3.5 w-3.5" /> Escola vinculada (somente leitura)
+                  </p>
+                  <p className="text-sm font-medium text-foreground">{getSchoolDisplay(editingUser)}</p>
+                </div>
+              )}
+              <UserForm
+                user={{
+                  id: Number(editingUser.id),
+                  name: editingUser.name,
+                  email: editingUser.email,
+                  role: getRoleDisplayName(editingUser.role),
+                  registration: editingUser.registration,
+                  city_id: editingUser.city_id,
+                }}
+                onSubmit={handleEditUser}
+                showCitySelect={isAdmin}
+                layout="modal"
+              />
+            </div>
           )}
         </DialogContent>
       </Dialog>

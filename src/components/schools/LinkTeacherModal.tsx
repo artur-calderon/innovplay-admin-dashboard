@@ -16,6 +16,7 @@ import { Loader2, Search, UserPlus, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/authContext";
+import { useEmailCheck, generatePasswordFromName } from "@/hooks/useEmailCheck";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -51,6 +52,8 @@ interface LinkTeacherModalProps {
   classId: string;
   className: string;
   onSuccess: () => void;
+  /** Município da escola: professor já é criado nesse município (evita erro de city_id para admin) */
+  schoolCityId?: string;
 }
 
 export function LinkTeacherModal({
@@ -60,6 +63,7 @@ export function LinkTeacherModal({
   classId,
   className,
   onSuccess,
+  schoolCityId,
 }: LinkTeacherModalProps) {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [selectedTeachers, setSelectedTeachers] = useState<string[]>([]);
@@ -79,6 +83,28 @@ export function LinkTeacherModal({
   });
   const { toast } = useToast();
   const { user } = useAuth();
+
+  const { checkedEmail, isChecking, isAvailable } = useEmailCheck(formData.nome, activeTab === "create");
+
+  // Sincronizar email e senha quando o nome mudar na aba "Criar"
+  useEffect(() => {
+    if (activeTab !== "create") return;
+    if (checkedEmail) {
+      setFormData(prev => ({ ...prev, email: checkedEmail }));
+    }
+  }, [checkedEmail, activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "create" || !formData.nome) return;
+    setFormData(prev => ({ ...prev, senha: generatePasswordFromName(prev.nome) }));
+  }, [formData.nome, activeTab]);
+
+  // Pré-preencher município quando o modal é aberto no contexto de uma escola
+  useEffect(() => {
+    if (isOpen && schoolCityId) {
+      setFormData(prev => ({ ...prev, city_id: schoolCityId }));
+    }
+  }, [isOpen, schoolCityId]);
 
   // Verificar permissões para vincular professores
   const canLinkTeachers = () => {
@@ -189,7 +215,22 @@ export function LinkTeacherModal({
 
     setIsLinking(true);
     try {
-      // Vincular cada professor selecionado à turma
+      // 1) Garantir que cada professor está vinculado à escola (professor pode estar em várias escolas)
+      const schoolLinkPromises = selectedTeachers.map(teacherId =>
+        api.post("/school-teacher", {
+          teacher_id: teacherId,
+          school_id: schoolId
+        }).catch(err => {
+          // Se já estiver vinculado, o backend pode retornar erro; continuamos para teacher-class
+          if (err?.response?.status === 400 && /já vinculado|already/i.test(String(err?.response?.data?.error ?? err?.response?.data?.message ?? ''))) {
+            return Promise.resolve();
+          }
+          throw err;
+        })
+      );
+      await Promise.all(schoolLinkPromises);
+
+      // 2) Vincular cada professor à turma
       const linkPromises = selectedTeachers.map(teacherId =>
         api.post("/teacher-class", {
           teacher_id: teacherId,
@@ -209,9 +250,10 @@ export function LinkTeacherModal({
       setSelectedTeachers([]);
     } catch (error) {
       console.error("Erro ao vincular professores:", error);
+      const errorMessage = (error as ApiError)?.response?.data?.erro ?? (error as ApiError)?.response?.data?.error ?? "Erro ao vincular professores à turma";
       toast({
         title: "Erro",
-        description: "Erro ao vincular professores à turma",
+        description: typeof errorMessage === "string" ? errorMessage : "Erro ao vincular professores à turma",
         variant: "destructive",
       });
     } finally {
@@ -229,8 +271,8 @@ export function LinkTeacherModal({
       return;
     }
 
-    // Verificar se precisa de city_id
-          if (['admin', 'tecadm'].includes(user?.role || '') && !formData.city_id) {
+    const effectiveCityId = schoolCityId || formData.city_id;
+    if (['admin', 'tecadm'].includes(user?.role || '') && !effectiveCityId) {
       toast({
         title: "Erro",
         description: "Selecione um município",
@@ -248,7 +290,7 @@ export function LinkTeacherModal({
         matricula: formData.matricula || undefined,
         birth_date: formData.birth_date,
         escolas_ids: [schoolId],
-        city_id: ['admin', 'tecadm'].includes(user?.role || '') ? formData.city_id : (user as any)?.city_id
+        city_id: ['admin', 'tecadm'].includes(user?.role || '') ? effectiveCityId : (user as any)?.city_id
       };
 
       const response = await api.post("/teacher", teacherData);

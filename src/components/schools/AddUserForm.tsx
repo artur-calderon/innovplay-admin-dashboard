@@ -351,14 +351,27 @@ if (user.role === 'admin' || user.role === 'tecadm') return true;
         if (!selectedUser) return;
         setIsLoading(true);
         try {
-            if (userType !== 'aluno') {
-                await api.post(`${config.schoolsEndpoint}/${selectedUser.id}/schools`, {
-                    escolas_ids: [schoolId],
+            if (userType === 'diretor' || userType === 'coordenador') {
+                await api.post("/managers/link-to-school", {
+                    user_id: selectedUser.id,
+                    school_id: schoolId,
                 });
-            } else {
+            } else if (userType === 'professor') {
+                await api.post("/school-teacher", {
+                    school_id: schoolId,
+                    teacher_id: (selectedUser as { teacher_id?: string }).teacher_id ?? selectedUser.id,
+                });
+            } else if (userType === 'aluno') {
                 await api.post(`${config.schoolsEndpoint}/${selectedUser.id}/schools`, {
                     escola_id: schoolId,
                 });
+            } else {
+                toast({
+                    title: "Erro",
+                    description: `Vínculo não suportado para o perfil ${config.title}`,
+                    variant: "destructive",
+                });
+                return;
             }
 
             toast({
@@ -369,9 +382,10 @@ if (user.role === 'admin' || user.role === 'tecadm') return true;
             onSuccess?.();
         } catch (error) {
             console.error(`Error linking ${userType}:`, error);
+            const msg = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
             toast({
                 title: "Erro",
-                description: `Erro ao vincular ${config.title.toLowerCase()}`,
+                description: msg || `Erro ao vincular ${config.title.toLowerCase()}`,
                 variant: "destructive",
             });
         } finally {

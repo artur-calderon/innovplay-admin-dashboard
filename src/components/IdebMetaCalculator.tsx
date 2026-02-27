@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,6 +29,14 @@ import {
   analyzeHistoricalGrowth, 
   calculateGrowthNeeded
 } from '@/utils/idebCalculator';
+import {
+  getSavedData,
+  saveData,
+  addSchool as apiAddSchool,
+  removeSchool as apiRemoveSchool,
+  toApiMunicipalityData,
+  type IdebMetaLevel,
+} from '@/services/idebMetaApi';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -41,14 +49,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-const IDEB_STORAGE_KEY_PREFIX = 'ideb-meta';
-
 /** Linha do modal de edição (valores em string para inputs controlados) */
 type EditingHistoryRow = { ano: string; ideb: string; port: string; math: string; fluxo: string };
-
-function getStorageKey(state: string, municipality: string, level: string): string {
-  return `${IDEB_STORAGE_KEY_PREFIX}-${state}-${municipality}-${level.replace(/\s/g, '_')}`;
-}
 
 /** Roles que devem ver resultado da escola (diretor/coordenador) */
 const SCHOOL_RESULT_ROLES = ['diretor', 'coordenador'];
@@ -83,6 +85,28 @@ export default function IdebMetaCalculator() {
   const [newSchoolIdeb, setNewSchoolIdeb] = useState('0');
   const [schoolToDeleteId, setSchoolToDeleteId] = useState<string | null>(null);
   const [targetYear, setTargetYear] = useState<number>(2025);
+  const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadedForRef = useRef<string | null>(null);
+
+  const levelAsApi = selectedLevel as IdebMetaLevel;
+  const hasValidContext = selectedMunicipality && selectedMunicipality !== 'all' && selectedState !== 'all';
+
+  const applyPayloadToState = useCallback(
+    (payload: { municipalityData: IdebData; customTarget: number; activeEntityId: string | null; targetYear: number }) => {
+      const { municipalityData, customTarget, activeEntityId, targetYear: ty } = payload;
+      setMunicipalityData(municipalityData);
+      setCustomTarget(customTarget);
+      const entity =
+        activeEntityId && municipalityData.escolas
+          ? municipalityData.escolas.find((s) => s.id === activeEntityId)
+          : null;
+      setActiveEntity(entity ?? municipalityData);
+      if (entity?.historico) setCustomTarget(analyzeHistoricalGrowth(entity.historico).projectedMeta);
+      else if (payload.customTarget != null) setCustomTarget(payload.customTarget);
+      if (typeof ty === 'number' && ty >= 2020 && ty <= 2040) setTargetYear(ty);
+    },
+    []
+  );
 
   // Carregar contexto hierárquico para diretor, coordenador e tecadm
   useEffect(() => {
@@ -125,6 +149,27 @@ export default function IdebMetaCalculator() {
     if (exists) setSelectedMunicipality(userHierarchyContext.municipality!.id);
   }, [userHierarchyContext, municipalities]);
 
+  // Ao abrir a calculadora com city_id + level definidos, carregar dados salvos da API (uma vez por contexto)
+  useEffect(() => {
+    if (!hasValidContext) return;
+    const key = `${selectedMunicipality}|${selectedLevel}`;
+    if (loadedForRef.current === key) return;
+    loadedForRef.current = key;
+    getSavedData(selectedMunicipality, levelAsApi)
+      .then((saved) => {
+        if (saved?.municipalityData?.historico?.length) {
+          applyPayloadToState({
+            municipalityData: saved.municipalityData as IdebData,
+            customTarget: saved.customTarget,
+            activeEntityId: saved.activeEntityId,
+            targetYear: saved.targetYear,
+          });
+          toast({ title: 'Dados restaurados', description: 'Seus dados salvos foram carregados.' });
+        }
+      })
+      .catch(() => { loadedForRef.current = null; });
+  }, [hasValidContext, selectedMunicipality, selectedLevel, levelAsApi, applyPayloadToState, toast]);
+
   // Carregar municípios quando estado for selecionado
   useEffect(() => {
     const loadMunicipalities = async () => {
@@ -161,24 +206,32 @@ export default function IdebMetaCalculator() {
       !municipalityData ||
       selectedState === 'all' ||
       selectedMunicipality === 'all' ||
-      typeof localStorage === 'undefined'
+      !hasValidContext
     )
       return;
-    const key = getStorageKey(selectedState, selectedMunicipality, selectedLevel);
     const activeEntityId =
       activeEntity && 'id' in activeEntity ? activeEntity.id : null;
-    const payload = {
-      municipalityData,
-      customTarget,
-      activeEntityId,
-      targetYear,
+    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    saveDebounceRef.current = setTimeout(() => {
+      saveDebounceRef.current = null;
+      saveData(selectedMunicipality, levelAsApi, {
+        municipalityData: toApiMunicipalityData(municipalityData),
+        customTarget,
+        activeEntityId,
+        targetYear,
+      }).catch((err) => {
+        console.error('Erro ao salvar IDEB meta na API:', err);
+        toast({
+          title: 'Erro',
+          description: 'Não foi possível salvar os dados.',
+          variant: 'destructive',
+        });
+      });
+    }, 800);
+    return () => {
+      if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
     };
-    try {
-      localStorage.setItem(key, JSON.stringify(payload));
-    } catch {
-      // ignore quota or other errors
-    }
-  }, [municipalityData, activeEntity, customTarget, targetYear, selectedState, selectedMunicipality, selectedLevel]);
+  }, [municipalityData, activeEntity, customTarget, targetYear, selectedState, selectedMunicipality, selectedLevel, hasValidContext, levelAsApi, toast]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -193,38 +246,21 @@ export default function IdebMetaCalculator() {
 
     setLoading(true);
     try {
-      const key = getStorageKey(selectedState, selectedMunicipality, selectedLevel);
-      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw) as {
-            municipalityData: IdebData;
-            customTarget: number;
-            activeEntityId: string | null;
-            targetYear?: number;
-          };
-          if (parsed.municipalityData?.historico?.length) {
-            setMunicipalityData(parsed.municipalityData);
-            setCustomTarget(parsed.customTarget ?? analyzeHistoricalGrowth(parsed.municipalityData.historico).projectedMeta);
-            const entity =
-              parsed.activeEntityId && parsed.municipalityData.escolas
-                ? parsed.municipalityData.escolas.find((s) => s.id === parsed.activeEntityId)
-                : null;
-            setActiveEntity(entity ?? parsed.municipalityData);
-            if (entity?.historico) setCustomTarget(analyzeHistoricalGrowth(entity.historico).projectedMeta);
-            else if (parsed.customTarget != null) setCustomTarget(parsed.customTarget);
-            if (typeof parsed.targetYear === 'number' && parsed.targetYear >= 2020 && parsed.targetYear <= 2040) {
-              setTargetYear(parsed.targetYear);
-            }
-            toast({ title: 'Dados restaurados', description: 'Seus dados salvos foram carregados.' });
-            return;
-          }
-        } catch {
-          // ignore invalid stored data
+      if (hasValidContext) {
+        const saved = await getSavedData(selectedMunicipality, levelAsApi);
+        if (saved?.municipalityData?.historico?.length) {
+          applyPayloadToState({
+            municipalityData: saved.municipalityData as IdebData,
+            customTarget: saved.customTarget,
+            activeEntityId: saved.activeEntityId,
+            targetYear: saved.targetYear,
+          });
+          toast({ title: 'Dados restaurados', description: 'Seus dados salvos foram carregados.' });
+          return;
         }
       }
 
-      // Por enquanto, criar dados de exemplo (sem API de dados históricos IDEB)
+      // Sem dados salvos na API: criar dados de exemplo (sem API de dados históricos IDEB)
       // Em produção, isso viria de um endpoint específico
       const selectedMunicipalityData = municipalities.find(m => m.id === selectedMunicipality);
       const selectedStateData = states.find(s => s.id === selectedState);
@@ -388,19 +424,40 @@ export default function IdebMetaCalculator() {
     setNewSchoolName('');
     setNewSchoolIdeb('0');
     setIsAddingSchool(false);
+    if (hasValidContext) {
+      apiAddSchool(selectedMunicipality, levelAsApi, newSchool).catch((err) => {
+        console.error('Erro ao adicionar escola na API:', err);
+        toast({
+          title: 'Aviso',
+          description: 'Escola adicionada localmente; não foi possível sincronizar na nuvem.',
+          variant: 'default',
+        });
+      });
+    }
     toast({ title: 'Sucesso', description: 'Unidade escolar adicionada.', variant: 'default' });
   };
 
   const confirmDeleteSchool = () => {
     if (!municipalityData || !schoolToDeleteId) return;
-    const updatedSchools = municipalityData.escolas?.filter((s) => s.id !== schoolToDeleteId) ?? [];
+    const idToRemove = schoolToDeleteId;
+    const updatedSchools = municipalityData.escolas?.filter((s) => s.id !== idToRemove) ?? [];
     const newData = { ...municipalityData, escolas: updatedSchools };
     setMunicipalityData(newData);
-    if (activeEntity && 'id' in activeEntity && activeEntity.id === schoolToDeleteId) {
+    if (activeEntity && 'id' in activeEntity && activeEntity.id === idToRemove) {
       setActiveEntity(newData);
       if (newData.historico) setCustomTarget(analyzeHistoricalGrowth(newData.historico).projectedMeta);
     }
     setSchoolToDeleteId(null);
+    if (hasValidContext) {
+      apiRemoveSchool(selectedMunicipality, levelAsApi, idToRemove).catch((err) => {
+        console.error('Erro ao remover escola na API:', err);
+        toast({
+          title: 'Aviso',
+          description: 'Escola removida localmente; não foi possível sincronizar na nuvem.',
+          variant: 'default',
+        });
+      });
+    }
     toast({ title: 'Sucesso', description: 'Unidade escolar removida.', variant: 'default' });
   };
 

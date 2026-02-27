@@ -11,7 +11,6 @@ import {
   BookOpen,
   Calendar,
   Download,
-  Upload,
   Eye,
   TrendingUp,
   AlertCircle
@@ -179,7 +178,7 @@ export default function EnhancedQuickActions() {
       title: 'Gerenciar Alunos',
       description: 'Ver e organizar alunos',
       icon: <Users className="h-5 w-5" />,
-      href: '/app/usuarios',
+      href: '/app/cadastros/gestao?tab=usuarios',
       color: 'text-white',
       bgColor: 'bg-green-600',
       hoverColor: 'hover:bg-green-700',
@@ -207,10 +206,10 @@ export default function EnhancedQuickActions() {
       title: 'Turmas',
       description: 'Organizar turmas',
       icon: <BookOpen className="h-4 w-4" />,
-      href: '/app/cadastros/turma',
-      color: 'text-gray-700',
-      bgColor: 'bg-gray-100',
-      hoverColor: 'hover:bg-gray-200',
+      href: '/app/cadastros/gestao?tab=turmas',
+      color: 'text-foreground dark:text-foreground',
+      bgColor: 'bg-muted dark:bg-muted',
+      hoverColor: 'hover:bg-muted/80 dark:hover:bg-muted/80',
       category: 'secondary',
       count: data.totalClasses,
       countLabel: 'turmas'
@@ -221,23 +220,10 @@ export default function EnhancedQuickActions() {
       description: 'Cronograma de aulas',
       icon: <Calendar className="h-4 w-4" />,
       href: '/app/agenda',
-      color: 'text-gray-700',
-      bgColor: 'bg-gray-100',
-      hoverColor: 'hover:bg-gray-200',
+      color: 'text-foreground dark:text-foreground',
+      bgColor: 'bg-muted dark:bg-muted',
+      hoverColor: 'hover:bg-muted/80 dark:hover:bg-muted/80',
       category: 'secondary'
-    },
-    {
-      id: 'import-students',
-      title: 'Importar Alunos',
-      description: 'Upload em lote',
-      icon: <Upload className="h-4 w-4" />,
-      href: '/app/usuarios',
-      color: 'text-gray-700',
-      bgColor: 'bg-gray-100',
-      hoverColor: 'hover:bg-gray-200',
-      category: 'secondary',
-      count: data.activeStudents,
-      countLabel: 'alunos ativos'
     },
     {
       id: 'export-data',
@@ -245,9 +231,9 @@ export default function EnhancedQuickActions() {
       description: 'Download de relatórios',
       icon: <Download className="h-4 w-4" />,
       href: '/app/relatorios/relatorio-escolar',
-      color: 'text-gray-700',
-      bgColor: 'bg-gray-100',
-      hoverColor: 'hover:bg-gray-200',
+      color: 'text-foreground dark:text-foreground',
+      bgColor: 'bg-muted dark:bg-muted',
+      hoverColor: 'hover:bg-muted/80 dark:hover:bg-muted/80',
       category: 'secondary'
     },
     {
@@ -256,9 +242,9 @@ export default function EnhancedQuickActions() {
       description: 'Desempenho detalhado',
       icon: <Eye className="h-4 w-4" />,
       href: '/app/resultados',
-      color: 'text-gray-700',
-      bgColor: 'bg-gray-100',
-      hoverColor: 'hover:bg-gray-200',
+      color: 'text-foreground dark:text-foreground',
+      bgColor: 'bg-muted dark:bg-muted',
+      hoverColor: 'hover:bg-muted/80 dark:hover:bg-muted/80',
       category: 'secondary'
     },
     {
@@ -267,9 +253,9 @@ export default function EnhancedQuickActions() {
       description: 'Preferências do sistema',
       icon: <Settings className="h-4 w-4" />,
       href: '/app/configuracoes',
-      color: 'text-gray-700',
-      bgColor: 'bg-gray-100',
-      hoverColor: 'hover:bg-gray-200',
+      color: 'text-foreground dark:text-foreground',
+      bgColor: 'bg-muted dark:bg-muted',
+      hoverColor: 'hover:bg-muted/80 dark:hover:bg-muted/80',
       category: 'secondary'
     }
   ];
@@ -286,7 +272,11 @@ export default function EnhancedQuickActions() {
     navigate(action.href);
   };
 
-  const primaryActions = quickActions.filter(action => action.category === 'primary');
+  const primaryActions = quickActions.filter(action => {
+    if (action.category !== 'primary') return false;
+    if (user?.role === 'professor' && action.id === 'manage-students') return false;
+    return true;
+  });
   const secondaryActions = quickActions.filter(action => action.category === 'secondary');
 
   if (isLoading) {
@@ -316,9 +306,9 @@ export default function EnhancedQuickActions() {
       {/* Ações Principais */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
+          <CardTitle className="text-lg flex items-center gap-2 text-foreground">
             Ações Rápidas
-            <TrendingUp className="h-4 w-4 text-green-600" />
+            <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -353,7 +343,7 @@ export default function EnhancedQuickActions() {
       {/* Ações Secundárias */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base text-gray-700">Outras Funcionalidades</CardTitle>
+          <CardTitle className="text-base text-foreground">Outras Funcionalidades</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -364,16 +354,16 @@ export default function EnhancedQuickActions() {
                 onClick={() => handleActionClick(action)}
                 className={`h-auto p-3 flex flex-col items-center gap-2 ${action.bgColor} ${action.hoverColor} ${action.color} transition-all duration-200`}
               >
-                <div className="p-2 rounded-lg bg-white">
+                <div className="p-2 rounded-lg bg-background dark:bg-card border border-border">
                   {action.icon}
                 </div>
                 <div className="text-center">
                   <h4 className="font-medium text-xs">{action.title}</h4>
-                  <p className="text-xs opacity-70 mt-1">{action.description}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{action.description}</p>
                   {action.count !== undefined && action.countLabel && (
                     <div className="mt-1">
-                      <span className="text-xs font-semibold text-blue-600">{action.count}</span>
-                      <span className="text-xs opacity-60 ml-1">{action.countLabel}</span>
+                      <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">{action.count}</span>
+                      <span className="text-xs text-muted-foreground ml-1">{action.countLabel}</span>
                     </div>
                   )}
                 </div>
@@ -384,23 +374,23 @@ export default function EnhancedQuickActions() {
       </Card>
 
       {/* Card de Ajuda/Suporte com dados dinâmicos */}
-      <Card className="bg-gradient-to-r from-innov-blue/10 to-innov-purple/10 border-innov-purple/20">
+      <Card className="bg-gradient-to-r from-innov-blue/10 to-innov-purple/10 border-innov-purple/20 dark:from-innov-blue/20 dark:to-innov-purple/20 dark:border-innov-purple/30">
         <CardContent className="p-6">
           <div className="flex items-center gap-4">
             <div className="p-3 rounded-full bg-innov-purple/10">
               <BookOpen className="h-6 w-6 text-innov-purple" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-gray-900 mb-1">Status do Sistema</h3>
-              <p className="text-sm text-gray-600 mb-3">
+              <h3 className="font-semibold text-foreground mb-1">Status do Sistema</h3>
+              <p className="text-sm text-muted-foreground mb-3">
                 {data.pendingCorrections > 0 ? (
                   <span className="flex items-center gap-1">
-                    <AlertCircle className="h-4 w-4 text-orange-500" />
+                    <AlertCircle className="h-4 w-4 text-orange-500 dark:text-orange-400" />
                     {data.pendingCorrections} correções pendentes
                   </span>
                 ) : (
                   <span className="flex items-center gap-1">
-                    <TrendingUp className="h-4 w-4 text-green-500" />
+                    <TrendingUp className="h-4 w-4 text-green-500 dark:text-green-400" />
                     Sistema funcionando normalmente
                   </span>
                 )}

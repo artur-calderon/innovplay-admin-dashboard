@@ -213,23 +213,13 @@ const Profile = () => {
     "Email": studentData?.email || user?.email || "usuario@exemplo.com",
   };
 
-  const accountDetails = {
-    "Nome de exibição": user?.name || "s_wilson_168920",
-    "Conta criada": formatDate(user?.created_at) || "Data não informada",
-    "Último login": "August 22, 2024",
-    "Status da assinatura": "Membro Premium",
-    "Verificação da conta": "Verificada",
-    "Preferência de idioma": "Português",
-    "Fuso horário": "GMT-3 (Brasília)",
-  };
-
   const renderDetailSection = (title: string, details: Record<string, string>) => (
-    <Card className="mb-6">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-xl">{title}</CardTitle>
+    <Card className="mb-4 sm:mb-6 overflow-hidden">
+      <CardHeader className="pb-2 px-4 sm:px-6">
+        <CardTitle className="text-lg sm:text-xl">{title}</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <CardContent className="px-4 sm:px-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           {Object.entries(details).map(([key, value]) => (
             <div key={key} className="flex flex-col space-y-1">
               <div className="text-sm text-muted-foreground">{key}:</div>
@@ -566,7 +556,7 @@ const Profile = () => {
 
   if (loading) {
     return (
-      <div className="container max-w-6xl mx-auto py-6">
+      <div className="container max-w-6xl mx-auto px-4 sm:px-6 py-6 min-h-[50vh]">
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-innov-blue"></div>
         </div>
@@ -575,22 +565,30 @@ const Profile = () => {
   }
 
   return (
-    <div className="container max-w-6xl mx-auto py-6">
+    <div className="container max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6 min-h-[50vh] overflow-x-hidden">
       <Tabs defaultValue="personalization" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-6">
-          <TabsTrigger value="personalization">Personalização</TabsTrigger>
-          <TabsTrigger value="personal-data">Dados Pessoais</TabsTrigger>
-          <TabsTrigger value="password">Senha</TabsTrigger>
-          <TabsTrigger value="profile">Perfil</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-4 sm:mb-6 h-auto gap-1.5 p-1.5 sm:p-1.5">
+          <TabsTrigger value="personalization" className="text-xs sm:text-sm py-3 sm:py-2.5 px-2 sm:px-3 whitespace-nowrap min-h-[44px] sm:min-h-0">
+            Personalização
+          </TabsTrigger>
+          <TabsTrigger value="personal-data" className="text-xs sm:text-sm py-3 sm:py-2.5 px-2 sm:px-3 whitespace-nowrap min-h-[44px] sm:min-h-0">
+            Dados Pessoais
+          </TabsTrigger>
+          <TabsTrigger value="password" className="text-xs sm:text-sm py-3 sm:py-2.5 px-2 sm:px-3 min-h-[44px] sm:min-h-0">
+            Senha
+          </TabsTrigger>
+          <TabsTrigger value="profile" className="text-xs sm:text-sm py-3 sm:py-2.5 px-2 sm:px-3 min-h-[44px] sm:min-h-0">
+            Perfil
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="personalization" className="space-y-6">
+        <TabsContent value="personalization" className="space-y-4 sm:space-y-6 mt-4">
           <Card>
-            <CardHeader>
-              <div className="flex items-center gap-4">
-                <AvatarPreview config={config} size={80} />
-                <div>
-                  <CardTitle className="text-2xl">{user?.name || "Usuário"}</CardTitle>
+            <CardHeader className="pb-2 sm:pb-6">
+              <div className="flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
+                <AvatarPreview config={config} size={80} className="flex-shrink-0" />
+                <div className="min-w-0">
+                  <CardTitle className="text-xl sm:text-2xl break-words">{user?.name || "Usuário"}</CardTitle>
                   <Badge className="mt-2 bg-gradient-to-r from-innov-blue to-innov-purple text-white border-0">
                     {getRoleDisplayName(user?.role || "")}
                   </Badge>
@@ -606,31 +604,31 @@ const Profile = () => {
           />
         </TabsContent>
 
-        <TabsContent value="personal-data" className="space-y-6">
+        <TabsContent value="personal-data" className="space-y-4 sm:space-y-6 mt-4">
           <PersonalDataForm />
         </TabsContent>
 
-        <TabsContent value="password" className="space-y-6">
+        <TabsContent value="password" className="space-y-4 sm:space-y-6 mt-4">
           <ChangePasswordForm />
         </TabsContent>
 
-        <TabsContent value="profile" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-1">
-              <Card className="sticky top-6">
-                <CardContent className="pt-8 pb-6">
-                  <div className="flex flex-col items-center mb-6">
+        <TabsContent value="profile" className="space-y-4 sm:space-y-6 mt-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+            <div className="lg:col-span-1 order-2 lg:order-1">
+              <Card className="lg:sticky lg:top-6">
+                <CardContent className="pt-6 sm:pt-8 pb-6">
+                  <div className="flex flex-col items-center mb-4 sm:mb-6">
                     {user?.avatar_config ? (
-                      <AvatarPreview config={user.avatar_config} size={128} className="mb-4" />
+                      <AvatarPreview config={user.avatar_config} size={128} className="mb-4 flex-shrink-0" />
                     ) : (
-                      <div className="w-32 h-32 rounded-full bg-gradient-to-r from-innov-blue to-innov-purple flex items-center justify-center mb-4 shadow-lg">
-                        <span className="text-white text-5xl font-bold">
+                      <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-gradient-to-r from-innov-blue to-innov-purple flex items-center justify-center mb-4 shadow-lg flex-shrink-0">
+                        <span className="text-white text-4xl sm:text-5xl font-bold">
                           {user?.name?.charAt(0) || "U"}
                         </span>
                       </div>
                     )}
-                    <h1 className="text-2xl font-bold text-center mb-2">{user?.name || "Usuário"}</h1>
-                    <p className="text-muted-foreground text-center mb-3">{user?.email || "usuario@exemplo.com"}</p>
+                    <h1 className="text-xl sm:text-2xl font-bold text-center mb-2 break-words px-1">{user?.name || "Usuário"}</h1>
+                    <p className="text-sm sm:text-base text-muted-foreground text-center mb-3 break-all px-1">{user?.email || "usuario@exemplo.com"}</p>
                     <Badge className="text-sm px-4 py-2 bg-gradient-to-r from-innov-blue to-innov-purple text-white border-0 mb-4">
                       {getRoleDisplayName(user?.role || "")}
                     </Badge>
@@ -695,10 +693,9 @@ const Profile = () => {
               </Card>
             </div>
 
-            <div className="lg:col-span-2">
-              <div className="space-y-6">
+            <div className="lg:col-span-2 order-1 lg:order-2 min-w-0">
+              <div className="space-y-4 sm:space-y-6">
                 {renderDetailSection("Dados Pessoais", personalDetails)}
-                {renderDetailSection("Detalhes da Conta", accountDetails)}
 
                 {profileData && (
                   <>

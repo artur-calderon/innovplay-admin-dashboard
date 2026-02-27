@@ -157,7 +157,7 @@ export default function SchoolDetails() {
             : "Escola não encontrada",
           variant: "destructive",
         });
-        navigate("/app/cadastros/instituicao");
+        navigate("/app/cadastros/gestao");
       } finally {
         setIsLoadingSchool(false);
       }
@@ -630,9 +630,9 @@ export default function SchoolDetails() {
             ? "A instituição que você está procurando não existe ou você não tem acesso a ela. Entre em contato com o diretor ou coordenador da sua escola."
             : "A escola que você está procurando não existe ou foi removida."}
         </p>
-        <Button onClick={() => navigate("/app/cadastros/instituicao")}>
+        <Button onClick={() => navigate("/app/cadastros/gestao")}>
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Voltar para Instituições
+          Voltar para Gestão
         </Button>
       </div>
     );
@@ -649,7 +649,7 @@ export default function SchoolDetails() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
           <Button
             variant="outline"
-            onClick={() => navigate("/app/cadastros/instituicao")}
+            onClick={() => navigate("/app/cadastros/gestao")}
             className="shrink-0 w-full sm:w-auto"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -866,7 +866,9 @@ export default function SchoolDetails() {
                       <div key={director.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted border-border">
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-sm">{director.name}</div>
-                          <div className="text-xs text-muted-foreground">{director.email}</div>
+                          {user.role !== 'professor' && (
+                            <div className="text-xs text-muted-foreground">{director.email}</div>
+                          )}
                         </div>
                         <Badge variant="outline" className="text-xs">Diretor</Badge>
                       </div>
@@ -905,7 +907,9 @@ export default function SchoolDetails() {
                       <div key={coordinator.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted border-border">
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-sm">{coordinator.name}</div>
-                          <div className="text-xs text-muted-foreground">{coordinator.email}</div>
+                          {user.role !== 'professor' && (
+                            <div className="text-xs text-muted-foreground">{coordinator.email}</div>
+                          )}
                         </div>
                         <Badge variant="outline" className="text-xs">Coordenador</Badge>
                       </div>
@@ -1169,7 +1173,7 @@ export default function SchoolDetails() {
       )}
 
       {/* Manage Class Modal */}
-      {showManageClassModal && selectedClass && (
+      {showManageClassModal && selectedClass && school && (
         <ManageClassModal
           isOpen={showManageClassModal}
           onClose={() => {
@@ -1179,11 +1183,11 @@ export default function SchoolDetails() {
           schoolId={school.id}
           classData={selectedClass}
           onSuccess={() => {
-            // Recarregar dados das turmas
             if (classes.length > 0) {
               fetchClassDetails(classes);
             }
           }}
+          schoolCityId={school.city_id}
         />
       )}
 

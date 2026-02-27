@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { PlusCircle, Search, Trash2, Users, Building, Loader2, AlertCircle, UserPlus, X, Eye, GraduationCap } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/authContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -153,6 +154,8 @@ export default function Turmas({ embedded = false }: TurmasProps) {
   const [isLoadingViewStudents, setIsLoadingViewStudents] = useState(false);
 
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canDeleteTurma = user?.role !== "professor";
 
   // Carregamento de alunos vinculado à edição foi removido com o botão Editar
 
@@ -791,10 +794,12 @@ export default function Turmas({ embedded = false }: TurmasProps) {
                               <Eye className="h-3 w-3 mr-1" />
                               Visualizar
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => openDeleteDialog(turma)}>
-                              <Trash2 className="h-3 w-3 mr-1" />
-                              Excluir
-                            </Button>
+                            {canDeleteTurma && (
+                              <Button variant="outline" size="sm" onClick={() => openDeleteDialog(turma)}>
+                                <Trash2 className="h-3 w-3 mr-1" />
+                                Excluir
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </CardContent>
@@ -869,10 +874,12 @@ export default function Turmas({ embedded = false }: TurmasProps) {
                         <Eye className="h-3 w-3 mr-1" />
                         Visualizar
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => openDeleteDialog(turma)}>
-                        <Trash2 className="h-3 w-3 mr-1" />
-                        Excluir
-                      </Button>
+                      {canDeleteTurma && (
+                        <Button variant="outline" size="sm" onClick={() => openDeleteDialog(turma)}>
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          Excluir
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>

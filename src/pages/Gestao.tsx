@@ -92,7 +92,7 @@ interface Student {
   };
 }
 
-export default function Instituicao() {
+export default function Gestao() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
@@ -473,10 +473,10 @@ export default function Instituicao() {
       <div className="space-y-1">
         <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
           <School className="w-8 h-8 text-primary" />
-          Instituição
+          Gestão
         </h1>
         <p className="text-muted-foreground text-sm md:text-base max-w-2xl">
-          Crie e gerencie escolas, usuários (alunos, professores, diretores e coordenadores) e turmas em um só lugar.
+          Gerencie escolas, turmas e usuários (alunos, professores, diretores e coordenadores) em um só lugar.
         </p>
       </div>
 
@@ -811,7 +811,7 @@ export default function Instituicao() {
         </TabsContent>
       </Tabs>
 
-      {/* Add/Edit Instituição Dialog */}
+      {/* Add/Edit Escola Dialog (página Gestão) */}
       {(isAddDialogOpen || selectedInstituicao) && (
         <SchoolForm
           school={selectedInstituicao ? {
