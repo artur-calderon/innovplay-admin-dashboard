@@ -28,13 +28,15 @@ api.interceptors.request.use((config) => {
         config.headers.Authorization = `Bearer ${token}`
     }
 
-    // Admin em rotas tenant: adicionar X-City-ID quando config.meta.cityId for passado
+    // Contexto de município: X-City-ID para backend escopar (admin, tecadm, diretor, coordenador)
     const userJson = localStorage.getItem('user')
     if (userJson) {
         try {
             const user = JSON.parse(userJson) as { role?: string }
             const cityId = (config as typeof config & { meta?: { cityId?: string } }).meta?.cityId
-            if (user?.role === 'admin' && cityId) {
+            const role = (user?.role ?? '').toLowerCase()
+            const canSendCityId = ['admin', 'tecadm', 'diretor', 'coordenador'].includes(role)
+            if (canSendCityId && cityId) {
                 config.headers['X-City-ID'] = cityId
             }
         } catch {

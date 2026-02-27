@@ -172,8 +172,8 @@ export default function ProfessorMetrics() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900">Visão Geral</h3>
-        <div className="text-sm text-gray-500">
+        <h3 className="text-lg font-semibold text-foreground">Visão Geral</h3>
+        <div className="text-sm text-muted-foreground">
           Atualizado há poucos minutos
         </div>
       </div>

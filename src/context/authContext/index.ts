@@ -3,6 +3,8 @@ import { api } from '@/lib/api'
 import { toast } from 'react-toastify'
 import { AxiosError } from 'axios'
 import { loadAndApplySettings } from '@/hooks/useSettings'
+import type { OnboardingProfile } from '@/services/onboardingApi'
+import { getOnboardingStatus } from '@/services/onboardingApi'
 
 export interface AvatarConfig {
     seed?: string;
@@ -46,7 +48,7 @@ export interface AvatarConfig {
     skinColor?: string[];
 }
 
-interface User {
+export interface User {
     id: string,
     name: string,
     email: string,
@@ -61,6 +63,7 @@ interface User {
     nationality: string,
     birth_date: string,
     avatar_config?: AvatarConfig | null,
+    traits?: string[],
 }
 
 interface ApiError {
@@ -72,10 +75,13 @@ interface ApiError {
 interface AuthContext {
     user: User,
     loading: boolean,
+    needsOnboarding: boolean,
+    onboardingProfile: OnboardingProfile | null,
     login: (registration: string, password: string) => Promise<any>,
     autoLogin: () => Promise<any>,
     logout: () => Promise<void>,
     setUser: (user: User) => void,
+    setOnboardingComplete: (user: User) => void,
     persistUser: () => Promise<boolean>,
     updateAvatarConfig: (config: AvatarConfig) => Promise<void>,
     fetchUserDetails: (userId: string) => Promise<void>,
@@ -83,6 +89,8 @@ interface AuthContext {
 
 export const useAuth = create<AuthContext>((set, get) => ({
     loading: false,
+    needsOnboarding: false,
+    onboardingProfile: null,
     user: {
         id: '',
         name: '',
@@ -101,6 +109,10 @@ export const useAuth = create<AuthContext>((set, get) => ({
     },
     setUser: (user) => {
         set({ user })
+        localStorage.setItem('user', JSON.stringify(user))
+    },
+    setOnboardingComplete: (user) => {
+        set({ needsOnboarding: false, onboardingProfile: null, user })
         localStorage.setItem('user', JSON.stringify(user))
     },
     fetchUserDetails: async (userId: string) => {
@@ -142,8 +154,14 @@ export const useAuth = create<AuthContext>((set, get) => ({
             localStorage.setItem('user', JSON.stringify(response.data.user))
 
             if (response.data.user?.id) {
-                await loadAndApplySettings(response.data.user.id)
-                await get().fetchUserDetails(response.data.user.id)
+                await loadAndApplySettings(response.data.user.id);
+                await get().fetchUserDetails(response.data.user.id);
+                try {
+                    const status = await getOnboardingStatus();
+                    set({ needsOnboarding: status.needs_onboarding === true, onboardingProfile: status.profile ?? null });
+                } catch {
+                    set({ needsOnboarding: false, onboardingProfile: null });
+                }
             }
 
             return response;
@@ -180,13 +198,17 @@ export const useAuth = create<AuthContext>((set, get) => ({
             localStorage.setItem('user', JSON.stringify(response.data.user))
 
             if (response.data.user?.id) {
-                await loadAndApplySettings(response.data.user.id)
-                await get().fetchUserDetails(response.data.user.id)
+                await loadAndApplySettings(response.data.user.id);
+                await get().fetchUserDetails(response.data.user.id);
+                try {
+                    const status = await getOnboardingStatus();
+                    set({ needsOnboarding: status.needs_onboarding === true, onboardingProfile: status.profile ?? null });
+                } catch {
+                    set({ needsOnboarding: false, onboardingProfile: null });
+                }
             }
 
-            // Adicionar um pequeno delay para o toast ser visível
             await new Promise(resolve => setTimeout(resolve, 1000));
-
             return response;
         } catch (error: unknown) {
             console.error("Erro no login:", error);
@@ -239,7 +261,9 @@ export const useAuth = create<AuthContext>((set, get) => ({
                     nationality: '',
                     birth_date: '',
                     avatar_config: null,
-                }
+                },
+                needsOnboarding: false,
+                onboardingProfile: null,
             })
             window.location.href = '/';
         } catch (error: unknown) {
@@ -260,6 +284,8 @@ export const useAuth = create<AuthContext>((set, get) => ({
             const response = await api.get('/persist-user/');
             if (response.data) {
                 const persistedUser = response.data.user ?? response.data;
+                const needsOnboarding = response.data.needs_onboarding === true;
+                const onboardingProfile = response.data.profile ?? null;
 
                 if (response.data.token) {
                     localStorage.setItem('token', response.data.token);
@@ -271,14 +297,16 @@ export const useAuth = create<AuthContext>((set, get) => ({
                         user: {
                             ...state.user,
                             ...persistedUser,
-                        }
+                        },
+                        needsOnboarding,
+                        onboardingProfile,
                     }));
                     localStorage.setItem('user', JSON.stringify(get().user));
 
                     const targetId = persistedUser.id;
                     if (targetId) {
-                        await loadAndApplySettings(targetId)
-                        await get().fetchUserDetails(targetId)
+                        await loadAndApplySettings(targetId);
+                        await get().fetchUserDetails(targetId);
                     }
                     return true;
                 }

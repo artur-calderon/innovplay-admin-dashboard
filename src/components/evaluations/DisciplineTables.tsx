@@ -395,7 +395,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                 colorScheme="purple"
               />
             )}
-            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 max-w-full">
+            <div className="overflow-x-auto max-w-full results-table-scroll">
               <table className="min-w-full border border-border text-center text-xs sm:text-sm shadow-md rounded-lg border-separate border-spacing-0 bg-card">
                 <TableHeader
                   totalQuestions={allQuestions.length > MAX_QUESTIONS_FOR_FULL_VIEW 
@@ -564,7 +564,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                 colorScheme="blue"
               />
             )}
-            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 max-w-full">
+            <div className="overflow-x-auto max-w-full results-table-scroll">
               <table className="min-w-full border border-border text-center text-xs sm:text-sm shadow-md rounded-lg border-separate border-spacing-0 bg-card">
                 <TableHeader
                   totalQuestions={disciplina.questoes.length > MAX_QUESTIONS_FOR_FULL_VIEW 

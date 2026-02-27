@@ -651,10 +651,21 @@ export class EvaluationResultsApiService {
     }
   }
 
-  // Buscar alunos de uma avaliação específica
-  static async getStudentsByEvaluation(evaluationId: string): Promise<StudentResult[]> {
+  // Buscar alunos de uma avaliação específica (com filtros opcionais para escopo e performance)
+  static async getStudentsByEvaluation(
+    evaluationId: string,
+    filters?: { municipio?: string; escola?: string; serie?: string; turma?: string }
+  ): Promise<StudentResult[]> {
     return apiWithTimeout(async () => {
-      const response = await api.get(`/evaluation-results/alunos?avaliacao_id=${evaluationId}`);
+      const params = new URLSearchParams({ avaliacao_id: evaluationId });
+      if (filters?.municipio && filters.municipio !== 'all') params.append('municipio', filters.municipio);
+      if (filters?.escola && filters.escola !== 'all') params.append('escola', filters.escola);
+      if (filters?.serie && filters.serie !== 'all') params.append('serie', filters.serie);
+      if (filters?.turma && filters.turma !== 'all') params.append('turma', filters.turma);
+      const requestConfig = filters?.municipio && filters.municipio !== 'all'
+        ? { meta: { cityId: filters.municipio } }
+        : {};
+      const response = await api.get(`/evaluation-results/alunos?${params}`, requestConfig);
       return response.data.data || [];
     }, 25000); // 25s para lista de alunos
   }

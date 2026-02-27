@@ -5,8 +5,7 @@ import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Settings as SettingsIcon, Moon, Sun, Type, ZoomIn, Info } from "lucide-react";
+import { Settings as SettingsIcon, Moon, Sun, Type, ZoomIn } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 import { toast } from "react-toastify";
 import { useState } from "react";
@@ -96,15 +95,6 @@ export default function Settings() {
             Personalize a aparência e preferências do sistema
           </p>
         </div>
-
-        {/* Aviso de desenvolvimento */}
-        <Alert>
-          <Info className="h-4 w-4" />
-          <AlertTitle>Em fase de desenvolvimento</AlertTitle>
-          <AlertDescription>
-            Esta funcionalidade está em fase de desenvolvimento. Algumas configurações podem não estar completamente funcionais.
-          </AlertDescription>
-        </Alert>
 
         {/* Seção: Aparência */}
         <Card>

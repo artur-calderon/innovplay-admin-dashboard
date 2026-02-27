@@ -20,6 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useEmailCheck, generatePasswordFromName } from "@/hooks/useEmailCheck";
+import { useAuth } from "@/context/authContext";
 interface Teacher {
   id: string;
   name: string;
@@ -83,6 +84,8 @@ interface ManageClassModalProps {
   schoolId: string;
   classData: ClassData;
   onSuccess: () => void;
+  /** ID do município da escola (obrigatório para admin/tecadm criarem professor já na escola) */
+  schoolCityId?: string;
 }
 
 export function ManageClassModal({
@@ -91,7 +94,9 @@ export function ManageClassModal({
   schoolId,
   classData,
   onSuccess,
+  schoolCityId,
 }: ManageClassModalProps) {
+  const { user } = useAuth();
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -339,16 +344,19 @@ export function ManageClassModal({
 
     setIsCreating(true);
     try {
-      const teacherData = {
+      const teacherData: Record<string, unknown> = {
         nome: formData.name,
         email: formData.email,
         senha: formData.password,
         matricula: formData.registration || undefined,
         birth_date: formData.birth_date,
-        escolas_ids: [schoolId]
+        escolas_ids: [schoolId],
       };
+      if ((user?.role === "admin" || user?.role === "tecadm") && schoolCityId) {
+        teacherData.city_id = schoolCityId;
+      }
 
-      const response = await api.post("/teacher", teacherData);
+      await api.post("/teacher", teacherData);
 
       toast({
         title: "Sucesso",
@@ -971,6 +979,7 @@ export function ManageClassModal({
         classId={classData.id}
         className={classData.name}
         onSuccess={fetchClassData}
+        schoolCityId={schoolCityId}
       />
 
       {/* Link Student Modal */}

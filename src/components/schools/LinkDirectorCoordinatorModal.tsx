@@ -185,9 +185,9 @@ export function LinkDirectorCoordinatorModal({
 
     setIsLinking(true);
     try {
-      // Vincular cada usuário selecionado à escola
+      // Vincular cada usuário selecionado à escola (diretor/coordenador: uma escola por pessoa)
       const linkPromises = selectedUsers.map(userId =>
-        api.post("/managers/school-link", {
+        api.post("/managers/link-to-school", {
           user_id: userId,
           school_id: schoolId
         })
