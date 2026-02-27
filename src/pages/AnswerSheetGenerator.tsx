@@ -257,6 +257,100 @@ export default function AnswerSheetGenerator() {
       setIsLoadingOptions(true);
       const firstSchoolId = filters.school_ids?.[0];
       const firstGradeId = filters.grade_ids?.[0];
+      const schoolIds = filters.school_ids ?? [];
+
+      if (!filters.state && !filters.city && !schoolIds.length) {
+        const params = new URLSearchParams();
+        const url = `/answer-sheets/opcoes-filtros`;
+        const response = await api.get(url);
+        const data = response.data;
+        if (data.estados) {
+          const normalized = normalizeOptions(data.estados);
+          setStateOptions(normalized);
+          setAvailableOptions(normalized);
+        }
+        return;
+      }
+
+      if (filters.state && !filters.city) {
+        const params = new URLSearchParams();
+        if (filters.state) params.append('estado', filters.state);
+        const url = `/answer-sheets/opcoes-filtros?${params.toString()}`;
+        const response = await api.get(url);
+        const data = response.data;
+        if (data.municipios) {
+          const normalized = normalizeOptions(data.municipios);
+          setCityOptions(normalized);
+          setAvailableOptions(normalized);
+        }
+        return;
+      }
+
+      if (filters.city && !schoolIds.length) {
+        const params = new URLSearchParams();
+        if (filters.state) params.append('estado', filters.state);
+        if (filters.city) params.append('municipio', filters.city);
+        const url = `/answer-sheets/opcoes-filtros?${params.toString()}`;
+        const response = await api.get(url);
+        const data = response.data;
+        if (data.escolas) {
+          const normalized = normalizeOptions(data.escolas);
+          setSchoolOptions(normalized);
+          setAvailableOptions(normalized);
+        }
+        return;
+      }
+
+      // Múltiplas escolas: buscar séries de cada escola e unir (escolas sem turmas não preenchem série)
+      if (schoolIds.length > 0 && !(filters.grade_ids?.length)) {
+        const seriesById = new Map<string, { id: string; name: string; count?: number }>();
+        for (const schoolId of schoolIds) {
+          const params = new URLSearchParams();
+          if (filters.state) params.append('estado', filters.state);
+          if (filters.city) params.append('municipio', filters.city);
+          params.append('escola', schoolId);
+          const url = `/answer-sheets/opcoes-filtros?${params.toString()}`;
+          const response = await api.get(url);
+          const data = response.data;
+          if (data.series) {
+            const normalized = normalizeOptions(data.series);
+            for (const opt of normalized) {
+              if (!seriesById.has(opt.id)) seriesById.set(opt.id, { id: opt.id, name: opt.name, count: opt.count });
+            }
+          }
+        }
+        const merged = Array.from(seriesById.values());
+        setGradeOptions(merged);
+        setAvailableOptions(merged);
+        return;
+      }
+
+      // Múltiplas escolas + série(s): buscar turmas de cada escola (com a série) e unir
+      if (schoolIds.length > 0 && filters.grade_ids?.length && !(filters.class_ids?.length)) {
+        const turmasById = new Map<string, { id: string; name: string; count?: number }>();
+        for (const schoolId of schoolIds) {
+          const params = new URLSearchParams();
+          if (filters.state) params.append('estado', filters.state);
+          if (filters.city) params.append('municipio', filters.city);
+          params.append('escola', schoolId);
+          if (firstGradeId) params.append('serie', firstGradeId);
+          const url = `/answer-sheets/opcoes-filtros?${params.toString()}`;
+          const response = await api.get(url);
+          const data = response.data;
+          if (data.turmas) {
+            const normalized = normalizeOptions(data.turmas);
+            for (const opt of normalized) {
+              if (!turmasById.has(opt.id)) turmasById.set(opt.id, { id: opt.id, name: opt.name, count: opt.count });
+            }
+          }
+        }
+        const merged = Array.from(turmasById.values());
+        setClassOptions(merged);
+        setAvailableOptions(merged);
+        return;
+      }
+
+      // Fluxo com uma escola apenas (ou quando já tem grade/turma selecionado)
       const params = new URLSearchParams();
       if (filters.state) params.append('estado', filters.state);
       if (filters.city) params.append('municipio', filters.city);
@@ -267,19 +361,7 @@ export default function AnswerSheetGenerator() {
       const url = `/answer-sheets/opcoes-filtros${queryString ? '?' + queryString : ''}`;
       const response = await api.get(url);
       const data = response.data;
-      if (!filters.state && data.estados) {
-        const normalized = normalizeOptions(data.estados);
-        setStateOptions(normalized);
-        setAvailableOptions(normalized);
-      } else if (filters.state && !filters.city && data.municipios) {
-        const normalized = normalizeOptions(data.municipios);
-        setCityOptions(normalized);
-        setAvailableOptions(normalized);
-      } else if (filters.city && !(filters.school_ids?.length) && data.escolas) {
-        const normalized = normalizeOptions(data.escolas);
-        setSchoolOptions(normalized);
-        setAvailableOptions(normalized);
-      } else if (filters.school_ids?.length && !(filters.grade_ids?.length) && data.series) {
+      if (schoolIds.length > 0 && !(filters.grade_ids?.length) && data.series) {
         const normalized = normalizeOptions(data.series);
         setGradeOptions(normalized);
         setAvailableOptions(normalized);
