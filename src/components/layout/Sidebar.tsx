@@ -39,7 +39,6 @@ import {
   FileBarChart,
   ClipboardList,
   NotebookPen,
-  Users,
   MapPin,
   Sparkles,
   Medal,
@@ -200,8 +199,8 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       links: [
         {
           icon: Building,
-          label: "Instituição",
-          href: "/app/cadastros/instituicao",
+          label: "Gestão",
+          href: "/app/cadastros/gestao",
           role: ["professor", "diretor", "coordenador"]
         },
         {
@@ -217,12 +216,16 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           role: ["professor", "diretor", "coordenador"]
         },
         {
+          icon: Building,
+          label: "Gestão",
+          href: "/app/cadastros/gestao",
+          role: ["admin", "tecadm"]
+        },
+        {
           icon: FolderTree,
           label: "Cadastros",
           role: ["admin", "tecadm"],
           children: [
-            { icon: Building, label: "Instituição", href: "/app/cadastros/instituicao", role: ["admin", "tecadm"] },
-            { icon: Users, label: "Usuários", href: "/app/cadastros/usuarios", role: ["admin", "tecadm"] },
             { icon: FileCheck, label: "Avaliações", href: "/app/avaliacoes", role: ["admin", "tecadm"] },
             { icon: MapPin, label: "Municípios", href: "/app/city", role: ["admin", "tecadm"] },
             { icon: HelpCircle, label: "Questão", href: "/app/cadastros/questao", role: ["admin", "tecadm"] },
@@ -240,9 +243,15 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           href: "/app/lista-frequencia",
           role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
         },
-        { icon: Calculator, label: "Calculadora SAEB", href: "/app/calculadora-saeb", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-        { icon: Coins, label: "Administração de moedas", href: "/app/moedas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-        { icon: Target, label: "Cálculo de Metas", href: "/app/calculo-metas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+        {
+          icon: Target,
+          label: "Projeção de Metas",
+          role: ["admin", "professor", "diretor", "coordenador", "tecadm"],
+          children: [
+            { icon: Calculator, label: "Calculadora SAEB", href: "/app/calculadora-saeb", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: Target, label: "Cálculo de Metas", href: "/app/calculo-metas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+          ]
+        },
         { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: TrendingUp, label: "Evolução", href: "/app/evolucao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
@@ -274,7 +283,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         { icon: Award, label: "Certificados", href: `${user.role === 'aluno' ? "/aluno/certificados" : "/app/certificados"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
         { icon: Sparkles, label: "Olimpíadas", href: `${user.role === 'aluno' ? "/aluno/olimpiadas" : "/app/olimpiadas"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
         { icon: Trophy, label: "Competições", href: `${user.role === 'aluno' ? "/aluno/competitions" : "/app/competitions"}`, role: ["admin", "coordenador", "diretor", "tecadm", "aluno"], badge: user.role === 'aluno' && openCompetitionsCount > 0 ? String(openCompetitionsCount) : undefined },
-        { icon: Layers, label: "Templates de Competições", href: "/app/competition-templates", role: ["admin", "coordenador", "diretor", "tecadm"] },
+        { icon: Coins, label: "Administração de moedas", href: "/app/moedas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: Coins, label: "Histórico de Moedas", href: "/aluno/moedas/historico", role: ["aluno"] },
       ]
     },
@@ -690,7 +699,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
             </Link>
           </div>
         )}
-        {!isCollapsed && !isMobile && <UserInfo />}
+        {(isMobile || !isCollapsed) && <UserInfo />}
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto custom-scrollbar">

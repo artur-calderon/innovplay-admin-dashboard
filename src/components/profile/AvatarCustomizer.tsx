@@ -309,33 +309,35 @@ export const AvatarCustomizer = ({ config, onConfigChange, onSave, isSaving }: A
     };
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold">Personalizar Avatar</h2>
-                <div className="flex gap-2">
-                    <Button variant="outline" onClick={handleRandomize}>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Aleatório
+        <div className="space-y-4 sm:space-y-6 min-w-0">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-xl sm:text-2xl font-bold">Personalizar Avatar</h2>
+                <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0 sm:size-default" onClick={handleRandomize}>
+                        <Sparkles className="h-4 w-4 mr-1.5 sm:mr-2" />
+                        <span>Aleatório</span>
                     </Button>
-                    <Button variant="outline" onClick={handleReset}>
-                        <RotateCcw className="h-4 w-4 mr-2" />
-                        Resetar
+                    <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0 sm:size-default" onClick={handleReset}>
+                        <RotateCcw className="h-4 w-4 mr-1.5 sm:mr-2" />
+                        <span>Resetar</span>
                     </Button>
-                    <Button onClick={handleSave} disabled={isSaving}>
-                        <Save className="h-4 w-4 mr-2" />
+                    <Button size="sm" className="min-h-[44px] sm:min-h-0 sm:size-default" onClick={handleSave} disabled={isSaving}>
+                        <Save className="h-4 w-4 mr-1.5 sm:mr-2" />
                         {isSaving ? 'Salvando...' : 'Salvar'}
                     </Button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-1">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 min-w-0">
+                <div className="lg:col-span-1 min-w-0">
                     <Card>
-                        <CardHeader>
+                        <CardHeader className="px-4 sm:px-6">
                             <CardTitle>Preview</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <AvatarPreview config={config} size={200} className="py-6" />
+                        <CardContent className="px-4 sm:px-6">
+                            <div className="flex justify-center">
+                                <AvatarPreview config={config} size={200} className="py-4 sm:py-6 max-w-full" />
+                            </div>
                             <div className="text-center mt-4">
                                 <p className="text-sm text-muted-foreground">
                                     Seed: <span className="font-mono text-xs">{config.seed || 'Não definido'}</span>
@@ -345,15 +347,15 @@ export const AvatarCustomizer = ({ config, onConfigChange, onSave, isSaving }: A
                     </Card>
                 </div>
 
-                <div className="lg:col-span-2">
+                <div className="lg:col-span-2 min-w-0 overflow-hidden">
                     <Tabs defaultValue="basic" className="w-full">
-                        <TabsList className="grid w-full grid-cols-6">
-                            <TabsTrigger value="basic">Básico</TabsTrigger>
-                            <TabsTrigger value="face">Rosto</TabsTrigger>
-                            <TabsTrigger value="hair">Cabelo</TabsTrigger>
-                            <TabsTrigger value="accessories">Acessórios</TabsTrigger>
-                            <TabsTrigger value="background">Fundo</TabsTrigger>
-                            <TabsTrigger value="advanced">Avançado</TabsTrigger>
+                        <TabsList className="w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 h-auto gap-1 p-1.5">
+                            <TabsTrigger value="basic" className="text-xs sm:text-sm py-2 px-2">Básico</TabsTrigger>
+                            <TabsTrigger value="face" className="text-xs sm:text-sm py-2 px-2">Rosto</TabsTrigger>
+                            <TabsTrigger value="hair" className="text-xs sm:text-sm py-2 px-2">Cabelo</TabsTrigger>
+                            <TabsTrigger value="accessories" className="text-xs sm:text-sm py-2 px-2">Acess.</TabsTrigger>
+                            <TabsTrigger value="background" className="text-xs sm:text-sm py-2 px-2">Fundo</TabsTrigger>
+                            <TabsTrigger value="advanced" className="text-xs sm:text-sm py-2 px-2">Avançado</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="basic" className="space-y-4 mt-4">

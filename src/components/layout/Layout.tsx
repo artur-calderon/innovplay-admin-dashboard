@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { NotificationBell } from "@/components/Notifications/NotificationBell";
 import { useAuth } from "@/context/authContext";
+import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
 
 type LayoutProps = {
   children: ReactNode;
@@ -15,7 +16,9 @@ type LayoutProps = {
 export default function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const { user } = useAuth();
+  const { user, needsOnboarding, onboardingProfile } = useAuth();
+
+  const showOnboarding = Boolean(user?.id) && needsOnboarding;
   
   // Scroll to top on route change
   useScrollToTop();
@@ -51,6 +54,13 @@ export default function Layout() {
 
   return (
     <div className="flex min-h-screen bg-background">
+      {showOnboarding && (
+        <OnboardingModal
+          open={true}
+          onComplete={() => {}}
+          profile={onboardingProfile}
+        />
+      )}
       {/* Mobile Header with Menu Button */}
       <header className={cn(
         "md:hidden fixed top-0 left-0 right-0 z-[60]",

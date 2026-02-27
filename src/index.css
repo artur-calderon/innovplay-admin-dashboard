@@ -265,7 +265,44 @@
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background-color: hsl(var(--muted-foreground) / 0.5);
   }
-  
+
+  /* Barra de rolagem lateral moderna para tabelas (Results / DisciplineTables) */
+  .results-table-scroll {
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.5) hsl(var(--muted) / 0.4);
+  }
+  .results-table-scroll::-webkit-scrollbar {
+    height: 10px;
+    width: 10px;
+  }
+  .results-table-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.25);
+    border-radius: 10px;
+    margin: 0 8px;
+  }
+  .results-table-scroll::-webkit-scrollbar-thumb {
+    background: linear-gradient(90deg, hsl(var(--primary) / 0.6), hsl(var(--primary) / 0.4));
+    border-radius: 10px;
+    border: 2px solid hsl(var(--muted) / 0.25);
+  }
+  .results-table-scroll::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(90deg, hsl(var(--primary) / 0.8), hsl(var(--primary) / 0.6));
+  }
+  .results-table-scroll::-webkit-scrollbar-thumb:active {
+    background: hsl(var(--primary));
+  }
+  .dark .results-table-scroll {
+    scrollbar-color: hsl(var(--primary) / 0.6) hsl(var(--muted) / 0.6);
+  }
+  .dark .results-table-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.4);
+  }
+  .dark .results-table-scroll::-webkit-scrollbar-thumb {
+    background: linear-gradient(90deg, hsl(var(--primary) / 0.7), hsl(var(--primary) / 0.5));
+    border-color: hsl(var(--muted) / 0.4);
+  }
+
   /* Enhanced Sidebar Gradient - Afirme Play (modo claro: azul/lilás suaves) */
   .sidebar-gradient {
     background: linear-gradient(

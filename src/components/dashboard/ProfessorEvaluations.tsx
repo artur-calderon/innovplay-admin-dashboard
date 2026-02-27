@@ -110,31 +110,31 @@ export default function ProfessorEvaluations() {
       case 'active':
         return {
           label: 'Ativa',
-          color: 'bg-green-100 text-green-800',
+          color: 'bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300',
           icon: <Clock className="h-3 w-3" />
         };
       case 'completed':
         return {
           label: 'Concluída',
-          color: 'bg-blue-100 text-blue-800',
+          color: 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300',
           icon: <CheckCircle className="h-3 w-3" />
         };
       case 'pending':
         return {
           label: 'Pendente',
-          color: 'bg-yellow-100 text-yellow-800',
+          color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/50 dark:text-yellow-300',
           icon: <AlertCircle className="h-3 w-3" />
         };
       case 'draft':
         return {
           label: 'Rascunho',
-          color: 'bg-gray-100 text-gray-800',
+          color: 'bg-gray-100 text-gray-800 dark:bg-muted dark:text-muted-foreground',
           icon: <FileText className="h-3 w-3" />
         };
       default:
         return {
           label: 'Desconhecido',
-          color: 'bg-gray-100 text-gray-800',
+          color: 'bg-gray-100 text-gray-800 dark:bg-muted dark:text-muted-foreground',
           icon: <FileText className="h-3 w-3" />
         };
     }
@@ -204,8 +204,8 @@ export default function ProfessorEvaluations() {
       <CardContent>
         {evaluations.length === 0 ? (
           <div className="text-center py-8">
-            <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500 mb-4">Nenhuma avaliação encontrada</p>
+            <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground mb-4">Nenhuma avaliação encontrada</p>
             <Button onClick={handleCreateEvaluation}>
               Criar primeira avaliação
             </Button>
@@ -221,32 +221,32 @@ export default function ProfessorEvaluations() {
               return (
                 <div
                   key={evaluation.id}
-                  className="flex items-center gap-4 p-3 rounded-lg border hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-4 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
                 >
                   <div className="p-2 rounded-lg bg-innov-purple/10">
                     <FileText className="h-5 w-5 text-innov-purple" />
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-sm truncate">
+                    <h4 className="font-medium text-sm truncate text-foreground">
                       {evaluation.title}
                     </h4>
                     <div className="flex items-center gap-2 mt-1">
                       {evaluation.subject && (
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-muted-foreground">
                           {evaluation.subject}
                         </span>
                       )}
                       {evaluation.class_name && (
                         <>
-                          <span className="text-xs text-gray-400">•</span>
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-muted-foreground">•</span>
+                          <span className="text-xs text-muted-foreground">
                             {evaluation.class_name}
                           </span>
                         </>
                       )}
-                      <span className="text-xs text-gray-400">•</span>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-muted-foreground">•</span>
+                      <span className="text-xs text-muted-foreground">
                         {formatDate(evaluation.created_at)}
                       </span>
                     </div>
@@ -255,10 +255,10 @@ export default function ProfessorEvaluations() {
                   <div className="flex items-center gap-3">
                     {evaluation.total_students! > 0 && (
                       <div className="text-right">
-                        <div className="text-sm font-medium">
+                        <div className="text-sm font-medium text-foreground">
                           {evaluation.completed_students}/{evaluation.total_students}
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-muted-foreground">
                           {completionRate}% concluído
                         </div>
                       </div>

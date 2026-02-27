@@ -168,31 +168,31 @@ export default function ProfessorNotifications() {
       case 'warning':
         return {
           icon: <AlertTriangle className="h-4 w-4" />,
-          color: 'text-yellow-600',
-          bgColor: 'bg-yellow-50',
-          borderColor: 'border-yellow-200'
+          color: 'text-yellow-600 dark:text-yellow-400',
+          bgColor: 'bg-yellow-50 dark:bg-yellow-950/40',
+          borderColor: 'border-yellow-200 dark:border-yellow-800'
         };
       case 'error':
         return {
           icon: <X className="h-4 w-4" />,
-          color: 'text-red-600',
-          bgColor: 'bg-red-50',
-          borderColor: 'border-red-200'
+          color: 'text-red-600 dark:text-red-400',
+          bgColor: 'bg-red-50 dark:bg-red-950/40',
+          borderColor: 'border-red-200 dark:border-red-800'
         };
       case 'success':
         return {
           icon: <CheckCircle className="h-4 w-4" />,
-          color: 'text-green-600',
-          bgColor: 'bg-green-50',
-          borderColor: 'border-green-200'
+          color: 'text-green-600 dark:text-green-400',
+          bgColor: 'bg-green-50 dark:bg-green-950/40',
+          borderColor: 'border-green-200 dark:border-green-800'
         };
       case 'info':
       default:
         return {
           icon: <Info className="h-4 w-4" />,
-          color: 'text-blue-600',
-          bgColor: 'bg-blue-50',
-          borderColor: 'border-blue-200'
+          color: 'text-blue-600 dark:text-blue-400',
+          bgColor: 'bg-blue-50 dark:bg-blue-950/40',
+          borderColor: 'border-blue-200 dark:border-blue-800'
         };
     }
   };
@@ -293,8 +293,8 @@ export default function ProfessorNotifications() {
       <CardContent>
         {notifications.length === 0 ? (
           <div className="text-center py-8">
-            <Bell className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500">Nenhuma notificação no momento</p>
+            <Bell className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">Nenhuma notificação no momento</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -308,7 +308,7 @@ export default function ProfessorNotifications() {
                   className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
                     !notification.is_read 
                       ? `${config.bgColor} ${config.borderColor}` 
-                      : 'bg-gray-50 border-gray-200'
+                      : 'bg-muted/50 border-border dark:bg-muted/30'
                   }`}
                 >
                   <div className={`p-1 rounded ${config.color}`}>
@@ -317,20 +317,20 @@ export default function ProfessorNotifications() {
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <h4 className={`font-medium text-sm ${!notification.is_read ? 'text-gray-900' : 'text-gray-600'}`}>
+                      <h4 className={`font-medium text-sm ${!notification.is_read ? 'text-foreground' : 'text-muted-foreground'}`}>
                         {notification.title}
                       </h4>
-                      <div className="flex items-center gap-1 text-gray-400">
+                      <div className="flex items-center gap-1 text-muted-foreground">
                         {categoryIcon}
                       </div>
                     </div>
                     
-                    <p className="text-xs text-gray-600 mb-2">
+                    <p className="text-xs text-muted-foreground mb-2">
                       {notification.message}
                     </p>
 
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-muted-foreground">
                         {formatTimeAgo(notification.created_at)}
                       </span>
 

@@ -274,7 +274,7 @@ export function SchoolCoursesTab({ schoolId, schoolName }: SchoolCoursesTabProps
               ))}
               {availableCourses.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-4">
-                  Nenhum curso disponível. Crie cursos em Cadastros → Curso.
+                  Nenhum curso disponível. Crie cursos em Gestão.
                 </p>
               )}
             </div>

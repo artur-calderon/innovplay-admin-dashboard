@@ -94,8 +94,9 @@ export default function Evolution() {
   const [processedData, setProcessedData] = useState<ProcessedEvolutionData | null>(null);
   const [comparisonError, setComparisonError] = useState<string | null>(null);
   
-  // Ref para evitar chamadas duplicadas de comparação automática
+  // Ref para evitar chamadas duplicadas e para só aplicar resultado se a seleção não mudou
   const lastComparisonIdsRef = useRef<string>('');
+  const selectedIdsRef = useRef<string>('');
 
   // Carregar filtros iniciais usando nova API unificada com fallback
   const loadInitialFilters = useCallback(async () => {
@@ -854,68 +855,91 @@ export default function Evolution() {
     }
   }, [selectedEvaluationsForComparison, toast]);
 
-  // Carregar gráficos automaticamente quando houver 2+ avaliações selecionadas
+  // Chave estável da seleção atual (qualquer mudança em quais avaliações estão marcadas dispara nova comparação)
+  const selectedIdsKey = useMemo(
+    () => selectedEvaluationsForComparison.map(e => e.id).sort().join(','),
+    [selectedEvaluationsForComparison]
+  );
+
+  // Carregar gráficos automaticamente quando a seleção mudar (2+ avaliações); só aplica resultado se ainda for a seleção atual
   useEffect(() => {
+    selectedIdsRef.current = selectedIdsKey;
+
     const autoCompare = async () => {
-      if (selectedEvaluationsForComparison.length >= 2) {
-        // Criar uma string única com os IDs ordenados para comparar
-        const currentIds = selectedEvaluationsForComparison
-          .map(e => e.id)
-          .sort()
-          .join(',');
-        
-        // Evitar chamadas duplicadas
-        if (currentIds === lastComparisonIdsRef.current || isLoadingComparison) {
-          return;
-        }
-        
-        lastComparisonIdsRef.current = currentIds;
-        
-        // Aguardar um pequeno delay para evitar múltiplas chamadas rápidas
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        // Verificar novamente se ainda temos 2+ avaliações (pode ter mudado durante o delay)
-        if (selectedEvaluationsForComparison.length >= 2) {
-          try {
-            await handleCompareEvaluations();
-          } catch (error: unknown) {
-            // Se a comparação falhar, tentar identificar avaliações inválidas
-            // e removê-las automaticamente
-            console.error('Erro na comparação automática:', error);
-            
-            // Extrair mensagem de erro
-            let errorMessage = '';
-            if (error && typeof error === 'object') {
-              if ('response' in error) {
-                const axiosError = error as { response?: { data?: { error?: string } } };
-                errorMessage = axiosError.response?.data?.error || '';
-              }
-              if ('message' in error && typeof error.message === 'string') {
-                errorMessage = error.message;
-              }
-            }
-            
-            // Se o erro menciona avaliações sem resultados, tentar identificar quais
-            if (errorMessage.includes('não possui resultados calculados') || 
-                errorMessage.includes('sem resultados')) {
-              // Marcar todas como potencialmente inválidas e deixar o usuário decidir
-              // ou tentar validar uma por uma (mais complexo, deixamos o usuário remover manualmente)
-              console.warn('Uma ou mais avaliações podem não ter resultados calculados');
-            }
-          }
-        }
-      } else {
-        // Limpar dados quando houver menos de 2 avaliações
+      if (selectedEvaluationsForComparison.length < 2) {
         setComparisonData(null);
         setProcessedData(null);
         setComparisonError(null);
         lastComparisonIdsRef.current = '';
+        return;
+      }
+
+      const currentIds = selectedEvaluationsForComparison
+        .map(e => e.id)
+        .sort()
+        .join(',');
+      if (currentIds !== selectedIdsKey) return;
+      if (currentIds === lastComparisonIdsRef.current) return;
+
+      lastComparisonIdsRef.current = currentIds;
+      const requestedIds = currentIds;
+
+      setIsLoadingComparison(true);
+      setComparisonError(null);
+
+      try {
+        const evaluationIds = Array.from(new Set(selectedEvaluationsForComparison.map(e => e.id)));
+        const comparison = await EvaluationComparisonApiService.compareEvaluations(evaluationIds);
+
+        if (selectedIdsRef.current !== requestedIds) return;
+        setComparisonData(comparison);
+
+        const processed = processComparisonData(comparison);
+        if (selectedIdsRef.current !== requestedIds) return;
+        setProcessedData(processed);
+
+        toast({
+          title: "Comparação atualizada",
+          description: `Comparando ${comparison.total_evaluations} avaliações com ${comparison.total_comparisons} comparações.`,
+        });
+      } catch (error: unknown) {
+        console.error('Erro na comparação automática:', error);
+        let errorMessage = '';
+        if (error && typeof error === 'object') {
+          if ('response' in error) {
+            const axiosError = error as { response?: { data?: { error?: string } } };
+            errorMessage = axiosError.response?.data?.error || '';
+          }
+          if ('message' in error && typeof error.message === 'string') {
+            errorMessage = error.message;
+          }
+        }
+        if (selectedIdsRef.current !== requestedIds) return;
+        if (errorMessage.includes('não possui resultados calculados')) {
+          setComparisonError('Avaliação sem resultados calculados');
+          toast({
+            title: "Avaliação sem resultados",
+            description: "Uma ou mais avaliações selecionadas ainda não possuem resultados calculados.",
+            variant: "destructive",
+          });
+        } else if (errorMessage.includes('Avaliação')) {
+          setComparisonError(errorMessage);
+          toast({ title: "Erro na avaliação", description: errorMessage, variant: "destructive" });
+        } else {
+          setComparisonError('Erro ao carregar dados de comparação');
+          toast({
+            title: "Erro na comparação",
+            description: "Não foi possível comparar as avaliações. Tente novamente.",
+            variant: "destructive",
+          });
+        }
+      } finally {
+        setIsLoadingComparison(false);
       }
     };
 
     autoCompare();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEvaluationsForComparison.length]);
+  }, [selectedIdsKey, selectedEvaluationsForComparison, toast]);
 
   // Controles de visibilidade agora são por gráfico, definidos em EvolutionCharts
 

@@ -73,8 +73,8 @@ export const loadSettings = (userId: string | null): Settings => {
   }
 };
 
-// Salvar configurações no localStorage
-const saveSettings = (userId: string | null, settings: Settings): void => {
+// Salvar configurações no localStorage (exportado para onboarding persistir tema/fonte)
+export const saveSettings = (userId: string | null, settings: Settings): void => {
   const storageKey = getStorageKey(userId);
   try {
     setToStorage(storageKey, JSON.stringify(settings));
@@ -182,10 +182,29 @@ export const loadAndApplySettings = async (targetUserId: string | null): Promise
             console.warn("Erro ao sincronizar configurações locais com servidor:", error);
           }
         } else {
-          const currentDarkMode = document.documentElement.classList.contains('dark');
-          if (currentDarkMode) {
-            loadedSettings = { ...DEFAULT_SETTINGS, theme: 'dark' };
-            saveSettings(targetUserId, loadedSettings);
+          const storedUser = getFromStorage("user", "");
+          if (storedUser) {
+            try {
+              const parsed = JSON.parse(storedUser) as { avatar_config?: { theme?: string; font?: string } };
+              const ac = parsed?.avatar_config;
+              if (ac?.theme || ac?.font) {
+                loadedSettings = {
+                  theme: ac.theme === "dark" ? "dark" : DEFAULT_SETTINGS.theme,
+                  fontFamily: ac.font || DEFAULT_SETTINGS.fontFamily,
+                  fontSize: DEFAULT_SETTINGS.fontSize,
+                };
+                saveSettings(targetUserId, loadedSettings);
+              }
+            } catch {
+              // ignorar parse do user
+            }
+          }
+          if (JSON.stringify(loadedSettings) === JSON.stringify(DEFAULT_SETTINGS)) {
+            const currentDarkMode = document.documentElement.classList.contains("dark");
+            if (currentDarkMode) {
+              loadedSettings = { ...DEFAULT_SETTINGS, theme: "dark" };
+              saveSettings(targetUserId, loadedSettings);
+            }
           }
         }
       }

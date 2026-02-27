@@ -76,7 +76,7 @@ export default function ActionCards({ onAnaliseSistemaClick }: ActionCardsProps)
       icon: <Upload className="h-5 w-5" />,
       title: "Importar Alunos",
       description: "Importe uma lista de alunos em lote usando planilhas CSV ou Excel para agilizar o cadastro.",
-      action: () => navigate('/app/usuarios'),
+      action: () => navigate('/app/cadastros/gestao?tab=usuarios'),
       color: "text-green-600 dark:text-green-400",
       bgColor: "bg-green-50 dark:bg-green-950/30"
     },
@@ -123,7 +123,7 @@ export default function ActionCards({ onAnaliseSistemaClick }: ActionCardsProps)
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
         <Card 
           className="group cursor-pointer transition-all duration-200 hover:shadow-md border border-border"
-          onClick={() => navigate('/app/usuarios')}
+          onClick={() => navigate('/app/cadastros/gestao?tab=usuarios')}
         >
           <CardContent className="p-3">
             <div className="flex items-center gap-2">
