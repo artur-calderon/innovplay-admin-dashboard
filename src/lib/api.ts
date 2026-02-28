@@ -28,16 +28,22 @@ api.interceptors.request.use((config) => {
         config.headers.Authorization = `Bearer ${token}`
     }
 
-    // Contexto de município: X-City-ID para backend escopar (admin, tecadm, diretor, coordenador)
+    // Contexto de município: X-City-ID para backend escopar (competições e demais endpoints)
     const userJson = localStorage.getItem('user')
     if (userJson) {
         try {
-            const user = JSON.parse(userJson) as { role?: string }
+            const user = JSON.parse(userJson) as { role?: string; tenant_id?: string }
             const cityId = (config as typeof config & { meta?: { cityId?: string } }).meta?.cityId
             const role = (user?.role ?? '').toLowerCase()
             const canSendCityId = ['admin', 'tecadm', 'diretor', 'coordenador'].includes(role)
+            const isCompetitionsRequest = typeof config.url === 'string' && config.url.includes('/competitions')
+            // Admin/coordenador/diretor/tecadm: enviar X-City-ID quando informado (meta.cityId)
             if (canSendCityId && cityId) {
                 config.headers['X-City-ID'] = cityId
+            }
+            // Aluno em competições: enviar tenant do município da escola do aluno para o backend unificar contexto
+            if (role === 'aluno' && isCompetitionsRequest && user?.tenant_id) {
+                config.headers['X-City-ID'] = user.tenant_id
             }
         } catch {
             // ignore parse error

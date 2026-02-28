@@ -26,6 +26,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { useAuth } from "@/context/authContext";
+import { getUserHierarchyContext } from "@/utils/userHierarchy";
 import { ResultsCharts } from "@/components/evaluations/ResultsCharts";
 import { ClassStatistics } from "@/components/evaluations/ClassStatistics";
 import { StudentRanking } from "@/components/evaluations/StudentRanking";
@@ -383,6 +384,9 @@ export default function Results() {
   const [grades, setGrades] = useState<Grade[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [evaluationInfo, setEvaluationInfo] = useState<EvaluationInfoSummary | null>(null);
+
+  // Turmas do professor (quando role === 'professor'): usadas para filtrar estatísticas e lista quando turma não está selecionada
+  const [professorClassNames, setProfessorClassNames] = useState<Set<string>>(new Set());
 
   // Estados para controles da tabela
 
@@ -1031,6 +1035,25 @@ export default function Results() {
   // Verificar se é professor especificamente (para mensagens específicas)
   const isProfessor = user?.role === 'professor';
 
+  // Carregar turmas do professor para filtrar estatísticas/lista quando turma não está selecionada
+  useEffect(() => {
+    if (user?.role !== 'professor' || !user?.id) {
+      setProfessorClassNames(new Set());
+      return;
+    }
+    let cancelled = false;
+    getUserHierarchyContext(user.id, user.role).then((ctx) => {
+      if (cancelled) return;
+      const names = (ctx.classes ?? [])
+        .map((c) => (c.class_name ?? '').trim())
+        .filter(Boolean);
+      setProfessorClassNames(new Set(names));
+    }).catch(() => {
+      if (!cancelled) setProfessorClassNames(new Set());
+    });
+    return () => { cancelled = true; };
+  }, [user?.id, user?.role]);
+
   // ✅ Carregar dados quando os filtros obrigatórios estiverem preenchidos.
   // Admin e tecadmin: Estado, Município e Avaliação. Professor/diretor/coordenador: + Escola obrigatória.
   useEffect(() => {
@@ -1380,9 +1403,14 @@ export default function Results() {
       }>;
     }>();
 
+    // Professor sem turma selecionada: só incluir alunos das turmas do professor
+    const isProfessorNoClass = user?.role === 'professor' && selectedClass === 'all' && professorClassNames.size > 0;
+
     // ✅ Processar cada disciplina e consolidar dados por aluno
     apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
       disciplina.alunos.forEach(aluno => {
+        if (isProfessorNoClass && !professorClassNames.has((aluno.turma ?? '').trim())) return;
+
         // ✅ CORRIGIDO: Verificar se o aluno respondeu pelo menos uma questão
         const hasAnsweredAnyQuestion = aluno.respostas_por_questao.some(resposta => resposta.respondeu);
         
@@ -1454,15 +1482,18 @@ export default function Results() {
       questions: allQuestions.sort((a, b) => a.numero - b.numero),
       totalQuestions: allQuestions.length
     };
-  }, [apiData]);
+  }, [apiData, user?.role, selectedClass, professorClassNames]);
 
   // ✅ NOVO: Processar dados do ranking usando tabela_detalhada.geral
   const processRankingData = useCallback(() => {
+    const isProfessorNoClass = user?.role === 'professor' && selectedClass === 'all' && professorClassNames.size > 0;
+
     // Prioridade 1: Usar dados da tabela_detalhada.geral (mesma fonte da visão geral)
     const tabelaDetalhada = apiData?.tabela_detalhada as TabelaDetalhada | undefined;
     if (tabelaDetalhada?.geral?.alunos?.length) {
       return tabelaDetalhada.geral.alunos
         .filter(aluno => {
+          if (isProfessorNoClass && !professorClassNames.has((aluno.turma ?? '').trim())) return false;
           // Verificar se o aluno respondeu pelo menos uma questão
           if (!apiData?.tabela_detalhada?.disciplinas?.length) {
             return true; // Fallback: incluir todos se não temos dados de disciplinas
@@ -1496,6 +1527,7 @@ export default function Results() {
     if (apiData?.ranking?.length) {
       return apiData.ranking
         .filter((item: RankingItemWithAluno) => {
+          if (isProfessorNoClass && !professorClassNames.has((item.turma ?? '').trim())) return false;
           if (!apiData?.tabela_detalhada?.disciplinas?.length) {
             return true;
           }
@@ -1524,7 +1556,7 @@ export default function Results() {
     }
 
     return [];
-  }, [apiData]);
+  }, [apiData, user?.role, selectedClass, professorClassNames]);
 
   // ✅ NOVA IMPLEMENTAÇÃO: Processar dados dos alunos da tabela_detalhada da nova API
   const loadStudentsData = useCallback(async () => {
@@ -1878,6 +1910,38 @@ export default function Results() {
 
   // ✅ CORRIGIDO: Calcular estatísticas respeitando filtros selecionados
   const derivedStats = useMemo(() => {
+    // Professor sem turma selecionada: usar apenas alunos das turmas do professor (não mostrar dados de outras turmas)
+    const isProfessorWithoutClass = user?.role === 'professor' && selectedClass === 'all' && professorClassNames.size > 0;
+    if (isProfessorWithoutClass && apiData?.tabela_detalhada?.disciplinas?.length) {
+      const alunosMap = new Map<string, { id: string; nome: string; turma: string; serie: string; escola: string; nota: number; proficiencia: number; participou: boolean }>();
+      apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
+        disciplina.alunos.forEach(aluno => {
+          const turmaNorm = (aluno.turma ?? '').trim();
+          if (!professorClassNames.has(turmaNorm)) return;
+          const participou = aluno.respostas_por_questao?.some(resposta => resposta.respondeu) ?? false;
+          if (!alunosMap.has(aluno.id)) {
+            alunosMap.set(aluno.id, {
+              id: aluno.id,
+              nome: aluno.nome,
+              turma: aluno.turma,
+              serie: aluno.serie,
+              escola: aluno.escola,
+              nota: aluno.nota,
+              proficiencia: aluno.proficiencia,
+              participou
+            });
+          }
+        });
+      });
+      const alunosArray = Array.from(alunosMap.values());
+      const participantes = alunosArray.filter(a => a.participou);
+      const totalAlunos = alunosArray.length;
+      const ausentes = totalAlunos - participantes.length;
+      const mediaNota = participantes.length > 0 ? participantes.reduce((sum, a) => sum + a.nota, 0) / participantes.length : 0;
+      const mediaProficiencia = participantes.length > 0 ? participantes.reduce((sum, a) => sum + a.proficiencia, 0) / participantes.length : 0;
+      return { totalAlunos, participantes: participantes.length, ausentes, mediaNota, mediaProficiencia };
+    }
+
     // Se há filtros específicos selecionados, calcular estatísticas filtradas
     const hasSpecificFilters = selectedClass !== 'all' || selectedGrade !== 'all' || selectedSchool !== 'all';
     
@@ -1971,7 +2035,7 @@ export default function Results() {
     const mediaProficiencia = apiData?.estatisticas_gerais?.media_proficiencia_geral || 0;
 
     return { totalAlunos, participantes, ausentes, mediaNota, mediaProficiencia };
-  }, [apiData, selectedClass, selectedGrade, selectedSchool, schools, grades, classes]);
+  }, [apiData, selectedClass, selectedGrade, selectedSchool, schools, grades, classes, user?.role, professorClassNames]);
 
   // Disciplinas derivadas unificando múltiplas fontes
   const derivedSubjects = useMemo(() => {

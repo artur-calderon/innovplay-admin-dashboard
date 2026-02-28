@@ -571,8 +571,12 @@ export default function AcertoNiveis() {
 
           // Carregar estado baseado no município
           const statesResp = await EvaluationResultsApiService.getFilterStates();
-          setStates(statesResp); // ← ADICIONAR esta linha
-          const userState = statesResp.find(s => s.nome === context.municipality.state);
+          setStates(statesResp);
+          const userState = statesResp.find(
+            (s) =>
+              s.id === context.municipality!.state ||
+              s.nome?.toLowerCase() === context.municipality!.state?.toLowerCase()
+          );
           if (userState) {
             setSelectedState(userState.id);
 
@@ -609,9 +613,13 @@ export default function AcertoNiveis() {
 
             // Carregar estado baseado no município
             const statesResp = await EvaluationResultsApiService.getFilterStates();
-            setStates(statesResp); // ← ADICIONAR esta linha
+            setStates(statesResp);
             console.log('🔍 Estados carregados:', statesResp);
-            const userState = statesResp.find(s => s.nome === municipalityData.state);
+            const userState = statesResp.find(
+              (s) =>
+                s.id === municipalityData.state ||
+                s.nome?.toLowerCase() === municipalityData.state?.toLowerCase()
+            );
             console.log('🔍 Estado encontrado:', userState);
             if (userState) {
               setSelectedState(userState.id);
@@ -1352,6 +1360,16 @@ export default function AcertoNiveis() {
   const handleGeneratePDF = async () => {
     if (!evaluationInfo) {
       toast({ title: "Atenção", description: "Selecione uma avaliação.", variant: "destructive" });
+      return;
+    }
+
+    // Professor só pode imprimir quando tiver turma selecionada
+    if (user?.role === "professor" && !selectedClassId) {
+      toast({
+        title: "Turma obrigatória",
+        description: "Selecione uma turma para imprimir o relatório.",
+        variant: "destructive"
+      });
       return;
     }
 
@@ -3440,10 +3458,20 @@ export default function AcertoNiveis() {
           </div>
 
           {/* Botão de Geração */}
-          <div className="mt-6 flex justify-end">
+          <div className="mt-6 flex flex-col items-end gap-2">
+            {user?.role === "professor" && !selectedClassId && (
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                Selecione uma turma para imprimir o relatório.
+              </p>
+            )}
             <Button
               onClick={handleGeneratePDF}
-              disabled={!selectedEvaluationId || isLoading || (!allTabelaDetalhada && !detailedReport && allStudents.length === 0)}
+              disabled={
+                !selectedEvaluationId ||
+                isLoading ||
+                (!allTabelaDetalhada && !detailedReport && allStudents.length === 0) ||
+                (user?.role === "professor" && !selectedClassId)
+              }
               className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
             >
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}

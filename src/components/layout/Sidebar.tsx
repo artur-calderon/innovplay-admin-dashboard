@@ -199,7 +199,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       links: [
         {
           icon: Building,
-          label: "Gestão",
+          label: "Gestão Escolar",
           href: "/app/cadastros/gestao",
           role: ["professor", "diretor", "coordenador"]
         },
@@ -282,7 +282,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       links: [
         { icon: Award, label: "Certificados", href: `${user.role === 'aluno' ? "/aluno/certificados" : "/app/certificados"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
         { icon: Sparkles, label: "Olimpíadas", href: `${user.role === 'aluno' ? "/aluno/olimpiadas" : "/app/olimpiadas"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
-        { icon: Trophy, label: "Competições", href: `${user.role === 'aluno' ? "/aluno/competitions" : "/app/competitions"}`, role: ["admin", "coordenador", "diretor", "tecadm", "aluno"], badge: user.role === 'aluno' && openCompetitionsCount > 0 ? String(openCompetitionsCount) : undefined },
+        { icon: Trophy, label: "Competições", href: `${user.role === 'aluno' ? "/aluno/competitions" : "/app/competitions"}`, role: ["admin", "professor", "coordenador", "diretor", "tecadm", "aluno"], badge: user.role === 'aluno' && openCompetitionsCount > 0 ? String(openCompetitionsCount) : undefined },
         { icon: Coins, label: "Administração de moedas", href: "/app/moedas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: Coins, label: "Histórico de Moedas", href: "/aluno/moedas/historico", role: ["aluno"] },
       ]
@@ -338,7 +338,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                 <p className="font-semibold text-xs md:text-sm truncate text-slate-900 dark:text-white flex items-center gap-1">
                   <span className="truncate">{user?.name || "Usuário"}</span>
                   {user?.role === 'aluno' && user?.competition_band && (
-                    <StudentBandBadge band={user.competition_band as string} />
+                    <StudentBandBadge band={user.competition_band} />
                   )}
                 </p>
 

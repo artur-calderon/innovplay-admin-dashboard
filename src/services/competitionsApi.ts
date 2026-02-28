@@ -6,6 +6,15 @@ import type {
   UpdateCompetitionFormData,
 } from '@/types/competition-types';
 
+/** Opções para contexto de município (tenant). Quando informado, o request envia X-City-ID para o backend. */
+export interface CompetitionRequestOptions {
+  cityId?: string;
+}
+
+function cityConfig(options?: CompetitionRequestOptions): { meta?: { cityId: string } } {
+  return options?.cityId ? { meta: { cityId: options.cityId } } : {};
+}
+
 /** Resposta de GET /competitions/level-options */
 export interface CompetitionLevelOptionsResponse {
   levels: { value: number; label: string }[];
@@ -19,17 +28,22 @@ export interface AllowedCompetitionScopesResponse {
 /**
  * Serviço de API para Competições.
  * GET /competitions — retorna array direto (não { competitions: [...] })
+ *
+ * Contexto de município (tenant): para admin/coordenador/diretor/tecadm que acessam
+ * competições de um município, passar options: { cityId: '...' } para enviar X-City-ID.
+ * Para aluno, o interceptor envia automaticamente o tenant_id do usuário em requests a /competitions.
+ * URLs e contratos permanecem iguais; o backend resolve public vs schema do município.
  */
 
-export async function getCompetitionLevelOptions(): Promise<CompetitionLevelOptionsResponse> {
-  const { data } = await api.get<CompetitionLevelOptionsResponse>('/competitions/level-options');
+export async function getCompetitionLevelOptions(options?: CompetitionRequestOptions): Promise<CompetitionLevelOptionsResponse> {
+  const { data } = await api.get<CompetitionLevelOptionsResponse>('/competitions/level-options', cityConfig(options));
   return data ?? { levels: [] };
 }
 
 /** Escopos de competição que o usuário logado pode usar (por role: admin, tec adm, diretor, coordenador, professor). */
-export async function getAllowedCompetitionScopes(): Promise<string[]> {
+export async function getAllowedCompetitionScopes(options?: CompetitionRequestOptions): Promise<string[]> {
   try {
-    const { data } = await api.get<AllowedCompetitionScopesResponse>('/competitions/allowed-scopes');
+    const { data } = await api.get<AllowedCompetitionScopesResponse>('/competitions/allowed-scopes', cityConfig(options));
     return Array.isArray(data?.allowed_scopes) ? data.allowed_scopes : ['individual'];
   } catch {
     return ['individual'];
@@ -37,7 +51,8 @@ export async function getAllowedCompetitionScopes(): Promise<string[]> {
 }
 
 export async function getCompetitions(
-  filters: Partial<CompetitionFilters>
+  filters: Partial<CompetitionFilters>,
+  options?: CompetitionRequestOptions
 ): Promise<Competition[]> {
   const params: Record<string, string | number> = {};
   if (filters.status && filters.status !== 'all') params.status = filters.status;
@@ -48,13 +63,13 @@ export async function getCompetitions(
   if (filters.page != null) params.page = filters.page;
   if (filters.page_size != null) params.page_size = filters.page_size;
 
-  const { data } = await api.get<Competition[]>('/competitions', { params });
+  const { data } = await api.get<Competition[]>('/competitions', { params, ...cityConfig(options) });
   return Array.isArray(data) ? data : [];
 }
 
 /** Lista de competições disponíveis para o aluno (inclui is_enrolled). */
-export async function getAvailableCompetitions(): Promise<Competition[]> {
-  const { data } = await api.get<Competition[]>('/competitions/available');
+export async function getAvailableCompetitions(options?: CompetitionRequestOptions): Promise<Competition[]> {
+  const { data } = await api.get<Competition[]>('/competitions/available', cityConfig(options));
   if (process.env.NODE_ENV !== 'production') {
     console.log(
       '[Competitions] Resposta de GET /competitions/available:',
@@ -78,6 +93,7 @@ export interface MyCompetitionsParams {
  */
 export async function getMyCompetitions(
   params?: MyCompetitionsParams,
+  options?: CompetitionRequestOptions
 ): Promise<Competition[]> {
   const query: Record<string, string | number> = {};
   if (params?.status && params.status !== 'all') query.status = params.status;
@@ -86,12 +102,13 @@ export async function getMyCompetitions(
 
   const { data } = await api.get<Competition[]>('/competitions/my', {
     params: Object.keys(query).length ? query : undefined,
+    ...cityConfig(options),
   });
   return Array.isArray(data) ? data : [];
 }
 
-export async function getCompetition(id: string): Promise<Competition> {
-  const { data } = await api.get<Competition>(`/competitions/${id}`);
+export async function getCompetition(id: string, options?: CompetitionRequestOptions): Promise<Competition> {
+  const { data } = await api.get<Competition>(`/competitions/${id}`, cityConfig(options));
   return data;
 }
 
@@ -120,7 +137,7 @@ export interface EnrolledStudent {
 /** Lista de alunos inscritos na competição. Se o endpoint não existir (404) ou houver CORS/rede, retorna [] sem lançar. */
 export async function getEnrolledStudentsForCompetition(
   id: string,
-  options?: { limit?: number; offset?: number },
+  options?: { limit?: number; offset?: number } & CompetitionRequestOptions,
 ): Promise<EnrolledStudent[]> {
   const params: Record<string, number> = {};
   if (typeof options?.limit === 'number') params.limit = options.limit;
@@ -128,6 +145,7 @@ export async function getEnrolledStudentsForCompetition(
   try {
     const { data } = await api.get<EnrolledStudent[]>(`/competitions/${id}/enrolled-students`, {
       params: Object.keys(params).length ? params : undefined,
+      ...cityConfig(options),
     });
     return Array.isArray(data) ? data : [];
   } catch (error: unknown) {
@@ -148,7 +166,7 @@ export async function getEnrolledStudentsForCompetition(
 /** Lista de alunos elegíveis para uma competição específica. */
 export async function getEligibleStudentsForCompetition(
   id: string,
-  options?: { class_id?: string; school_id?: string; limit?: number; offset?: number },
+  options?: { class_id?: string; school_id?: string; limit?: number; offset?: number } & CompetitionRequestOptions,
 ): Promise<EligibleStudent[]> {
   const params: Record<string, string | number> = {};
   if (options?.class_id) params.class_id = options.class_id;
@@ -159,6 +177,7 @@ export async function getEligibleStudentsForCompetition(
   try {
     const { data } = await api.get<EligibleStudent[]>(`/competitions/${id}/eligible-students`, {
       params: Object.keys(params).length ? params : undefined,
+      ...cityConfig(options),
     });
     return Array.isArray(data) ? data : [];
   } catch (error) {
@@ -172,32 +191,34 @@ export async function getEligibleStudentsForCompetition(
 }
 
 /** Detalhes da competição (mesmo formato de /available, com is_enrolled, available_slots, etc.). */
-export async function getCompetitionDetails(id: string): Promise<Competition> {
-  const { data } = await api.get<Competition>(`/competitions/${id}/details`);
+export async function getCompetitionDetails(id: string, options?: CompetitionRequestOptions): Promise<Competition> {
+  const { data } = await api.get<Competition>(`/competitions/${id}/details`, cityConfig(options));
   return data;
 }
 
 export async function createCompetition(
-  payload: CreateCompetitionFormData
+  payload: CreateCompetitionFormData,
+  options?: CompetitionRequestOptions
 ): Promise<Competition> {
-  const { data } = await api.post<Competition>('/competitions', payload);
+  const { data } = await api.post<Competition>('/competitions', payload, cityConfig(options));
   return data;
 }
 
 export async function updateCompetition(
   id: string,
-  payload: UpdateCompetitionFormData
+  payload: UpdateCompetitionFormData,
+  options?: CompetitionRequestOptions
 ): Promise<Competition> {
-  const { data } = await api.put<Competition>(`/competitions/${id}`, payload);
+  const { data } = await api.put<Competition>(`/competitions/${id}`, payload, cityConfig(options));
   return data;
 }
 
-export async function deleteCompetition(id: string): Promise<void> {
-  await api.delete(`/competitions/${id}`);
+export async function deleteCompetition(id: string, options?: CompetitionRequestOptions): Promise<void> {
+  await api.delete(`/competitions/${id}`, cityConfig(options));
 }
 
-export async function publishCompetition(id: string): Promise<Competition> {
-  const { data } = await api.post<Competition>(`/competitions/${id}/publish`);
+export async function publishCompetition(id: string, options?: CompetitionRequestOptions): Promise<Competition> {
+  const { data } = await api.post<Competition>(`/competitions/${id}/publish`, undefined, cityConfig(options));
   if (process.env.NODE_ENV !== 'production') {
     console.log(
       '[Competitions] Resposta de POST /competitions/%s/publish:',
@@ -210,31 +231,33 @@ export async function publishCompetition(id: string): Promise<Competition> {
 
 export async function cancelCompetition(
   id: string,
-  body?: { reason?: string }
+  body?: { reason?: string },
+  options?: CompetitionRequestOptions
 ): Promise<Competition> {
-  const { data } = await api.post<Competition>(`/competitions/${id}/cancel`, body ?? {});
+  const { data } = await api.post<Competition>(`/competitions/${id}/cancel`, body ?? {}, cityConfig(options));
   return data;
 }
 
 export async function addCompetitionQuestions(
   id: string,
-  questionIds: string[]
+  questionIds: string[],
+  options?: CompetitionRequestOptions
 ): Promise<unknown> {
   const { data } = await api.post<unknown>(`/competitions/${id}/questions`, {
     question_ids: questionIds,
-  });
+  }, cityConfig(options));
   return data;
 }
 
 /** Inscrição do estudante na competição. */
-export async function enrollCompetition(id: string): Promise<unknown> {
-  const { data } = await api.post<unknown>(`/competitions/${id}/enroll`);
+export async function enrollCompetition(id: string, options?: CompetitionRequestOptions): Promise<unknown> {
+  const { data } = await api.post<unknown>(`/competitions/${id}/enroll`, undefined, cityConfig(options));
   return data;
 }
 
 /** Cancelar inscrição do estudante na competição. */
-export async function unenrollCompetition(id: string): Promise<unknown> {
-  const { data } = await api.delete<unknown>(`/competitions/${id}/unenroll`);
+export async function unenrollCompetition(id: string, options?: CompetitionRequestOptions): Promise<unknown> {
+  const { data } = await api.delete<unknown>(`/competitions/${id}/unenroll`, cityConfig(options));
   return data;
 }
 
@@ -259,8 +282,8 @@ interface StartCompetitionRawResponse {
 }
 
 /** Iniciar prova da competição (aluno). Chama POST /competitions/:id/start e retorna test_id para redirecionar. */
-export async function startCompetition(id: string): Promise<StartCompetitionResponse> {
-  const { data } = await api.post<StartCompetitionRawResponse>(`/competitions/${id}/start`);
+export async function startCompetition(id: string, options?: CompetitionRequestOptions): Promise<StartCompetitionResponse> {
+  const { data } = await api.post<StartCompetitionRawResponse>(`/competitions/${id}/start`, undefined, cityConfig(options));
   const testId = data.test_id ?? data.test_session?.test_id;
   if (!testId) {
     throw new Error(data.message ?? 'Não foi possível obter a prova.');
@@ -360,7 +383,8 @@ function mapBackendRankingToEntry(item: CompetitionRankingBackendItem, index: nu
 /** Buscar ranking da competição. Quando ranking_visibility === 'final' e competição não encerrada, o backend retorna 403. */
 export async function getCompetitionRanking(
   id: string,
-  params?: CompetitionRankingParams
+  params?: CompetitionRankingParams,
+  options?: CompetitionRequestOptions
 ): Promise<CompetitionRankingResponse> {
   const requestParams: Record<string, number | string | undefined> = { ...params } as Record<string, number | string | undefined>;
   if (requestParams.limit != null && requestParams.page_size == null) {
@@ -368,7 +392,7 @@ export async function getCompetitionRanking(
   }
   const { data } = await api.get<CompetitionRankingResponse & { ranking?: CompetitionRankingBackendItem[] }>(
     `/competitions/${id}/ranking`,
-    { params: requestParams ?? undefined }
+    { params: requestParams ?? undefined, ...cityConfig(options) }
   );
   if (Array.isArray(data.ranking) && data.ranking.length >= 0) {
     const entries = data.ranking
@@ -400,10 +424,11 @@ export interface CompetitionRankingByScopeParams extends CompetitionRankingParam
 export async function getCompetitionRankingByScope(
   id: string,
   params: CompetitionRankingByScopeParams,
+  options?: CompetitionRequestOptions
 ): Promise<CompetitionRankingResponse> {
   const { data } = await api.get<CompetitionRankingResponse & { ranking?: CompetitionRankingBackendItem[] }>(
     `/competitions/${id}/ranking-by-scope`,
-    { params: params as Record<string, string | number> },
+    { params: params as Record<string, string | number>, ...cityConfig(options) },
   );
   if (Array.isArray(data.ranking) && data.ranking.length >= 0) {
     const entries = data.ranking
@@ -435,8 +460,8 @@ export interface MyRankingResponse {
 }
 
 /** Posição e moedas do aluno no ranking da competição. Quando não tem resultado: position null, total_participants 0. */
-export async function getMyRanking(competitionId: string): Promise<MyRankingResponse> {
-  const { data } = await api.get<MyRankingResponse>(`/competitions/${competitionId}/my-ranking`);
+export async function getMyRanking(competitionId: string, options?: CompetitionRequestOptions): Promise<MyRankingResponse> {
+  const { data } = await api.get<MyRankingResponse>(`/competitions/${competitionId}/my-ranking`, cityConfig(options));
   return data ?? { position: null, total_participants: 0 };
 }
 
@@ -459,15 +484,16 @@ interface MyCompetitionSessionResponse {
 /** Buscar sessão de prova do aluno para uma competição específica. */
 export async function getMyCompetitionSession(
   competitionId: string,
+  options?: CompetitionRequestOptions
 ): Promise<CompetitionTestSession | null> {
-  const { data } = await api.get<MyCompetitionSessionResponse>(`/competitions/${competitionId}/my-session`);
+  const { data } = await api.get<MyCompetitionSessionResponse>(`/competitions/${competitionId}/my-session`, cityConfig(options));
   if (!data || !data.test_session) return null;
   return data.test_session;
 }
 
 /** Finalizar competição (gerar ranking e pagar recompensas). Só quando expiração já passou e status ainda aberta/em_andamento. */
-export async function finalizeCompetition(competitionId: string): Promise<{ message?: string }> {
-  const { data } = await api.post<{ message?: string }>(`/competitions/${competitionId}/finalize`);
+export async function finalizeCompetition(competitionId: string, options?: CompetitionRequestOptions): Promise<{ message?: string }> {
+  const { data } = await api.post<{ message?: string }>(`/competitions/${competitionId}/finalize`, undefined, cityConfig(options));
   return data ?? {};
 }
 
@@ -506,7 +532,7 @@ export interface CompetitionAnalytics {
 }
 
 /** Buscar analytics da competição (sem fallback; toda a lógica vem do backend) */
-export async function getCompetitionAnalytics(competitionId: string): Promise<CompetitionAnalytics> {
-  const { data } = await api.get<CompetitionAnalytics>(`/competitions/${competitionId}/analytics`);
+export async function getCompetitionAnalytics(competitionId: string, options?: CompetitionRequestOptions): Promise<CompetitionAnalytics> {
+  const { data } = await api.get<CompetitionAnalytics>(`/competitions/${competitionId}/analytics`, cityConfig(options));
   return data;
 }
