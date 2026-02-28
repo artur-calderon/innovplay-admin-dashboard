@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/select";
 import Turmas from "@/pages/Turmas";
 import { InstituicaoUsersTab } from "@/components/schools/InstituicaoUsersTab";
+import { getUserHierarchyContext } from "@/utils/userHierarchy";
 
 interface City {
   id: string;
@@ -168,6 +169,20 @@ export default function Gestao() {
       setDomainCityId("");
     }
   }, [citiesWithSlug]);
+
+  // Professor: definir município da escola como padrão na aba Usuários (evita "Nenhum município definido")
+  useEffect(() => {
+    if (user?.role !== "professor" || !user?.id) return;
+    let cancelled = false;
+    getUserHierarchyContext(user.id, user.role).then((ctx) => {
+      if (cancelled) return;
+      const cityId = ctx.municipality?.id ?? ctx.school?.municipality_id ?? "";
+      if (cityId) {
+        setSelectedUsersCityId((prev) => (prev ? prev : cityId));
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [user?.id, user?.role]);
 
   const fetchInstituicoes = useCallback(async () => {
     setIsLoading(true);

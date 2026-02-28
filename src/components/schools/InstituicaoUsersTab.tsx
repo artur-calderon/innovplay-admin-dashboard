@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Users, Eye, Pencil, Building, MapPin, School } from "lucide-react";
+import { Loader2, Users, User, Eye, Pencil, Building, MapPin, School } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +24,8 @@ import { getRoleDisplayName } from "@/lib/constants";
 import UserForm from "@/components/users/UserForm";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/authContext";
+import type { AvatarConfig } from "@/context/authContext";
+import { AvatarPreview } from "@/components/profile/AvatarPreview";
 
 const ROLE_ORDER = ["admin", "tecadm", "diretor", "coordenador", "professor", "aluno"];
 
@@ -59,10 +61,37 @@ interface MunicipioUser {
   /** Município do tec admin (GET /managers → city) */
   city_name?: string;
   city?: { id: string; name: string };
+  /** Avatar do usuário (quando vindo da API) */
+  avatar_config?: AvatarConfig | null;
 }
 
 const ROLES_WITH_SCHOOL = ["diretor", "coordenador", "professor", "aluno"];
 const ROLES_WITH_CITY = ["tecadm"];
+
+/** Hierarquia: quem pode editar quem. Nenhum cargo pode selecionar cargo maior que o seu na edição. */
+const ROLES_EDITABLE_BY: Record<string, string[]> = {
+  admin: ["admin", "tecadm", "diretor", "coordenador", "professor", "aluno"],
+  tecadm: ["tecadm", "diretor", "coordenador", "professor", "aluno"],
+  diretor: ["coordenador", "professor", "aluno"],
+  coordenador: ["professor", "aluno"],
+  professor: [],
+  aluno: [],
+};
+
+function canCurrentUserEditTarget(editorRole: string, targetCanonicalRole: string): boolean {
+  const editorCanonical = toCanonicalRole(editorRole);
+  const allowed = ROLES_EDITABLE_BY[editorCanonical];
+  if (!allowed?.length) return false;
+  return allowed.includes(targetCanonicalRole);
+}
+
+/** Roles que o editor pode atribuir na edição (nenhum cargo pode selecionar cargo maior que o seu). */
+function getAllowedRolesForEditor(editorRole: string): string[] {
+  const editorCanonical = toCanonicalRole(editorRole);
+  const allowed = ROLES_EDITABLE_BY[editorCanonical];
+  if (!allowed?.length) return [];
+  return allowed.map((r) => getRoleDisplayName(r));
+}
 
 function getSchoolDisplay(u: MunicipioUser): string | null {
   if (u.school_name) return u.school_name;
@@ -455,10 +484,23 @@ export function InstituicaoUsersTab({
                             "hover:border-[#7B3FE4]/40 hover:shadow-sm"
                           )}>
                             <CardContent className="p-4">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0 flex-1">
-                                  <p className="font-medium text-foreground truncate">{u.name}</p>
-                                  <p className="text-xs text-muted-foreground truncate mt-0.5">{u.email}</p>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                  {u.avatar_config ? (
+                                    <AvatarPreview config={u.avatar_config} size={44} className="shrink-0" />
+                                  ) : (
+                                    <div
+                                      className="h-11 w-11 shrink-0 rounded-full bg-[#7B3FE4]/20 text-[#7B3FE4] dark:bg-[#7B3FE4]/30 dark:text-[#E3DFFF] flex items-center justify-center font-semibold text-lg"
+                                      aria-hidden
+                                    >
+                                      {(u.name && u.name.trim()) ? u.name.trim().charAt(0).toUpperCase() : <User className="h-5 w-5" />}
+                                    </div>
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-foreground truncate">{u.name}</p>
+                                    {authUser?.role !== "professor" && (
+                                      <p className="text-xs text-muted-foreground truncate mt-0.5">{u.email}</p>
+                                    )}
                                   {u.registration && (
                                     <p className="text-xs text-muted-foreground/80 mt-0.5">Matrícula: {u.registration}</p>
                                   )}
@@ -474,9 +516,10 @@ export function InstituicaoUsersTab({
                                       <span className="truncate">{getCityDisplay(u)}</span>
                                     </p>
                                   )}
-                                  <Badge variant="outline" className="mt-2 text-xs">
-                                    {getRoleDisplayName(u.role)}
-                                  </Badge>
+                                    <Badge variant="outline" className="mt-2 text-xs">
+                                      {getRoleDisplayName(u.role)}
+                                    </Badge>
+                                  </div>
                                 </div>
                                 <div className="flex flex-shrink-0 gap-1">
                                   <Button
@@ -487,7 +530,7 @@ export function InstituicaoUsersTab({
                                   >
                                     <Eye className="h-4 w-4" />
                                   </Button>
-                                  {authUser?.role !== "professor" && (isAdmin || toCanonicalRole(u.role) !== "admin") && (
+                                  {canCurrentUserEditTarget(authUser?.role ?? "", toCanonicalRole(u.role)) && (
                                     <Button
                                       variant="ghost"
                                       size="icon"
@@ -530,10 +573,12 @@ export function InstituicaoUsersTab({
                 <p className="text-sm font-medium text-muted-foreground">Nome completo</p>
                 <p className="text-base font-medium text-foreground">{viewingUser.name}</p>
               </div>
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-muted-foreground">E-mail</p>
-                <p className="text-base text-foreground">{viewingUser.email}</p>
-              </div>
+              {authUser?.role !== "professor" && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">E-mail</p>
+                  <p className="text-base text-foreground">{viewingUser.email}</p>
+                </div>
+              )}
               <div className="space-y-2">
                 <p className="text-sm font-medium text-muted-foreground">Matrícula</p>
                 <p className="text-base text-foreground">{viewingUser.registration || "—"}</p>
@@ -613,6 +658,7 @@ export function InstituicaoUsersTab({
                   city_id: editingUser.city_id,
                 }}
                 onSubmit={handleEditUser}
+                allowedRoles={getAllowedRolesForEditor(authUser?.role ?? "")}
                 showCitySelect={isAdmin}
                 layout="modal"
               />

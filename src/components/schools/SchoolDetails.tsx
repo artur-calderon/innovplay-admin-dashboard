@@ -14,6 +14,7 @@ import { ManageSchoolLinksModal } from "./ManageSchoolLinksModal";
 import { BulkUploadStudentsModal } from "./BulkUploadStudentsModal";
 import { PasswordReportModal } from "./PasswordReportModal";
 import { SchoolCoursesTab } from "./SchoolCoursesTab";
+import { InstituicaoDisciplinasTab } from "./InstituicaoDisciplinasTab";
 import {
   Table,
   TableBody,
@@ -783,10 +784,11 @@ export default function SchoolDetails() {
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="classes">Turmas</TabsTrigger>
           <TabsTrigger value="courses">Cursos</TabsTrigger>
+          <TabsTrigger value="disciplinas">Disciplinas</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -1155,6 +1157,10 @@ export default function SchoolDetails() {
 
         <TabsContent value="courses" className="space-y-6">
           <SchoolCoursesTab schoolId={school.id} schoolName={school.name} />
+        </TabsContent>
+
+        <TabsContent value="disciplinas" className="space-y-6">
+          <InstituicaoDisciplinasTab />
         </TabsContent>
       </Tabs>
 

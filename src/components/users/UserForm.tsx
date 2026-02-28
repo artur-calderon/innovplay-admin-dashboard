@@ -432,7 +432,7 @@ export default function UserForm({ user, onSubmit, allowedRoles, showCitySelect 
                   { value: "Professor", label: "Professor" },
                   { value: "Aluno", label: "Aluno" }
                 ];
-                const availableRoles = isEditing ? allRoles : (allowedRoles?.length ? allRoles.filter((r) => allowedRoles.includes(r.value)) : allRoles);
+                const availableRoles = allowedRoles?.length ? allRoles.filter((r) => allowedRoles.includes(r.value)) : allRoles;
                 return (
                   <FormItem>
                     <FormLabel>Perfil do usuário *</FormLabel>
@@ -563,7 +563,7 @@ export default function UserForm({ user, onSubmit, allowedRoles, showCitySelect 
                 { value: "Professor", label: "Professor" },
                 { value: "Aluno", label: "Aluno" }
               ];
-              const availableRoles = isEditing ? allRoles : (allowedRoles?.length ? allRoles.filter((r) => allowedRoles.includes(r.value)) : allRoles);
+              const availableRoles = allowedRoles?.length ? allRoles.filter((r) => allowedRoles.includes(r.value)) : allRoles;
               return (
                 <FormItem>
                   <FormLabel>Função</FormLabel>

@@ -217,7 +217,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         },
         {
           icon: Building,
-          label: "Gestão",
+          label: "Gestão Escolar",
           href: "/app/cadastros/gestao",
           role: ["admin", "tecadm"]
         },
