@@ -691,6 +691,20 @@ export default function RelatorioEscolar() {
         // Pre-selecionar filtros baseado na hierarquia
         if (context.municipality) {
           setSelectedMunicipality(context.municipality.id);
+          // Definir estado para que allRequiredFiltersSelected seja satisfeito (professor/diretor/coordenador)
+          try {
+            const statesList = await EvaluationResultsApiService.getFilterStates();
+            const matchedState = statesList.find(
+              (s) =>
+                s.id === context.municipality!.state ||
+                s.nome?.toLowerCase() === context.municipality!.state?.toLowerCase()
+            );
+            if (matchedState) {
+              setSelectedState(matchedState.id);
+            }
+          } catch (e) {
+            console.error("Erro ao mapear estado do contexto:", e);
+          }
         }
 
         if (context.school) {

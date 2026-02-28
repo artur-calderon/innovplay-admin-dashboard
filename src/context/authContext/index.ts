@@ -64,6 +64,7 @@ export interface User {
     birth_date: string,
     avatar_config?: AvatarConfig | null,
     traits?: string[],
+    competition_band?: string | null,
 }
 
 interface ApiError {

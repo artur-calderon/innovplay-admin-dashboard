@@ -244,7 +244,7 @@ const App = () => {
                 path="/app/competitions"
                 element={
                   <PrivateRoute>
-                    <RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}>
+                    <RoleRoute allowed={["admin", "professor", "coordenador", "diretor", "tecadm"]}>
                       <CompetitionList />
                     </RoleRoute>
                   </PrivateRoute>
@@ -254,7 +254,7 @@ const App = () => {
                 path="/app/competitions/:id"
                 element={
                   <PrivateRoute>
-                    <RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}>
+                    <RoleRoute allowed={["admin", "professor", "coordenador", "diretor", "tecadm"]}>
                       <CompetitionDetails />
                     </RoleRoute>
                   </PrivateRoute>
@@ -264,7 +264,7 @@ const App = () => {
                 path="/app/competitions/:id/analytics"
                 element={
                   <PrivateRoute>
-                    <RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}>
+                    <RoleRoute allowed={["admin", "professor", "coordenador", "diretor", "tecadm"]}>
                       <CompetitionAnalytics />
                     </RoleRoute>
                   </PrivateRoute>
@@ -309,7 +309,7 @@ const App = () => {
               <Route path="/app/cadastros/habilidades" element={<PrivateRoute><HabilidadesPage /></PrivateRoute>} />
 
               <Route path="/app/cadastros/turma" element={<Navigate to="/app/cadastros/gestao?tab=turmas" replace />} />
-              {/* Rotas de gestão (turmas, usuários e instituições) */}
+              {/* Rotas de gestão escolar (turmas, usuários e instituições) */}
               <Route path="/app/cadastros/gestao" element={<PrivateRoute><Gestao /></PrivateRoute>} />
               <Route path="/app/cadastros/curso" element={<Navigate to="/app/cadastros/gestao" replace />} />
               <Route path="/app/cadastros/serie" element={<PrivateRoute><Serie /></PrivateRoute>} />

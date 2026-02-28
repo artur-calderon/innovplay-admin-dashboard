@@ -14,6 +14,7 @@ import { ManageSchoolLinksModal } from "./ManageSchoolLinksModal";
 import { BulkUploadStudentsModal } from "./BulkUploadStudentsModal";
 import { PasswordReportModal } from "./PasswordReportModal";
 import { SchoolCoursesTab } from "./SchoolCoursesTab";
+import { InstituicaoDisciplinasTab } from "./InstituicaoDisciplinasTab";
 import {
   Table,
   TableBody,
@@ -632,7 +633,7 @@ export default function SchoolDetails() {
         </p>
         <Button onClick={() => navigate("/app/cadastros/gestao")}>
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Voltar para Gestão
+          Voltar para Gestão Escolar
         </Button>
       </div>
     );
@@ -783,10 +784,11 @@ export default function SchoolDetails() {
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="classes">Turmas</TabsTrigger>
           <TabsTrigger value="courses">Cursos</TabsTrigger>
+          <TabsTrigger value="disciplinas">Disciplinas</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -797,7 +799,7 @@ export default function SchoolDetails() {
               <div>
                 <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                   <Building className="h-5 w-5 text-red-600" />
-                  Gestão da Escola
+                  Gestão Escolar
                 </CardTitle>
                 <CardDescription>
                   Diretores e coordenadores responsáveis pela gestão da instituição
@@ -1155,6 +1157,10 @@ export default function SchoolDetails() {
 
         <TabsContent value="courses" className="space-y-6">
           <SchoolCoursesTab schoolId={school.id} schoolName={school.name} />
+        </TabsContent>
+
+        <TabsContent value="disciplinas" className="space-y-6">
+          <InstituicaoDisciplinasTab />
         </TabsContent>
       </Tabs>
 

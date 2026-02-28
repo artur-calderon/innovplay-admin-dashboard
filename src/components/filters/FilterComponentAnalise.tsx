@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -90,6 +90,30 @@ export function FilterComponentAnalise({
   const normalizedRole = (userRole ?? "").toLowerCase();
   const mustSelectSpecificSchool = ["diretor", "coordenador", "professor"].includes(normalizedRole);
   const onMunicipalityChangeRef = useRef(onMunicipalityChange);
+
+  // Garantir que o valor selecionado (vindo da hierarquia) exista nas opções do Select,
+  // senão o dropdown pode não abrir (Radix exige valor presente nas opções)
+  const statesForSelect = useMemo(() => {
+    if (selectedState === "all") return states;
+    const exists = states.some((s) => s.id === selectedState);
+    if (exists) return states;
+    return [...states, { id: selectedState, name: "Carregando…", uf: selectedState }];
+  }, [states, selectedState]);
+
+  const municipalitiesForSelect = useMemo(() => {
+    if (selectedMunicipality === "all") return municipalities;
+    const exists = municipalities.some((m) => m.id === selectedMunicipality);
+    if (exists) return municipalities;
+    return [...municipalities, { id: selectedMunicipality, name: "Carregando…", state: selectedState }];
+  }, [municipalities, selectedMunicipality, selectedState]);
+
+  const schoolsForSelect = useMemo(() => {
+    if (selectedSchool === "all") return schools;
+    const exists = schools.some((s) => s.id === selectedSchool);
+    if (exists) return schools;
+    return [...schools, { id: selectedSchool, name: "Carregando…", municipality: selectedMunicipality }];
+  }, [schools, selectedSchool, selectedMunicipality]);
+
   const onSchoolChangeRef = useRef(onSchoolChange);
   const onEvaluationChangeRef = useRef(onEvaluationChange);
 
@@ -151,7 +175,8 @@ export function FilterComponentAnalise({
             (municipality) => municipality.id === selectedMunicipality
           );
 
-          if (!municipalityExists) {
+          // Só resetar se o município não existir na lista E o usuário puder alterar (evita apagar pré-seleção do professor)
+          if (!municipalityExists && canSelectMunicipality) {
             onMunicipalityChangeRef.current('all');
             onSchoolChangeRef.current('all');
             onEvaluationChangeRef.current('all');
@@ -165,14 +190,17 @@ export function FilterComponentAnalise({
         setMunicipalities([]);
         setSchools([]);
         setEvaluationsByMunicipality([]);
-        onMunicipalityChangeRef.current('all');
-        onSchoolChangeRef.current('all');
-        onEvaluationChangeRef.current('all');
+        // Só resetar no parent quando o usuário pode alterar (evita apagar pré-seleção do professor ao montar)
+        if (canSelectMunicipality) {
+          onMunicipalityChangeRef.current('all');
+          onSchoolChangeRef.current('all');
+          onEvaluationChangeRef.current('all');
+        }
       }
     };
 
     loadMunicipalities();
-  }, [selectedState]);
+  }, [selectedState, canSelectMunicipality]);
 
   // Carregar escolas quando município for selecionado (ou após avaliação se loadSchoolsAfterEvaluation for true)
   useEffect(() => {
@@ -430,7 +458,7 @@ export function FilterComponentAnalise({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
-                {states.map(state => (
+                {statesForSelect.map(state => (
                   <SelectItem key={state.id} value={state.id}>
                     {state.name}
                   </SelectItem>
@@ -457,7 +485,7 @@ export function FilterComponentAnalise({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
-                {municipalities.map(municipality => (
+                {municipalitiesForSelect.map(municipality => (
                   <SelectItem key={municipality.id} value={municipality.id}>
                     {municipality.name}
                   </SelectItem>
@@ -520,7 +548,7 @@ export function FilterComponentAnalise({
                     {!mustSelectSpecificSchool && (
                       <SelectItem value="all">Todas</SelectItem>
                     )}
-                    {schools.map(school => (
+                    {schoolsForSelect.map(school => (
                       <SelectItem key={school.id} value={school.id}>
                         {school.name}
                       </SelectItem>
@@ -551,7 +579,7 @@ export function FilterComponentAnalise({
                     {!mustSelectSpecificSchool && (
                       <SelectItem value="all">Todas</SelectItem>
                     )}
-                    {schools.map(school => (
+                    {schoolsForSelect.map(school => (
                       <SelectItem key={school.id} value={school.id}>
                         {school.name}
                       </SelectItem>
