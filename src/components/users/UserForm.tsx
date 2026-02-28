@@ -71,12 +71,12 @@ type UserFormValues = {
   role: string;
   registration?: string | null;
   city_id?: string | null;
-  id?: number;
+  id?: number | string;
 };
 
 interface UserFormProps {
   user?: {
-    id: number;
+    id: number | string;
     name: string;
     email: string;
     role: string;

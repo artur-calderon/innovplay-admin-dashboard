@@ -165,6 +165,7 @@ export default function PhysicalTestPage() {
   const [useBlocks, setUseBlocks] = useState(false);
   const [numBlocks, setNumBlocks] = useState(2);
   const [questionsPerBlock, setQuestionsPerBlock] = useState(5);
+  const [minutesPerBlock, setMinutesPerBlock] = useState(30);
   const [separateBySubject, setSeparateBySubject] = useState(false);
 
   // Escopo da prova (GET /scope) e seleção para geração
@@ -501,7 +502,8 @@ export default function PhysicalTestPage() {
         // Se separar por disciplina, enviar blocks_config com separate_by_subject
         payload.blocks_config = {
           use_blocks: true,
-          separate_by_subject: true
+          separate_by_subject: true,
+          minutes_per_block: minutesPerBlock
         };
       } else if (useBlocks) {
         // Se usar blocos normais, enviar configurações de blocos
@@ -509,7 +511,8 @@ export default function PhysicalTestPage() {
           use_blocks: true,
           num_blocks: numBlocks,
           questions_per_block: questionsPerBlock,
-          separate_by_subject: false
+          separate_by_subject: false,
+          minutes_per_block: minutesPerBlock
         };
       } else {
         // Se não usar blocos, enviar blocks_config com use_blocks: false
@@ -1358,6 +1361,23 @@ export default function PhysicalTestPage() {
                           <p className="text-xs text-muted-foreground pl-6">
                             Quando ativado, cada disciplina terá seu próprio bloco.
                           </p>
+                        )}
+
+                        {/* Minutos por bloco (quando usar blocos ou separar por disciplina) */}
+                        {(useBlocks || separateBySubject) && (
+                          <div className="space-y-2 pl-6">
+                            <Label htmlFor="minutes-per-block">Minutos por Bloco</Label>
+                            <Input
+                              id="minutes-per-block"
+                              type="number"
+                              min="1"
+                              value={minutesPerBlock}
+                              onChange={(e) => setMinutesPerBlock(parseInt(e.target.value) || 30)}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Tempo em minutos disponível para cada bloco na aplicação da prova.
+                            </p>
+                          </div>
                         )}
 
                         {/* Configurações de blocos (apenas se useBlocks estiver ativado) */}

@@ -318,10 +318,15 @@ export function InstituicaoUsersTab({
     fetchUsers();
   }, [fetchUsers]);
 
-  const handleEditUser = async (userData: { id: number; name: string; email: string; role: string; registration?: string; city_id?: string }) => {
+  const handleEditUser = async (userData: { id: number | string; name: string; email: string; role: string; registration?: string; city_id?: string }) => {
+    const idStr = userData.id != null && userData.id !== '' ? String(userData.id) : null;
+    if (!idStr || idStr === 'undefined' || idStr === 'NaN') {
+      toast({ title: "Erro", description: "ID do usuário inválido.", variant: "destructive" });
+      return;
+    }
     setIsSaving(true);
     try {
-      await api.put(`/users/${userData.id}`, userData);
+      await api.put(`/users/${idStr}`, userData);
       toast({ title: "Sucesso", description: "Usuário atualizado com sucesso." });
       setEditingUser(null);
       fetchUsers();
@@ -605,7 +610,7 @@ export function InstituicaoUsersTab({
               )}
               <UserForm
                 user={{
-                  id: Number(editingUser.id),
+                  id: editingUser.id,
                   name: editingUser.name,
                   email: editingUser.email,
                   role: getRoleDisplayName(editingUser.role),
