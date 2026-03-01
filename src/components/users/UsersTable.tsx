@@ -153,7 +153,7 @@ const useDebounce = (value: string, delay: number) => {
 };
 
 type User = {
-  id: number;
+  id: number | string; // API pode retornar UUID (string) ou id numérico
   name: string;
   email: string;
   role: string;
@@ -186,7 +186,7 @@ export default function UsersTable({ embedded = false }: UsersTableProps) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [userToDelete, setUserToDelete] = useState<number | null>(null);
+  const [userToDelete, setUserToDelete] = useState<number | string | null>(null);
   
   // Estados de filtros e pesquisa
   const [searchTerm, setSearchTerm] = useState('');
@@ -200,8 +200,8 @@ export default function UsersTable({ embedded = false }: UsersTableProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
   
-  // Estados de seleção múltipla
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  // Estados de seleção múltipla (id pode ser UUID string ou número)
+  const [selectedIds, setSelectedIds] = useState<(number | string)[]>([]);
   
   // Estado de ordenação
   const [sortConfig, setSortConfig] = useState<SortConfig>(() => loadSortConfig());
@@ -424,7 +424,7 @@ export default function UsersTable({ embedded = false }: UsersTableProps) {
     }
   };
 
-  const handleSelectOne = (id: number, checked: boolean) => {
+  const handleSelectOne = (id: number | string, checked: boolean) => {
     setSelectedIds(prev =>
       checked ? [...prev, id] : prev.filter(selectedId => selectedId !== id)
     );
@@ -506,11 +506,16 @@ export default function UsersTable({ embedded = false }: UsersTableProps) {
   };
 
   const handleEditUser = async (userData: User) => {
+    const id = userData.id;
+    const idStr = id != null && id !== '' ? String(id) : null;
+    if (!idStr || idStr === 'undefined' || idStr === 'NaN') {
+      toast.error('ID do usuário inválido. Não foi possível atualizar.');
+      return;
+    }
     try {
-      await api.put(`/users/${userData.id}`, userData);
+      await api.put(`/users/${idStr}`, userData);
       toast.success('Usuário atualizado com sucesso!');
       closeEditModal();
-      // Refresh the list after editing
       await fetchUsers();
     } catch (error) {
       console.error('Error updating user:', error);
@@ -548,7 +553,7 @@ export default function UsersTable({ embedded = false }: UsersTableProps) {
     setDeleteDialogOpen(false);
   };
 
-  const confirmDelete = (userId: number) => {
+  const confirmDelete = (userId: number | string) => {
     setUserToDelete(userId);
     setDeleteDialogOpen(true);
   };

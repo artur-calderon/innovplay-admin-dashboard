@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/select";
 import Turmas from "@/pages/Turmas";
 import { InstituicaoUsersTab } from "@/components/schools/InstituicaoUsersTab";
+import { getUserHierarchyContext } from "@/utils/userHierarchy";
 
 interface City {
   id: string;
@@ -168,6 +169,20 @@ export default function Gestao() {
       setDomainCityId("");
     }
   }, [citiesWithSlug]);
+
+  // Professor: definir município da escola como padrão na aba Usuários (evita "Nenhum município definido")
+  useEffect(() => {
+    if (user?.role !== "professor" || !user?.id) return;
+    let cancelled = false;
+    getUserHierarchyContext(user.id, user.role).then((ctx) => {
+      if (cancelled) return;
+      const cityId = ctx.municipality?.id ?? ctx.school?.municipality_id ?? "";
+      if (cityId) {
+        setSelectedUsersCityId((prev) => (prev ? prev : cityId));
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [user?.id, user?.role]);
 
   const fetchInstituicoes = useCallback(async () => {
     setIsLoading(true);
@@ -473,7 +488,7 @@ export default function Gestao() {
       <div className="space-y-1">
         <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
           <School className="w-8 h-8 text-primary" />
-          Gestão
+          Gestão Escolar
         </h1>
         <p className="text-muted-foreground text-sm md:text-base max-w-2xl">
           Gerencie escolas, turmas e usuários (alunos, professores, diretores e coordenadores) em um só lugar.
@@ -811,7 +826,7 @@ export default function Gestao() {
         </TabsContent>
       </Tabs>
 
-      {/* Add/Edit Escola Dialog (página Gestão) */}
+      {/* Add/Edit Escola Dialog (página Gestão Escolar) */}
       {(isAddDialogOpen || selectedInstituicao) && (
         <SchoolForm
           school={selectedInstituicao ? {

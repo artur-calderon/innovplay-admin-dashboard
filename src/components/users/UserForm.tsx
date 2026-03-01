@@ -71,12 +71,12 @@ type UserFormValues = {
   role: string;
   registration?: string | null;
   city_id?: string | null;
-  id?: number;
+  id?: number | string;
 };
 
 interface UserFormProps {
   user?: {
-    id: number;
+    id: number | string;
     name: string;
     email: string;
     role: string;
@@ -432,7 +432,7 @@ export default function UserForm({ user, onSubmit, allowedRoles, showCitySelect 
                   { value: "Professor", label: "Professor" },
                   { value: "Aluno", label: "Aluno" }
                 ];
-                const availableRoles = isEditing ? allRoles : (allowedRoles?.length ? allRoles.filter((r) => allowedRoles.includes(r.value)) : allRoles);
+                const availableRoles = allowedRoles?.length ? allRoles.filter((r) => allowedRoles.includes(r.value)) : allRoles;
                 return (
                   <FormItem>
                     <FormLabel>Perfil do usuário *</FormLabel>
@@ -563,7 +563,7 @@ export default function UserForm({ user, onSubmit, allowedRoles, showCitySelect 
                 { value: "Professor", label: "Professor" },
                 { value: "Aluno", label: "Aluno" }
               ];
-              const availableRoles = isEditing ? allRoles : (allowedRoles?.length ? allRoles.filter((r) => allowedRoles.includes(r.value)) : allRoles);
+              const availableRoles = allowedRoles?.length ? allRoles.filter((r) => allowedRoles.includes(r.value)) : allRoles;
               return (
                 <FormItem>
                   <FormLabel>Função</FormLabel>

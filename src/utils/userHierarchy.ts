@@ -474,16 +474,23 @@ export function validateReportAccess(
       return { isValid: true };
       
     case 'professor':
-      // Professor só pode ver dados da sua escola
-      if (userContext.school && filters.school && filters.school !== userContext.school.id) {
+      // Professor pode ver relatórios da sua escola e das suas turmas
+      const professorSchoolIds = new Set<string>();
+      if (userContext.school?.id) professorSchoolIds.add(String(userContext.school.id));
+      if (userContext.classes?.length) {
+        userContext.classes.forEach((c) => {
+          if (c.school_id) professorSchoolIds.add(String(c.school_id));
+        });
+      }
+      if (filters.school && professorSchoolIds.size > 0 && !professorSchoolIds.has(String(filters.school))) {
         return { 
           isValid: false, 
           reason: 'Você só pode visualizar relatórios da sua escola' 
         };
       }
-      if (userContext.classes && filters.class) {
-        const allowedClassIds = userContext.classes.map(c => c.class_id);
-        if (!allowedClassIds.includes(filters.class)) {
+      if (userContext.classes?.length && filters.class) {
+        const allowedClassIds = userContext.classes.map((c) => String(c.class_id)).filter(Boolean);
+        if (allowedClassIds.length > 0 && !allowedClassIds.includes(String(filters.class))) {
           return { 
             isValid: false, 
             reason: 'Você só pode visualizar dados das suas turmas' 
