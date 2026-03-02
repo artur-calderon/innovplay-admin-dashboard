@@ -13,6 +13,7 @@ import { FilterComponentAnalise } from "@/components/filters";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext } from "@/utils/userHierarchy";
 import { cn } from "@/lib/utils";
 import { getProficiencyLevel, getProficiencyLevelColor, getProficiencyLevelLabel, getProficiencyTableInfo, ProficiencyLevel } from "@/components/evaluations/results/utils/proficiency";
+import { descricoesNiveisEscolares, type NivelDescricao } from "./relatorioEscolarDescricoesNiveis";
 
 const normalizeText = (value: string) =>
   value
@@ -64,6 +65,8 @@ interface ProficiencyDistribution {
   columns: string[];
   rows: Array<{ label: string; data: number[] }>;
   bars: Array<{ label: string; value: number; quantidade: number }>;
+  /** Nome da disciplina para buscar descrições dos níveis (mesma lógica de niveisEscolares) */
+  disciplinaNome?: string;
 }
 
 const formatAverage = (value?: number, decimals = 1) => {
@@ -313,6 +316,17 @@ const obterIntervalosNiveis = (curso: string | undefined, disciplina: string): A
   }
 };
 
+// Função para obter descrições dos níveis (mesma lógica de obterIntervalosNiveis)
+const obterDescricoesNiveis = (curso: string | undefined, disciplina: string): NivelDescricao[] => {
+  const disciplinaNormalizada = normalizeText(disciplina);
+  const isMatematica = disciplinaNormalizada.includes('matematica') || disciplinaNormalizada.includes('matemática');
+  const isAnosFinais = curso?.toLowerCase().includes('anos finais') || curso?.toLowerCase().includes('ensino médio') || curso?.toLowerCase().includes('medio');
+  const key = isAnosFinais
+    ? (isMatematica ? 'ANOS_FINAIS_MAT' : 'ANOS_FINAIS_GERAL')
+    : (isMatematica ? 'ANOS_INICIAIS_MAT' : 'ANOS_INICIAIS_GERAL');
+  return descricoesNiveisEscolares[key] ?? [];
+};
+
 // Função para obter cor da disciplina
 const obterCorDisciplina = (nomeDisciplina: string, index: number): string => {
   const nomeNormalizado = normalizeText(nomeDisciplina);
@@ -349,6 +363,91 @@ const sanitizeFileName = (value: string) =>
     .replace(/^_+|_+$/g, "")
     .toLowerCase();
 
+// Inferir curso (Anos Iniciais x Anos Finais/Ensino Médio) a partir dos dados da API
+const inferirCursoFromApiData = (apiData: NovaRespostaAPI | null): string => {
+  if (!apiData) {
+    return "Anos Iniciais";
+  }
+
+  // Prioridade 1: Inferir do nome em estatisticas_gerais (pode conter informações do curso)
+  const nome = apiData.estatisticas_gerais?.nome;
+  if (nome) {
+    const nomeLower = nome.toLowerCase();
+    if (
+      nomeLower.includes("anos finais") ||
+      nomeLower.includes("ensino médio") ||
+      nomeLower.includes("medio") ||
+      nomeLower.includes("médio")
+    ) {
+      return "Anos Finais";
+    }
+    if (
+      nomeLower.includes("anos iniciais") ||
+      nomeLower.includes("educação infantil") ||
+      nomeLower.includes("educacao infantil") ||
+      nomeLower.includes("eja") ||
+      nomeLower.includes("especial")
+    ) {
+      return "Anos Iniciais";
+    }
+  }
+
+  // Prioridade 2: Inferir da série em estatisticas_gerais
+  const serieEstatistica = apiData.estatisticas_gerais?.serie;
+  if (serieEstatistica) {
+    const serieLower = serieEstatistica.toLowerCase();
+    if (
+      serieLower.includes("6") ||
+      serieLower.includes("7") ||
+      serieLower.includes("8") ||
+      serieLower.includes("9") ||
+      serieLower.includes("em") ||
+      serieLower.includes("médio") ||
+      serieLower.includes("medio")
+    ) {
+      return "Anos Finais";
+    }
+  }
+
+  // Prioridade 3: Inferir do tipo em estatisticas_gerais
+  const tipo = apiData.estatisticas_gerais?.tipo;
+  if (tipo) {
+    const tipoLower = tipo.toLowerCase();
+    if (tipoLower.includes("anos finais") || tipoLower.includes("ensino médio")) {
+      return "Anos Finais";
+    }
+  }
+
+  // Prioridade 4: Fallback - inferir da primeira série dos alunos na tabela detalhada
+  if (apiData.tabela_detalhada?.disciplinas && apiData.tabela_detalhada.disciplinas.length > 0) {
+    const seriesEncontradas = new Set<string>();
+    apiData.tabela_detalhada.disciplinas.forEach((disciplina) => {
+      disciplina.alunos?.forEach((aluno) => {
+        if (aluno.serie) {
+          seriesEncontradas.add(aluno.serie.toLowerCase());
+        }
+      });
+    });
+
+    for (const serie of seriesEncontradas) {
+      if (
+        serie.includes("6") ||
+        serie.includes("7") ||
+        serie.includes("8") ||
+        serie.includes("9") ||
+        serie.includes("em") ||
+        serie.includes("médio") ||
+        serie.includes("medio")
+      ) {
+        return "Anos Finais";
+      }
+    }
+  }
+
+  // Padrão: Anos Iniciais/Educação Infantil/EJA
+  return "Anos Iniciais";
+};
+
 // ✅ FUNÇÃO AUXILIAR: Calcular nível de proficiência para dados agregados (escola/turma)
 // Usa apenas curso/série, sem disciplina específica, para usar a tabela geral
 const getProficiencyLevelForAggregatedData = (
@@ -364,11 +463,15 @@ const getProficiencyLevelForAggregatedData = (
   let inferredCourse = course;
   if (!inferredCourse && grade) {
     const gradeLower = grade.toLowerCase();
-    if (gradeLower.includes('6') || gradeLower.includes('7') || 
-        gradeLower.includes('8') || gradeLower.includes('9') ||
-        gradeLower.includes('em') || gradeLower.includes('médio') ||
-        gradeLower.includes('medio') || gradeLower.includes('1º ano') ||
-        gradeLower.includes('2º ano') || gradeLower.includes('3º ano')) {
+    if (
+      gradeLower.includes('6') ||
+      gradeLower.includes('7') ||
+      gradeLower.includes('8') ||
+      gradeLower.includes('9') ||
+      gradeLower.includes('em') ||
+      gradeLower.includes('médio') ||
+      gradeLower.includes('medio')
+    ) {
       inferredCourse = 'Anos Finais';
     } else {
       inferredCourse = 'Anos Iniciais';
@@ -469,76 +572,7 @@ export default function RelatorioEscolar() {
     // Processar todas as disciplinas que têm dados
     const scopeLabel = isMunicipalView ? "Total Município" : "Total Escola";
     
-    // ✅ MELHORADO: Inferência do curso usando múltiplas fontes
-    const inferirCurso = (): string => {
-      // Prioridade 1: Inferir do nome em estatisticas_gerais (pode conter informações do curso)
-      const nome = apiData.estatisticas_gerais?.nome;
-      if (nome) {
-        const nomeLower = nome.toLowerCase();
-        if (nomeLower.includes('anos finais') || nomeLower.includes('ensino médio') || 
-            nomeLower.includes('medio') || nomeLower.includes('médio')) {
-          return "Anos Finais";
-        }
-        if (nomeLower.includes('anos iniciais') || nomeLower.includes('educação infantil') ||
-            nomeLower.includes('educacao infantil') || nomeLower.includes('eja') ||
-            nomeLower.includes('especial')) {
-          return "Anos Iniciais";
-        }
-      }
-
-      // Prioridade 2: Inferir da série em estatisticas_gerais
-      const serie = apiData.estatisticas_gerais?.serie;
-      if (serie) {
-        const serieLower = serie.toLowerCase();
-        if (serieLower.includes('6') || serieLower.includes('7') || 
-            serieLower.includes('8') || serieLower.includes('9') ||
-            serieLower.includes('em') || serieLower.includes('médio') ||
-            serieLower.includes('medio') || serieLower.includes('1º ano') ||
-            serieLower.includes('2º ano') || serieLower.includes('3º ano')) {
-          return "Anos Finais";
-        }
-      }
-
-      // Prioridade 3: Inferir do tipo em estatisticas_gerais
-      const tipo = apiData.estatisticas_gerais?.tipo;
-      if (tipo) {
-        const tipoLower = tipo.toLowerCase();
-        if (tipoLower.includes('anos finais') || tipoLower.includes('ensino médio')) {
-          return "Anos Finais";
-        }
-      }
-
-      // Prioridade 4: Fallback - inferir da primeira série dos alunos na tabela detalhada
-      if (apiData.tabela_detalhada.disciplinas && apiData.tabela_detalhada.disciplinas.length > 0) {
-        // Coletar todas as séries disponíveis dos alunos
-        const seriesEncontradas = new Set<string>();
-        apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
-          if (disciplina.alunos && disciplina.alunos.length > 0) {
-            disciplina.alunos.forEach(aluno => {
-              if (aluno.serie) {
-                seriesEncontradas.add(aluno.serie.toLowerCase());
-              }
-            });
-          }
-        });
-
-        // Verificar se alguma série indica Anos Finais
-        for (const serie of seriesEncontradas) {
-          if (serie.includes('6') || serie.includes('7') || 
-              serie.includes('8') || serie.includes('9') ||
-              serie.includes('em') || serie.includes('médio') ||
-              serie.includes('medio') || serie.includes('1º ano') ||
-              serie.includes('2º ano') || serie.includes('3º ano')) {
-            return "Anos Finais";
-          }
-        }
-      }
-
-      // Padrão: Anos Iniciais
-      return "Anos Iniciais";
-    };
-
-    const curso = inferirCurso();
+    const curso = inferirCursoFromApiData(apiData);
 
     // Processar TODAS as disciplinas que têm dados em apiData.tabela_detalhada
     if (!apiData.tabela_detalhada.disciplinas || apiData.tabela_detalhada.disciplinas.length === 0) {
@@ -654,10 +688,11 @@ export default function RelatorioEscolar() {
           rows: [
             { label: scopeLabel, data: percentuaisPorNivel }
           ],
-          bars
+          bars,
+          disciplinaNome: nomeDisciplina
         };
       })
-      .filter((item): item is ProficiencyDistribution => item !== null);
+      .filter((item): item is ProficiencyDistribution & { disciplinaNome: string } => item !== null);
   }, [apiData, isMunicipalView]);
 
   // Estados dos dados dos filtros (movidos para FilterComponentAnalise)
@@ -775,6 +810,7 @@ export default function RelatorioEscolar() {
   const classSummaryRows = useMemo<ClassSummaryRow[]>(() => {
     // ✅ PRIORIDADE: Usar dados do relatório completo se disponível (dados agregados corretos)
     if (relatorioCompleto) {
+      const curso = inferirCursoFromApiData(apiData);
       const turmasMap = new Map<string, ClassSummaryRow>();
       
       // ✅ MELHORADO: Verificar se temos dados por_escola ou por_turma
@@ -943,7 +979,7 @@ export default function RelatorioEscolar() {
         
         // Calcular nível de proficiência
         if (row.proficienciaMedia !== undefined) {
-          const level = getProficiencyLevelForAggregatedData(row.proficienciaMedia, row.serie);
+          const level = getProficiencyLevelForAggregatedData(row.proficienciaMedia, row.serie, curso);
           row.proficiencyLevel = level;
           row.proficiencyLabel = getProficiencyLevelLabel(level);
           row.proficiencyColor = getProficiencyLevelColor(level);
@@ -961,6 +997,8 @@ export default function RelatorioEscolar() {
     if (!apiData || !apiData.tabela_detalhada) {
       return [];
     }
+
+    const curso = inferirCursoFromApiData(apiData);
 
     // ✅ NOVO: Processar dados reais de tabela_detalhada
     if (isMunicipalView) {
@@ -1076,7 +1114,7 @@ export default function RelatorioEscolar() {
         };
 
         if (row.proficienciaMedia !== undefined) {
-          const level = getProficiencyLevelForAggregatedData(row.proficienciaMedia, row.serie);
+          const level = getProficiencyLevelForAggregatedData(row.proficienciaMedia, row.serie, curso);
           row.proficiencyLevel = level;
           row.proficiencyLabel = getProficiencyLevelLabel(level);
           row.proficiencyColor = getProficiencyLevelColor(level);
@@ -1201,7 +1239,7 @@ export default function RelatorioEscolar() {
       };
 
       if (row.proficienciaMedia !== undefined) {
-        const level = getProficiencyLevelForAggregatedData(row.proficienciaMedia, row.serie);
+        const level = getProficiencyLevelForAggregatedData(row.proficienciaMedia, row.serie, curso);
         row.proficiencyLevel = level;
         row.proficiencyLabel = getProficiencyLevelLabel(level);
         row.proficiencyColor = getProficiencyLevelColor(level);
@@ -1257,6 +1295,8 @@ export default function RelatorioEscolar() {
   }, [apiData]);
 
   const summaryStats = useMemo(() => {
+    const curso = inferirCursoFromApiData(apiData);
+
     // ✅ PRIORIDADE: Usar dados do relatório completo se disponível
     if (relatorioCompleto) {
       const portuguesNota = relatorioCompleto.nota_geral.por_disciplina['Português']?.media_geral 
@@ -1295,7 +1335,7 @@ export default function RelatorioEscolar() {
       
       const serieRef = classSummaryRows[0]?.serie;
       const proficiencyLevel = proficienciaMedia !== null && proficienciaMedia !== undefined
-        ? getProficiencyLevelForAggregatedData(proficienciaMedia, serieRef)
+        ? getProficiencyLevelForAggregatedData(proficienciaMedia, serieRef, curso)
         : null;
       
       return {
@@ -1354,7 +1394,7 @@ export default function RelatorioEscolar() {
 
     const proficiencyLevel =
       proficienciaMedia !== null && proficienciaMedia !== undefined
-        ? getProficiencyLevelForAggregatedData(proficienciaMedia, serieRef)
+        ? getProficiencyLevelForAggregatedData(proficienciaMedia, serieRef, curso)
         : null;
 
     // Usar dados de estatisticas_gerais
@@ -1563,7 +1603,8 @@ export default function RelatorioEscolar() {
         let fieldsCount = 2; // Avaliação e Município são sempre exibidos
         if (!isMunicipalView || escolaFromApi) fieldsCount++; // Escola
         if (serieFromApi) fieldsCount++; // Série
-        if (apiData.estatisticas_gerais?.data_aplicacao) fieldsCount++; // Data
+        const dataAplicacaoHeader = (apiData as any)?.estatisticas_gerais?.data_aplicacao as string | undefined;
+        if (dataAplicacaoHeader) fieldsCount++; // Data
         const cardHeight = 30 + (fieldsCount * 8); // Altura base + espaço por campo
         const cardX = (pageWidth - cardWidth) / 2;
         
@@ -1655,13 +1696,14 @@ export default function RelatorioEscolar() {
         }
 
         // DATA (se disponível)
-        if (apiData.estatisticas_gerais?.data_aplicacao) {
+        const dataAplicacao = (apiData as any)?.estatisticas_gerais?.data_aplicacao as string | undefined;
+        if (dataAplicacao) {
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(...COLORS.primary);
           doc.text('DATA:', leftColX, cardY);
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(...COLORS.textDark);
-          doc.text(new Date(apiData.estatisticas_gerais.data_aplicacao).toLocaleDateString('pt-BR'), leftColX + labelWidth, cardY);
+          doc.text(new Date(dataAplicacao).toLocaleDateString('pt-BR'), leftColX + labelWidth, cardY);
           cardY += 5;
         }
       };
@@ -2171,6 +2213,107 @@ export default function RelatorioEscolar() {
             doc.setTextColor(55, 65, 81);
             doc.text(bar.label, barX + actualBarWidth / 2, chartStartY + chartHeight + 5, { align: 'center' });
           });
+
+          // Descrição do Nível - O estudante provavelmente é capaz de (no PDF),
+          // em layout compacto logo abaixo do gráfico
+          const cursoPdf = inferirCursoFromApiData(apiData);
+          const descricoesPdf = distribution.disciplinaNome
+            ? obterDescricoesNiveis(cursoPdf, distribution.disciplinaNome).filter(
+                (d) =>
+                  d.level < distribution.bars.length &&
+                  (distribution.bars[d.level]?.quantidade ?? 0) > 0
+              )
+            : [];
+          const levelWithMaxPdf =
+            distribution.bars.length > 0
+              ? distribution.bars.reduce(
+                  (best, bar, idx) =>
+                    (bar.quantidade ?? 0) > (distribution.bars[best]?.quantidade ?? 0) ? idx : best,
+                  0
+                )
+              : -1;
+
+          if (descricoesPdf.length > 0) {
+            const descLineHeight = 4;
+            const descParaGap = 3;
+            const lightBlueR = 217;
+            const lightBlueG = 237;
+            const lightBlueB = 247;
+
+            // Começar logo abaixo do gráfico
+            let yDesc = chartStartY + chartHeight + 14;
+
+            // Se não houver espaço suficiente abaixo do gráfico, ir para nova página,
+            // mas ainda mantendo um bloco compacto.
+            if (yDesc > pageHeight - 40) {
+              addFooter(pageCount);
+              doc.addPage();
+              pageCount++;
+              yDesc = addHeader() + 8;
+            }
+
+            // Pequeno cabeçalho colorido
+            const headerDescHeight = 7;
+            const descWidth = pageWidth - 2 * margin;
+            doc.setFillColor(r, g, b);
+            doc.rect(margin, yDesc, descWidth, headerDescHeight, 'F');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(255, 255, 255);
+            doc.text(
+              'Descrição do Nível - O estudante provavelmente é capaz de:',
+              pageWidth / 2,
+              yDesc + headerDescHeight - 2,
+              { align: 'center', maxWidth: descWidth - 4 }
+            );
+            yDesc += headerDescHeight + 3;
+
+            // Caixa de descrições compacta
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.setTextColor(31, 41, 55);
+
+            for (let i = 0; i < descricoesPdf.length; i++) {
+              const item = descricoesPdf[i];
+              const isHighlight = item.level === levelWithMaxPdf;
+              const lines = doc.splitTextToSize(item.description, descWidth - 6);
+              const blockHeight = lines.length * descLineHeight + 3;
+
+              if (yDesc + blockHeight > pageHeight - 20) {
+                addFooter(pageCount);
+                doc.addPage();
+                pageCount++;
+                yDesc = addHeader() + 8 + headerDescHeight + 3;
+
+                // Repetir o cabeçalho na nova página
+                doc.setFillColor(r, g, b);
+                doc.rect(margin, yDesc - headerDescHeight - 3, descWidth, headerDescHeight, 'F');
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(8);
+                doc.setTextColor(255, 255, 255);
+                doc.text(
+                  'Descrição do Nível - O estudante provavelmente é capaz de:',
+                  pageWidth / 2,
+                  yDesc - 2,
+                  { align: 'center', maxWidth: descWidth - 4 }
+                );
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(7.5);
+                doc.setTextColor(31, 41, 55);
+              }
+
+              if (isHighlight) {
+                doc.setFillColor(lightBlueR, lightBlueG, lightBlueB);
+                doc.rect(margin, yDesc - 1, descWidth, blockHeight + 2, 'F');
+              }
+              doc.setDrawColor(220, 220, 220);
+              doc.setLineWidth(0.25);
+              doc.rect(margin, yDesc - 1, descWidth, blockHeight + 2, 'S');
+
+              doc.text(lines, margin + 3, yDesc + 2, { maxWidth: descWidth - 6 });
+              yDesc += blockHeight + descParaGap;
+            }
+          }
 
           addFooter(pageCount);
         });
@@ -2684,12 +2827,12 @@ export default function RelatorioEscolar() {
 
                 return (
                   <Card key={chart.title} className="shadow-md">
-                    <CardContent className="space-y-6 pt-6">
-                      <div className="flex items-center justify-between">
+                    <CardContent className="space-y-6 pt-6 overflow-x-auto">
+                      <div className="flex items-center justify-between min-w-[320px]">
                         <h3 className="text-base font-semibold uppercase tracking-wide text-foreground">{chart.title}</h3>
                         <span className="text-sm font-semibold text-muted-foreground">Total: {chart.total}</span>
                       </div>
-                      <div className="space-y-4">
+                      <div className="space-y-4 min-w-[320px]">
                         {chart.segments.map(segment => {
                           const width = `${segment.percentage}%`;
 
@@ -2794,9 +2937,9 @@ export default function RelatorioEscolar() {
                       </div>
 
                       {/* Versão Desktop: Tabela e gráfico alinhados */}
-                      <div className="hidden md:block">
+                      <div className="hidden md:block overflow-x-auto">
                         {/* Tabela de percentuais */}
-                        <div className="mb-6">
+                        <div className="mb-6 min-w-[640px]">
                           <table className="w-full border-collapse text-sm">
                             <colgroup>
                               <col className="w-[150px]" />
@@ -2839,7 +2982,7 @@ export default function RelatorioEscolar() {
                         </div>
 
                         {/* Gráfico de barras alinhado com a tabela */}
-                        <div className="mt-6">
+                        <div className="mt-6 min-w-[640px]">
                           <table className="w-full border-collapse">
                             <colgroup>
                               <col className="w-[150px]" />
@@ -2880,6 +3023,53 @@ export default function RelatorioEscolar() {
                           </table>
                         </div>
                       </div>
+
+                      {/* Descrição do Nível - O estudante provavelmente é capaz de: */}
+                      {distribution.disciplinaNome && (() => {
+                        const curso = inferirCursoFromApiData(apiData);
+                        const descricoes = obterDescricoesNiveis(curso, distribution.disciplinaNome!);
+                        const levelWithMaxQuantidade = distribution.bars.length
+                          ? distribution.bars.reduce((best, bar, idx) =>
+                              (bar.quantidade ?? 0) > (distribution.bars[best]?.quantidade ?? 0) ? idx : best,
+                              0
+                            )
+                          : -1;
+                        if (descricoes.length === 0) return null;
+                        return (
+                          <div className="mt-8 rounded-lg overflow-hidden border border-border">
+                            <div
+                              className="px-4 py-3 text-center"
+                              style={{ backgroundColor: distribution.color }}
+                            >
+                              <h4 className="text-sm font-bold text-white uppercase tracking-wide">
+                                Descrição do Nível - O estudante provavelmente é capaz de:
+                              </h4>
+                            </div>
+                            <div className="space-y-3 p-4 bg-background">
+                              {descricoes
+                                .filter(
+                                  (d) =>
+                                    d.level < distribution.bars.length &&
+                                    (distribution.bars[d.level]?.quantidade ?? 0) > 0
+                                )
+                                .map((d) => {
+                                  const isHighlight = d.level === levelWithMaxQuantidade;
+                                  return (
+                                    <div
+                                      key={d.level}
+                                      className={cn(
+                                        'rounded-md px-4 py-3 text-sm text-foreground border border-border',
+                                        isHighlight ? 'bg-[#d9edf7] dark:bg-[#d9edf7]/20' : 'bg-background'
+                                      )}
+                                    >
+                                      <p className="leading-relaxed">{d.description}</p>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </CardContent>
                   </Card>
                 );
