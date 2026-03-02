@@ -151,7 +151,7 @@ export function LinkStudentModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
           {/* Search */}
           <div className="relative mb-4">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -164,7 +164,7 @@ export function LinkStudentModal({
           </div>
 
           {/* Students List */}
-          <div className="flex-1 overflow-hidden border border-border rounded-lg bg-card min-h-[400px] max-h-[500px]">
+          <div className="flex-1 min-h-0 border border-border rounded-lg bg-card overflow-hidden">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center p-8 h-full">
                 <Loader2 className="h-6 w-6 sm:h-8 sm:w-8 animate-spin text-primary mb-3" />

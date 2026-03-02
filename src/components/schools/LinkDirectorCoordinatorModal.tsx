@@ -311,7 +311,7 @@ export function LinkDirectorCoordinatorModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden px-4 sm:px-6 pb-4">
+        <div className="flex-1 overflow-hidden px-4 sm:px-6 pb-4 min-h-0">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
             <TabsList className="grid w-full grid-cols-2 h-auto sm:h-10 p-1 bg-muted/60 rounded-lg my-4">
               <TabsTrigger
@@ -345,7 +345,7 @@ export function LinkDirectorCoordinatorModal({
               </div>
 
               {/* Users List */}
-              <div className="flex-1 overflow-hidden border border-border rounded-lg bg-card min-h-[400px] max-h-[500px]">
+              <div className="flex-1 min-h-0 border border-border rounded-lg bg-card overflow-hidden">
                 {isLoading ? (
                   <div className="flex flex-col items-center justify-center p-8 h-full">
                     <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />

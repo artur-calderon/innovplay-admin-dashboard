@@ -43,6 +43,7 @@ interface EstatisticasGerais {
   municipio?: string;
   escola?: string;
   serie?: string;
+  data_aplicacao?: string;
   total_escolas?: number;
   total_series?: number;
   total_turmas?: number;
