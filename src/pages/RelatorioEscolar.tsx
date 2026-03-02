@@ -2214,7 +2214,8 @@ export default function RelatorioEscolar() {
             doc.text(bar.label, barX + actualBarWidth / 2, chartStartY + chartHeight + 5, { align: 'center' });
           });
 
-          // Descrição do Nível - O estudante provavelmente é capaz de (no PDF)
+          // Descrição do Nível - O estudante provavelmente é capaz de (no PDF),
+          // em layout compacto logo abaixo do gráfico
           const cursoPdf = inferirCursoFromApiData(apiData);
           const descricoesPdf = distribution.disciplinaNome
             ? obterDescricoesNiveis(cursoPdf, distribution.disciplinaNome).filter(
@@ -2232,70 +2233,89 @@ export default function RelatorioEscolar() {
                 )
               : -1;
 
-            if (descricoesPdf.length > 0) {
-            addFooter(pageCount);
-            doc.addPage();
-            pageCount++;
-            let yDesc = addHeader() + 6;
-
-            // Cabeçalho (cor da disciplina: verde para Português, azul para Matemática, etc.)
-            const headerDescHeight = 12;
-            doc.setFillColor(r, g, b);
-            doc.rect(0, yDesc - 4, pageWidth, headerDescHeight + 4, 'F');
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(11);
-            doc.setTextColor(255, 255, 255);
-            doc.text(
-              'Descrição do Nível - O estudante provavelmente é capaz de:',
-              pageWidth / 2,
-              yDesc + headerDescHeight / 2 - 2,
-              { align: 'center', maxWidth: pageWidth - 2 * margin }
-            );
-            yDesc += headerDescHeight + 8;
-
-            const descLineHeight = 5;
-            const descParaGap = 6;
+          if (descricoesPdf.length > 0) {
+            const descLineHeight = 4;
+            const descParaGap = 3;
             const lightBlueR = 217;
             const lightBlueG = 237;
             const lightBlueB = 247;
 
+            // Começar logo abaixo do gráfico
+            let yDesc = chartStartY + chartHeight + 14;
+
+            // Se não houver espaço suficiente abaixo do gráfico, ir para nova página,
+            // mas ainda mantendo um bloco compacto.
+            if (yDesc > pageHeight - 40) {
+              addFooter(pageCount);
+              doc.addPage();
+              pageCount++;
+              yDesc = addHeader() + 8;
+            }
+
+            // Pequeno cabeçalho colorido
+            const headerDescHeight = 7;
+            const descWidth = pageWidth - 2 * margin;
+            doc.setFillColor(r, g, b);
+            doc.rect(margin, yDesc, descWidth, headerDescHeight, 'F');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(255, 255, 255);
+            doc.text(
+              'Descrição do Nível - O estudante provavelmente é capaz de:',
+              pageWidth / 2,
+              yDesc + headerDescHeight - 2,
+              { align: 'center', maxWidth: descWidth - 4 }
+            );
+            yDesc += headerDescHeight + 3;
+
+            // Caixa de descrições compacta
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.setTextColor(31, 41, 55);
+
             for (let i = 0; i < descricoesPdf.length; i++) {
               const item = descricoesPdf[i];
               const isHighlight = item.level === levelWithMaxPdf;
-
-              if (yDesc > pageHeight - 25) {
-                addFooter(pageCount);
-                doc.addPage();
-                pageCount++;
-                yDesc = addHeader() + 6;
-              }
-
-              const lines = doc.splitTextToSize(item.description, pageWidth - 2 * margin - 8);
-              const blockHeight = lines.length * descLineHeight + 8;
+              const lines = doc.splitTextToSize(item.description, descWidth - 6);
+              const blockHeight = lines.length * descLineHeight + 3;
 
               if (yDesc + blockHeight > pageHeight - 20) {
                 addFooter(pageCount);
                 doc.addPage();
                 pageCount++;
-                yDesc = addHeader() + 6;
+                yDesc = addHeader() + 8 + headerDescHeight + 3;
+
+                // Repetir o cabeçalho na nova página
+                doc.setFillColor(r, g, b);
+                doc.rect(margin, yDesc - headerDescHeight - 3, descWidth, headerDescHeight, 'F');
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(8);
+                doc.setTextColor(255, 255, 255);
+                doc.text(
+                  'Descrição do Nível - O estudante provavelmente é capaz de:',
+                  pageWidth / 2,
+                  yDesc - 2,
+                  { align: 'center', maxWidth: descWidth - 4 }
+                );
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(7.5);
+                doc.setTextColor(31, 41, 55);
               }
 
               if (isHighlight) {
                 doc.setFillColor(lightBlueR, lightBlueG, lightBlueB);
-                doc.rect(margin, yDesc - 2, pageWidth - 2 * margin, blockHeight + 2, 'F');
+                doc.rect(margin, yDesc - 1, descWidth, blockHeight + 2, 'F');
               }
+              doc.setDrawColor(220, 220, 220);
+              doc.setLineWidth(0.25);
+              doc.rect(margin, yDesc - 1, descWidth, blockHeight + 2, 'S');
 
-              doc.setFont('helvetica', 'normal');
-              doc.setFontSize(9);
-              doc.setTextColor(31, 41, 55);
-              doc.text(lines, margin + 4, yDesc + 4, { maxWidth: pageWidth - 2 * margin - 8 });
+              doc.text(lines, margin + 3, yDesc + 2, { maxWidth: descWidth - 6 });
               yDesc += blockHeight + descParaGap;
             }
-
-            addFooter(pageCount);
-          } else {
-            addFooter(pageCount);
           }
+
+          addFooter(pageCount);
         });
       }
 
@@ -3038,8 +3058,8 @@ export default function RelatorioEscolar() {
                                     <div
                                       key={d.level}
                                       className={cn(
-                                        'rounded-md px-4 py-3 text-sm text-foreground',
-                                        isHighlight ? 'bg-[#d9edf7] dark:bg-[#d9edf7]/20' : ''
+                                        'rounded-md px-4 py-3 text-sm text-foreground border border-border',
+                                        isHighlight ? 'bg-[#d9edf7] dark:bg-[#d9edf7]/20' : 'bg-background'
                                       )}
                                     >
                                       <p className="leading-relaxed">{d.description}</p>
