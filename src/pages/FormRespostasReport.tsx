@@ -21,6 +21,7 @@ import {
   ChevronRight,
   GraduationCap,
   Eye,
+  Download,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
@@ -101,6 +102,33 @@ interface RespostasReportData {
   geradoEm?: string;
 }
 
+interface UserFormSubResponse {
+  subQuestionId: string;
+  textoSubpergunta: string;
+  resposta: string | null;
+}
+
+interface UserFormQuestionResponse {
+  questionId: string;
+  textoPergunta: string;
+  tipo: string;
+  options?: string[];
+  resposta?: string | null;
+  subRespostas?: UserFormSubResponse[];
+}
+
+interface UserFormResponse {
+  formId: string;
+  formTitle: string;
+  userId: string;
+  userName: string;
+  serie?: string | null;
+  status: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  questions: UserFormQuestionResponse[];
+}
+
 const FormRespostasReport = () => {
   const { toast } = useToast();
 
@@ -129,6 +157,7 @@ const FormRespostasReport = () => {
   const [selectedOpcao, setSelectedOpcao] = useState<string>('');
   const [currentStudentPage, setCurrentStudentPage] = useState(1);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+  const [downloadingUserId, setDownloadingUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -501,6 +530,248 @@ const FormRespostasReport = () => {
     questao?.alunos?.data?.filter((a) => a.resposta === selectedOpcao) ?? [];
   const pagination = questao?.alunos?.pagination;
 
+  const handleDownloadStudentPdf = useCallback(
+    async (student: Student) => {
+      if (!student.userId) {
+        toast({
+          title: 'Usuário não identificado',
+          description: 'Não foi possível localizar o usuário deste aluno.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const formId = reportData?.formId || selectedForm;
+      if (!formId) {
+        toast({
+          title: 'Formulário não identificado',
+          description: 'Não foi possível identificar o questionário desta resposta.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      try {
+        setDownloadingUserId(student.userId);
+
+        const requestConfig =
+          selectedMunicipality !== 'all'
+            ? { meta: { cityId: selectedMunicipality } }
+            : {};
+
+        const response = await api.get<UserFormResponse>(
+          `/forms/${formId}/responses/user/${student.userId}`,
+          requestConfig
+        );
+        const data = response.data;
+
+        const jsPDFModule = await import('jspdf');
+        const jsPDF = (jsPDFModule as any).default || jsPDFModule;
+        const autoTableModule = await import('jspdf-autotable');
+        const autoTable = (autoTableModule as any).default || autoTableModule;
+
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const margin = 15;
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        let y = margin;
+
+        // Cores do sistema (primary: 267 84% 65% ≈ #7c3aed)
+        const primaryRgb: [number, number, number] = [124, 58, 237];
+        const textDark: [number, number, number] = [31, 41, 55];
+        const textMuted: [number, number, number] = [107, 114, 128];
+
+        // Carregar logo (LOGO-1-menor.png – visível em fundo branco)
+        try {
+          const logoPath = '/LOGO-1-menor.png';
+          const logoResponse = await fetch(logoPath);
+          const logoBlob = await logoResponse.blob();
+          const logoDataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(logoBlob);
+          });
+
+          const logoWidth = 50;
+          const logoHeight = 22;
+          const logoX = (pageWidth - logoWidth) / 2;
+          doc.addImage(logoDataUrl, 'PNG', logoX, y, logoWidth, logoHeight);
+          y += logoHeight + 10;
+        } catch {
+          // segue sem logo se houver erro
+        }
+
+        const municipioName =
+          municipalities.find((m) => m.id === selectedMunicipality)?.name ||
+          selectedMunicipality ||
+          '';
+        const escolaName = student.escolaNome;
+        const serieName = data.serie ?? student.gradeName ?? '';
+        const turmaName = student.className || '';
+        const formTitle = data.formTitle || reportData?.formTitle || '';
+        const alunoName = data.userName || student.alunoNome;
+
+        const centerX = pageWidth / 2;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(...textDark);
+
+        if (municipioName) {
+          doc.text(`Município: ${municipioName}`, centerX, y, { align: 'center' });
+          y += 6;
+        }
+        doc.text(`Escola: ${escolaName}`, centerX, y, { align: 'center' });
+        y += 5;
+        doc.text(`Série: ${serieName}`, centerX, y, { align: 'center' });
+        y += 5;
+        if (formTitle) {
+          doc.text(`Formulário: ${formTitle}`, centerX, y, { align: 'center' });
+          y += 5;
+        }
+        if (turmaName) {
+          doc.text(`Turma: ${turmaName}`, centerX, y, { align: 'center' });
+          y += 5;
+        }
+        doc.text(`Aluno: ${alunoName}`, centerX, y, { align: 'center' });
+        y += 10;
+
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...primaryRgb);
+        doc.text('Respostas do Questionário Socioeconômico', centerX, y, { align: 'center' });
+        doc.setTextColor(...textDark);
+        y += 8;
+
+        const ensureSpace = (heightNeeded: number) => {
+          if (y + heightNeeded > pageHeight - margin) {
+            doc.addPage();
+            y = margin;
+          }
+        };
+
+        data.questions.forEach((question, index) => {
+          ensureSpace(25);
+
+          const perguntaTexto = `${index + 1}. ${question.textoPergunta}`;
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'bold');
+          doc.text(perguntaTexto, margin, y);
+          y += 6;
+
+          const hasSub = question.subRespostas && question.subRespostas.length > 0;
+
+          if (hasSub) {
+            const options = question.options ?? [];
+            const subRespostas = question.subRespostas ?? [];
+            const head = [['Item', ...options]];
+            const body = subRespostas.map((sub) => {
+              const row: string[] = [sub.textoSubpergunta];
+              options.forEach(() => row.push(''));
+              return row;
+            });
+
+            const startY = y;
+            autoTable(doc as any, {
+              startY,
+              head,
+              body,
+              theme: 'grid',
+              margin: { left: margin, right: margin },
+              styles: {
+                fontSize: 9,
+                cellPadding: 2,
+                halign: 'center',
+                valign: 'middle',
+              },
+              headStyles: {
+                fillColor: primaryRgb,
+                textColor: [255, 255, 255],
+                fontStyle: 'bold',
+              },
+              columnStyles: {
+                0: { halign: 'left' },
+              },
+              didDrawCell: (cellData: any) => {
+                if (cellData.section !== 'body') return;
+                const colIndex = cellData.column?.index ?? 0;
+                const rowIndex = cellData.row?.index ?? 0;
+                if (colIndex < 1 || rowIndex >= subRespostas.length) return;
+                const option = options[colIndex - 1];
+                const selected = subRespostas[rowIndex]?.resposta === option;
+                const cx = cellData.cell.x + cellData.cell.width / 2;
+                const cy = cellData.cell.y + cellData.cell.height / 2;
+                const r = 2;
+                if (selected) {
+                  doc.setFillColor(...primaryRgb);
+                  doc.circle(cx, cy, r, 'F');
+                } else {
+                  doc.setDrawColor(...textMuted);
+                  doc.setLineWidth(0.3);
+                  doc.circle(cx, cy, r, 'S');
+                }
+              },
+            } as any);
+
+            const finalY =
+              (doc as any).lastAutoTable?.finalY ??
+              (doc as any).previousAutoTable?.finalY ??
+              startY + 20;
+            y = finalY + 8;
+          } else {
+            const respostaTexto = question.resposta ?? 'Não respondeu';
+            const boxHeight = 12;
+            ensureSpace(boxHeight + 6);
+
+            doc.setDrawColor(...primaryRgb);
+            doc.setFillColor(243, 232, 255);
+
+            const boxWidth = pageWidth - margin * 2;
+            if ((doc as any).roundedRect) {
+              (doc as any).roundedRect(margin, y, boxWidth, boxHeight, 3, 3, 'FD');
+            } else {
+              doc.rect(margin, y, boxWidth, boxHeight, 'FD');
+            }
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            doc.setTextColor(...textDark);
+            doc.text(respostaTexto || 'Não respondeu', margin + 4, y + 7);
+
+            y += boxHeight + 8;
+          }
+        });
+
+        const safeAluno = alunoName.replace(/[\\/:*?"<>|]/g, '_');
+        const safeForm = (formTitle || 'questionario').replace(/[\\/:*?"<>|]/g, '_');
+        const fileName = `Questionario_socioeconomico_${safeAluno}_${safeForm}.pdf`;
+
+        doc.save(fileName);
+
+        toast({
+          title: 'PDF gerado',
+          description: 'O PDF com as respostas do aluno foi criado com sucesso.',
+        });
+      } catch (error) {
+        console.error('Erro ao gerar PDF do aluno:', error);
+        toast({
+          title: 'Erro ao gerar PDF',
+          description: 'Não foi possível gerar o PDF das respostas do aluno.',
+          variant: 'destructive',
+        });
+      } finally {
+        setDownloadingUserId(null);
+      }
+    },
+    [
+      municipalities,
+      reportData,
+      selectedForm,
+      selectedMunicipality,
+      toast,
+    ]
+  );
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div>
@@ -755,6 +1026,26 @@ const FormRespostasReport = () => {
                             </div>
                           )}
                         </div>
+                      </div>
+                      <div className="ml-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDownloadStudentPdf(student)}
+                          disabled={downloadingUserId === student.userId}
+                        >
+                          {downloadingUserId === student.userId ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                              Gerando PDF...
+                            </>
+                          ) : (
+                            <>
+                              <Download className="h-4 w-4 mr-1" />
+                              Baixar PDF
+                            </>
+                          )}
+                        </Button>
                       </div>
                     </div>
                   </Card>
