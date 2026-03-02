@@ -262,6 +262,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           children: [
             { icon: FileText, label: "Cadastro de questionários", href: "/app/questionarios/cadastro", role: ["admin", "tecadm"] },
             { icon: Presentation, label: "Relatórios Socio-Econômicos", href: "/app/questionarios/relatorios-socio-economicos", role: ["admin", "tecadm"] },
+            { icon: BarChart3, label: "Resultados Socioeconomicos", href: "/app/questionarios/resultados-socioeconomicos", role: ["admin", "tecadm"] },
           ]
         },
         {
