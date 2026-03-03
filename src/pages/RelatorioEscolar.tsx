@@ -2215,103 +2215,87 @@ export default function RelatorioEscolar() {
           });
 
           // Descrição do Nível - O estudante provavelmente é capaz de (no PDF),
-          // em layout compacto logo abaixo do gráfico
+          // em layout compacto logo abaixo do gráfico. Mostra níveis de 0 até o maior nível com alunos.
           const cursoPdf = inferirCursoFromApiData(apiData);
-          const descricoesPdf = distribution.disciplinaNome
-            ? obterDescricoesNiveis(cursoPdf, distribution.disciplinaNome).filter(
-                (d) =>
-                  d.level < distribution.bars.length &&
-                  (distribution.bars[d.level]?.quantidade ?? 0) > 0
-              )
-            : [];
-          const levelWithMaxPdf =
+          const maxLevelWithStudentsPdf =
             distribution.bars.length > 0
               ? distribution.bars.reduce(
-                  (best, bar, idx) =>
-                    (bar.quantidade ?? 0) > (distribution.bars[best]?.quantidade ?? 0) ? idx : best,
-                  0
+                  (max, bar, idx) => ((bar.quantidade ?? 0) > 0 ? Math.max(max, idx) : max),
+                  -1
                 )
               : -1;
+          const descricoesPdf = distribution.disciplinaNome && maxLevelWithStudentsPdf >= 0
+            ? obterDescricoesNiveis(cursoPdf, distribution.disciplinaNome).filter(
+                (d) => d.level <= maxLevelWithStudentsPdf
+              )
+            : [];
 
           if (descricoesPdf.length > 0) {
-            const descLineHeight = 4;
-            const descParaGap = 3;
-            const lightBlueR = 217;
-            const lightBlueG = 237;
-            const lightBlueB = 247;
+            const lineHeight = 3.6;
+            const paddingVertical = 3;
+            const gapBetweenBlocks = 0;
+            const headerDescHeight = 6;
+            const descWidth = pageWidth - 2 * margin;
+            const textPadding = 3;
 
-            // Começar logo abaixo do gráfico
-            let yDesc = chartStartY + chartHeight + 14;
+            const drawDescSectionHeader = (y: number) => {
+              doc.setFillColor(r, g, b);
+              doc.rect(margin, y, descWidth, headerDescHeight, 'F');
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(8);
+              doc.setTextColor(255, 255, 255);
+              doc.text(
+                'Descrição do Nível - O estudante provavelmente é capaz de:',
+                pageWidth / 2,
+                y + headerDescHeight - 1.5,
+                { align: 'center', maxWidth: descWidth - 4 }
+              );
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(7.5);
+              doc.setTextColor(31, 41, 55);
+            };
 
-            // Se não houver espaço suficiente abaixo do gráfico, ir para nova página,
-            // mas ainda mantendo um bloco compacto.
-            if (yDesc > pageHeight - 40) {
+            let yDesc = chartStartY + chartHeight + 12;
+            if (yDesc > pageHeight - 50) {
               addFooter(pageCount);
               doc.addPage();
               pageCount++;
-              yDesc = addHeader() + 8;
+              yDesc = addHeader() + 6;
             }
-
-            // Pequeno cabeçalho colorido
-            const headerDescHeight = 7;
-            const descWidth = pageWidth - 2 * margin;
-            doc.setFillColor(r, g, b);
-            doc.rect(margin, yDesc, descWidth, headerDescHeight, 'F');
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(8);
-            doc.setTextColor(255, 255, 255);
-            doc.text(
-              'Descrição do Nível - O estudante provavelmente é capaz de:',
-              pageWidth / 2,
-              yDesc + headerDescHeight - 2,
-              { align: 'center', maxWidth: descWidth - 4 }
-            );
+            drawDescSectionHeader(yDesc);
             yDesc += headerDescHeight + 3;
-
-            // Caixa de descrições compacta
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(7.5);
-            doc.setTextColor(31, 41, 55);
 
             for (let i = 0; i < descricoesPdf.length; i++) {
               const item = descricoesPdf[i];
-              const isHighlight = item.level === levelWithMaxPdf;
-              const lines = doc.splitTextToSize(item.description, descWidth - 6);
-              const blockHeight = lines.length * descLineHeight + 3;
+              let lines = doc.splitTextToSize(item.description, descWidth - 2 * textPadding);
 
-              if (yDesc + blockHeight > pageHeight - 20) {
-                addFooter(pageCount);
-                doc.addPage();
-                pageCount++;
-                yDesc = addHeader() + 8 + headerDescHeight + 3;
+              while (lines.length > 0) {
+                const spaceLeft = pageHeight - 22 - yDesc;
+                const linesThatFit = Math.floor(spaceLeft / lineHeight);
+                if (linesThatFit <= 0) {
+                  addFooter(pageCount);
+                  doc.addPage();
+                  pageCount++;
+                  yDesc = addHeader() + 6;
+                  drawDescSectionHeader(yDesc);
+                  yDesc += headerDescHeight + 3;
+                  continue;
+                }
+                const chunk = lines.slice(0, Math.min(lines.length, linesThatFit));
+                lines = lines.slice(chunk.length);
+                const chunkHeight = chunk.length * lineHeight + paddingVertical * 2;
 
-                // Repetir o cabeçalho na nova página
-                doc.setFillColor(r, g, b);
-                doc.rect(margin, yDesc - headerDescHeight - 3, descWidth, headerDescHeight, 'F');
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(8);
-                doc.setTextColor(255, 255, 255);
-                doc.text(
-                  'Descrição do Nível - O estudante provavelmente é capaz de:',
-                  pageWidth / 2,
-                  yDesc - 2,
-                  { align: 'center', maxWidth: descWidth - 4 }
-                );
-                doc.setFont('helvetica', 'normal');
-                doc.setFontSize(7.5);
-                doc.setTextColor(31, 41, 55);
+                doc.setDrawColor(220, 220, 220);
+                doc.setLineWidth(0.2);
+                const isEvenItem = i % 2 === 0;
+                doc.setFillColor(isEvenItem ? 229 : 255, isEvenItem ? 231 : 255, isEvenItem ? 235 : 255);
+                doc.rect(margin, yDesc, descWidth, chunkHeight, 'FD');
+                doc.text(chunk, margin + textPadding, yDesc + textPadding + 2, {
+                  maxWidth: descWidth - 2 * textPadding,
+                  lineHeightFactor: 1.35
+                });
+                yDesc += chunkHeight + gapBetweenBlocks;
               }
-
-              if (isHighlight) {
-                doc.setFillColor(lightBlueR, lightBlueG, lightBlueB);
-                doc.rect(margin, yDesc - 1, descWidth, blockHeight + 2, 'F');
-              }
-              doc.setDrawColor(220, 220, 220);
-              doc.setLineWidth(0.25);
-              doc.rect(margin, yDesc - 1, descWidth, blockHeight + 2, 'S');
-
-              doc.text(lines, margin + 3, yDesc + 2, { maxWidth: descWidth - 6 });
-              yDesc += blockHeight + descParaGap;
             }
           }
 
@@ -3024,17 +3008,20 @@ export default function RelatorioEscolar() {
                         </div>
                       </div>
 
-                      {/* Descrição do Nível - O estudante provavelmente é capaz de: */}
+                      {/* Descrição do Nível - O estudante provavelmente é capaz de: (do nível 0 até o maior nível com alunos) */}
                       {distribution.disciplinaNome && (() => {
                         const curso = inferirCursoFromApiData(apiData);
                         const descricoes = obterDescricoesNiveis(curso, distribution.disciplinaNome!);
-                        const levelWithMaxQuantidade = distribution.bars.length
-                          ? distribution.bars.reduce((best, bar, idx) =>
-                              (bar.quantidade ?? 0) > (distribution.bars[best]?.quantidade ?? 0) ? idx : best,
-                              0
+                        const maxLevelWithStudents = distribution.bars.length > 0
+                          ? distribution.bars.reduce(
+                              (max, bar, idx) => ((bar.quantidade ?? 0) > 0 ? Math.max(max, idx) : max),
+                              -1
                             )
                           : -1;
-                        if (descricoes.length === 0) return null;
+                        const descricoesAteMax = maxLevelWithStudents >= 0
+                          ? descricoes.filter((d) => d.level <= maxLevelWithStudents)
+                          : [];
+                        if (descricoesAteMax.length === 0) return null;
                         return (
                           <div className="mt-8 rounded-lg overflow-hidden border border-border">
                             <div
@@ -3045,27 +3032,18 @@ export default function RelatorioEscolar() {
                                 Descrição do Nível - O estudante provavelmente é capaz de:
                               </h4>
                             </div>
-                            <div className="space-y-3 p-4 bg-background">
-                              {descricoes
-                                .filter(
-                                  (d) =>
-                                    d.level < distribution.bars.length &&
-                                    (distribution.bars[d.level]?.quantidade ?? 0) > 0
-                                )
-                                .map((d) => {
-                                  const isHighlight = d.level === levelWithMaxQuantidade;
-                                  return (
+                            <div className="space-y-0 p-4 bg-background">
+                              {descricoesAteMax.map((d, idx) => (
                                     <div
                                       key={d.level}
                                       className={cn(
                                         'rounded-md px-4 py-3 text-sm text-foreground border border-border',
-                                        isHighlight ? 'bg-[#d9edf7] dark:bg-[#d9edf7]/20' : 'bg-background'
+                                        idx % 2 === 0 ? 'bg-gray-200 dark:bg-gray-700/50' : 'bg-background'
                                       )}
                                     >
                                       <p className="leading-relaxed">{d.description}</p>
                                     </div>
-                                  );
-                                })}
+                              ))}
                             </div>
                           </div>
                         );
