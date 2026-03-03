@@ -1385,6 +1385,8 @@ export default function Results() {
       id: string;
       nome: string;
       turma: string;
+      escola?: string;
+      serie?: string;
       nota: number;
       proficiencia: number;
       classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
@@ -1425,6 +1427,8 @@ export default function Results() {
             id: aluno.id,
             nome: aluno.nome,
             turma: aluno.turma,
+            escola: aluno.escola ?? undefined,
+            serie: aluno.serie ?? undefined,
             nota: aluno.nota,
             proficiencia: aluno.proficiencia,
             classificacao: aluno.nivel_proficiencia as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
