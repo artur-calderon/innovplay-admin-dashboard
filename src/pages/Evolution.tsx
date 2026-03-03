@@ -97,33 +97,21 @@ export default function Evolution() {
   // Ref para evitar chamadas duplicadas e para só aplicar resultado se a seleção não mudou
   const lastComparisonIdsRef = useRef<string>('');
   const selectedIdsRef = useRef<string>('');
+  // Refs para limpar filtros abaixo quando um filtro acima mudar
+  const prevMunicipalityRef = useRef<string>(selectedMunicipality);
+  const prevSchoolRef = useRef<string>(selectedSchool);
+  const prevGradeRef = useRef<string>(selectedGrade);
 
-  // Carregar filtros iniciais usando nova API unificada com fallback
+  // Carregar estados via GET /evaluation-results/evolucao/opcoes-filtros (sem params)
   const loadInitialFilters = useCallback(async () => {
     try {
       setIsLoadingFilters(true);
-
-      // Tentar primeiro a API de comparação
-      try {
-        const response = await EvaluationComparisonApiService.getComparisonFilterOptions();
-        if (response.opcoes?.estados?.length > 0) {
-          setStates(response.opcoes.estados.map(state => ({
-            id: state.id,
-            name: state.nome,
-            uf: state.id
-          })));
-          return;
-        }
-      } catch (comparisonError) {
-        console.warn("API de comparação falhou, tentando fallback:", comparisonError);
-      }
-
-      // Fallback: usar API de resultados
-      const statesData = await EvaluationResultsApiService.getFilterStates();
-      setStates(statesData.map(state => ({
-        id: state.id,
-        name: state.nome,
-        uf: state.id
+      const response = await EvaluationResultsApiService.getEvolucaoOpcoesFiltros({});
+      const list = response.estados ?? [];
+      setStates(list.map((s: { id: string; nome?: string; name?: string }) => ({
+        id: s.id,
+        name: s.nome ?? s.name ?? s.id,
+        uf: s.id,
       })));
     } catch (error) {
       console.error("Erro ao carregar filtros iniciais:", error);
@@ -218,26 +206,21 @@ export default function Evolution() {
     });
   }, [toast]);
 
-  // Carregar municípios quando estado for selecionado usando nova API
+  // Carregar municípios: GET /evolucao/opcoes-filtros?estado=X. Ao mudar estado, limpar municipio → escola → serie → turma.
   useEffect(() => {
     const loadMunicipalities = async () => {
       if (selectedState !== 'all') {
-        // Não definir loading aqui para não interferir com o loading de avaliações
         try {
-          const response = await EvaluationComparisonApiService.getComparisonFilterOptions({
-            estado: selectedState
-          });
-          const newMunicipalities = response.opcoes.municipios?.map(municipality => ({
-            id: municipality.id,
-            name: municipality.nome,
-            state: selectedState
-          })) || [];
-          
+          const response = await EvaluationResultsApiService.getEvolucaoOpcoesFiltros({ estado: selectedState });
+          const list = response.municipios ?? [];
+          const newMunicipalities = list.map((m: { id: string; nome?: string; name?: string }) => ({
+            id: m.id,
+            name: m.nome ?? m.name ?? m.id,
+            state: selectedState,
+          }));
           setMunicipalities(newMunicipalities);
-          
-          // Só resetar município se o município atual não existir mais na nova lista
-          const currentMunicipalityExists = newMunicipalities.some(m => m.id === selectedMunicipality);
-          if (!currentMunicipalityExists && selectedMunicipality !== 'all') {
+          const currentExists = newMunicipalities.some((m: { id: string }) => m.id === selectedMunicipality);
+          if (!currentExists && selectedMunicipality !== 'all') {
             setSelectedMunicipality('all');
             setSelectedSchool('all');
             setSelectedGrade('all');
@@ -250,413 +233,183 @@ export default function Evolution() {
             description: "Não foi possível carregar os municípios. Tente novamente.",
             variant: "destructive",
           });
+          setMunicipalities([]);
         } finally {
           setIsLoadingFilters(false);
         }
       } else {
         setMunicipalities([]);
-        // Só resetar se realmente mudou para 'all'
-        if (selectedMunicipality !== 'all') {
-          setSelectedMunicipality('all');
-        }
-        if (selectedSchool !== 'all') {
-          setSelectedSchool('all');
-        }
-        if (selectedGrade !== 'all') {
-          setSelectedGrade('all');
-        }
-        if (selectedClass !== 'all') {
-          setSelectedClass('all');
-        }
+        setSelectedMunicipality('all');
+        setSelectedSchool('all');
+        setSelectedGrade('all');
+        setSelectedClass('all');
       }
     };
 
     loadMunicipalities();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedState, toast]);
 
-  // Carregar avaliações quando município for selecionado (com filtros opcionais de escola, série e turma)
+  // Ao mudar município: limpar escola, série e turma
+  useEffect(() => {
+    if (prevMunicipalityRef.current !== selectedMunicipality) {
+      prevMunicipalityRef.current = selectedMunicipality;
+      setSelectedSchool('all');
+      setSelectedGrade('all');
+      setSelectedClass('all');
+    }
+  }, [selectedMunicipality]);
+
+  // Ao mudar escola: limpar série e turma
+  useEffect(() => {
+    if (prevSchoolRef.current !== selectedSchool) {
+      prevSchoolRef.current = selectedSchool;
+      setSelectedGrade('all');
+      setSelectedClass('all');
+    }
+  }, [selectedSchool]);
+
+  // Ao mudar série: limpar turma
+  useEffect(() => {
+    if (prevGradeRef.current !== selectedGrade) {
+      prevGradeRef.current = selectedGrade;
+      setSelectedClass('all');
+    }
+  }, [selectedGrade]);
+
+  // Carregar avaliações: GET /evaluation-results/evolucao/avaliacoes (estado, municipio obrigatórios; escola, serie, turma, nome, data_inicio, data_fim opcionais)
   useEffect(() => {
     const loadEvaluations = async () => {
-      if (selectedMunicipality !== 'all') {
-        // Definir loading imediatamente para mostrar feedback visual
-        setIsLoadingFilters(true);
-        try {
-          
-          // Construir filtros para a API
-          const filters: {
-            estado?: string;
-            municipio: string;
-            escola?: string;
-            serie?: string;
-            turma?: string;
-          } = {
-            municipio: selectedMunicipality
-          };
-          
-          // Adicionar estado se estiver selecionado
-          if (selectedState !== 'all') {
-            filters.estado = selectedState;
-          }
-          
-          if (selectedSchool !== 'all') {
-            filters.escola = selectedSchool;
-          }
-          if (selectedGrade !== 'all') {
-            filters.serie = selectedGrade;
-          }
-          if (selectedClass !== 'all') {
-            filters.turma = selectedClass;
-          }
-          
-          console.log('🔍 Carregando avaliações para:', filters);
-          
-          // Tentar primeiro a API de comparação
-          let comparisonResponse;
-          try {
-            comparisonResponse = await EvaluationComparisonApiService.getComparisonFilterOptions({
-              estado: selectedState,
-              municipio: selectedMunicipality
-            });
-            console.log('✅ Resposta da API de comparação:', comparisonResponse);
-          } catch (comparisonError) {
-            console.warn('⚠️ Erro na API de comparação, tentando API de resultados:', comparisonError);
-            comparisonResponse = null;
-          }
-          
-          // Se a API de comparação retornou avaliações, usar elas
-          if (comparisonResponse?.opcoes?.avaliacoes && comparisonResponse.opcoes.avaliacoes.length > 0) {
-            console.log(`📊 ${comparisonResponse.opcoes.avaliacoes.length} avaliações encontradas na API de comparação`);
-            console.log('🆔 IDs da API de comparação:', comparisonResponse.opcoes.avaliacoes.map(a => ({ id: String(a.id).trim(), titulo: a.titulo })));
-            
-            // Tentar buscar detalhes completos (data_aplicacao) da API de resultados com filtros
-            let evaluationsWithDetails: Evaluation[] = [];
-            try {
-              const detailedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 100, filters);
-              
-              if (detailedResponse?.resultados_detalhados?.avaliacoes) {
-                console.log('🆔 IDs da API de resultados:', detailedResponse.resultados_detalhados.avaliacoes.map(e => ({ id: String(e.id).trim(), titulo: e.titulo })));
-                
-                // Normalizar IDs para comparação (ambos como string, removendo espaços e convertendo para minúsculas para comparação mais robusta)
-                const comparisonIds = new Set(
-                  comparisonResponse.opcoes.avaliacoes.map(a => String(a.id).trim().toLowerCase())
-                );
-                
-                evaluationsWithDetails = detailedResponse.resultados_detalhados.avaliacoes
-                  .filter(evaluation => {
-                    // Excluir olimpíadas
-                    const type = evaluation.type || evaluation.tipo;
-                    const title = evaluation.titulo || evaluation.title || '';
-                    const isOlimpiada = type === 'OLIMPIADA' || 
-                                       title.includes('[OLIMPÍADA]') || 
-                                       title.toUpperCase().includes('OLIMPÍADA');
-                    if (isOlimpiada) {
-                      return false;
-                    }
-                    
-                    const evalId = String(evaluation.id).trim().toLowerCase();
-                    const found = comparisonIds.has(evalId);
-                    if (!found) {
-                      console.log(`⚠️ ID não encontrado na comparação: ${evaluation.id} (${evaluation.titulo})`);
-                    }
-                    return found;
-                  })
-                  .map(evaluation => ({
-                    id: evaluation.id,
-                    titulo: evaluation.titulo || 'Sem título',
-                    disciplina: evaluation.disciplina || '',
-                    status: evaluation.status || 'concluida',
-                    data_aplicacao: evaluation.data_aplicacao || new Date().toISOString(),
-                    escola: evaluation.escola || null,
-                    serie: evaluation.serie || null,
-                    turma: evaluation.turma || null,
-                  }));
-                
-                console.log(`✅ ${evaluationsWithDetails.length} avaliações mapeadas com detalhes da API de resultados`);
-              }
-            } catch (detailError) {
-              console.warn('⚠️ Erro ao buscar detalhes:', detailError);
-            }
-            
-            // Se não encontrou detalhes ou encontrou menos do que esperado, usar dados básicos da API de comparação
-            if (evaluationsWithDetails.length < comparisonResponse.opcoes.avaliacoes.length) {
-              console.log(`⚠️ Apenas ${evaluationsWithDetails.length} de ${comparisonResponse.opcoes.avaliacoes.length} avaliações tiveram detalhes encontrados`);
-              console.log('📋 Usando dados da API de comparação diretamente para as avaliações faltantes');
-              
-              // Criar um mapa dos detalhes encontrados (usar lowercase para comparação)
-              const detailsMap = new Map(
-                evaluationsWithDetails.map(e => [String(e.id).trim().toLowerCase(), e])
-              );
-              
-              // Mapear todas as avaliações da API de comparação, usando detalhes quando disponíveis
-              // Filtrar olimpíadas primeiro
-              const filteredComparisonEvaluations = comparisonResponse.opcoes.avaliacoes.filter(evaluation => {
-                const type = evaluation.type || evaluation.tipo;
-                const title = evaluation.titulo || evaluation.title || '';
-                const isOlimpiada = type === 'OLIMPIADA' || 
-                                   title.includes('[OLIMPÍADA]') || 
-                                   title.toUpperCase().includes('OLIMPÍADA');
-                return !isOlimpiada;
-              });
-              
-              const mappedEvaluations = filteredComparisonEvaluations.map(evaluation => {
-                const evalId = String(evaluation.id).trim().toLowerCase();
-                const existingDetail = detailsMap.get(evalId);
-                
-                if (existingDetail) {
-                  return existingDetail;
-                }
-                
-                // Se não tem detalhes, usar dados básicos da API de comparação
-                // Usar data padrão para garantir que apareça mesmo sem filtro de período
-                return {
-                  id: evaluation.id,
-                  titulo: evaluation.titulo || 'Sem título',
-                  disciplina: '',
-                  status: 'concluida',
-                  data_aplicacao: new Date().toISOString(), // Data padrão para garantir exibição
-                  escola: null,
-                  serie: null,
-                  turma: null,
-                };
-              });
-              
-              console.log(`✅ ${mappedEvaluations.length} avaliações mapeadas (combinando detalhes e dados básicos)`);
-              
-              // Tentar buscar datas faltantes individualmente (mas não bloquear se falhar)
-              const evaluationsWithDates = await Promise.allSettled(
-                mappedEvaluations.map(async (evaluation) => {
-                  // Se já tem data válida, não buscar novamente
-                  if (evaluation.data_aplicacao && evaluation.data_aplicacao !== new Date().toISOString()) {
-                    return evaluation;
-                  }
-                  
-                  try {
-                    const detailResponse = await EvaluationResultsApiService.getEvaluationById(evaluation.id);
-                    if (detailResponse?.data_aplicacao) {
-                      return {
-                        ...evaluation,
-                        data_aplicacao: detailResponse.data_aplicacao
-                      };
-                    }
-                  } catch (error) {
-                    console.warn(`⚠️ Erro ao buscar data da avaliação ${evaluation.id}:`, error);
-                  }
-                  
-                  // Retornar com data padrão se não conseguir buscar
-                  return evaluation;
-                })
-              );
-              
-              // Extrair resultados bem-sucedidos ou usar o valor padrão
-              const finalEvaluations = evaluationsWithDates.map((result, index) => {
-                if (result.status === 'fulfilled') {
-                  return result.value;
-                } else {
-                  // Se falhou, usar a avaliação original com data padrão
-                  return mappedEvaluations[index];
-                }
-              });
-              
-              console.log(`📋 Definindo ${finalEvaluations.length} avaliações em availableEvaluationsForPicker`);
-              console.log('📋 Avaliações finais:', finalEvaluations.map(e => ({ id: e.id, titulo: e.titulo, data: e.data_aplicacao })));
-              setAvailableEvaluationsForPicker(finalEvaluations);
-            } else {
-              // Todas as avaliações tiveram detalhes encontrados
-              console.log(`📋 Definindo ${evaluationsWithDetails.length} avaliações com detalhes completos em availableEvaluationsForPicker`);
-              console.log('📋 Avaliações com detalhes:', evaluationsWithDetails.map(e => ({ id: e.id, titulo: e.titulo, data: e.data_aplicacao })));
-              setAvailableEvaluationsForPicker(evaluationsWithDetails);
-            }
-            
-            // Log adicional para confirmar que foi definido
-            console.log('✅ availableEvaluationsForPicker atualizado com', comparisonResponse.opcoes.avaliacoes.length, 'avaliações');
-          } else {
-            // Se a API de comparação não retornou avaliações, tentar API de resultados diretamente com filtros
-            console.log('⚠️ API de comparação não retornou avaliações, tentando API de resultados...');
-            try {
-              const detailedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 100, filters);
-              
-              if (detailedResponse?.resultados_detalhados?.avaliacoes) {
-                // Filtrar apenas avaliações com status concluída/finalizada
-                // e excluir olimpíadas e competições
-                const evaluationsWithResults = detailedResponse.resultados_detalhados.avaliacoes
-                  .filter(evaluation => {
-                    const rawType = (evaluation.type || evaluation.tipo || '').toString().toUpperCase();
-                    const title = (evaluation.titulo || evaluation.title || '').toString().toUpperCase();
-
-                    // Excluir olimpíadas
-                    const isOlimpiada =
-                      rawType === 'OLIMPIADA' ||
-                      rawType === 'OLIMPÍADA' ||
-                      title.includes('[OLIMPÍADA]') ||
-                      title.includes('OLIMPIADA') ||
-                      title.includes('OLIMPÍADA');
-
-                    if (isOlimpiada) {
-                      console.log(`⚠️ Removendo avaliação ${evaluation.id} do tipo OLIMPIADA da tela de evolução`);
-                      return false;
-                    }
-
-                    // Excluir competições
-                    const isCompeticao =
-                      rawType === 'COMPETICAO' ||
-                      rawType === 'COMPETIÇÃO' ||
-                      rawType.includes('COMPET') ||
-                      title.includes('COMPETICAO') ||
-                      title.includes('COMPETIÇÃO') ||
-                      title.includes('COMPET');
-
-                    if (isCompeticao) {
-                      console.log(`⚠️ Removendo avaliação ${evaluation.id} do tipo COMPETICAO da tela de evolução`);
-                      return false;
-                    }
-                    
-                    const status = (evaluation.status || '').toLowerCase();
-                    return status === 'concluida' || status === 'finalized' || status === 'finalizada';
-                  })
-                  .map(evaluation => ({
-                    id: evaluation.id,
-                    titulo: evaluation.titulo || 'Sem título',
-                    disciplina: evaluation.disciplina || '',
-                    status: evaluation.status || 'concluida',
-                    data_aplicacao: evaluation.data_aplicacao || new Date().toISOString(),
-                    escola: evaluation.escola || null,
-                    serie: evaluation.serie || null,
-                    turma: evaluation.turma || null,
-                  }));
-                
-                console.log(`✅ ${evaluationsWithResults.length} avaliações encontradas na API de resultados`);
-                setAvailableEvaluationsForPicker(evaluationsWithResults);
-              } else {
-                console.warn('⚠️ Nenhuma avaliação encontrada na API de resultados');
-                setAvailableEvaluationsForPicker([]);
-              }
-            } catch (resultsError) {
-              console.error('❌ Erro ao buscar avaliações da API de resultados:', resultsError);
-              setAvailableEvaluationsForPicker([]);
-            }
-          }
-        } catch (error) {
-          console.error("❌ Erro ao carregar avaliações:", error);
+      const estadoValido = selectedState && selectedState !== 'all';
+      const municipioValido = selectedMunicipality && selectedMunicipality !== 'all';
+      if (!estadoValido || !municipioValido) {
+        setAvailableEvaluationsForPicker([]);
+        return;
+      }
+      setIsLoadingFilters(true);
+      try {
+        const response = await EvaluationResultsApiService.getEvolucaoAvaliacoes(
+          {
+            estado: selectedState,
+            municipio: selectedMunicipality,
+            escola: selectedSchool === 'all' ? undefined : selectedSchool,
+            serie: selectedGrade === 'all' ? undefined : selectedGrade,
+            turma: selectedClass === 'all' ? undefined : selectedClass,
+            data_inicio: periodStart || undefined,
+            data_fim: periodEnd || undefined,
+            nome: evaluationSearch.trim() || undefined,
+          },
+          1,
+          100
+        );
+        if (response == null) {
           setAvailableEvaluationsForPicker([]);
           toast({
-            title: "Erro ao carregar avaliações",
-            description: "Não foi possível carregar as avaliações. Tente novamente.",
-            variant: "destructive",
+            title: 'Erro ao carregar avaliações',
+            description: 'O servidor não respondeu. Verifique o backend (GET /evaluation-results/evolucao/avaliacoes).',
+            variant: 'destructive',
           });
-        } finally {
-          setIsLoadingFilters(false);
+          return;
         }
-      } else {
-        // Limpar avaliações quando município voltar para 'all'
-        if (selectedMunicipality === 'all') {
-          setAvailableEvaluationsForPicker([]);
-        }
+        // Backend pode devolver: resultados_detalhados.avaliacoes, .avaliacoes.items, opcoes_proximos_filtros.avaliacoes ou avaliacoes na raiz
+        const rd = response?.resultados_detalhados;
+        const detalhes = Array.isArray(rd?.avaliacoes)
+          ? rd.avaliacoes
+          : (rd?.avaliacoes && typeof rd.avaliacoes === 'object' && Array.isArray((rd.avaliacoes as { items?: unknown[] }).items))
+            ? (rd.avaliacoes as { items: unknown[] }).items
+            : [];
+        const opcoes = response?.opcoes_proximos_filtros?.avaliacoes ?? [];
+        const raiz = Array.isArray((response as { avaliacoes?: unknown[] })?.avaliacoes)
+          ? (response as { avaliacoes: unknown[] }).avaliacoes
+          : [];
+        const rawList = detalhes.length > 0 ? detalhes : opcoes.length > 0 ? opcoes : raiz;
+        type Item = {
+          id?: string; titulo?: string; title?: string; test_id?: string; avaliacao_id?: string;
+          data_aplicacao?: string | null; data?: string | null; applied_at?: string | null;
+          created_at?: string | null; createdAt?: string | null;
+        };
+        // Backend pode enviar "data" em dd/mm/yyyy; converter para ISO para exibição correta
+        const pickDate = (a: Item): string | null => {
+          const v = a.data_aplicacao ?? a.data ?? a.applied_at ?? a.created_at ?? a.createdAt;
+          if (v == null || v === '') return null;
+          if (typeof v === 'number') return new Date(v).toISOString();
+          if (typeof v === 'string') {
+            const trimmed = v.trim();
+            const match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+            if (match) {
+              const [, d, m, y] = match;
+              const day = parseInt(d!, 10);
+              let year = parseInt(y!, 10);
+              if (year < 100) year += 2000;
+              const date = new Date(year, parseInt(m!, 10) - 1, day);
+              if (!Number.isNaN(date.getTime())) return date.toISOString();
+            }
+            return trimmed;
+          }
+          return null;
+        };
+        const seen = new Set<string>();
+        const list: Evaluation[] = (rawList as Item[])
+          .filter((a) => {
+            const id = a?.test_id ?? a?.avaliacao_id ?? a?.id;
+            if (id == null) return false;
+            const key = String(id).trim();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .map((a) => ({
+            id: String(a.test_id ?? a.avaliacao_id ?? a.id ?? ''),
+            titulo: (a.titulo ?? a.title ?? 'Sem título').toString(),
+            disciplina: '',
+            status: 'concluida',
+            data_aplicacao: pickDate(a),
+            escola: null,
+            serie: null,
+            turma: null,
+          }));
+        setAvailableEvaluationsForPicker(list);
+      } catch (error) {
+        console.error('Erro ao carregar avaliações:', error);
+        setAvailableEvaluationsForPicker([]);
+        toast({
+          title: 'Erro ao carregar avaliações',
+          description: 'Não foi possível carregar as avaliações. Tente novamente.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoadingFilters(false);
       }
     };
 
     loadEvaluations();
-  }, [selectedState, selectedMunicipality, selectedSchool, selectedGrade, selectedClass, toast]);
+  }, [selectedState, selectedMunicipality, selectedSchool, selectedGrade, selectedClass, periodStart, periodEnd, evaluationSearch, toast]);
 
-  // Filtrar avaliações por período e busca
-  // Nota: Os filtros de escola/série/turma já são aplicados pela API em loadEvaluations
+  // Filtro por busca: só mostrar avaliações cujo título ou id contenha o termo (backend pode não filtrar corretamente)
   const filteredEvaluations = useMemo(() => {
-    let filtered = [...availableEvaluationsForPicker];
-    
-    console.log('🔍 Filtros aplicados:', { 
-      total: availableEvaluationsForPicker.length,
-      periodStart, 
-      periodEnd, 
-      evaluationSearch,
-      filteredAntes: filtered.length 
+    const term = evaluationSearch.trim().toLowerCase();
+    if (!term) return [...availableEvaluationsForPicker];
+    return availableEvaluationsForPicker.filter((e) => {
+      const titulo = (e.titulo ?? '').toLowerCase();
+      const id = (e.id ?? '').toLowerCase();
+      return titulo.includes(term) || id.includes(term);
     });
+  }, [availableEvaluationsForPicker, evaluationSearch]);
 
-    // Filtro por período - só aplicar se houver filtro ativo
-    if (periodStart) {
-      const startDate = new Date(periodStart);
-      startDate.setHours(0, 0, 0, 0); // Iniciar no início do dia
-      filtered = filtered.filter(evaluation => {
-        // Se não tem data_aplicacao e há filtro de período, remover
-        if (!evaluation.data_aplicacao) {
-          console.log(`⚠️ Avaliação ${evaluation.id} sem data_aplicacao removida pelo filtro de período`);
-          return false;
-        }
-        const evalDate = new Date(evaluation.data_aplicacao);
-        evalDate.setHours(0, 0, 0, 0); // Comparar apenas a data, ignorando hora
-        return evalDate >= startDate;
-      });
-    }
-
-    if (periodEnd) {
-      const endDate = new Date(periodEnd);
-      endDate.setHours(23, 59, 59, 999); // Incluir o dia inteiro
-      filtered = filtered.filter(evaluation => {
-        // Se não tem data_aplicacao e há filtro de período, remover
-        if (!evaluation.data_aplicacao) {
-          return false;
-        }
-        const evalDate = new Date(evaluation.data_aplicacao);
-        return evalDate <= endDate;
-      });
-    }
-
-    // Filtro por busca
-    if (evaluationSearch.trim()) {
-      const searchLower = evaluationSearch.toLowerCase().trim();
-      filtered = filtered.filter(evaluation =>
-        evaluation.titulo.toLowerCase().includes(searchLower)
-      );
-    }
-
-    console.log('✅ filteredEvaluations:', { 
-      antes: availableEvaluationsForPicker.length,
-      depois: filtered.length,
-      avaliacoes: filtered.map(e => ({ id: e.id, titulo: e.titulo, data: e.data_aplicacao }))
-    });
-
-    return filtered;
-  }, [availableEvaluationsForPicker, periodStart, periodEnd, evaluationSearch]);
-
-  // Debug: Log quando availableEvaluationsForPicker mudar
+  // Carregar escolas: GET /evolucao/opcoes-filtros?estado=X&municipio=id (só escolas com avaliações)
   useEffect(() => {
-    console.log('📊 availableEvaluationsForPicker atualizado:', {
-      length: availableEvaluationsForPicker.length,
-      avaliacoes: availableEvaluationsForPicker.map(e => ({
-        id: e.id,
-        titulo: e.titulo,
-        data_aplicacao: e.data_aplicacao
-      }))
-    });
-  }, [availableEvaluationsForPicker]);
-
-  // Carregar escolas quando município for selecionado (independente das avaliações)
-  useEffect(() => {
-    const loadSchoolsForComparison = async () => {
+    const loadSchools = async () => {
       if (selectedState !== 'all' && selectedMunicipality !== 'all') {
         try {
           setIsLoadingFilters(true);
-
-          // Buscar todas as escolas e filtrar pelo município selecionado
-          const schoolRequestConfig = selectedMunicipality !== 'all' ? { meta: { cityId: selectedMunicipality } } : {};
-          const schoolsResponse = await api.get('/school/', schoolRequestConfig);
-          const allSchools = Array.isArray(schoolsResponse.data)
-            ? schoolsResponse.data
-            : (schoolsResponse.data?.data || []);
-
-          const municipalitySchools = allSchools
-            .filter((school: { city_id?: string; municipio_id?: string; municipio?: { id?: string } }) => {
-              const cityId =
-                school.city_id ||
-                school.municipio_id ||
-                school.municipio?.id;
-              return String(cityId) === String(selectedMunicipality);
-            })
-            .map((school: { id: string; name?: string; nome?: string }) => ({
-              id: school.id,
-              name: school.name || school.nome,
-            }));
-
-          setSchools(municipalitySchools);
+          const response = await EvaluationResultsApiService.getEvolucaoOpcoesFiltros({
+            estado: selectedState,
+            municipio: selectedMunicipality,
+          });
+          const list = response.escolas ?? [];
+          setSchools(list.map((s: { id: string; nome?: string; name?: string }) => ({
+            id: s.id,
+            name: s.nome ?? s.name ?? s.id,
+          })));
         } catch (error) {
           console.error("Erro ao carregar escolas:", error);
           setSchools([]);
@@ -665,114 +418,72 @@ export default function Evolution() {
         }
       } else {
         setSchools([]);
-        if (selectedMunicipality === 'all') {
-          setSelectedSchool('all');
-          setSelectedGrade('all');
-          setSelectedClass('all');
-        }
       }
     };
 
-    loadSchoolsForComparison();
+    loadSchools();
   }, [selectedState, selectedMunicipality]);
 
-  // Carregar séries quando escola for selecionada (usando turmas da escola)
+  // Carregar séries: GET /evolucao/opcoes-filtros?estado=X&municipio=id&escola=id (só séries com avaliações)
   useEffect(() => {
     const loadGrades = async () => {
-      if (selectedSchool !== 'all') {
+      if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchool !== 'all') {
         try {
           setIsLoadingFilters(true);
-          // Buscar turmas da escola para extrair as séries disponíveis
-          const classesRequestConfig = selectedMunicipality !== 'all' ? { meta: { cityId: selectedMunicipality } } : {};
-          const classesResponse = await api.get(`/classes/school/${selectedSchool}`, classesRequestConfig);
-          const classesData = Array.isArray(classesResponse.data)
-            ? classesResponse.data
-            : (classesResponse.data?.data || []);
-
-          const gradeMap = new Map<string, Grade>();
-          classesData.forEach((classItem: { grade?: { id?: string; name?: string; nome?: string } }) => {
-            const grade = classItem.grade;
-            if (grade && grade.id && !gradeMap.has(grade.id)) {
-              gradeMap.set(grade.id, {
-                id: grade.id,
-                name: grade.name || grade.nome || '',
-              });
-            }
+          const response = await EvaluationResultsApiService.getEvolucaoOpcoesFiltros({
+            estado: selectedState,
+            municipio: selectedMunicipality,
+            escola: selectedSchool,
           });
-
-          const extractedGrades = Array.from(gradeMap.values());
-          setGrades(extractedGrades);
-
-          // Resetar série e turma se a série atual não existir mais
-          const currentGradeExists = extractedGrades.some(g => g.id === selectedGrade);
-          if (!currentGradeExists && selectedGrade !== 'all') {
-            setSelectedGrade('all');
-            setSelectedClass('all');
-          }
+          const list = response.series ?? [];
+          setGrades(list.map((s: { id: string; nome?: string; name?: string }) => ({
+            id: s.id,
+            name: s.nome ?? s.name ?? s.id,
+          })));
         } catch (error) {
           console.error("Erro ao carregar séries:", error);
           setGrades([]);
-          setSelectedGrade('all');
-          setSelectedClass('all');
         } finally {
           setIsLoadingFilters(false);
         }
       } else {
         setGrades([]);
-        setSelectedGrade('all');
-        setSelectedClass('all');
       }
     };
 
     loadGrades();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSchool, toast]);
+  }, [selectedState, selectedMunicipality, selectedSchool]);
 
-  // Carregar turmas quando série for selecionada (filtrando turmas da escola pela série)
+  // Carregar turmas: GET /evolucao/opcoes-filtros?estado=X&municipio=id&escola=id&serie=id (só turmas com avaliações)
   useEffect(() => {
     const loadClasses = async () => {
-      if (selectedSchool !== 'all' && selectedGrade !== 'all') {
+      if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchool !== 'all' && selectedGrade !== 'all') {
         try {
           setIsLoadingFilters(true);
-          const classesConfig = selectedMunicipality !== 'all' ? { meta: { cityId: selectedMunicipality } } : {};
-          const response = await api.get(`/classes/school/${selectedSchool}`, classesConfig);
-          const classesData = Array.isArray(response.data)
-            ? response.data
-            : (response.data?.data || []);
-
-          const filteredClasses = classesData
-            .filter((classItem: { grade_id?: string; grade?: { id?: string } }) => {
-              const gradeId = classItem.grade_id || classItem.grade?.id;
-              return String(gradeId) === String(selectedGrade);
-            })
-            .map((classItem: { id: string; name?: string; nome?: string }) => ({
-              id: classItem.id,
-              name: classItem.name || classItem.nome || `Turma ${classItem.id}`,
-            }));
-
-          setClasses(filteredClasses);
-          
-          // Resetar turma se a turma atual não existir mais
-          const currentClassExists = filteredClasses.some(c => c.id === selectedClass);
-          if (!currentClassExists && selectedClass !== 'all') {
-            setSelectedClass('all');
-          }
+          const response = await EvaluationResultsApiService.getEvolucaoOpcoesFiltros({
+            estado: selectedState,
+            municipio: selectedMunicipality,
+            escola: selectedSchool,
+            serie: selectedGrade,
+          });
+          const list = response.turmas ?? [];
+          setClasses(list.map((c: { id: string; nome?: string; name?: string }) => ({
+            id: c.id,
+            name: c.nome ?? c.name ?? c.id,
+          })));
         } catch (error) {
           console.error("Erro ao carregar turmas:", error);
           setClasses([]);
-          setSelectedClass('all');
         } finally {
           setIsLoadingFilters(false);
         }
       } else {
         setClasses([]);
-        setSelectedClass('all');
       }
     };
 
     loadClasses();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSchool, selectedGrade, toast]);
+  }, [selectedState, selectedMunicipality, selectedSchool, selectedGrade]);
 
   // Função para comparar avaliações
   const handleCompareEvaluations = useCallback(async () => {
@@ -943,11 +654,27 @@ export default function Evolution() {
 
   // Controles de visibilidade agora são por gráfico, definidos em EvolutionCharts
 
-  // Função para formatar data
+  // Função para formatar data (aceita ISO, dd/mm/yyyy, timestamp ou string vazia)
   const formatDate = (dateString: string | null | undefined) => {
-    if (!dateString) return 'Data não disponível';
+    if (dateString == null || String(dateString).trim() === '') return 'Data não disponível';
     try {
-      return new Date(dateString).toLocaleDateString('pt-BR');
+      let d: Date;
+      if (typeof dateString === 'number') {
+        d = new Date(dateString);
+      } else {
+        const s = String(dateString).trim();
+        const match = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+        if (match) {
+          const [, day, month, year] = match;
+          let y = parseInt(year!, 10);
+          if (y < 100) y += 2000;
+          d = new Date(y, parseInt(month!, 10) - 1, parseInt(day!, 10));
+        } else {
+          d = new Date(s);
+        }
+      }
+      if (Number.isNaN(d.getTime())) return 'Data não disponível';
+      return d.toLocaleDateString('pt-BR');
     } catch {
       return 'Data não informada';
     }
@@ -1451,7 +1178,7 @@ export default function Evolution() {
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       type="text"
-                      placeholder="Buscar avaliações por nome..."
+                      placeholder="Buscar por nome ou número da avaliação..."
                       value={evaluationSearch}
                       onChange={(e) => setEvaluationSearch(e.target.value)}
                       className="pl-9 h-10"

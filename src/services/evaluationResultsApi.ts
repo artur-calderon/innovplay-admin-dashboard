@@ -70,6 +70,23 @@ interface OpcoesProximosFiltros {
   maximo_alcancado?: boolean;
 }
 
+/** Parâmetros para GET /evaluation-results/evolucao/opcoes-filtros (Evolução: Estado → Município → Escola → Série → Turma) */
+export interface EvolucaoOpcoesFiltrosParams {
+  estado?: string;
+  municipio?: string;
+  escola?: string;
+  serie?: string;
+}
+
+/** Resposta de GET /evaluation-results/evolucao/opcoes-filtros */
+export interface EvolucaoOpcoesFiltrosResponse {
+  estados?: Array<{ id: string; nome?: string; name?: string }>;
+  municipios?: Array<{ id: string; nome?: string; name?: string }>;
+  escolas?: Array<{ id: string; nome?: string; name?: string }>;
+  series?: Array<{ id: string; nome?: string; name?: string }>;
+  turmas?: Array<{ id: string; nome?: string; name?: string }>;
+}
+
 // ✅ NOVO: Interfaces para tabela detalhada
 interface TabelaDetalhada {
   disciplinas: Array<{
@@ -473,6 +490,77 @@ export class EvaluationResultsApiService {
   }
 
 
+
+  /**
+   * Opções de filtro para a página Evolução (Estado → Município → Escola → Série → Turma).
+   * GET /evaluation-results/evolucao/opcoes-filtros
+   * Sem params → estados; ?estado=X → municipios; +municipio → escolas; +escola → series; +serie → turmas.
+   */
+  static async getEvolucaoOpcoesFiltros(params: EvolucaoOpcoesFiltrosParams = {}): Promise<EvolucaoOpcoesFiltrosResponse> {
+    const search = new URLSearchParams();
+    if (params.estado != null && params.estado !== '') search.set('estado', params.estado);
+    if (params.municipio != null && params.municipio !== '') search.set('municipio', params.municipio);
+    if (params.escola != null && params.escola !== '') search.set('escola', params.escola);
+    if (params.serie != null && params.serie !== '') search.set('serie', params.serie);
+    const query = search.toString();
+    const url = `/evaluation-results/evolucao/opcoes-filtros${query ? `?${query}` : ''}`;
+    const requestConfig = params.municipio ? { meta: { cityId: params.municipio } } : {};
+    const response = await api.get(url, requestConfig);
+    return response.data ?? {};
+  }
+
+  /**
+   * Lista de avaliações para Evolução. GET /evaluation-results/evolucao/avaliacoes
+   * Obrigatórios: estado, municipio. Opcionais: escola, serie, turma, nome (busca).
+   */
+  static async getEvolucaoAvaliacoes(
+    filters: {
+      estado: string;
+      municipio: string;
+      escola?: string;
+      serie?: string;
+      turma?: string;
+      data_inicio?: string;
+      data_fim?: string;
+      nome?: string;
+    },
+    page: number = 1,
+    perPage: number = 100
+  ): Promise<NovaRespostaAPI | null> {
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        per_page: String(perPage),
+        estado: filters.estado,
+        municipio: filters.municipio,
+      });
+      if (filters.escola != null && filters.escola !== '' && filters.escola !== 'all') params.append('escola', filters.escola);
+      if (filters.serie != null && filters.serie !== '' && filters.serie !== 'all') params.append('serie', filters.serie);
+      if (filters.turma != null && filters.turma !== '' && filters.turma !== 'all') params.append('turma', filters.turma);
+      if (filters.data_inicio) params.append('data_inicio', filters.data_inicio);
+      if (filters.data_fim) params.append('data_fim', filters.data_fim);
+      if (filters.nome?.trim()) params.append('nome', filters.nome.trim());
+
+      const requestConfig = { meta: { cityId: filters.municipio } } as const;
+      const response = await api.get(`/evaluation-results/evolucao/avaliacoes?${params}`, requestConfig);
+
+      if (response.data?.resultados_detalhados?.avaliacoes) {
+        response.data.resultados_detalhados.avaliacoes =
+          response.data.resultados_detalhados.avaliacoes.filter((evaluation: any) => {
+            const type = String(evaluation.type ?? evaluation.tipo ?? '').toUpperCase().trim();
+            const title = String(evaluation.titulo ?? evaluation.title ?? '').toUpperCase();
+            if (type === 'OLIMPIADA' || type === 'OLIMPIADAS' || type.includes('OLIMPI')) return false;
+            if (type === 'COMPETICAO' || type === 'COMPETIÇÃO' || type.includes('COMPET')) return false;
+            if (title.includes('[OLIMPÍADA]') || title.includes('OLIMPÍADA') || title.includes('OLIMPIADA')) return false;
+            if (title.includes('COMPETIÇÃO') || title.includes('COMPETICAO')) return false;
+            return type === '' || type === 'AVALIACAO' || type === 'SIMULADO';
+          });
+      }
+      return response.data;
+    } catch {
+      return null;
+    }
+  }
 
   static async getEvaluationsList(
     page: number = 1,
