@@ -380,9 +380,9 @@ export default function ListaFrequencia() {
           setProvaExpirada(new Date(exp).getTime() < Date.now());
           return;
         }
-        setProvaExpirada(true); // sem informação: considerar expirada para manter comportamento atual
+        setProvaExpirada(false); // sem informação: considerar em andamento para não marcar ninguém como ausente
       } catch {
-        if (!cancelled) setProvaExpirada(true);
+        if (!cancelled) setProvaExpirada(false);
       }
     })();
     return () => { cancelled = true; };
