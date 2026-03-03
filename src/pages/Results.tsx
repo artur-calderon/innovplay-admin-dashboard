@@ -34,6 +34,7 @@ import { ResultsTable } from "@/components/evaluations/results-table/ResultsTabl
 import type { DisciplineStatsMap } from "@/components/evaluations/StudentBulletin";
 import { saveBulletinStatsToStorage } from "@/components/evaluations/utils/bulletinStorage";
 
+import { cn } from "@/lib/utils";
 import { DisciplineTables } from "@/components/evaluations/DisciplineTables";
 import { StudentCard } from "@/components/evaluations/StudentCard";
 import { QuestionData as TableQuestionData, DetailedReport as TableDetailedReport } from "@/types/results-table";
@@ -1385,6 +1386,8 @@ export default function Results() {
       id: string;
       nome: string;
       turma: string;
+      escola?: string;
+      serie?: string;
       nota: number;
       proficiencia: number;
       classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
@@ -1425,6 +1428,8 @@ export default function Results() {
             id: aluno.id,
             nome: aluno.nome,
             turma: aluno.turma,
+            escola: aluno.escola ?? undefined,
+            serie: aluno.serie ?? undefined,
             nota: aluno.nota,
             proficiencia: aluno.proficiencia,
             classificacao: aluno.nivel_proficiencia as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
@@ -2061,7 +2066,7 @@ export default function Results() {
   }, [evaluationInfo, apiData, questionsWithSkills, extractSubjectName]);
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
@@ -2103,16 +2108,16 @@ export default function Results() {
 
 
 
-      {/* Filtros */}
-      <Card>
+      {/* Filtros - overflow-visible e grid responsivo para não cortar no mobile */}
+      <Card className="overflow-visible">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Filter className="h-5 w-5" />
             Filtros
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+        <CardContent className="overflow-visible">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 w-full min-w-0">
             {/* Estado */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Estado</label>
@@ -2121,7 +2126,7 @@ export default function Results() {
                 onValueChange={setSelectedState}
                 disabled={isLoadingFilters}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full min-w-0">
                   <SelectValue placeholder="Selecione o estado" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2143,7 +2148,7 @@ export default function Results() {
                 onValueChange={setSelectedMunicipality}
                 disabled={isLoadingFilters || selectedState === 'all'}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full min-w-0">
                   <SelectValue placeholder="Selecione o município" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2165,7 +2170,7 @@ export default function Results() {
                 onValueChange={setSelectedEvaluation}
                 disabled={isLoadingFilters || selectedMunicipality === 'all'}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full min-w-0">
                   <SelectValue placeholder="Selecione a avaliação" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2190,7 +2195,7 @@ export default function Results() {
                 onValueChange={setSelectedSchool}
                 disabled={isLoadingFilters || selectedEvaluation === 'all'}
               >
-                <SelectTrigger className={isRestrictedUser && selectedSchool === 'all' ? 'border-red-300 focus:border-red-500' : ''}>
+                <SelectTrigger className={cn("w-full min-w-0", isRestrictedUser && selectedSchool === 'all' && "border-red-300 focus:border-red-500")}>
                   <SelectValue placeholder={isRestrictedUser ? "Selecione a escola (obrigatório)" : "Selecione a escola"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -2217,7 +2222,7 @@ export default function Results() {
                 onValueChange={setSelectedGrade}
                 disabled={isLoadingFilters || selectedSchool === 'all'}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full min-w-0">
                   <SelectValue placeholder="Selecione a série" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2239,7 +2244,7 @@ export default function Results() {
                 onValueChange={setSelectedClass}
                 disabled={isLoadingFilters || selectedGrade === 'all'}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full min-w-0">
                   <SelectValue placeholder="Selecione a turma" />
                 </SelectTrigger>
                 <SelectContent>

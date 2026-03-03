@@ -53,7 +53,7 @@ export default function Layout() {
   }, [isMobileMenuOpen]);
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen min-h-[100dvh] bg-background">
       {showOnboarding && (
         <OnboardingModal
           open={true}
@@ -122,15 +122,15 @@ export default function Layout() {
         />
       )}
 
-      {/* Main content area */}
+      {/* Main content area - min-h-0 permite scroll em flex; pb evita filtros cortados no mobile */}
       <main className={cn(
-        "flex-1 overflow-y-auto relative",
-        "pt-16 md:pt-0", // Top padding for mobile header
-        "bg-background min-h-screen"
+        "flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative",
+        "pt-16 md:pt-0",
+        "bg-background min-h-screen min-h-[100dvh]"
       )}>
-        {/* Content Container */}
-        <div className="px-4 py-4 md:p-6">
-          <div className="max-w-7xl mx-auto">
+        {/* Content Container - padding-bottom extra no mobile para nada ficar cortado */}
+        <div className="px-4 py-4 pb-10 md:pb-6 md:p-6">
+          <div className="max-w-7xl mx-auto min-w-0">
             <Outlet />
           </div>
         </div>

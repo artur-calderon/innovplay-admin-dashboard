@@ -431,15 +431,15 @@ export function FilterComponentAnalise({
   }, [selectedState, selectedMunicipality, selectedSchool, mustSelectSpecificSchool, loadSchoolsAfterEvaluation]);
 
   return (
-    <Card>
+    <Card className="overflow-visible">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Filter className="h-5 w-5" />
           Filtros
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <CardContent className="overflow-visible">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 w-full min-w-0">
           {/* Estado */}
           <div className="space-y-2">
             <label className="text-sm font-medium flex items-center gap-2">
