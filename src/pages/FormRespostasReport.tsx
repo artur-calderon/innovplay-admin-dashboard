@@ -158,6 +158,7 @@ const FormRespostasReport = () => {
   const [currentStudentPage, setCurrentStudentPage] = useState(1);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   const [downloadingUserId, setDownloadingUserId] = useState<string | null>(null);
+  const [isGeneratingResultsPdf, setIsGeneratingResultsPdf] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -772,6 +773,206 @@ const FormRespostasReport = () => {
     ]
   );
 
+  const handleDownloadResultsPdf = useCallback(async () => {
+    if (!reportData?.questoes?.length) return;
+
+    try {
+      setIsGeneratingResultsPdf(true);
+
+      const jsPDFModule = await import('jspdf');
+      const jsPDF = (jsPDFModule as any).default || jsPDFModule;
+      const autoTableModule = await import('jspdf-autotable');
+      const autoTable = (autoTableModule as any).default || autoTableModule;
+
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const margin = 15;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const centerX = pageWidth / 2;
+      let y = margin;
+
+      const primaryRgb: [number, number, number] = [124, 58, 237];
+      const textDark: [number, number, number] = [31, 41, 55];
+
+      // Capa: logo
+      try {
+        const logoPath = '/LOGO-1-menor.png';
+        const logoResponse = await fetch(logoPath);
+        const logoBlob = await logoResponse.blob();
+        const logoDataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(logoBlob);
+        });
+        const logoWidth = 50;
+        const logoHeight = 22;
+        doc.addImage(logoDataUrl, 'PNG', (pageWidth - logoWidth) / 2, y, logoWidth, logoHeight);
+        y += logoHeight + 10;
+      } catch {
+        // segue sem logo
+      }
+
+      const municipioName =
+        municipalities.find((m) => m.id === selectedMunicipality)?.name || selectedMunicipality || '';
+      const escolaNames =
+        selectedSchools.length === 0
+          ? '—'
+          : selectedSchools
+              .map((id) => schools.find((s) => s.id === id)?.name)
+              .filter(Boolean)
+              .join(', ') || '—';
+      const formTitle = reportData.formTitle || '';
+      const serieNames =
+        selectedGrades.length === 0
+          ? '—'
+          : selectedGrades
+              .map((id) => grades.find((g) => g.id === id)?.name)
+              .filter(Boolean)
+              .join(', ') || '—';
+      const turmaNames =
+        selectedClasses.length === 0
+          ? '—'
+          : selectedClasses
+              .map((id) => classes.find((c) => c.id === id)?.name)
+              .filter(Boolean)
+              .join(', ') || '—';
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(...textDark);
+      if (municipioName) {
+        doc.text(`Município: ${municipioName}`, centerX, y, { align: 'center' });
+        y += 6;
+      }
+      doc.text(`Escola(s): ${escolaNames}`, centerX, y, { align: 'center' });
+      y += 5;
+      doc.text(`Formulário: ${formTitle}`, centerX, y, { align: 'center' });
+      y += 5;
+      doc.text(`Série(s): ${serieNames}`, centerX, y, { align: 'center' });
+      y += 5;
+      doc.text(`Turma(s): ${turmaNames}`, centerX, y, { align: 'center' });
+      y += 10;
+
+      doc.setFontSize(12);
+      doc.setTextColor(...primaryRgb);
+      doc.text('Resultados do Questionário Socioeconômico', centerX, y, { align: 'center' });
+      doc.setTextColor(...textDark);
+      y += 8;
+
+      if (reportData.totalRespostas != null) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.text(
+          `Total de respostas: ${reportData.totalRespostas}`,
+          centerX,
+          y,
+          { align: 'center' }
+        );
+        y += 6;
+      }
+
+      // Páginas seguintes: uma seção por questão (mesmo estilo da tela)
+      const ensureSpace = (heightNeeded: number) => {
+        if (y + heightNeeded > pageHeight - margin) {
+          doc.addPage();
+          y = margin;
+        }
+      };
+
+      reportData.questoes.forEach((q) => {
+        ensureSpace(30);
+
+        const titulo = q.textoSubpergunta
+          ? `${q.textoPergunta} — ${q.textoSubpergunta}`
+          : q.textoPergunta;
+        const totalQuestao = q.totalRespostasQuestao ?? 0;
+        const pctTotal = (q.porcentagemSobreTotal ?? 0).toFixed(1);
+        const contagem = q.contagem && typeof q.contagem === 'object' ? q.contagem : {};
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.text(titulo, margin, y);
+        y += 5;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(...textDark);
+        doc.text(
+          `Total de respostas na pergunta: ${totalQuestao} (${pctTotal}% do total)`,
+          margin,
+          y
+        );
+        y += 6;
+
+        const head = [['Opção', 'Frequência Absoluta (N° de alunos)', 'Percentual Relativo (%)']];
+        const body = Object.entries(contagem).map(([opcao, count]) => {
+          const pct =
+            totalQuestao > 0 ? ((Number(count) / totalQuestao) * 100).toFixed(1) : '0.0';
+          return [opcao, String(count), `${pct}%`];
+        });
+
+        const startY = y;
+        autoTable(doc as any, {
+          startY,
+          head,
+          body,
+          theme: 'grid',
+          margin: { left: margin, right: margin },
+          styles: {
+            fontSize: 9,
+            cellPadding: 2,
+            valign: 'middle',
+          },
+          headStyles: {
+            fillColor: primaryRgb,
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+          },
+          columnStyles: {
+            0: { cellWidth: 'auto' },
+            1: { halign: 'center' },
+            2: { halign: 'center' },
+          },
+        } as any);
+
+        const finalY =
+          (doc as any).lastAutoTable?.finalY ??
+          (doc as any).previousAutoTable?.finalY ??
+          startY + 15;
+        y = finalY + 10;
+      });
+
+      const safeTitle = (formTitle || 'resultados').replace(/[\\/:*?"<>|]/g, '_');
+      const dateStr = new Date().toISOString().split('T')[0];
+      doc.save(`Resultados_questionario_${safeTitle}_${dateStr}.pdf`);
+
+      toast({
+        title: 'PDF gerado',
+        description: 'O relatório de resultados foi exportado com sucesso.',
+      });
+    } catch (error) {
+      console.error('Erro ao gerar PDF dos resultados:', error);
+      toast({
+        title: 'Erro ao gerar PDF',
+        description: 'Não foi possível exportar o relatório em PDF.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsGeneratingResultsPdf(false);
+    }
+  }, [
+    reportData,
+    municipalities,
+    schools,
+    grades,
+    classes,
+    selectedMunicipality,
+    selectedSchools,
+    selectedGrades,
+    selectedClasses,
+    toast,
+  ]);
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div>
@@ -908,12 +1109,33 @@ const FormRespostasReport = () => {
 
       {reportData && reportData.questoes && reportData.questoes.length > 0 && (
         <div className="space-y-6">
-          {reportData.totalRespostas != null && (
-            <p className="text-muted-foreground">
-              Total de respostas: <strong>{reportData.totalRespostas}</strong>
-              {reportData.formTitle && ` — ${reportData.formTitle}`}
-            </p>
-          )}
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              {reportData.totalRespostas != null && (
+                <p className="text-muted-foreground">
+                  Total de respostas: <strong>{reportData.totalRespostas}</strong>
+                  {reportData.formTitle && ` — ${reportData.formTitle}`}
+                </p>
+              )}
+            </div>
+            <Button
+              onClick={handleDownloadResultsPdf}
+              disabled={isGeneratingResultsPdf}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {isGeneratingResultsPdf ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Gerando PDF...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  Exportar resultados em PDF
+                </>
+              )}
+            </Button>
+          </div>
           <div className="space-y-6">
             {reportData.questoes.map((q, idx) => {
               const totalQuestao = q.totalRespostasQuestao ?? 0;
