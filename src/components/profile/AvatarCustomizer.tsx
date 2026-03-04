@@ -17,6 +17,8 @@ interface AvatarCustomizerProps {
     onConfigChange: (config: Partial<AvatarConfig>) => void;
     onSave: () => Promise<void>;
     isSaving: boolean;
+    /** Quando true, oculta o botão Salvar (ex.: onboarding, onde o save é ao concluir) */
+    hideSaveButton?: boolean;
 }
 
 const HAIR_VARIANTS = Array.from({ length: 48 }, (_, i) => `variant${String(i + 1).padStart(2, '0')}`);
@@ -184,7 +186,7 @@ const getSafeSelectValue = (arrayValue: string[] | undefined | null): string | u
     return arrayValue[0];
 };
 
-export const AvatarCustomizer = ({ config, onConfigChange, onSave, isSaving }: AvatarCustomizerProps) => {
+export const AvatarCustomizer = ({ config, onConfigChange, onSave, isSaving, hideSaveButton }: AvatarCustomizerProps) => {
     const [previewModal, setPreviewModal] = useState<{
         open: boolean;
         field: string;
@@ -321,10 +323,12 @@ export const AvatarCustomizer = ({ config, onConfigChange, onSave, isSaving }: A
                         <RotateCcw className="h-4 w-4 mr-1.5 sm:mr-2" />
                         <span>Resetar</span>
                     </Button>
-                    <Button size="sm" className="min-h-[44px] sm:min-h-0 sm:size-default" onClick={handleSave} disabled={isSaving}>
-                        <Save className="h-4 w-4 mr-1.5 sm:mr-2" />
-                        {isSaving ? 'Salvando...' : 'Salvar'}
-                    </Button>
+                    {!hideSaveButton && (
+                        <Button size="sm" className="min-h-[44px] sm:min-h-0 sm:size-default" onClick={handleSave} disabled={isSaving}>
+                            <Save className="h-4 w-4 mr-1.5 sm:mr-2" />
+                            {isSaving ? 'Salvando...' : 'Salvar'}
+                        </Button>
+                    )}
                 </div>
             </div>
 

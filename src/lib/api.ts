@@ -37,6 +37,7 @@ api.interceptors.request.use((config) => {
             const role = (user?.role ?? '').toLowerCase()
             const canSendCityId = ['admin', 'tecadm', 'diretor', 'coordenador'].includes(role)
             const isCompetitionsRequest = typeof config.url === 'string' && config.url.includes('/competitions')
+            const isDashboardRequest = typeof config.url === 'string' && config.url.includes('/dashboard/')
             // Admin/coordenador/diretor/tecadm: enviar X-City-ID quando informado (meta.cityId)
             if (canSendCityId && cityId) {
                 config.headers['X-City-ID'] = cityId
@@ -44,6 +45,11 @@ api.interceptors.request.use((config) => {
             // Aluno em competições: enviar tenant do município da escola do aluno para o backend unificar contexto
             if (role === 'aluno' && isCompetitionsRequest && user?.tenant_id) {
                 config.headers['X-City-ID'] = user.tenant_id
+            }
+            // Aluno em rotas do dashboard (ex.: ranking-alunos): contexto de cidade obrigatório (@requires_city_context)
+            if (role === 'aluno' && isDashboardRequest) {
+                const alunoCityId = cityId ?? user?.tenant_id
+                if (alunoCityId) config.headers['X-City-ID'] = alunoCityId
             }
         } catch {
             // ignore parse error

@@ -16,6 +16,7 @@ import { useAuth, type User } from "@/context/authContext";
 import { useSettings, loadAndApplySettings, saveSettings } from "@/hooks/useSettings";
 import { useAvatarConfig } from "@/hooks/useAvatarConfig";
 import { AvatarPreview } from "@/components/profile/AvatarPreview";
+import { AvatarCustomizer } from "@/components/profile/AvatarCustomizer";
 import { submitOnboarding, type OnboardingProfile } from "@/services/onboardingApi";
 import {
   Sun,
@@ -89,7 +90,7 @@ interface OnboardingModalProps {
 }
 
 export function OnboardingModal({ open, onComplete, profile }: OnboardingModalProps) {
-  const { user, setOnboardingComplete } = useAuth();
+  const { user, setOnboardingComplete, updateAvatarConfig } = useAuth();
   const { settings, updateTheme, updateFontFamily, persistSettings } = useSettings();
   const { config, updateConfig } = useAvatarConfig();
   const [step, setStep] = useState(0);
@@ -170,7 +171,22 @@ export function OnboardingModal({ open, onComplete, profile }: OnboardingModalPr
       const updatedUser = response.user as User;
       const userId = updatedUser?.id ?? user.id;
       if (updatedUser && userId) {
-        setOnboardingComplete(updatedUser);
+        const apiAvatar = updatedUser?.avatar_config as Record<string, unknown> | null | undefined;
+        const seedFromApi = apiAvatar && (typeof apiAvatar.seed === "string" ? apiAvatar.seed : typeof apiAvatar.icon !== "undefined" ? String(apiAvatar.icon) : undefined);
+        const mergedAvatarConfig = {
+          ...(typeof apiAvatar === "object" && apiAvatar !== null ? apiAvatar : {}),
+          ...config,
+          seed: config.seed?.trim() || seedFromApi || updatedUser?.name || user?.name || `user_${user.id}`,
+        };
+        setOnboardingComplete({
+          ...updatedUser,
+          avatar_config: mergedAvatarConfig,
+        });
+        try {
+          await updateAvatarConfig(mergedAvatarConfig);
+        } catch (e) {
+          console.warn("Erro ao persistir avatar_config no servidor:", e);
+        }
         const settingsToSave = {
           theme: (body.theme ?? (settings.theme === "dark" ? "dark" : "light")) as "light" | "dark",
           fontFamily: body.font ?? settings.fontFamily,
@@ -194,7 +210,7 @@ export function OnboardingModal({ open, onComplete, profile }: OnboardingModalPr
     } finally {
       setSaving(false);
     }
-  }, [user, formData, config, settings.theme, settings.fontFamily, setOnboardingComplete, onComplete]);
+  }, [user, formData, config, settings.theme, settings.fontFamily, setOnboardingComplete, onComplete, updateAvatarConfig]);
 
   const progress = ((step + 1) / STEPS.length) * 100;
   const isLastStep = step === STEPS.length - 1;
@@ -329,6 +345,18 @@ export function OnboardingModal({ open, onComplete, profile }: OnboardingModalPr
                     Gerar aleatório
                   </Button>
                 </div>
+              </div>
+              <div className="border-t pt-4 mt-4">
+                <p className="text-sm text-muted-foreground mb-3">
+                  Personalize rosto, cabelo, acessórios e fundo. As alterações serão salvas ao concluir.
+                </p>
+                <AvatarCustomizer
+                  config={config}
+                  onConfigChange={updateConfig}
+                  onSave={async () => {}}
+                  isSaving={false}
+                  hideSaveButton
+                />
               </div>
             </div>
           )}

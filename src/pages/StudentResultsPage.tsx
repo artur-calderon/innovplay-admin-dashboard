@@ -1,0 +1,481 @@
+import React, { useState, useEffect, useCallback, useMemo } from "react"
+import { useNavigate, Link } from "react-router-dom"
+import { useAuth } from "@/context/authContext"
+import { api } from "@/lib/api"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { Trophy, FileText, ExternalLink, BarChart2, Star, Target, Medal, Zap, Flame, RefreshCw, BookOpen, Calendar } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import { StudentResultSummaryCharts } from "@/components/student/StudentResultSummaryCharts"
+
+function formatDataDisplay(value: string): string {
+  if (!value || value === "—") return "—"
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
+}
+
+interface StudentCompletedResponse {
+  student: { id: string; name: string; user_id: string }
+  total_completed: number
+  returned_count: number
+  pagination: { limit: number; offset: number; has_more: boolean }
+  evaluations: Array<{
+    test_id: string
+    title: string
+    description?: string
+    type: string
+    subject: { id: string; name: string }
+    grade: { id: string; name: string }
+    subjects_info?: Array<{ id: string; name: string }>
+    total_questions: number
+    application_info: { application: string; expiration: string }
+    student_results: {
+      correct_answers: number
+      total_questions: number
+      score_percentage: number
+      grade: number
+      proficiency: number
+      classification: string
+      calculated_at: string
+    }
+  }>
+}
+
+export interface StudentResultListItem {
+  id: string
+  titulo: string
+  disciplina: string
+  data_aplicacao: string
+  total_questions: number
+  nota: number
+  acertos: number
+  total_questions_result: number
+  classificacao: string
+}
+
+type SortOption = "questions_desc" | "questions_asc" | "grade_desc" | "grade_asc" | "recent" | "oldest"
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: "recent", label: "Mais recente" },
+  { value: "oldest", label: "Mais antigo" },
+  { value: "grade_desc", label: "Maior nota" },
+  { value: "grade_asc", label: "Menor nota" },
+  { value: "questions_desc", label: "Mais questões" },
+  { value: "questions_asc", label: "Menos questões" },
+]
+
+export default function StudentResultsPage() {
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const { toast } = useToast()
+  const [items, setItems] = useState<StudentResultListItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [filterDiscipline, setFilterDiscipline] = useState<string>("todas")
+  const [sortBy, setSortBy] = useState<SortOption>("recent")
+  const [expandedResultId, setExpandedResultId] = useState<string | null>(null)
+
+  const fetchCompleted = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      setIsLoading(true)
+      const response = await api.get<StudentCompletedResponse>("/test/student/completed")
+      const data = response.data ?? {}
+      const evaluations = data.evaluations ?? []
+      const mapped = evaluations
+        .filter((e) => {
+          const type = (e.type ?? "").toLowerCase()
+          return !type.includes("olimpi") && !type.includes("compet")
+        })
+        .map((e) => ({
+          id: e.test_id,
+          titulo: e.title ?? "—",
+          disciplina: e.subject?.name ?? "—",
+          data_aplicacao: e.application_info?.application ?? "—",
+          total_questions: e.total_questions ?? 0,
+          nota: Number(e.student_results?.grade) ?? 0,
+          acertos: Number(e.student_results?.correct_answers) ?? 0,
+          total_questions_result: Number(e.student_results?.total_questions) ?? e.total_questions ?? 0,
+          classificacao: e.student_results?.classification ?? "—",
+        }))
+      setItems(mapped)
+    } catch (err) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar seus resultados.",
+        variant: "destructive",
+      })
+      setItems([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [user?.id, toast])
+
+  useEffect(() => {
+    fetchCompleted()
+  }, [fetchCompleted])
+
+  const disciplines = useMemo(() => {
+    const set = new Set<string>()
+    items.forEach((i) => set.add(i.disciplina))
+    return Array.from(set).sort()
+  }, [items])
+
+  // Estatísticas gamificadas (derivadas dos resultados)
+  const stats = useMemo(() => {
+    if (items.length === 0) return null
+    const grades = items.map((i) => i.nota ?? 0).filter((g) => g > 0)
+    const sum = grades.reduce((a, b) => a + b, 0)
+    const media = grades.length > 0 ? sum / grades.length : 0
+    const melhorNota = grades.length > 0 ? Math.max(...grades) : 0
+    // "XP" simulado: 10 por avaliação + bônus por nota (ex: nota * 2 por prova)
+    const xpTotal = items.reduce((acc, i) => acc + 10 + (i.nota ?? 0) * 2, 0)
+    const xpProximoNivel = 100
+    const nivel = Math.floor(xpTotal / xpProximoNivel) + 1
+    const xpNoNivel = xpTotal % xpProximoNivel
+    const progressoNivel = (xpNoNivel / xpProximoNivel) * 100
+    return { total: items.length, media, melhorNota, xpTotal, nivel, progressoNivel }
+  }, [items])
+
+  // Conquistas derivadas dos dados reais
+  const conquistas = useMemo(() => {
+    const list: { id: string; label: string; icon: "trophy" | "star" | "target" | "medal" | "zap" | "flame"; unlocked: boolean }[] = []
+    const total = items.length
+    const grades = items.map((i) => i.nota ?? 0)
+    const media = grades.length ? grades.reduce((a, b) => a + b, 0) / grades.length : 0
+    const temNota10 = items.some((i) => (i.nota ?? 0) >= 9.9)
+    list.push({ id: "first", label: "Primeira avaliação", icon: "medal", unlocked: total >= 1 })
+    list.push({ id: "five", label: "5 avaliações concluídas", icon: "trophy", unlocked: total >= 5 })
+    list.push({ id: "ten", label: "10 avaliações concluídas", icon: "star", unlocked: total >= 10 })
+    list.push({ id: "nota10", label: "Nota 10 conquistada", icon: "star", unlocked: temNota10 })
+    list.push({ id: "media7", label: "Média acima de 7", icon: "target", unlocked: media >= 7 && total > 0 })
+    list.push({ id: "media8", label: "Média acima de 8", icon: "zap", unlocked: media >= 8 && total > 0 })
+    return list
+  }, [items])
+
+  const filteredAndSorted = useMemo(() => {
+    let list = filterDiscipline === "todas" ? items : items.filter((i) => i.disciplina === filterDiscipline)
+    const sorted = [...list].sort((a, b) => {
+      switch (sortBy) {
+        case "questions_desc":
+          return b.total_questions - a.total_questions
+        case "questions_asc":
+          return a.total_questions - b.total_questions
+        case "grade_desc":
+          return b.nota - a.nota
+        case "grade_asc":
+          return a.nota - b.nota
+        case "recent":
+          return new Date(b.data_aplicacao).getTime() - new Date(a.data_aplicacao).getTime()
+        case "oldest":
+          return new Date(a.data_aplicacao).getTime() - new Date(b.data_aplicacao).getTime()
+        default:
+          return 0
+      }
+    })
+    return sorted
+  }, [items, filterDiscipline, sortBy])
+
+  const handleVerResultadoCompleto = (id: string) => {
+    navigate(`/aluno/avaliacao/${id}/resultado`)
+  }
+
+  const handleVerResumo = (id: string) => {
+    setExpandedResultId(id)
+  }
+
+  const expandedItem = expandedResultId ? filteredAndSorted.find((i) => i.id === expandedResultId) : null
+
+  if (user?.role !== "aluno") {
+    navigate("/aluno")
+    return null
+  }
+
+  const ConquistaIcon = ({ name }: { name: "trophy" | "star" | "target" | "medal" | "zap" | "flame" }) => {
+    const C = { trophy: Trophy, star: Star, target: Target, medal: Medal, zap: Zap, flame: Flame }[name]
+    return <C className="h-4 w-4" />
+  }
+
+  return (
+    <div className="container mx-auto px-4 py-6 space-y-6 min-h-screen">
+      {/* Header — colorido e animado (gamificado) */}
+      <div className="space-y-2 animate-fade-in-up">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3" id="results-page-title">
+              <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110">
+                <Trophy className="w-5 h-5 text-white drop-shadow" />
+              </span>
+              <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">
+                Meus Resultados
+              </span>
+            </h1>
+            <p className="text-muted-foreground font-medium mt-1">
+              Acompanhe suas notas e desempenho
+            </p>
+            <Link
+              to="/aluno/avaliacoes"
+              className="text-sm text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 hover:underline inline-flex items-center gap-1 mt-2 font-medium transition-colors"
+              aria-label="Ver minhas avaliações"
+            >
+              <BookOpen className="h-4 w-4" />
+              Ver minhas avaliações
+            </Link>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchCompleted()}
+            disabled={isLoading}
+            className="rounded-full border-violet-300 dark:border-violet-500/50 hover:bg-violet-500/15 hover:border-violet-400 transition-all"
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            Atualizar
+          </Button>
+        </div>
+      </div>
+
+      {/* Estatísticas — cards coloridos, animados e gamificados */}
+      {stats && items.length > 0 && (
+        <>
+          <div className="grid gap-4 md:grid-cols-5">
+            <Card className="rounded-2xl border-2 border-violet-200/60 dark:border-violet-500/30 bg-gradient-to-br from-violet-500/10 to-transparent transition-all duration-300 hover:scale-[1.03] hover:-translate-y-1 hover:shadow-xl hover:shadow-violet-500/20 overflow-hidden animate-fade-in-up">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground font-medium">Nível</p>
+                    <p className="text-2xl font-bold text-violet-600 dark:text-violet-400">{stats.nivel}</p>
+                  </div>
+                  <Target className="h-8 w-8 text-violet-500 dark:text-violet-400 flex-shrink-0" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border-2 border-blue-200/60 dark:border-blue-500/30 bg-gradient-to-br from-blue-500/10 to-transparent transition-all duration-300 hover:scale-[1.03] hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-500/20 overflow-hidden animate-fade-in-up" style={{ animationDelay: "0.05s" }}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground font-medium">Avaliações</p>
+                    <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.total}</p>
+                  </div>
+                  <FileText className="h-8 w-8 text-blue-500 dark:text-blue-400 flex-shrink-0" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border-2 border-fuchsia-200/60 dark:border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 to-transparent transition-all duration-300 hover:scale-[1.03] hover:-translate-y-1 hover:shadow-xl hover:shadow-fuchsia-500/20 overflow-hidden animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground font-medium">Média</p>
+                    <p className="text-2xl font-bold text-fuchsia-600 dark:text-fuchsia-400">{stats.media.toFixed(1).replace(".", ",")}</p>
+                  </div>
+                  <BarChart2 className="h-8 w-8 text-fuchsia-500 dark:text-fuchsia-400 flex-shrink-0" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border-2 border-amber-200/60 dark:border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-transparent transition-all duration-300 hover:scale-[1.03] hover:-translate-y-1 hover:shadow-xl hover:shadow-amber-500/20 overflow-hidden animate-fade-in-up" style={{ animationDelay: "0.15s" }}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground font-medium">Melhor nota</p>
+                    <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{stats.melhorNota.toFixed(1).replace(".", ",")}</p>
+                  </div>
+                  <Trophy className="h-8 w-8 text-amber-500 dark:text-amber-400 flex-shrink-0" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border-2 border-purple-200/60 dark:border-purple-500/30 bg-gradient-to-br from-purple-500/10 to-transparent transition-all duration-300 hover:scale-[1.03] hover:-translate-y-1 hover:shadow-xl hover:shadow-purple-500/20 overflow-hidden animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground font-medium">Conquistas</p>
+                    <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                      {conquistas.filter((c) => c.unlocked).length}/{conquistas.length}
+                    </p>
+                  </div>
+                  <Medal className="h-8 w-8 text-purple-500 dark:text-purple-400 flex-shrink-0" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+          <Card className="border-2 border-dashed border-amber-300/60 dark:border-amber-500/40 rounded-2xl overflow-hidden bg-gradient-to-r from-amber-500/5 via-yellow-500/5 to-orange-500/5 dark:from-amber-500/10 dark:via-yellow-500/10 dark:to-orange-500/10 animate-fade-in-up">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2 font-bold">
+                <span className="p-1.5 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500">
+                  <Medal className="h-4 w-4 text-white" />
+                </span>
+                Conquistas
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="flex flex-wrap gap-2">
+                {conquistas.map((c) => (
+                  <Badge
+                    key={c.id}
+                    variant={c.unlocked ? "default" : "outline"}
+                    className={c.unlocked ? "bg-gradient-to-r from-amber-500 to-yellow-500 text-white border-0 gap-1 shadow-sm hover:scale-105 transition-transform" : "opacity-60 gap-1"}
+                  >
+                    <ConquistaIcon name={c.icon} />
+                    {c.label}
+                  </Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {/* Lista de resultados (estilo Avaliações) */}
+      <div className="flex flex-wrap gap-3 items-center mb-4">
+        <Select value={filterDiscipline} onValueChange={setFilterDiscipline} aria-label="Filtrar por disciplina">
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Disciplina" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todas">Todas as disciplinas</SelectItem>
+            {disciplines.map((d) => (
+              <SelectItem key={d} value={d}>
+                {d}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)} aria-label="Ordenar por">
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Ordenar" />
+          </SelectTrigger>
+          <SelectContent>
+            {SORT_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-40 rounded-lg" />
+          ))}
+        </div>
+      ) : filteredAndSorted.length === 0 ? (
+        <Card className="border-dashed overflow-hidden">
+          <CardContent className="py-10 sm:py-12 text-center">
+            <div className="w-14 h-14 rounded-full bg-[#7B3FE4]/10 dark:bg-[#7B3FE4]/20 flex items-center justify-center mx-auto mb-4">
+              <FileText className="h-7 w-7 text-[#7B3FE4]" aria-hidden />
+            </div>
+            <p className="font-medium text-foreground">Nenhuma avaliação com resultado</p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
+              Quando você concluir avaliações e tiver resultado, elas aparecerão aqui.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {filteredAndSorted.map((item) => {
+            const nota = item.nota ?? 0
+            const pctNota = Math.min(100, (nota / 10) * 100)
+            const isTop = nota >= 9
+            const isGood = nota >= 7 && nota < 9
+            const barColor = isTop ? "bg-emerald-500" : isGood ? "bg-amber-500" : "bg-rose-500"
+            return (
+              <Card key={item.id} className="hover:shadow-md transition-shadow">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1 flex-1">
+                      <CardTitle className="text-base line-clamp-2">{item.titulo}</CardTitle>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="secondary" className="text-xs">
+                          {item.classificacao}
+                        </Badge>
+                        {isTop && (
+                          <Trophy className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" title="Nota destaque" />
+                        )}
+                        {isGood && !isTop && (
+                          <Star className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" title="Bom desempenho" />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <BookOpen className="h-4 w-4 text-muted-foreground" />
+                      <span className="line-clamp-1">{item.disciplina}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <span>{formatDataDisplay(item.data_aplicacao)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <span>{item.total_questions} {item.total_questions === 1 ? "questão" : "questões"}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-lg font-bold">{nota.toFixed(1).replace(".", ",")}</span>
+                    <span className="text-xs text-muted-foreground">/ 10</span>
+                    <span className="text-xs text-muted-foreground ml-1">
+                      {item.acertos}/{item.total_questions_result} acertos
+                    </span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden" role="progressbar" aria-valuenow={pctNota} aria-valuemin={0} aria-valuemax={100}>
+                    <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${pctNota}%` }} />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleVerResultadoCompleto(item.id)}
+                      aria-label={`Ver resultado completo de ${item.titulo}`}
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Ver resultado
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => handleVerResumo(item.id)}
+                      aria-label={`Ver resumo de ${item.titulo}`}
+                    >
+                      <BarChart2 className="h-4 w-4 mr-2" />
+                      Ver resumo
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
+
+      <Sheet open={!!expandedResultId} onOpenChange={(open) => !open && setExpandedResultId(null)}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto" aria-describedby="resumo-charts-desc">
+          <SheetHeader>
+            <SheetTitle>{expandedItem?.titulo ?? "Resumo"}</SheetTitle>
+          </SheetHeader>
+          <p id="resumo-charts-desc" className="sr-only">
+            Resumo com gráficos da avaliação selecionada.
+          </p>
+          {expandedItem && (
+            <div className="mt-6">
+              <StudentResultSummaryCharts item={expandedItem} />
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+    </div>
+  )
+}

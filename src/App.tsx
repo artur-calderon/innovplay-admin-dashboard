@@ -84,6 +84,8 @@ const TorneioExecucao = React.lazy(() => import("./pages/TorneioExecucao"));
 // Lazy loading para dashboards específicos
 const StudentDashboard = React.lazy(() => import("./pages/StudentDashboard"));
 const StudentResult = React.lazy(() => import("./pages/StudentResult"));
+const StudentResultsPage = React.lazy(() => import("./pages/StudentResultsPage"));
+const ConquistasPage = React.lazy(() => import("./pages/ConquistasPage"));
 const ProfessorDashboard = React.lazy(() => import("./pages/ProfessorDashboard"));
 
 // Lazy loading para Play TV
@@ -176,7 +178,7 @@ const App = () => {
             <Route path="/aluno" element={<Layout />}>
               <Route index element={<PrivateRoute><StudentDashboard /></PrivateRoute>} />
               <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
-              {/** Rota removida: página de resultados do aluno foi descontinuada */}
+              <Route path="/aluno/resultados" element={<PrivateRoute><StudentResultsPage /></PrivateRoute>} />
               <Route path="/aluno/avaliacao/:id/resultado" element={<PrivateRoute><StudentResult /></PrivateRoute>} />
               <Route path="/aluno/agenda" element={<PrivateRoute><StudentAgenda /></PrivateRoute>} />
               <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
@@ -199,6 +201,7 @@ const App = () => {
               <Route path="/aluno/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
               <Route path="/aluno/configuracoes" element={<PrivateRoute><Settings /></PrivateRoute>} />
               <Route path="/aluno/moedas/historico" element={<PrivateRoute><CoinHistory /></PrivateRoute>} />
+              <Route path="/aluno/conquistas" element={<PrivateRoute><ConquistasPage /></PrivateRoute>} />
               <Route path="/aluno/competitions" element={<PrivateRoute><CompetitionsStudent /></PrivateRoute>} />
               <Route path="/aluno/competitions/:id" element={<PrivateRoute><CompetitionStudentDetail /></PrivateRoute>} />
               <Route path="/aluno/competitions/:id/fazer" element={<PrivateRoute><CompetitionTest /></PrivateRoute>} />

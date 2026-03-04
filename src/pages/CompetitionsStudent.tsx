@@ -737,17 +737,17 @@ export default function CompetitionsStudent() {
   );
 
   return (
-    <div className="container mx-auto space-y-8 py-6 px-4">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="container mx-auto space-y-8 py-6 px-4 min-h-screen">
+      {/* Header — gamificado (padrão Resultados) */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between animate-fade-in-up">
         <div>
-          <h1 className="flex items-center gap-3 text-3xl font-bold tracking-tight">
-            <span className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 p-2 text-white">
-              <Trophy className="h-8 w-8" />
+          <h1 className="flex items-center gap-3 text-3xl font-bold tracking-tight" id="competitions-page-title">
+            <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110">
+              <Trophy className="h-5 w-5 text-white drop-shadow" />
             </span>
-            Competições
+            <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">Competições</span>
           </h1>
-          <p className="mt-1 text-muted-foreground">
+          <p className="mt-1 text-muted-foreground font-medium">
             Participe, inscreva-se e dispute o ranking por disciplina.
           </p>
         </div>
