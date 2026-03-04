@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Users, User, Eye, Pencil, Building, MapPin, School } from "lucide-react";
+import { Loader2, Users, User, Eye, Pencil, Building, MapPin, School, UserPlus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -22,6 +32,8 @@ import {
 } from "@/components/ui/select";
 import { getRoleDisplayName } from "@/lib/constants";
 import UserForm from "@/components/users/UserForm";
+import { Label } from "@/components/ui/label";
+import { useEmailCheck, generatePasswordFromName } from "@/hooks/useEmailCheck";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/authContext";
 import type { AvatarConfig } from "@/context/authContext";
@@ -145,9 +157,67 @@ export function InstituicaoUsersTab({
   const [loadingViewDetails, setLoadingViewDetails] = useState(false);
   const [editingUser, setEditingUser] = useState<MunicipioUser | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [addTecAdminOpen, setAddTecAdminOpen] = useState(false);
+  const [addTecAdminForm, setAddTecAdminForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    registration: "",
+  });
+  const [isSubmittingAddTecAdmin, setIsSubmittingAddTecAdmin] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<MunicipioUser | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
   const { toast } = useToast();
   const { user: authUser } = useAuth();
   const canFetchSchoolEnrichment = authUser?.role === "admin" || authUser?.role === "tecadm";
+
+  const { checkedEmail } = useEmailCheck(addTecAdminForm.name, addTecAdminOpen);
+  useEffect(() => {
+    if (!addTecAdminOpen || !checkedEmail) return;
+    setAddTecAdminForm((prev) => ({ ...prev, email: checkedEmail }));
+  }, [checkedEmail, addTecAdminOpen]);
+
+  const handleAddTecAdminNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newName = e.target.value;
+    setAddTecAdminForm((prev) => ({
+      ...prev,
+      name: newName,
+      password: generatePasswordFromName(newName),
+    }));
+  };
+
+  const handleAddTecAdminSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const effectiveId = cityId || selectedCityId;
+    if (!effectiveId) return;
+    if (!addTecAdminForm.name.trim() || !addTecAdminForm.email.trim() || !addTecAdminForm.password.trim()) {
+      toast({ title: "Erro", description: "Preencha nome, e-mail e senha.", variant: "destructive" });
+      return;
+    }
+    setIsSubmittingAddTecAdmin(true);
+    try {
+      await api.post("/users", {
+        name: addTecAdminForm.name.trim(),
+        email: addTecAdminForm.email.trim(),
+        password: addTecAdminForm.password,
+        role: "tecadm",
+        city_id: effectiveId,
+        ...(addTecAdminForm.registration.trim() ? { registration: addTecAdminForm.registration.trim() } : {}),
+      });
+      toast({ title: "Sucesso", description: "Técnico administrativo criado com sucesso." });
+      setAddTecAdminOpen(false);
+      setAddTecAdminForm({ name: "", email: "", password: "", registration: "" });
+      fetchUsers();
+    } catch (err) {
+      console.error("Erro ao criar técnico administrativo:", err);
+      const msg = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.error
+        || (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.message
+        || "Erro ao criar usuário.";
+      toast({ title: "Erro", description: msg, variant: "destructive" });
+    } finally {
+      setIsSubmittingAddTecAdmin(false);
+    }
+  };
 
   // Ao abrir o modal "Ver", buscar detalhes do usuário (incl. escola) para diretor/coordenador/professor/aluno
   useEffect(() => {
@@ -367,6 +437,25 @@ export function InstituicaoUsersTab({
     }
   };
 
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+    setIsDeletingUser(true);
+    try {
+      await api.delete(`/users/${userToDelete.id}`);
+      toast({ title: "Sucesso", description: "Usuário excluído com sucesso." });
+      setUserToDelete(null);
+      fetchUsers();
+    } catch (err) {
+      console.error("Erro ao excluir usuário:", err);
+      const msg = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.error
+        || (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.message
+        || "Erro ao excluir usuário.";
+      toast({ title: "Erro", description: msg, variant: "destructive" });
+    } finally {
+      setIsDeletingUser(false);
+    }
+  };
+
   const rawUsers = data?.users ?? [];
   const users =
     authUser?.role === "professor"
@@ -405,24 +494,36 @@ export function InstituicaoUsersTab({
         <p className="text-muted-foreground text-sm">
           Usuários do município agrupados por perfil. Use Ver para consultar dados e Editar para alterar.
         </p>
-        {showCitySelector && (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground whitespace-nowrap">Município:</span>
-            <Select
-              value={selectedCityId || ""}
-              onValueChange={(v) => v && onCityChange?.(v)}
+        <div className="flex flex-wrap items-center gap-2">
+          {showCitySelector && (
+            <>
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Município:</span>
+              <Select
+                value={selectedCityId || ""}
+                onValueChange={(v) => v && onCityChange?.(v)}
+              >
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="Selecione um município" />
+                </SelectTrigger>
+                <SelectContent>
+                  {cities.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          )}
+          {authUser?.role === "admin" && effectiveCityId && (
+            <Button
+              type="button"
+              onClick={() => setAddTecAdminOpen(true)}
+              className="shrink-0"
             >
-              <SelectTrigger className="w-[220px]">
-                <SelectValue placeholder="Selecione um município" />
-              </SelectTrigger>
-              <SelectContent>
-                {cities.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+              <UserPlus className="h-4 w-4 mr-2" />
+              Adicionar Tec Admin
+            </Button>
+          )}
+        </div>
       </div>
 
       {!effectiveCityId && (
@@ -543,6 +644,17 @@ export function InstituicaoUsersTab({
                                       onClick={() => setEditingUser(u)}
                                     >
                                       <Pencil className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                  {authUser?.role === "admin" && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      onClick={() => setUserToDelete(u)}
+                                      title="Excluir usuário"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
                                     </Button>
                                   )}
                                 </div>
@@ -671,6 +783,119 @@ export function InstituicaoUsersTab({
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Modal Adicionar Tec Admin (somente admin) */}
+      <Dialog open={addTecAdminOpen} onOpenChange={setAddTecAdminOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#7B3FE4]/10">
+                <UserPlus className="h-4 w-4 text-[#7B3FE4]" />
+              </div>
+              Adicionar Técnico Administrador
+            </DialogTitle>
+            <DialogDescription>
+              Cria um usuário com perfil Técnico Administrador para o município selecionado. Nome, e-mail e senha são obrigatórios.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddTecAdminSubmit} className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="add-tecadmin-name">Nome completo *</Label>
+              <Input
+                id="add-tecadmin-name"
+                value={addTecAdminForm.name}
+                onChange={handleAddTecAdminNameChange}
+                placeholder="Nome do técnico"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-tecadmin-email">E-mail *</Label>
+              <Input
+                id="add-tecadmin-email"
+                type="email"
+                value={addTecAdminForm.email}
+                onChange={(e) => setAddTecAdminForm((prev) => ({ ...prev, email: e.target.value }))}
+                placeholder="email@exemplo.com"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-tecadmin-password">Senha *</Label>
+              <Input
+                id="add-tecadmin-password"
+                type="password"
+                value={addTecAdminForm.password}
+                onChange={(e) => setAddTecAdminForm((prev) => ({ ...prev, password: e.target.value }))}
+                placeholder="Mínimo 6 caracteres"
+                required
+                minLength={6}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-tecadmin-registration">Matrícula (opcional)</Label>
+              <Input
+                id="add-tecadmin-registration"
+                value={addTecAdminForm.registration}
+                onChange={(e) => setAddTecAdminForm((prev) => ({ ...prev, registration: e.target.value }))}
+                placeholder="Opcional"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAddTecAdminOpen(false)}
+                disabled={isSubmittingAddTecAdmin}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isSubmittingAddTecAdmin}>
+                {isSubmittingAddTecAdmin ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Criando...
+                  </>
+                ) : (
+                  "Criar Tec Admin"
+                )}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmação de exclusão de usuário (somente admin) */}
+      <AlertDialog open={!!userToDelete} onOpenChange={(open) => !open && !isDeletingUser && setUserToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir usuário?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. O usuário <strong>{userToDelete?.name}</strong> ({userToDelete?.email}) será excluído permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingUser}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteUser();
+              }}
+              disabled={isDeletingUser}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeletingUser ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                "Excluir"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
