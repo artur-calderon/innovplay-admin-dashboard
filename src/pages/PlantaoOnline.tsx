@@ -412,8 +412,8 @@ export default function PlantaoOnline() {
 
       {!canCreate && (
         <>
-          {/* Filtros */}
-          <Card>
+          {/* Filtros - overflow-visible para não cortar no mobile */}
+          <Card className="overflow-visible">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <School className="h-5 w-5" />
@@ -421,9 +421,9 @@ export default function PlantaoOnline() {
               </CardTitle>
               <CardDescription>Filtre os plantões por escola, série ou disciplina</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
+            <CardContent className="overflow-visible">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 w-full min-w-0">
+                <div className="space-y-2 min-w-0">
                   <label className="text-sm font-medium">Escola</label>
                   <Select
                     value={filters.school || 'all'}
@@ -434,7 +434,7 @@ export default function PlantaoOnline() {
                       });
                     }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full min-w-0">
                       <SelectValue placeholder="Todas as escolas" />
                     </SelectTrigger>
                     <SelectContent>
@@ -448,7 +448,7 @@ export default function PlantaoOnline() {
                   </Select>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 min-w-0">
                   <label className="text-sm font-medium">Série</label>
                   <Select
                     value={filters.grade || 'all'}
@@ -459,7 +459,7 @@ export default function PlantaoOnline() {
                       })
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full min-w-0">
                       <SelectValue placeholder="Todas as séries" />
                     </SelectTrigger>
                     <SelectContent>
@@ -473,7 +473,7 @@ export default function PlantaoOnline() {
                   </Select>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 min-w-0">
                   <label className="text-sm font-medium">Disciplina</label>
                   <Select
                     value={filters.subject || 'all'}
@@ -484,7 +484,7 @@ export default function PlantaoOnline() {
                       })
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full min-w-0">
                       <SelectValue placeholder="Todas as disciplinas" />
                     </SelectTrigger>
                     <SelectContent>

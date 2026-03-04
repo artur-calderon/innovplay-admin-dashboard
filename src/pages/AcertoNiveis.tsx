@@ -3237,7 +3237,7 @@ export default function AcertoNiveis() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
@@ -3261,13 +3261,13 @@ export default function AcertoNiveis() {
         </div>
       </div>
 
-      <Card>
+      <Card className="overflow-visible">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">Filtros de Seleção</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-visible">
           {/* Filtros Principais */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6 w-full min-w-0">
             <div>
               <div className="text-sm font-medium mb-2 flex items-center gap-2">
                 Estado
