@@ -949,20 +949,22 @@ const StudentDashboard = () => {
     }
   }, [selectedEvaluation, user?.id, evaluations.length, loadEvaluationData]);
 
-  // Carregar resultado da segunda avaliação (para resumo na seção unificada)
+  // Carregar resultados das avaliações selecionadas para comparação (2ª a 4ª, se ainda não carregados)
   useEffect(() => {
     if (evaluationIdsForComparison.length < 2 || !user?.id) return;
-    const secondId = evaluationIdsForComparison[1];
-    if (resultsByEvaluationId[secondId]) return;
-    const loadSecond = async () => {
-      try {
-        const data = await fetchEvaluationResults(secondId, user.id);
-        setResultsByEvaluationId((prev) => ({ ...prev, [secondId]: data }));
-      } catch {
-        // ignore; toast já pode ter sido mostrado
+    const idsToLoad = evaluationIdsForComparison.slice(1).filter((id) => !resultsByEvaluationId[id]);
+    if (idsToLoad.length === 0) return;
+    const loadMissing = async () => {
+      for (const evalId of idsToLoad) {
+        try {
+          const data = await fetchEvaluationResults(evalId, user!.id);
+          setResultsByEvaluationId((prev) => ({ ...prev, [evalId]: data }));
+        } catch {
+          // ignore
+        }
       }
     };
-    loadSecond();
+    loadMissing();
   }, [evaluationIdsForComparison, user?.id]);
 
   const loadComparisonData = useCallback(async (testIds: string[]) => {
@@ -993,7 +995,7 @@ const StudentDashboard = () => {
 
   const handleToggleEvaluation = useCallback((id: string) => {
     setEvaluationIdsForComparison((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : prev.length >= 2 ? [...prev.slice(1), id] : [...prev, id]
+      prev.includes(id) ? prev.filter((x) => x !== id) : prev.length >= 4 ? [...prev.slice(1), id] : [...prev, id]
     );
   }, []);
 
@@ -1176,7 +1178,7 @@ const StudentDashboard = () => {
         {evaluationIdsForComparison.length > 0 && (
           <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
             <span className="size-1.5 rounded-full bg-violet-500 animate-pulse" />
-            Selecione até 2 avaliações para ver resultado e comparar. Clique na avaliação ou no X para remover.
+            Selecione até 4 avaliações para ver resultado e comparar. Clique na avaliação ou no X para remover.
           </p>
         )}
       </section>
@@ -1220,7 +1222,7 @@ const StudentDashboard = () => {
           {evaluationIdsForComparison.length >= 2 && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {evaluationIdsForComparison.slice(0, 2).map((evalId) => {
+                {evaluationIdsForComparison.slice(0, 4).map((evalId) => {
                   const res = resultsByEvaluationId[evalId] ?? (evalId === selectedEvaluation ? evaluationResults : null);
                   const title = evaluations.find((e) => e.id === evalId)?.titulo;
                   if (!res) {

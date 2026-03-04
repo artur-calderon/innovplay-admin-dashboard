@@ -55,8 +55,8 @@ const StudentFriendlyResultCard: React.FC<StudentFriendlyResultCardProps> = ({
             <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0" aria-hidden />
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Acertos</p>
-              <p className="text-sm font-semibold truncate" aria-label={`${correct} de ${total} questões`}>
-                {correct} de {total} questões
+              <p className="text-sm font-semibold break-words" aria-label={`${correct} de ${total} questões`}>
+                <span className="tabular-nums">{correct}</span> de <span className="tabular-nums">{total}</span> questões
               </p>
             </div>
           </div>
