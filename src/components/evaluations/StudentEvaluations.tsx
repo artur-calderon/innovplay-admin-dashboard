@@ -379,15 +379,7 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
 
     } catch (error: unknown) {
       const apiError = error as { message?: string; response?: { data?: unknown; status?: number }; stack?: string };
-      
-      console.error("❌ Erro ao buscar avaliações do aluno após retries:", error);
-      console.error("Detalhes do erro:", {
-        message: apiError.message,
-        response: apiError.response?.data,
-        status: apiError.response?.status,
-        stack: apiError.stack
-      });
-      
+
       // Verificar se é erro de rede após todas as tentativas
       const isNetworkError = 
         !apiError.response || 
@@ -435,9 +427,8 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
       const active = sessions.filter((s: any) => s.status === 'em_andamento');
       
       setActiveSessions(active);
-    } catch (error) {
-      console.error('Erro ao carregar sessões ativas:', error);
-      // Não mostrar erro ao usuário, apenas logar
+    } catch {
+      // Silenciar erro ao carregar sessões
     } finally {
       setLoadingSessions(false);
     }
@@ -456,11 +447,11 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
       await loadActiveSessions();
       // Recarregar avaliações para atualizar status
       await fetchStudentEvaluations();
-    } catch (error: any) {
-      console.error('Erro ao encerrar sessão:', error);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
       toast({
         title: 'Erro',
-        description: error?.response?.data?.message || 'Erro ao encerrar sessão',
+        description: err?.response?.data?.message || 'Erro ao encerrar sessão',
         variant: 'destructive',
       });
     }
@@ -484,19 +475,17 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
         } else {
           localStorage.removeItem("evaluation_in_progress");
         }
-      } catch (error) {
-        console.error("Erro ao carregar avaliação em progresso:", error);
+      } catch {
         localStorage.removeItem("evaluation_in_progress");
       }
     } else if (inProgress && evaluations.length === 0) {
-      // Se não há avaliações ainda, apenas definir o currentTaking se houver dados no localStorage
       try {
         const data = JSON.parse(inProgress);
         if (data && data.evaluationId) {
           setCurrentTaking(data);
         }
-      } catch (error) {
-        console.error("Erro ao carregar avaliação em progresso:", error);
+      } catch {
+        // Ignorar parse inválido
       }
     }
   }, [evaluations]);
@@ -504,45 +493,16 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
   const handleStartEvaluation = async (evaluation: StudentEvaluation) => {
     setSelectedEvaluation(evaluation);
 
-    // ✅ DEBUG: Log dos dados da avaliação antes de verificar
-    console.log("🔍 Dados da avaliação para verificação:", {
-      id: evaluation.id,
-      title: evaluation.title,
-      availability: evaluation.availability,
-      student_status: evaluation.student_status,
-      startDateTime: evaluation.startDateTime,
-      endDateTime: evaluation.endDateTime,
-      currentTime: new Date().toISOString()
-    });
-
-    // ✅ DEBUG: Verificação de data para debug
-    if (evaluation.endDateTime) {
-      const endDate = new Date(evaluation.endDateTime);
-      const currentDate = new Date();
-      const isExpired = currentDate > endDate;
-
-      console.log("🔍 Verificação de data:", {
-        endDate: endDate.toISOString(),
-        currentDate: currentDate.toISOString(),
-        isExpired,
-        timeDifference: endDate.getTime() - currentDate.getTime()
-      });
-    }
-
-    // ✅ NOVO: Verificar se pode iniciar usando o endpoint can-start
+    // Verificar se pode iniciar usando o endpoint can-start
     try {
       // ✅ CORRIGIDO: Usar o endpoint correto para verificar se pode iniciar
       const response = await api.get(`/student-answers/student/${evaluation.id}/can-start`);
       const canStartData = response.data;
 
-      console.log("🔍 Resposta do can-start:", canStartData);
-
       if (canStartData.can_start) {
         setShowInstructions(true);
       } else {
-        // ✅ NOVO: Mostrar mensagem de erro usando o reason
         setCanStartReason(canStartData.reason || "Não foi possível iniciar a avaliação");
-        console.log("❌ Não pode iniciar:", canStartData.reason);
         toast({
           title: "Não é possível iniciar",
           description: canStartData.reason || "Não foi possível iniciar a avaliação",
@@ -551,14 +511,6 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
       }
     } catch (error: unknown) {
       const apiError = error as { message?: string; response?: { data?: { error?: string; message?: string }; status?: number }; config?: { url?: string } };
-      
-      console.error("Erro ao verificar se pode iniciar:", error);
-      console.error("Detalhes do erro:", {
-        message: apiError.message,
-        response: apiError.response?.data,
-        status: apiError.response?.status,
-        url: apiError.config?.url
-      });
 
       let errorMessage = "Erro ao verificar disponibilidade da avaliação";
 
@@ -579,48 +531,13 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
   const handleConfirmStart = async () => {
     if (!selectedEvaluation) return;
 
-    console.log("🚀 Iniciando avaliação:", {
-      evaluationId: selectedEvaluation.id,
-      title: selectedEvaluation.title,
-      availability: selectedEvaluation.availability,
-      student_status: selectedEvaluation.student_status,
-      startDateTime: selectedEvaluation.startDateTime,
-      endDateTime: selectedEvaluation.endDateTime
-    });
-
     try {
-      // Usar a API real para iniciar a sessão da avaliação
       const testId = selectedEvaluation.id;
-      console.log("📡 Fazendo POST para /test/${testId}/start-session");
-
-      // ✅ DEBUG: Log dos dados que serão enviados
-      console.log("📤 Dados para start-session:", {
-        testId,
-        evaluationData: {
-          availability: selectedEvaluation.availability,
-          student_status: selectedEvaluation.student_status,
-          startDateTime: selectedEvaluation.startDateTime,
-          endDateTime: selectedEvaluation.endDateTime
-        }
-      });
-
-      // ✅ CORRIGIDO: Usar o serviço EvaluationApiService para iniciar a sessão
-      console.log("📤 Iniciando sessão usando EvaluationApiService");
-
       const sessionData = await EvaluationApiService.startSession(testId, selectedEvaluation.duration);
-
-      console.log('✅ Resposta da API de iniciar sessão:', sessionData);
-
-      // Buscar os dados completos da avaliação usando o serviço
-      console.log("📤 Buscando dados da avaliação usando EvaluationApiService");
       const evaluationData = await EvaluationApiService.getTestData(testId);
 
-      // Salvar os dados completos da avaliação no sessionStorage
       sessionStorage.setItem("current_evaluation", JSON.stringify(evaluationData));
       sessionStorage.setItem("evaluation_session", JSON.stringify(sessionData));
-
-      console.log("📁 Dados da avaliação salvos:", evaluationData);
-      console.log("📁 Dados da sessão salvos:", sessionData);
 
       const takingData: EvaluationTaking = {
         evaluationId: testId,
@@ -647,16 +564,6 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
 
     } catch (error: unknown) {
       const apiError = error as { message?: string; response?: { data?: { error?: string; message?: string }; status?: number }; config?: { url?: string; method?: string }; stack?: string };
-      
-      console.error("❌ Erro ao iniciar avaliação:", error);
-      console.error("Detalhes completos do erro:", {
-        message: apiError.message,
-        response: apiError.response?.data,
-        status: apiError.response?.status,
-        url: apiError.config?.url,
-        method: apiError.config?.method,
-        stack: apiError.stack
-      });
 
       let errorMessage = "Não foi possível iniciar a avaliação";
 
@@ -677,8 +584,6 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
         errorMessage = apiError.message;
       }
 
-      console.log("🚨 Mensagem de erro final:", errorMessage);
-
       toast({
         title: "Erro",
         description: errorMessage,
@@ -688,25 +593,13 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
   };
 
   const handleContinueEvaluation = async (evaluation: StudentEvaluation) => {
-    console.log("🔄 Continuando avaliação:", evaluation.id);
-
     try {
-      // Buscar dados da avaliação usando o serviço
-      console.log("📤 Buscando dados da avaliação para continuar");
       const evaluationData = await EvaluationApiService.getTestData(evaluation.id);
-
-      // Salvar os dados da avaliação no sessionStorage
       sessionStorage.setItem("current_evaluation", JSON.stringify(evaluationData));
-
-      console.log("📁 Dados da avaliação carregados:", evaluationData);
-
-      // Redirecionar para tela de avaliação
       window.location.href = `/app/avaliacao/${evaluation.id}/fazer`;
 
     } catch (error: unknown) {
       const apiError = error as { response?: { data?: { error?: string }; status?: number } };
-      
-      console.error("❌ Erro ao continuar avaliação:", error);
 
       let errorMessage = "Não foi possível continuar a avaliação";
 

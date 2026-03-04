@@ -140,7 +140,6 @@ export function FilterComponentAnalise({
         uf: state.id
       })));
     } catch (error) {
-      console.error("Erro ao carregar filtros iniciais:", error);
       toast({
         title: "Erro ao carregar filtros",
         description: "Não foi possível carregar os filtros. Tente novamente.",
@@ -182,7 +181,7 @@ export function FilterComponentAnalise({
             onEvaluationChangeRef.current('all');
           }
         } catch (error) {
-          console.error("Erro ao carregar municípios:", error);
+          // Silenciar
         } finally {
           onLoadingChange(false);
         }
@@ -264,7 +263,6 @@ export function FilterComponentAnalise({
             // Se já está como 'all' ou a escola existe, não precisa chamar o callback novamente
           }
         } catch (error) {
-          console.error("Erro ao carregar escolas:", error);
           setSchools([]);
         } finally {
           onLoadingChange(false);
@@ -337,7 +335,6 @@ export function FilterComponentAnalise({
             // Se já está como 'all' ou a escola existe, não precisa chamar o callback novamente
           }
         } catch (error) {
-          console.error("Erro ao carregar escolas:", error);
           setSchools([]);
         } finally {
           onLoadingChange(false);
@@ -379,7 +376,6 @@ export function FilterComponentAnalise({
               onEvaluationChangeRef.current('all');
             }
           } catch (error) {
-            console.error("Erro ao carregar avaliações:", error);
             setEvaluationsByMunicipality([]);
           } finally {
             onLoadingChange(false);
@@ -416,7 +412,6 @@ export function FilterComponentAnalise({
             onEvaluationChangeRef.current('all');
           }
         } catch (error) {
-          console.error("Erro ao carregar avaliações:", error);
           setEvaluationsByMunicipality([]);
         } finally {
           onLoadingChange(false);

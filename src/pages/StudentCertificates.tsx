@@ -26,8 +26,7 @@ export default function StudentCertificates() {
       try {
         const data = await CertificatesApiService.getMyCertificates();
         setCertificates(data);
-      } catch (error) {
-        console.error('Erro ao carregar certificados:', error);
+      } catch {
         toast({
           title: 'Erro',
           description: 'Não foi possível carregar seus certificados.',

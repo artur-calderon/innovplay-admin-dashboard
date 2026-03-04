@@ -97,22 +97,8 @@ export function useCache<T>(
     }
 
     try {
-      // Log específico para rota de avaliações (lista de avaliações)
-      const isEvaluationsListRoute = url === '/test/' || url === '/test';
-      if (isEvaluationsListRoute) {
-        console.log("📡 [useCache] Fazendo requisição GET para:", url, "com params:", params);
-      }
-      
       const response = await api.get(url, params ? { params } : undefined);
       const newData = response.data;
-
-      // Log específico para rota de avaliações (lista de avaliações)
-      if (isEvaluationsListRoute) {
-        console.log("📋 [useCache] Resposta BRUTA COMPLETA da API para:", url);
-        console.log("📋 [useCache] Response completa:", response);
-        console.log("📋 [useCache] Response.data (JSON completo):", JSON.stringify(response.data, null, 2));
-        console.log("📋 [useCache] Response.data (objeto):", response.data);
-      }
 
       // Atualizar cache
       const ttl = getTTL(url);
@@ -266,69 +252,39 @@ export function useEvaluations(params: {
     if (prevParamsRef.current === '' || prevParamsRef.current !== paramsString) {
       prevParamsRef.current = paramsString;
       // Usar refetch com os parâmetros corretos
-      result.refetch(params as Record<string, unknown>).catch((error: unknown) => {
-        console.error('Erro ao buscar avaliações:', error);
-      });
+      result.refetch(params as Record<string, unknown>).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramsString]);
 
   // ✅ MELHORADO: Função para invalidar cache de avaliações de forma mais abrangente
   const invalidateEvaluationsCache = useCallback(() => {
-    console.log("🗑️ Invalidando cache de avaliações...");
-    
-    // Invalidar cache específico desta instância
     result.invalidateCache();
-    
-    // Invalidar todas as chaves de cache relacionadas a avaliações
     result.invalidateCacheByPattern('evaluations-');
-    
-    // ✅ NOVO: Invalidar também cache de estatísticas que podem ser afetadas
     result.invalidateCacheByPattern('evaluation-stats');
     result.invalidateCacheByPattern('/evaluations/stats');
-    
-    console.log("✅ Cache de avaliações invalidado com sucesso");
   }, [result]);
 
   // ✅ NOVO: Função para forçar refresh imediato
   const forceRefresh = useCallback(async () => {
-    console.log("🔄 Forçando refresh de avaliações...");
-    
     try {
-      // Invalidar cache primeiro
       invalidateEvaluationsCache();
-      
-      // Aguardar um pouco para garantir que o cache foi limpo
       await new Promise(resolve => setTimeout(resolve, 150));
-      
-      // Fazer refetch
       const newData = await result.refetch();
-      
-      console.log("✅ Refresh forçado concluído");
       return newData;
     } catch (error) {
-      console.error("❌ Erro no refresh forçado:", error);
       throw error;
     }
   }, [invalidateEvaluationsCache, result]);
 
   // ✅ NOVO: Função para invalidar cache após operações CRUD
   const invalidateAfterCRUD = useCallback(async () => {
-    console.log("🔄 Invalidando cache após operação CRUD...");
-    
     try {
-      // Invalidar cache de avaliações
       invalidateEvaluationsCache();
-      
-      // Aguardar um pouco para garantir que o cache foi limpo
       await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Fazer refetch para garantir dados atualizados
       await result.refetch();
-      
-      console.log("✅ Cache invalidado e dados atualizados após CRUD");
-    } catch (error) {
-      console.error("❌ Erro ao invalidar cache após CRUD:", error);
+    } catch {
+      // Silenciar erro ao invalidar cache
     }
   }, [invalidateEvaluationsCache, result]);
 
@@ -361,30 +317,21 @@ export function useEvaluationsManager() {
 
   // Função para forçar atualização de todas as instâncias de avaliações
   const forceUpdateAllEvaluations = useCallback(async () => {
-    console.log("🔄 Forçando atualização de todas as avaliações...");
-    
     setIsUpdating(true);
     try {
-      // Invalidar todas as chaves de cache relacionadas a avaliações
       for (const key of cache.keys()) {
         if (key.includes('evaluations-') || key.includes('/test/')) {
           cache.delete(key);
         }
       }
-      
-      // Invalidar cache de estatísticas
       for (const key of cache.keys()) {
         if (key.includes('evaluation-stats') || key.includes('/evaluations/stats')) {
           cache.delete(key);
         }
       }
-      
-      // Atualizar timestamp
       setLastUpdate(Date.now());
-      
-      console.log("✅ Cache de avaliações limpo com sucesso");
-    } catch (error) {
-      console.error("❌ Erro ao limpar cache de avaliações:", error);
+    } catch {
+      // Silenciar erro ao limpar cache
     } finally {
       setIsUpdating(false);
     }
@@ -392,18 +339,12 @@ export function useEvaluationsManager() {
 
   // Função para atualizar após operações CRUD
   const updateAfterCRUD = useCallback(async () => {
-    console.log("🔄 Atualizando após operação CRUD...");
-    
     setIsUpdating(true);
     try {
       await forceUpdateAllEvaluations();
-      
-      // Aguardar um pouco para garantir que o cache foi limpo
       await new Promise(resolve => setTimeout(resolve, 250));
-      
-      console.log("✅ Atualização após CRUD concluída");
-    } catch (error) {
-      console.error("❌ Erro na atualização após CRUD:", error);
+    } catch {
+      // Silenciar erro
     } finally {
       setIsUpdating(false);
     }
@@ -582,8 +523,7 @@ export function useBulkEvaluationStatusCheck() {
       const result = await EvaluationResultsApiService.verificarTodasAvaliacoes(filters);
       setLastCheck(new Date());
       return result;
-    } catch (error) {
-      console.error('Erro ao verificar todas as avaliações:', error);
+    } catch {
       return null;
     } finally {
       setIsChecking(false);
@@ -658,7 +598,6 @@ function useDashboardData<T>(
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       setError(error);
-      console.error(`Erro ao buscar ${cacheKey}:`, error);
     } finally {
       setIsLoading(false);
     }

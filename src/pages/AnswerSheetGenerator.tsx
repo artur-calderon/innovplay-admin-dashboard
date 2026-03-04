@@ -176,9 +176,7 @@ export default function AnswerSheetGenerator() {
   // Função para normalizar as opções recebidas do backend
   const normalizeOptions = (rawOptions: any): FilterOption[] => {
     if (!rawOptions) return [];
-    
-    console.log('Raw options received:', rawOptions);
-    
+
     // Se for array de objetos com id e nome/name
     if (Array.isArray(rawOptions) && rawOptions.length > 0 && typeof rawOptions[0] === 'object') {
       return rawOptions.map(item => ({
@@ -217,9 +215,7 @@ export default function AnswerSheetGenerator() {
         // Chamar GET /opcoes-filtros sem parâmetros para obter os Estados disponíveis
         const response = await api.get('/answer-sheets/opcoes-filtros');
         const data = response.data;
-        
-        console.log('Response from opcoes-filtros:', data);
-        
+
         // Resposta agora vem com: { estados, municipios, escolas, series, turmas }
         // Para o primeiro carregamento, mostrar apenas os estados
         const normalizedStates = normalizeOptions(data.estados);
@@ -227,7 +223,6 @@ export default function AnswerSheetGenerator() {
         setAvailableOptions(normalizedStates);
         setCurrentFilterLevel('state');
       } catch (error) {
-        console.error('Erro ao carregar estados:', error);
         toast({
           title: 'Erro',
           description: 'Não foi possível carregar os estados.',
@@ -371,7 +366,6 @@ export default function AnswerSheetGenerator() {
         setAvailableOptions(normalized);
       }
     } catch (error) {
-      console.error('Erro ao carregar opções de filtro:', error);
       toast({
         title: 'Erro',
         description: 'Não foi possível carregar as próximas opções.',
@@ -498,7 +492,6 @@ export default function AnswerSheetGenerator() {
       const response = await api.get('/subjects');
       setDisciplines(response.data || []);
     } catch (error) {
-      console.error('Erro ao carregar disciplinas:', error);
       toast({
         title: 'Erro',
         description: 'Não foi possível carregar as disciplinas.',
@@ -1030,7 +1023,6 @@ export default function AnswerSheetGenerator() {
       const response = await api.get('/answer-sheets/gabaritos');
       setGabaritos(response.data.gabaritos || []);
     } catch (error) {
-      console.error('Erro ao carregar gabaritos:', error);
       toast({
         title: 'Erro',
         description: 'Não foi possível carregar os cartões gerados.',
@@ -1092,7 +1084,6 @@ export default function AnswerSheetGenerator() {
         throw new Error('URL de download não fornecida');
       }
     } catch (error: any) {
-      console.error('Erro ao baixar gabarito:', error);
       
       let errorMessage = 'Não foi possível baixar o arquivo. Tente novamente.';
       const status = error.response?.status;
@@ -1154,7 +1145,6 @@ export default function AnswerSheetGenerator() {
       setShowDeleteDialog(false);
       setGabaritoToDelete(null);
     } catch (error) {
-      console.error('Erro ao deletar:', error);
       toast({
         title: 'Erro',
         description: 'Não foi possível deletar o(s) cartão(ões).',
@@ -1178,7 +1168,6 @@ export default function AnswerSheetGenerator() {
         const response = await api.get(`/answer-sheets/jobs/${jobIdParam}/status`);
         const data = response.data;
 
-        console.log("📊 Status do job:", data.status, "Response:", data);
 
         // Usar estrutura correta da resposta da API
         const totalTasks = data.progress?.total || 0;
@@ -1240,7 +1229,6 @@ export default function AnswerSheetGenerator() {
         }
 
       } catch (error: any) {
-        console.error("Erro ao verificar status do job:", error);
         
         if (pollingIntervalRef.current) {
           clearInterval(pollingIntervalRef.current);
@@ -1327,8 +1315,6 @@ export default function AnswerSheetGenerator() {
       if (selectedFilters.grade_ids?.length) payload.grade_ids = selectedFilters.grade_ids;
       if (selectedFilters.class_ids?.length) payload.class_ids = selectedFilters.class_ids;
 
-      console.log('Payload enviado para /answer-sheets/generate:', payload);
-
       // Chamar endpoint unificado
       const response = await api.post('/answer-sheets/generate', payload, {
         headers: {
@@ -1363,7 +1349,6 @@ export default function AnswerSheetGenerator() {
         // Iniciar polling
         startPollingJob(data.job_id);
       } else {
-        console.warn('⚠️ Resposta não é 202 Accepted:', response.status);
         setIsGenerating(false);
 
         toast({
@@ -1373,8 +1358,6 @@ export default function AnswerSheetGenerator() {
       }
 
     } catch (error: any) {
-      console.error('❌ Erro ao gerar cartões:', error);
-      
       setIsGenerating(false);
 
       let errorMessage = 'Não foi possível gerar os cartões resposta.';
@@ -1413,7 +1396,6 @@ export default function AnswerSheetGenerator() {
         description: "O arquivo ZIP está sendo baixado.",
       });
     } catch (error: any) {
-      console.error('Erro ao baixar ZIP:', error);
       
       toast({
         title: 'Erro',
@@ -1480,7 +1462,6 @@ export default function AnswerSheetGenerator() {
       setUploadedImage(null);
       setPreviewImage(null);
     } catch (error: any) {
-      console.error('Erro ao processar correção:', error);
       
       // O hook já exibe o toast, mas garantimos que o erro do backend seja exibido corretamente
       // Se o hook não exibiu (erro não HTTP), exibimos aqui
@@ -1556,7 +1537,6 @@ export default function AnswerSheetGenerator() {
       // O backend identifica o gabarito automaticamente pelo QR code nas imagens
       await startBatchCorrection(base64Images);
     } catch (error) {
-      console.error('Erro ao iniciar correção em lote:', error);
     }
   };
 

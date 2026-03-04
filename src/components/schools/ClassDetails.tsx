@@ -98,7 +98,6 @@ export default function ClassDetails() {
         });
         setGrades(gradesMap);
       } catch (error) {
-        console.error("Error fetching data:", error);
         toast({
           title: "Erro",
           description: "Erro ao carregar dados da turma",
@@ -122,7 +121,6 @@ export default function ClassDetails() {
         description: "Aluno removido da turma com sucesso",
       });
     } catch (error) {
-      console.error("Error removing student:", error);
       toast({
         title: "Erro",
         description: "Erro ao remover aluno da turma",
@@ -149,7 +147,6 @@ export default function ClassDetails() {
         description: "Aluno movido para nova turma com sucesso",
       });
     } catch (error) {
-      console.error("Error moving student:", error);
       toast({
         title: "Erro",
         description: "Erro ao mover aluno para nova turma",

@@ -36,10 +36,6 @@ export class FormFiltersApiService {
       const response = await api.get(url, requestConfig);
       return response.data || {};
     } catch (error) {
-      console.error('❌ Erro ao buscar opções de filtros de formulários:', error);
-      const axiosError = error as { response?: { status?: number; data?: unknown; config?: { url?: string } } };
-      console.error('Status:', axiosError.response?.status);
-      console.error('URL:', axiosError.response?.config?.url);
       return {};
     }
   }
@@ -55,7 +51,6 @@ export class FormFiltersApiService {
       const response = await this.getFormFilterOptions({});
       return response.estados || [];
     } catch (error) {
-      console.error('Erro ao buscar estados para filtros de formulários:', error);
       return [];
     }
   }
@@ -69,12 +64,8 @@ export class FormFiltersApiService {
   }>> {
     try {
       const response = await this.getFormFilterOptions({ estado: state });
-      console.log('Resposta completa da API para municípios:', response);
-      const municipios = response.municipios || [];
-      console.log('Municípios extraídos:', municipios);
-      return municipios;
+      return response.municipios || [];
     } catch (error) {
-      console.error('Erro ao buscar municípios para filtros de formulários:', error);
       return [];
     }
   }
@@ -102,7 +93,6 @@ export class FormFiltersApiService {
       }
 
       // Fallback: usar rota direta
-      console.log('Rota unificada não retornou escolas, tentando rota direta...');
       const directConfig = { meta: { cityId: params.municipio } };
       const directResponse = await api.get(`/forms/schools/city/${params.municipio}`, directConfig);
       const schools = directResponse.data || [];
@@ -111,7 +101,6 @@ export class FormFiltersApiService {
         nome: school.nome || school.name || ''
       }));
     } catch (error) {
-      console.error('Erro ao buscar escolas para filtros de formulários:', error);
       return [];
     }
   }
@@ -143,7 +132,6 @@ export class FormFiltersApiService {
       }
 
       // Fallback: usar rota direta
-      console.log('Rota unificada não retornou séries, tentando rota direta...');
       const gradeConfig = params.municipio ? { meta: { cityId: params.municipio } } : {};
       const directResponse = await api.get(`/forms/grades/school/${params.escola}`, gradeConfig);
       const grades = directResponse.data || [];
@@ -154,7 +142,6 @@ export class FormFiltersApiService {
         educationStageId: grade.education_stage_id || grade.educationStageId
       }));
     } catch (error) {
-      console.error('Erro ao buscar séries para filtros de formulários:', error);
       return [];
     }
   }
@@ -186,7 +173,6 @@ export class FormFiltersApiService {
       }
 
       // Fallback: usar rota direta com filtro de escola
-      console.log('Rota unificada não retornou turmas, tentando rota direta...');
       const classConfig = params.municipio ? { meta: { cityId: params.municipio } } : {};
       const directResponse = await api.get(`/forms/classes/grade/${params.serie}?escola=${params.escola}`, classConfig);
       const classes = directResponse.data || [];
@@ -195,7 +181,6 @@ export class FormFiltersApiService {
         nome: classItem.nome || classItem.name || ''
       }));
     } catch (error) {
-      console.error('Erro ao buscar turmas para filtros de formulários:', error);
       return [];
     }
   }
@@ -220,7 +205,6 @@ export class FormFiltersApiService {
       const response = await api.get(`/forms/grades/${gradeId}`);
       return response.data || null;
     } catch (error) {
-      console.error('Erro ao buscar detalhes da série:', error);
       return null;
     }
   }

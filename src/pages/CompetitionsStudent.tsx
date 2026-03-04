@@ -141,8 +141,7 @@ export default function CompetitionsStudent() {
     try {
       const list = await getAvailableCompetitions();
       setAvailableCompetitions(Array.isArray(list) ? list : []);
-    } catch (error) {
-      console.error('Erro ao carregar competições disponíveis:', error);
+    } catch {
       toast({
         title: 'Erro',
         description: 'Não foi possível carregar as competições disponíveis.',
@@ -156,8 +155,7 @@ export default function CompetitionsStudent() {
     try {
       const list = await getMyCompetitions({ status: 'all' });
       setMyCompetitions(Array.isArray(list) ? list : []);
-    } catch (error) {
-      console.error('Erro ao carregar suas competições:', error);
+    } catch {
       toast({
         title: 'Erro',
         description: 'Não foi possível carregar suas competições.',

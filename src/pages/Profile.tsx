@@ -162,11 +162,10 @@ const Profile = () => {
             const traits = detailedUser.traits || detailedUser.characteristics || [];
             setUserTraits(Array.isArray(traits) ? traits : []);
           }
-        } catch (error) {
-          console.error('Erro ao carregar características:', error);
+        } catch {
+          // Ignorar erro ao carregar características
         }
-      } catch (error) {
-        console.error('Erro ao buscar dados do perfil:', error);
+      } catch {
         toast.error('Erro ao carregar dados do perfil');
       } finally {
         setLoading(false);
@@ -548,8 +547,7 @@ const Profile = () => {
     try {
       await saveConfig();
       toast.success('Avatar personalizado salvo com sucesso!');
-    } catch (error) {
-      console.error('Erro ao salvar avatar:', error);
+    } catch {
       toast.error('Erro ao salvar configurações do avatar. Tente novamente.');
     }
   };

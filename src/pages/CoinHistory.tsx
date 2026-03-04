@@ -52,8 +52,8 @@ export const CoinHistory: React.FC = () => {
       try {
         const list = await getTransactions();
         setTransactions(list);
-      } catch (error) {
-        console.error('Erro ao buscar histórico:', error);
+      } catch {
+        // Silenciar erro ao buscar histórico
       } finally {
         setLoading(false);
       }

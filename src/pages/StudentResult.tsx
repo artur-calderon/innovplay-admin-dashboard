@@ -237,9 +237,7 @@ export default function StudentResult() {
 
   // Função para buscar dados da avaliação via nova API
   const fetchEvaluationGrades = async (userId: string, evaluationId: string): Promise<EvaluationGradesResponse> => {
-    console.log('🔍 Fazendo chamada para API de avaliação:', `/students/${userId}/grades/evaluation/${evaluationId}`);
     const response = await api.get(`/students/${userId}/grades/evaluation/${evaluationId}`);
-    console.log('📊 Resposta da API de avaliação:', response.data);
     return response.data;
   };
 
@@ -331,11 +329,9 @@ export default function StudentResult() {
       }
 
       try {
-        console.log('🔄 Tentando buscar dados via nova API...');
         const apiData = await fetchEvaluationGrades(String(user!.id), String(id));
-        
+
         if (apiData.success && apiData.data) {
-          console.log('✅ Dados obtidos via nova API:', apiData.data);
           setEvaluationData(apiData);
 
           const apiDisciplineStats = buildDisciplineStats(apiData.data);
@@ -363,15 +359,6 @@ export default function StudentResult() {
             ? apiData.data.total_questions
             : null;
           
-          console.log('📊 Valores validados da API:', {
-            grade: apiGrade,
-            scorePct: apiScorePct,
-            proficiency: apiProficiency,
-            correctAnswers: apiCorrectAnswers,
-            totalQuestions: apiTotalQuestions,
-            classification: apiData.data.classification
-          });
-          
           setGrade(apiGrade);
           setScorePct(apiScorePct);
           setProficiency(apiProficiency);
@@ -381,8 +368,7 @@ export default function StudentResult() {
           setRankings(apiData.data.rankings);
           return { found: true, hasResults: true }; // Resultados encontrados
         }
-      } catch (apiError) {
-        console.log('⚠️ Nova API falhou, usando fallback:', apiError);
+      } catch {
         const storedStats = loadBulletinStatsFromStorage<DisciplineStatsMap>(String(id), String(user.id));
         if (storedStats) {
           setDisciplineStats(storedStats);
@@ -394,7 +380,6 @@ export default function StudentResult() {
       const directScore = typeof found.student_status?.score === "number" ? found.student_status.score : null;
 
       if (directGrade != null || directScore != null) {
-        console.log('📊 Usando dados diretos da avaliação');
         setGrade(directGrade != null ? directGrade : Math.round(((directScore || 0) / 10) * 10) / 10);
         setScorePct(directScore != null ? directScore : Math.round(((directGrade || 0) * 10) * 10) / 10);
         if (!disciplineStats) {
@@ -408,7 +393,6 @@ export default function StudentResult() {
 
       // Fallback final: buscar resultado detalhado
       try {
-        console.log('🔄 Usando fallback final...');
         const detailed = await EvaluationResultsApiService.getStudentDetailedResults(String(id), String(user.id));
         if (detailed) {
           // ✅ CORRIGIDO: Usar dados do StudentDetailedResult corretamente
@@ -436,15 +420,6 @@ export default function StudentResult() {
             ? detailed.total_questions
             : null;
           
-          console.log('📊 Dados do StudentDetailedResult:', {
-            grade: detailedGrade,
-            scorePct: detailedScorePct,
-            proficiency: detailedProficiency,
-            correctAnswers: detailedCorrectAnswers,
-            totalQuestions: detailedTotalQuestions,
-            classificacao: detailed.classificacao
-          });
-          
           setGrade(detailedGrade);
           setScorePct(detailedScorePct);
           setProficiency(detailedProficiency);
@@ -460,13 +435,12 @@ export default function StudentResult() {
           
           return { found: true, hasResults: true }; // Resultados encontrados
         }
-      } catch (e) {
-        console.log('⚠️ Todos os métodos falharam, mantendo sem nota');
+      } catch {
+        // Manter sem nota
       }
 
-      return { found: true, hasResults: false }; // Avaliação encontrada mas resultados ainda não disponíveis
-    } catch (e) {
-      console.error('Erro ao buscar resultados:', e);
+      return { found: true, hasResults: false };
+    } catch {
       return { found: false, hasResults: false };
     }
   };
@@ -508,20 +482,14 @@ export default function StudentResult() {
     // Iniciar polling apenas se completou mas ainda não tem resultados
     if (!hasCompleted || hasResults) return;
 
-    console.log('🔄 Iniciando polling para verificar resultados...');
-    
     let attempts = 0;
-    const maxAttempts = 24; // 24 tentativas * 5 segundos = 2 minutos
-    const pollInterval = 5000; // 5 segundos
+    const maxAttempts = 24;
+    const pollInterval = 5000;
 
     const intervalId = setInterval(async () => {
       attempts++;
-      console.log(`🔄 Polling tentativa ${attempts}/${maxAttempts}...`);
-      
       const { found, hasResults: foundResults } = await fetchResults();
-      
       if (foundResults || attempts >= maxAttempts) {
-        console.log(foundResults ? '✅ Resultados encontrados via polling' : '⏱️ Polling encerrado após 2 minutos');
         clearInterval(intervalId);
       }
     }, pollInterval);

@@ -71,7 +71,6 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
                 setAllTeachers(teachers);
                 setFilteredTeachers(teachers);
             } catch (error) {
-                console.error("Error fetching teachers:", error);
                 toast({
                     title: "Erro",
                     description: "Erro ao carregar professores",
@@ -146,7 +145,6 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
             setIsOpen(false);
             onSuccess?.();
         } catch (error) {
-            console.error("Error creating teacher:", error);
             toast({
                 title: "Erro",
                 description: "Erro ao criar professor",
@@ -179,7 +177,6 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
             setIsOpen(false);
             onSuccess?.();
         } catch (error) {
-            console.error("Error linking teacher:", error);
             toast({
                 title: "Erro",
                 description: "Erro ao vincular professor",

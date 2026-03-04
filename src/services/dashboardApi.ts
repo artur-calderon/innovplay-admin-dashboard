@@ -108,8 +108,7 @@ export class DashboardApiService {
     try {
       const response = await api.get<AdminDashboard>("/dashboard/admin");
       return response.data;
-    } catch (error) {
-      console.error("❌ Erro ao buscar dashboard admin:", error);
+    } catch {
       return null;
     }
   }
@@ -122,8 +121,7 @@ export class DashboardApiService {
     try {
       const response = await api.get<AdminDashboard>("/dashboard/tecadm");
       return response.data;
-    } catch (error) {
-      console.error("❌ Erro ao buscar dashboard tecadm:", error);
+    } catch {
       return null;
     }
   }
@@ -136,8 +134,7 @@ export class DashboardApiService {
     try {
       const response = await api.get<DiretorDashboard>("/dashboard/diretor");
       return response.data;
-    } catch (error) {
-      console.error("❌ Erro ao buscar dashboard diretor:", error);
+    } catch {
       return null;
     }
   }
@@ -150,8 +147,7 @@ export class DashboardApiService {
     try {
       const response = await api.get<DiretorDashboard>("/dashboard/coordenador");
       return response.data;
-    } catch (error) {
-      console.error("❌ Erro ao buscar dashboard coordenador:", error);
+    } catch {
       return null;
     }
   }
@@ -164,8 +160,7 @@ export class DashboardApiService {
     try {
       const response = await api.get<ProfessorDashboard>("/dashboard/professor");
       return response.data;
-    } catch (error) {
-      console.error("❌ Erro ao buscar dashboard professor:", error);
+    } catch {
       return null;
     }
   }
@@ -201,8 +196,7 @@ export class DashboardApiService {
         params: { limit: safeLimit, offset: safeOffset },
       });
       return response.data ?? null;
-    } catch (error) {
-      console.error("Erro ao buscar ranking de escolas:", error);
+    } catch {
       return null;
     }
   }
@@ -238,8 +232,7 @@ export class DashboardApiService {
         params: { limit: safeLimit, offset: safeOffset },
       });
       return response.data ?? null;
-    } catch (error) {
-      console.error("Erro ao buscar ranking de turmas:", error);
+    } catch {
       return null;
     }
   }
@@ -295,8 +288,7 @@ export class DashboardApiService {
       if (options.meta?.cityId) config.meta = { cityId: options.meta.cityId };
       const response = await api.get("/dashboard/ranking-alunos", config);
       return response.data ?? null;
-    } catch (error) {
-      console.error("Erro ao buscar ranking de alunos:", error);
+    } catch {
       return null;
     }
   }
@@ -327,8 +319,7 @@ export class DashboardApiService {
         params: { limit: safeLimit },
       });
       return response.data ?? null;
-    } catch (error) {
-      console.error("Erro ao buscar avaliações recentes:", error);
+    } catch {
       return null;
     }
   }
@@ -369,8 +360,7 @@ export class DashboardApiService {
         params: { limit: safeLimit, offset: safeOffset },
       });
       return response.data ?? null;
-    } catch (error) {
-      console.error("Erro ao buscar questões do dashboard:", error);
+    } catch {
       return null;
     }
   }
@@ -383,8 +373,7 @@ export class DashboardApiService {
     try {
       const response = await api.get<AnaliseSistemaResponse>("/dashboard/analise-sistema");
       return response.data ?? null;
-    } catch (error) {
-      console.error("Erro ao buscar análise do sistema:", error);
+    } catch {
       return null;
     }
   }
@@ -397,8 +386,7 @@ export class DashboardApiService {
     try {
       const response = await api.get<{ quantidade: number }>("/dashboard/avisos/quantidade");
       return response.data?.quantidade ?? 0;
-    } catch (error) {
-      console.error("Erro ao buscar quantidade de avisos:", error);
+    } catch {
       return 0;
     }
   }
@@ -423,7 +411,6 @@ export class DashboardApiService {
       case "professor":
         return this.getProfessorDashboard();
       default:
-        console.warn(`Role não reconhecido: ${role}`);
         return null;
     }
   }

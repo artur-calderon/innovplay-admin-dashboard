@@ -66,7 +66,6 @@ export default function PlayTvStudent() {
         return;
       }
       
-      console.error('Erro ao carregar vídeos:', error);
       toast({
         title: 'Erro',
         description: error.response?.data?.message || error.message || 'Não foi possível carregar os vídeos.',
@@ -104,8 +103,8 @@ export default function PlayTvStudent() {
           if (classData.school_id) {
             setStudentSchool(classData.school_id);
           }
-        } catch (classError) {
-          console.error('Erro ao buscar dados da turma:', classError);
+        } catch {
+          // Ignorar erro ao buscar turma
         }
       } else if (!studentData.grade_id && studentData.grade?.id) {
         // Tentar usar o objeto grade se disponível
@@ -122,8 +121,7 @@ export default function PlayTvStudent() {
       }
     } catch (err) {
       const error = err as ApiError;
-      console.error('Erro ao carregar informações do aluno:', error);
-      
+
       // Se for erro 404, o aluno pode não ter registro completo
       if (error.response?.status === 404) {
         toast({
@@ -148,8 +146,8 @@ export default function PlayTvStudent() {
     try {
       const response = await api.get('/subjects');
       setSubjects(response.data || []);
-    } catch (error) {
-      console.error('Erro ao carregar disciplinas:', error);
+    } catch {
+      // Silenciar erro ao carregar disciplinas
     }
   }, []);
 

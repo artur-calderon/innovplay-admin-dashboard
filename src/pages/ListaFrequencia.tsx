@@ -124,7 +124,6 @@ export default function ListaFrequencia() {
           setEstados(list.map((e) => ({ id: e.id, name: e.nome })));
         }
       } catch (err) {
-        console.error(err);
         if (!cancelled) {
           toast({ title: 'Erro', description: 'Não foi possível carregar os estados.', variant: 'destructive' });
         }
@@ -166,8 +165,7 @@ export default function ListaFrequencia() {
           setSelectedTurma('all');
         }
       })
-      .catch((err) => {
-        console.error(err);
+      .catch(() => {
         if (!cancelled) setMunicipios([]);
       })
       .finally(() => {
@@ -205,8 +203,7 @@ export default function ListaFrequencia() {
           setSelectedTurma('all');
         }
       })
-      .catch((err) => {
-        console.error(err);
+      .catch(() => {
         if (!cancelled) setSchools([]);
       })
       .finally(() => {
@@ -241,8 +238,7 @@ export default function ListaFrequencia() {
           setSelectedTurma('all');
         }
       })
-      .catch((err) => {
-        console.error(err);
+      .catch(() => {
         if (!cancelled) setSeries([]);
       })
       .finally(() => {
@@ -275,8 +271,7 @@ export default function ListaFrequencia() {
           if (!stillExists) setSelectedTurma('all');
         }
       })
-      .catch((err) => {
-        console.error(err);
+      .catch(() => {
         if (!cancelled) setTurmas([]);
       })
       .finally(() => {
@@ -344,8 +339,7 @@ export default function ListaFrequencia() {
         const stillExists = selectedTurma === 'all' || list.some((t) => t.id === selectedTurma);
         if (!stillExists) setSelectedTurma('all');
       })
-      .catch((err) => {
-        console.error(err);
+      .catch(() => {
         if (!cancelled) setTurmasAvaliacao([]);
       })
       .finally(() => {
@@ -622,7 +616,6 @@ export default function ListaFrequencia() {
       doc.save(fileName);
       toast({ title: 'PDF gerado', description: `Arquivo ${fileName} salvo.` });
     } catch (err) {
-      console.error(err);
       toast({ title: 'Erro ao gerar PDF', description: 'Não foi possível gerar o arquivo.', variant: 'destructive' });
     } finally {
       setIsGeneratingPDF(false);

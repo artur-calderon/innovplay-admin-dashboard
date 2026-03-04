@@ -63,7 +63,6 @@ export default function TakeEvaluation() {
         // Buscar a questão embaralhada
         const shuffledQuestion = shuffledQuestions.find(q => q.id === questionId);
         if (!shuffledQuestion?.positionMapping) {
-            console.warn('⚠️ Questão não tem mapeamento de posições:', questionId);
             return textToMap; // Fallback para resposta direta
         }
         
@@ -86,37 +85,20 @@ export default function TakeEvaluation() {
         }
         
         if (!selectedOption) {
-            console.warn('⚠️ Opção selecionada não encontrada:', textToMap, {
-                availableOptions: shuffledQuestion.options?.map(opt => ({ id: opt.id, text: opt.text?.substring(0, 50) }))
-            });
             return textToMap; // Fallback para resposta direta
         }
         
         // Encontrar o índice embaralhado da opção selecionada
         const shuffledIndex = shuffledQuestion.options?.findIndex(opt => opt.id === selectedOption.id);
         if (shuffledIndex === -1 || shuffledIndex === undefined) {
-            console.warn('⚠️ Índice embaralhado não encontrado para opção:', selectedOption.id);
             return textToMap; // Fallback para resposta direta
         }
         
         // Buscar o mapeamento para essa posição
         const mapping = shuffledQuestion.positionMapping[shuffledIndex];
         if (!mapping) {
-            console.warn('⚠️ Mapeamento não encontrado para índice:', shuffledIndex);
             return textToMap; // Fallback para resposta direta
         }
-        
-        console.log('✅ Mapeamento de resposta para letra original:', {
-            questionId,
-            selectedText: textToMap,
-            selectedOptionId: selectedOption.id,
-            shuffledIndex,
-            originalIndex: mapping.originalIndex,
-            shuffledLetter: mapping.shuffledLetter, // A, B, C, D... (posição no frontend)
-            originalLetter: mapping.originalLetter, // A, B, C, D... (posição original)
-            originalText: mapping.originalText,
-            shuffledText: mapping.shuffledText
-        });
         
         // Retornar a letra da posição original (A, B, C, D...)
         return mapping.originalLetter;
@@ -145,18 +127,8 @@ export default function TakeEvaluation() {
     // ✅ Verificar se avaliação já foi enviada antes de iniciar
     useEffect(() => {
         if (evaluationState === 'completed' && !results) {
-            console.log('⚠️ Avaliação já foi enviada anteriormente - bloqueando acesso');
-            console.log('🔍 Debug do estado:', {
-                evaluationState,
-                hasResults: !!results,
-                testData: !!testData,
-                session: !!session
-            });
-            
-            // ✅ NOVO: Verificação adicional para evitar falsos positivos
-            // Se não há dados da avaliação ou sessão, pode ser um erro de carregamento
+            // Verificação adicional: se não há dados da avaliação ou sessão, pode ser erro de carregamento
             if (!testData || !session) {
-                console.log('⚠️ Dados incompletos - pode ser erro de carregamento, não bloqueando acesso');
                 return;
             }
             
@@ -176,7 +148,6 @@ export default function TakeEvaluation() {
     // ✅ Auto-iniciar avaliação automaticamente
     useEffect(() => {
         if (evaluationState === 'instructions' && testData && !session) {
-            console.log('🚀 Auto-iniciando avaliação...');
             startTestSession();
         }
     }, [evaluationState, testData, session, startTestSession]);
@@ -242,19 +213,6 @@ export default function TakeEvaluation() {
     // ✅ REMOVIDO: useEffect que fechava automaticamente o fullscreen ao navegar
     // Agora o modo tela cheia persiste durante a navegação entre questões
 
-    // Log para debug da questão atual (apenas quando muda)
-    useEffect(() => {
-        if (currentQuestionIndex >= 0 && shuffledQuestions?.[currentQuestionIndex]) {
-            const currentQuestion = shuffledQuestions[currentQuestionIndex];
-            console.log('🔍 Questão atual:', {
-                index: currentQuestionIndex,
-                questionId: currentQuestion?.id,
-                currentAnswer: answers[currentQuestion?.id]?.answer,
-                questionType: currentQuestion?.type
-            });
-        }
-    }, [currentQuestionIndex, shuffledQuestions, answers]);
-
     // ✅ NOVO: Scroll automático para o topo da questão quando mudar
     useEffect(() => {
         if (currentQuestionIndex >= 0) {
@@ -293,10 +251,6 @@ export default function TakeEvaluation() {
     // ✅ Organizar questões por disciplina e embaralhar alternativas
     useEffect(() => {
         if (testData?.questions?.length && shuffledQuestions.length === 0) {
-            console.log('🔄 Organizando questões por disciplina...', testData.questions.length);
-            
-
-            
             // Agrupar questões por disciplina
             const questionsBySubject = testData.questions.reduce((acc, question) => {
                 const subjectName = question.subject?.name || 'Sem disciplina';
@@ -307,17 +261,11 @@ export default function TakeEvaluation() {
                 return acc;
             }, {} as Record<string, Question[]>);
 
-            console.log('📚 Questões agrupadas por disciplina:', Object.keys(questionsBySubject));
-
             // Processar questões de cada disciplina
             const processedQuestions: Question[] = [];
             
             Object.entries(questionsBySubject).forEach(([subject, questions]) => {
-                console.log(`📖 Processando disciplina: ${subject} (${questions.length} questões)`);
-                
                 const processedSubjectQuestions = questions.map((q, questionIndex) => {
-                    console.log(`Questão ${questionIndex + 1} de ${subject}:`, q.type, q.options?.length);
-                    
                     if (
                         ["multiple_choice", "multipleChoice", "multiple_choice"].includes(q.type) &&
                         (q.options || q.alternatives) &&
@@ -340,13 +288,6 @@ export default function TakeEvaluation() {
                     shuffledText: shuffledOpt.text
                 };
             });
-            
-            console.log(`✅ Questão ${questionIndex + 1} de ${subject} embaralhada:`, {
-                original: optionsToShuffle.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
-                shuffled: shuffledOptions.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
-                positionMapping: positionMapping.map(m => `${m.shuffledLetter}→${m.originalLetter}`),
-                totalOptions: shuffledOptions.length
-            });
 
             return {
                 ...q,
@@ -362,7 +303,6 @@ export default function TakeEvaluation() {
                 processedQuestions.push(...processedSubjectQuestions);
             });
 
-            console.log('🎯 Questões organizadas por disciplina definidas:', processedQuestions.length);
             setShuffledQuestions(processedQuestions);
         }
     }, [testData, shuffledQuestions.length]);
@@ -418,7 +358,6 @@ export default function TakeEvaluation() {
             });
             
             if (allAnswered) {
-                console.log('🎉 Todas as questões foram respondidas!');
                 setShowCompletionDialog(true);
                 setHasSeenCompletionDialog(true);
             }
@@ -438,20 +377,7 @@ export default function TakeEvaluation() {
 
     // ✅ Redirecionamento automático quando avaliação é concluída (exceto competição)
     useEffect(() => {
-        console.log('🔍 Verificando redirecionamento:', {
-            evaluationState,
-            hasResults: !!results,
-            fromCompetition: competitionState?.fromCompetition,
-            shouldRedirect: evaluationState === 'completed' && !competitionState?.fromCompetition
-        });
-        
         if (evaluationState === 'completed' && !competitionState?.fromCompetition) {
-            console.log('📊 Avaliação enviada com sucesso, redirecionando...', {
-                evaluationState,
-                hasResults: !!results,
-                resultsData: results
-            });
-            
             setShowFullscreenQuestion(false);
             setShowCompletionDialog(false);
             setShowSubmitDialog(false);
@@ -463,24 +389,12 @@ export default function TakeEvaluation() {
             });
             
             const timer = setTimeout(() => {
-                console.log('🔄 Executando redirecionamento para /aluno/avaliacoes');
                 navigate("/aluno/avaliacoes");
             }, 1500);
             
             return () => clearTimeout(timer);
         }
     }, [evaluationState, results, navigate, toast, competitionState?.fromCompetition]);
-
-    // ✅ NOVO: Log para debug do estado da avaliação
-    useEffect(() => {
-        console.log('🔍 Estado da avaliação mudou:', {
-            evaluationState,
-            hasResults: !!results,
-            showCompletionDialog,
-            showSubmitDialog,
-            showFullscreenQuestion
-        });
-    }, [evaluationState, results, showCompletionDialog, showSubmitDialog, showFullscreenQuestion]);
 
     // ✅ REMOVIDO: useEffect duplicado que estava causando conflitos
 
@@ -683,7 +597,6 @@ export default function TakeEvaluation() {
     if (evaluationState === 'active' && testData && session) {
         // ✅ Verificação adicional para garantir que os dados estão carregados
         if (!shuffledQuestions || shuffledQuestions.length === 0) {
-            console.log('⚠️ shuffledQuestions vazio, usando testData.questions como fallback');
             if (testData?.questions?.length) {
                 setShuffledQuestions(testData.questions);
                 return null; // Aguardar re-render
@@ -1125,26 +1038,8 @@ export default function TakeEvaluation() {
                                                 answer={answers[currentQuestion?.id]?.answer}
                                                 onAnswerChange={(newAnswer) => {
                                                     if (currentQuestion?.id) {
-                                                        console.log('💾 Salvando resposta:', {
-                                                            questionId: currentQuestion.id,
-                                                            interfaceAnswer: newAnswer,
-                                                            questionType: currentQuestion.type,
-                                                            currentAnswers: Object.keys(answers)
-                                                        });
-                                                        
-                                                        // ✅ NOVO: Mapear resposta para letra original antes de salvar
                                                         const displayAnswer = Array.isArray(newAnswer) ? newAnswer[0] : newAnswer;
                                                         const originalLetter = mapAnswerToOriginalLetter(currentQuestion.id, displayAnswer);
-                                                        
-                                                        console.log('💾 Salvando resposta mapeada:', {
-                                                            questionId: currentQuestion.id,
-                                                            interfaceAnswer: displayAnswer,
-                                                            originalLetter: originalLetter,
-                                                            questionType: currentQuestion.type,
-                                                            currentAnswers: Object.keys(answers)
-                                                        });
-                                                        
-                                                        // Salvar a letra original (A, B, C, D...) no backend
                                                         saveAnswer(currentQuestion.id, originalLetter);
 
                                                         // Avanço automático
@@ -1531,7 +1426,6 @@ export default function TakeEvaluation() {
                                      <button
                                          className="w-full sm:w-auto order-2 sm:order-1 bg-muted hover:bg-muted/80 text-foreground font-medium py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors text-sm sm:text-base"
                                          onClick={() => {
-                                             console.log('🔍 Fechando modal de conclusão para permitir revisão...');
                                              setShowCompletionDialog(false);
                                              setHasSeenCompletionDialog(false);
                                              setIsCompletionDialogClosed(true);
@@ -1545,17 +1439,13 @@ export default function TakeEvaluation() {
                                          className="w-full sm:w-auto order-1 sm:order-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors shadow-lg hover:shadow-xl text-sm sm:text-base flex items-center justify-center"
                                          onClick={() => {
                                              if (isSubmitting) {
-                                                 console.log('⚠️ Tentativa de envio bloqueada - já está enviando');
                                                  return;
                                              }
-                                             // ✅ NOVO: Verificar se já foi enviada
                                              if (evaluationState !== 'active') {
-                                                 console.log('⚠️ Tentativa de envio bloqueada - avaliação não está ativa');
                                                  return;
                                              }
-                                             console.log('🚀 Modal de conclusão: Enviando avaliação...');
-                                             
-                                             // ✅ CORRIGIDO: Não fechar modal imediatamente - deixar o hook gerenciar
+
+                                             // Não fechar modal imediatamente - deixar o hook gerenciar - deixar o hook gerenciar
                                              // Apenas marcar que está enviando
                                              setHasSeenCompletionDialog(false);
                                              
@@ -1832,20 +1722,10 @@ function QuestionOptions({
                         return optionId;
                     })()}
                     onValueChange={(val) => {
-                        console.log('🔄 RadioGroup onValueChange:', val);
-                        // ✅ CORRIGIDO: Enviar diretamente o ID da opção (letra A, B, C, D)
                         const option = questionOptions.find(opt => opt.id === val);
                         if (option) {
-                            console.log('📝 Resposta selecionada:', {
-                                selectedValue: val,
-                                selectedId: option.id,
-                                selectedText: option.text,
-                                totalOptions: questionOptions.length
-                            });
-                            // Enviar o ID da opção (letra) diretamente
                             onAnswerChange(option.id);
                         } else {
-                            console.log('❌ Opção não encontrada:', val);
                             onAnswerChange("");
                         }
                     }}

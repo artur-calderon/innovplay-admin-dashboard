@@ -492,26 +492,14 @@ export function EvolutionCharts({ data, isLoading = false, onlyOverviewTab = fal
       const chartDataArray: Record<string, unknown>[] = [];
       
       const rTyped = r as EvolutionDataWithDynamicKeys;
-      console.log('🔍 EvolutionCharts - chartData:', {
-        evaluationNames: data.evaluationNames,
-        evaluationNamesCount: data.evaluationNames.length,
-        mergedData: rTyped,
-        etapaKeys: Object.keys(rTyped).filter(k => k.startsWith('etapa')),
-      });
-      
+
       // Construir dados dinamicamente para todas as avaliações
       data.evaluationNames.forEach((evalName, index) => {
         if (hidden.has(evalName)) return;
-        
+
         const etapaKey = `etapa${index + 1}`;
         const etapaValue = safe(typeof rTyped[etapaKey] === 'number' ? rTyped[etapaKey] : undefined);
-        
-        console.log(`🔍 Avaliação ${index + 1} (${evalName}):`, {
-          etapaKey,
-          etapaValue,
-          exists: rTyped[etapaKey] !== undefined,
-        });
-        
+
         if (etapaValue !== undefined) {
           // Calcular variação
           let variacao = 0;
@@ -521,7 +509,6 @@ export function EvolutionCharts({ data, isLoading = false, onlyOverviewTab = fal
             if (variacaoValue !== undefined) {
               // Validar variação (limitar valores extremos)
               if (Math.abs(variacaoValue) > 1000) {
-                console.warn(`⚠️ Variação extrema detectada: ${variacaoValue}% entre ${index} e ${index + 1}. Limitando a ±1000%`);
                 variacao = variacaoValue > 0 ? 1000 : -1000;
               } else {
                 variacao = variacaoValue;
@@ -534,7 +521,6 @@ export function EvolutionCharts({ data, isLoading = false, onlyOverviewTab = fal
                 variacao = ((etapaValue - prevValue) / prevValue) * 100;
                 // Validar variação calculada
                 if (Math.abs(variacao) > 1000) {
-                  console.warn(`⚠️ Variação calculada extrema: ${variacao}% entre ${index} e ${index + 1}. Limitando a ±1000%`);
                   variacao = variacao > 0 ? 1000 : -1000;
                 }
               }

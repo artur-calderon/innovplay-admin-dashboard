@@ -93,8 +93,6 @@ export default function AnswerSheetResults() {
             : (response.data.results || response.data.data || []);
           setResults(resultsData);
         } catch (secondError: any) {
-          // Se ainda não funcionar, retorna array vazio
-          console.warn('Não foi possível buscar lista de resultados. Tentando buscar resultado individual...', secondError);
           // Última tentativa: buscar um resultado específico (pode não retornar lista)
           try {
             const response = await api.get(`/answer-sheets/result/${gabaritoId}`);
@@ -106,13 +104,11 @@ export default function AnswerSheetResults() {
               setResults([]);
             }
           } catch (thirdError: any) {
-            console.error('Erro ao buscar resultados:', thirdError);
             setResults([]);
           }
         }
       }
     } catch (error: any) {
-      console.error('Erro ao buscar resultados:', error);
       setError(error.response?.data?.error || error.message || 'Não foi possível carregar os resultados.');
       setResults([]);
     } finally {
@@ -141,7 +137,6 @@ export default function AnswerSheetResults() {
         [resultId]: detailedResult
       }));
     } catch (error: any) {
-      console.error('Erro ao buscar detalhes do resultado:', error);
       toast({
         title: 'Erro',
         description: 'Não foi possível carregar os detalhes completos.',

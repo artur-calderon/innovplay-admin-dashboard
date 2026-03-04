@@ -755,38 +755,22 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
 
   // ✅ MELHORADO: Função robusta para atualizar dados
   const refreshData = useCallback(async () => {
-    console.log("🔄 Iniciando atualização de dados...");
-    
     try {
-      // Usar a nova função forceRefresh que é mais robusta
       await forceRefresh();
-      
-      // Atualizar timestamp de última atualização
       setForceUpdate(prev => prev + 1);
-      
-      console.log("✅ Dados atualizados com sucesso");
     } catch (error) {
-      console.error("❌ Erro ao atualizar dados:", error);
+      // Silenciar erro
     }
   }, [forceRefresh]);
 
   // ✅ MELHORADO: Função específica para atualizar após operações CRUD
   const refreshAfterCRUD = useCallback(async () => {
-    console.log("🔄 Atualizando dados após operação CRUD...");
-    
     try {
-      // Usar o hook de gerenciamento para uma atualização mais robusta
       await updateAfterCRUD();
-      
-      // Fazer refetch dos dados atuais
       await refetch();
-      
-      // Atualizar estado local
       setForceUpdate(prev => prev + 1);
-      
-      console.log("✅ Dados atualizados após CRUD com sucesso");
     } catch (error) {
-      console.error("❌ Erro ao atualizar dados após CRUD:", error);
+      // Silenciar erro
     }
   }, [updateAfterCRUD, refetch]);
 
@@ -846,17 +830,10 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   };
 
   const handleConfirmDelete = async () => {
-    if (!evaluationToDelete) {
-      console.error("Nenhuma avaliação selecionada para exclusão");
-      return;
-    }
-
-    console.log("🗑️ Iniciando exclusão da avaliação:", evaluationToDelete);
+    if (!evaluationToDelete) return;
 
     try {
-      console.log("📡 Fazendo chamada DELETE para:", `/test/${evaluationToDelete}`);
       const response = await api.delete(`/test/${evaluationToDelete}`);
-      console.log("✅ Resposta da API:", response);
 
       toast({
         title: "Sucesso",
@@ -868,15 +845,6 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
       
     } catch (error: unknown) {
       const apiError = error as { message?: string; response?: { status?: number; data?: { error?: string } } };
-      
-      console.error("❌ Erro detalhado ao excluir avaliação:", {
-        error,
-        message: apiError.message,
-        response: apiError.response,
-        status: apiError.response?.status,
-        data: apiError.response?.data
-      });
-
       let errorMessage: string = ERROR_MESSAGES.SERVER_ERROR;
 
       if (apiError.response?.status === 404) {
@@ -918,12 +886,8 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   };
 
   const handleBulkDelete = async () => {
-    console.log("🗑️ Iniciando exclusão em massa de avaliações:", selectedIds);
-
     try {
-      console.log("📡 Fazendo chamada DELETE em massa para /test com IDs:", selectedIds);
       const response = await api.delete("/test", { data: { ids: selectedIds } });
-      console.log("✅ Resposta da API:", response);
 
       toast({
         title: "Sucesso",
@@ -936,16 +900,6 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
       
     } catch (error: unknown) {
       const apiError = error as { message?: string; response?: { status?: number; data?: { error?: string } } };
-      
-      console.error("❌ Erro detalhado ao excluir avaliações em massa:", {
-        error,
-        message: apiError.message,
-        response: apiError.response,
-        status: apiError.response?.status,
-        data: apiError.response?.data,
-        selectedIds
-      });
-
       let errorMessage = "Não foi possível excluir as avaliações selecionadas";
 
       if (apiError.response?.status === 404) {
@@ -1026,8 +980,6 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
             : `Arquivo Excel gerado com sucesso para ${selectedIds.length} avaliações.`,
       });
     } catch (error: any) {
-      console.error('Erro ao exportar para Excel:', error);
-
       // Tratar erro que pode vir como blob (alguns backends retornam erro JSON como blob)
       let errorMessage = "Não foi possível exportar as avaliações.";
 
@@ -1090,20 +1042,6 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   };
 
   const handleStartEvaluation = (evaluation: Evaluation) => {
-    console.log("🚀 [ReadyEvaluations] handleStartEvaluation - Avaliação recebida:", {
-      id: evaluation.id,
-      title: evaluation.title,
-      classes: evaluation.classes,
-      classesType: typeof evaluation.classes,
-      classesIsArray: Array.isArray(evaluation.classes),
-      classesLength: Array.isArray(evaluation.classes) ? evaluation.classes.length : 'N/A',
-      classesContent: evaluation.classes,
-      // Verificar outros campos possíveis
-      applied_classes: evaluation.applied_classes,
-      applied_classes_count: evaluation.applied_classes_count,
-      // Log completo do objeto
-      fullEvaluation: JSON.stringify(evaluation, null, 2)
-    });
     setSelectedEvaluationToStart(evaluation);
     setStartModalOpen(true);
   };
@@ -1135,33 +1073,17 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
       ? endDateTime
       : convertDateTimeLocalToISO(endDateTime);
 
-    console.log("🚀 Aplicando avaliação:", {
-      evaluationId: selectedEvaluationToStart.id,
-      classIds,
-      original: { startDateTime, endDateTime },
-      converted: { startDateTimeISO, endDateTimeISO },
-      timezone: userTimezone
-    });
-
     try {
-      // ✅ FORMATO CORRETO - Enviar como um único request com array de classes
       const classesData = classIds.map(classId => ({
         class_id: classId,
         application: startDateTimeISO,
         expiration: endDateTimeISO
       }));
 
-      console.log("📡 Enviando dados para API:", {
-        url: `/test/${selectedEvaluationToStart.id}/apply`,
-        data: { classes: classesData, timezone: userTimezone }
-      });
-
       const response = await api.post(`/test/${selectedEvaluationToStart.id}/apply`, {
         classes: classesData,
         timezone: userTimezone
       });
-
-      console.log("✅ Resposta da API:", response.data);
 
       // ✅ MELHORADO: Usar função específica para operações CRUD
       await refreshAfterCRUD();
@@ -1173,9 +1095,6 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
 
     } catch (error: unknown) {
       const apiError = error as { response?: { status?: number; data?: { error?: string } } };
-      
-      console.error("❌ Erro ao aplicar avaliação:", error);
-
       let errorMessage = "Erro ao aplicar avaliação. Tente novamente.";
 
       if (apiError.response?.status === 404) {

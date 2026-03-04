@@ -38,9 +38,8 @@ export default function OlimpiadasStudent() {
       const active = sessions.filter((s: any) => s.status === 'em_andamento');
       
       setActiveSessions(active);
-    } catch (error) {
-      console.error('Erro ao carregar sessões ativas:', error);
-      // Não mostrar erro ao usuário, apenas logar
+    } catch {
+      // Silenciar erro ao carregar sessões
     } finally {
       setLoadingSessions(false);
     }
@@ -59,11 +58,11 @@ export default function OlimpiadasStudent() {
       await loadActiveSessions();
       // Recarregar olimpíadas para atualizar status
       await loadOlimpiadas();
-    } catch (error: any) {
-      console.error('Erro ao encerrar sessão:', error);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
       toast({
         title: 'Erro',
-        description: error?.response?.data?.message || 'Erro ao encerrar sessão',
+        description: err?.response?.data?.message || 'Erro ao encerrar sessão',
         variant: 'destructive',
       });
     }

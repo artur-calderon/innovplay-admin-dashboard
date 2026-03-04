@@ -455,7 +455,6 @@ export default function AcertoNiveis() {
           fetchEvaluationDataCacheRef.current.set(cacheKey, result);
           return result;
         } catch (error) {
-          console.error('Erro ao carregar dados unificados:', error);
           return {
             students: [],
             report: null,
@@ -562,7 +561,6 @@ export default function AcertoNiveis() {
       try {
         setIsLoadingHierarchy(true);
         const context = await getUserHierarchyContext(user.id, user.role);
-        console.log('🔍 Contexto hierárquico carregado:', context);
         setUserHierarchyContext(context);
 
         // Pre-selecionar filtros baseado na hierarquia
@@ -585,10 +583,9 @@ export default function AcertoNiveis() {
               const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id);
               setMunicipalities(mun);
             } catch (error) {
-              console.error('Erro ao carregar municípios do estado pré-selecionado:', error);
+              // Silenciar
             }
 
-            // Carregar avaliações do município pré-selecionado
             try {
               const avs = await EvaluationResultsApiService.getFilterEvaluations({
                 estado: userState.id,
@@ -596,60 +593,46 @@ export default function AcertoNiveis() {
               });
               setEvaluations(avs);
             } catch (error) {
-              console.error('Erro ao carregar avaliações do município pré-selecionado:', error);
+              // Silenciar
             }
           }
         } else if (context.school && context.school.municipality_id) {
-          // Para diretor/coordenador: buscar município e estado da escola
-          console.log('🔍 Processando escola do diretor:', context.school);
           try {
-            // Buscar dados do município da escola
-            console.log('🔍 Buscando município:', context.school.municipality_id);
             const municipalityResponse = await api.get(`/city/${context.school.municipality_id}`);
             const municipalityData = municipalityResponse.data;
-            console.log('🔍 Dados do município:', municipalityData);
 
             setSelectedMunicipality(municipalityData.id);
 
-            // Carregar estado baseado no município
             const statesResp = await EvaluationResultsApiService.getFilterStates();
             setStates(statesResp);
-            console.log('🔍 Estados carregados:', statesResp);
             const userState = statesResp.find(
               (s) =>
                 s.id === municipalityData.state ||
                 s.nome?.toLowerCase() === municipalityData.state?.toLowerCase()
             );
-            console.log('🔍 Estado encontrado:', userState);
             if (userState) {
               setSelectedState(userState.id);
 
-              // Carregar municípios do estado pré-selecionado
               try {
                 const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id);
                 setMunicipalities(mun);
-                console.log('🔍 Municípios carregados:', mun);
               } catch (error) {
-                console.error('Erro ao carregar municípios do estado pré-selecionado:', error);
+                // Silenciar
               }
 
-              // Carregar avaliações do município pré-selecionado
               try {
                 const avs = await EvaluationResultsApiService.getFilterEvaluations({
                   estado: userState.id,
                   municipio: municipalityData.id
                 });
                 setEvaluations(avs);
-                console.log('🔍 Avaliações carregadas:', avs);
               } catch (error) {
-                console.error('Erro ao carregar avaliações do município pré-selecionado:', error);
+                // Silenciar
               }
             }
           } catch (error) {
-            console.error('Erro ao buscar município da escola:', error);
+            // Silenciar
           }
-        } else {
-          console.log('🔍 Nenhum contexto de município ou escola encontrado');
         }
 
         if (context.school) {
@@ -660,9 +643,6 @@ export default function AcertoNiveis() {
             nome: context.school.name
           }]);
         } else if (context.municipality && !context.school) {
-          // Diretor com município mas sem escola única
-          // Carregar lista de escolas do município para escolha manual
-          console.log('🔍 Diretor com município mas sem escola específica, carregando escolas do município');
           try {
             // Buscar escolas do município via API de escolas
             const schoolMeta = context.municipality?.id ? { meta: { cityId: context.municipality.id } } : {};
@@ -683,32 +663,24 @@ export default function AcertoNiveis() {
             }));
 
             setSchools(schoolsFormatted);
-            console.log('🔍 Escolas disponíveis para seleção:', schoolsFormatted);
           } catch (error) {
-            console.error('Erro ao carregar escolas do município:', error);
+            // Silenciar
           }
         }
 
-        // Para professor, carregar escolas das suas turmas
         if (context.classes && context.classes.length > 0) {
-          console.log('🔍 Processando turmas do professor:', context.classes);
-
           const uniqueSchools = Array.from(
             new Set(context.classes.map(c => ({ id: c.school_id, name: c.school_name })))
           ).map(s => ({ id: s.id, nome: s.name }));
 
           setSchools(uniqueSchools);
-          console.log('🔍 Escolas únicas do professor:', uniqueSchools);
 
-          // Se só tem uma escola, pre-selecionar
           if (uniqueSchools.length === 1) {
             setSelectedSchoolId(uniqueSchools[0].id);
-            console.log('🔍 Escola única pré-selecionada:', uniqueSchools[0].id);
           }
         }
 
       } catch (error) {
-        console.error('Erro ao carregar contexto hierárquico:', error);
         toast({
           title: "Aviso",
           description: "Não foi possível carregar suas permissões. Algumas funcionalidades podem estar limitadas.",
@@ -914,7 +886,7 @@ export default function AcertoNiveis() {
             });
             setGrades(series);
           } catch (e) {
-            console.error('Erro ao carregar séries:', e);
+            // Silenciar
           }
         })();
 
@@ -949,7 +921,6 @@ export default function AcertoNiveis() {
       if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
 
     } catch (e) {
-      console.error('Erro em handleSelectSchool:', e);
       toast({ title: "Erro", description: "Não foi possível carregar dados da escola", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -1020,9 +991,7 @@ export default function AcertoNiveis() {
           serie: gradeId
         }).then(turmas => {
           setClasses(turmas);
-        }).catch(e => {
-          console.error('Erro ao carregar turmas:', e);
-        });
+        }).catch(() => {});
 
         return; // Não fazer requisição adicional
       }
@@ -1057,7 +1026,6 @@ export default function AcertoNiveis() {
       if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
 
     } catch (e) {
-      console.error('Erro em handleSelectGrade:', e);
       toast({ title: "Erro", description: "Não foi possível carregar dados da série", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -1118,7 +1086,6 @@ export default function AcertoNiveis() {
       if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
 
     } catch (e) {
-      console.error('Erro em handleSelectClass:', e);
       toast({ title: "Erro", description: "Não foi possível carregar dados da turma", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -1312,7 +1279,6 @@ export default function AcertoNiveis() {
         }
       }
     } catch (e) {
-      console.error('Erro ao carregar dados:', e);
       toast({ title: "Erro", description: "Falha ao carregar dados da avaliação", variant: "destructive" });
       setIsLoadingSchools(false); // Garantir que o loading seja resetado em caso de erro
     } finally {
@@ -1381,26 +1347,16 @@ export default function AcertoNiveis() {
 
     // Se students estiver vazio mas tabelaDetalhada tiver dados, reconstruir students
     if (!hasStudentsInState && tabelaDetalhada && (hasStudentsInTabela || hasStudentsInDisciplinas)) {
-      console.log('Reconstruindo lista de alunos a partir de tabelaDetalhada...');
       const reconstructedStudents = mapUnifiedStudents(tabelaDetalhada);
       if (reconstructedStudents.length > 0) {
         setStudents(reconstructedStudents);
         hasStudentsInState = true;
-        console.log(`Reconstruídos ${reconstructedStudents.length} alunos`);
       }
     }
 
     const hasAnyStudents = hasStudentsInState || hasStudentsInDetailed || hasStudentsInTabela || hasStudentsInDisciplinas;
 
     if (!hasAnyStudents) {
-      console.log('Debug - Dados disponíveis:', {
-        students: students.length,
-        detailedReport: detailedReport?.alunos?.length || 0,
-        tabelaGeralAlunos: tabelaDetalhada?.geral?.alunos?.length || 0,
-        tabelaDisciplinas: tabelaDetalhada?.disciplinas?.length || 0,
-        filtros: { selectedSchoolId, selectedGradeId, selectedClassId }
-      });
-
       toast({
         title: "Atenção",
         description: "Nenhum aluno encontrado para os filtros selecionados. Tente remover alguns filtros.",
@@ -1437,7 +1393,7 @@ export default function AcertoNiveis() {
         reportParaPdf = await EvaluationResultsApiService.getDetailedReport(evaluationInfo.id);
         if (reportParaPdf) setDetailedReport(reportParaPdf);
       } catch (error) {
-        console.warn('Não foi possível carregar relatório detalhado, continuando com dados básicos');
+        // Continuar com dados básicos
       } finally {
         setIsLoading(false);
       }
@@ -1492,7 +1448,7 @@ export default function AcertoNiveis() {
           reader.readAsDataURL(blob);
         });
       } catch (error) {
-        console.warn('Não foi possível carregar logo, continuando sem ela:', error);
+        // Continuar sem logo
       }
 
       // Documento começa em landscape para a capa inicial
@@ -3231,7 +3187,6 @@ export default function AcertoNiveis() {
       toast({ title: 'PDF gerado com sucesso!', description: `Relatório salvo como ${fileName}` });
 
     } catch (error) {
-      console.error('Erro ao gerar PDF:', error);
       toast({ title: 'Erro ao gerar PDF', description: 'Não foi possível gerar o relatório', variant: 'destructive' });
     }
   };

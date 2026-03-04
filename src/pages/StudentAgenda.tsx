@@ -137,21 +137,7 @@ export default function StudentAgenda() {
   // Callback para clique em evento (visualizar detalhes)
   const handleStudentEventClick = async (clickInfo: EventClickArg) => {
     const eventData = clickInfo.event;
-    
-    // Log para ver os dados do evento retornado
-    console.log('=== DADOS DO EVENTO RETORNADO (StudentAgenda) ===');
-    console.log('ID:', eventData.id);
-    console.log('Title:', eventData.title);
-    console.log('Start (string):', eventData.startStr);
-    console.log('End (string):', eventData.endStr);
-    console.log('Start (Date):', eventData.start);
-    console.log('End (Date):', eventData.end);
-    console.log('allDay:', eventData.allDay);
-    console.log('extendedProps:', eventData.extendedProps);
-    console.log('Has time in start:', hasTimeInfo(eventData.startStr));
-    console.log('Has time in end:', hasTimeInfo(eventData.endStr));
-    console.log('================================================');
-    
+
     setSelectedEvent({
       id: eventData.id,
       title: eventData.title,

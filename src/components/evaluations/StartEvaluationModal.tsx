@@ -169,28 +169,7 @@ export default function StartEvaluationModal({
     
     try {
       setIsLoadingClasses(true);
-      console.log("🔍 [StartEvaluationModal] Buscando turmas para avaliação:", evaluation.id);
-      console.log("📋 [StartEvaluationModal] Dados COMPLETOS da avaliação recebida:", {
-        id: evaluation.id,
-        title: evaluation.title,
-        // Verificar classes em diferentes formatos
-        classes: evaluation.classes,
-        classesType: typeof evaluation.classes,
-        classesIsArray: Array.isArray(evaluation.classes),
-        classesLength: Array.isArray(evaluation.classes) ? evaluation.classes.length : 'N/A',
-        classesContent: evaluation.classes,
-        // Verificar outros campos possíveis
-        applied_classes: evaluation.applied_classes,
-        applied_classes_count: evaluation.applied_classes_count,
-        // Verificar se classes está em outro formato (objeto com array)
-        classesAsObject: typeof evaluation.classes === 'object' && !Array.isArray(evaluation.classes) ? evaluation.classes : null,
-        // Log de todas as chaves do objeto
-        allKeys: Object.keys(evaluation),
-        // Log completo do objeto (limitado para não poluir muito)
-        evaluationKeys: Object.keys(evaluation).filter(key => key.toLowerCase().includes('class'))
-      });
-      
-      // ✅ CORREÇÃO CRÍTICA: Verificar se temos os IDs das turmas selecionadas diretamente na avaliação
+      // Verificar se temos os IDs das turmas selecionadas diretamente na avaliação
       // classes = classes que a avaliação pertence (selecionadas na criação)
       // applied_classes = classes que JÁ foram aplicadas (para permitir reaplicação)
       // Devemos incluir AMBAS para permitir aplicar e reaplicar
@@ -204,16 +183,9 @@ export default function StartEvaluationModal({
         if (typeof firstItem === 'object' && firstItem !== null && 'id' in firstItem) {
           const classesIds = evaluation.classes.map((item: { id: string | number }) => String(item.id));
           selectedClassIds.push(...classesIds);
-          console.log("✅ [StartEvaluationModal] Classes da avaliação encontradas (objetos completos):", {
-            total: classesIds.length,
-            ids: classesIds,
-            sample: evaluation.classes[0]
-          });
         } else {
-          // Array direto de strings/números (formato antigo - compatibilidade)
           const classesIds = evaluation.classes.map(id => String(id));
           selectedClassIds.push(...classesIds);
-          console.log("✅ [StartEvaluationModal] Classes da avaliação encontradas (array direto - formato antigo):", classesIds);
         }
       }
       
@@ -224,34 +196,17 @@ export default function StartEvaluationModal({
           .filter((id: string | number | undefined): id is string | number => id !== undefined)
           .map((id: string | number) => String(id));
         selectedClassIds.push(...appliedClassIds);
-        console.log("✅ [StartEvaluationModal] Classes já aplicadas encontradas (para reaplicação):", appliedClassIds);
       }
-      
-      // 3. Remover duplicatas (caso uma classe esteja tanto em classes quanto em applied_classes)
       selectedClassIds = [...new Set(selectedClassIds)];
-      
-      console.log("🔍 [StartEvaluationModal] selectedClassIds final (união de classes + applied_classes):", {
-        selectedClassIds,
-        length: selectedClassIds.length,
-        isEmpty: selectedClassIds.length === 0
-      });
-      
+
       if (selectedClassIds.length === 0) {
-        console.error("❌ [StartEvaluationModal] Nenhuma turma selecionada encontrada na avaliação!");
-        console.error("📋 [StartEvaluationModal] Estado completo da avaliação:", JSON.stringify(evaluation, null, 2));
         setEvaluationClasses([]);
         setError("Esta avaliação não tem turmas configuradas. Configure as turmas no processo de criação da avaliação primeiro.");
         return;
       }
       
-      // Buscar turmas já aplicadas para esta avaliação
-      console.log("📡 [StartEvaluationModal] Fazendo requisição GET para:", `/test/${evaluation.id}/classes`);
       const response = await api.get(`/test/${evaluation.id}/classes`);
-      console.log("📋 [StartEvaluationModal] Resposta BRUTA COMPLETA da API de turmas:");
-      console.log("📋 [StartEvaluationModal] Response completa:", response);
-      console.log("📋 [StartEvaluationModal] Response.data (JSON completo):", JSON.stringify(response.data, null, 2));
-      console.log("📋 [StartEvaluationModal] Response.data (objeto):", response.data);
-      
+
       if (response.data && Array.isArray(response.data) && response.data.length > 0) {
         // Mapear dados do backend para o formato esperado pelo componente
         let mappedClasses = response.data.map((item: Record<string, unknown>) => ({
@@ -274,43 +229,20 @@ export default function StartEvaluationModal({
           const classId = String(cls.id);
           return selectedClassIds.includes(classId);
         });
-        
-        console.log("🔍 [StartEvaluationModal] Filtrando turmas selecionadas:", {
-          totalFromBackend: response.data.length,
-          selectedClassIds,
-          selectedClassIdsType: selectedClassIds.map(id => ({ id, type: typeof id })),
-          mappedClassesBeforeFilter: mappedClasses.map(c => ({ id: c.id, idType: typeof c.id, name: c.name })),
-          filteredCount: mappedClasses.length,
-          filteredIds: mappedClasses.map(c => c.id),
-          // Verificar se há algum match
-          matches: mappedClasses.map(c => ({
-            classId: c.id,
-            classIdString: String(c.id),
-            isIncluded: selectedClassIds.includes(String(c.id)),
-            selectedClassIds: selectedClassIds
-          }))
-        });
-        
-        // ✅ CORREÇÃO: Se após filtrar não houver turmas, significa que as turmas selecionadas não foram encontradas
+
         if (mappedClasses.length === 0) {
-          console.log("⚠️ Nenhuma turma selecionada encontrada na resposta da API");
           setEvaluationClasses([]);
           setError("As turmas selecionadas para esta avaliação não foram encontradas. Verifique se as turmas ainda existem.");
           return;
         }
         
         setEvaluationClasses(mappedClasses);
-        console.log("✅ Turmas processadas e filtradas:", mappedClasses);
-        
-        // Se chegou aqui e tem turmas, limpar qualquer erro anterior
         setError(null);
       } else {
-        console.log("⚠️ Nenhuma turma encontrada para esta avaliação");
         setEvaluationClasses([]);
         setError("Esta avaliação ainda não foi aplicada para nenhuma turma. Para aplicar, primeiro você precisa configurar as turmas no processo de criação da avaliação.");
       }
     } catch (error: unknown) {
-      console.error("❌ Erro ao buscar turmas:", error);
       setEvaluationClasses([]);
       
       const errorResponse = error as { response?: { status?: number } };
@@ -367,18 +299,7 @@ export default function StartEvaluationModal({
       // ✅ CORREÇÃO: Converter datetime-local para ISO com timezone antes de enviar
       const startDateTimeISO = convertDateTimeLocalToISO(values.startDateTime);
       const endDateTimeISO = convertDateTimeLocalToISO(values.endDateTime);
-      
-      console.log("🕐 Conversão de datas:", {
-        original: {
-          start: values.startDateTime,
-          end: values.endDateTime
-        },
-        converted: {
-          start: startDateTimeISO,
-          end: endDateTimeISO
-        }
-      });
-      
+
       // Aplicar para todas as turmas configuradas
       const classIds = evaluationClasses.map(c => c.id);
       await onConfirm(startDateTimeISO, endDateTimeISO, classIds);
@@ -391,7 +312,6 @@ export default function StartEvaluationModal({
       form.reset();
       onClose();
     } catch (error) {
-      console.error("Erro ao aplicar avaliação:", error);
       toast({
         title: ERROR_MESSAGES.EVALUATION_APPLY_FAILED,
         description: ERROR_MESSAGES.EVALUATION_APPLY_FAILED,

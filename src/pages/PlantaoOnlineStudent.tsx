@@ -64,7 +64,6 @@ export default function PlantaoOnlineStudent() {
         return;
       }
       
-      console.error('Erro ao carregar plantões:', error);
       toast({
         title: 'Erro',
         description: error.response?.data?.message || error.message || 'Não foi possível carregar os plantões online.',
@@ -102,8 +101,8 @@ export default function PlantaoOnlineStudent() {
           if (classData.school_id) {
             setStudentSchool(classData.school_id);
           }
-        } catch (classError) {
-          console.error('Erro ao buscar dados da turma:', classError);
+        } catch {
+          // Ignorar erro ao buscar turma
         }
       } else if (!studentData.grade_id && studentData.grade?.id) {
         // Tentar usar o objeto grade se disponível
@@ -120,8 +119,7 @@ export default function PlantaoOnlineStudent() {
       }
     } catch (err) {
       const error = err as ApiError;
-      console.error('Erro ao carregar informações do aluno:', error);
-      
+
       // Se for erro 404, o aluno pode não ter registro completo
       if (error.response?.status === 404) {
         toast({
@@ -145,8 +143,8 @@ export default function PlantaoOnlineStudent() {
     try {
       const response = await api.get('/subjects');
       setSubjects(response.data || []);
-    } catch (error) {
-      console.error('Erro ao carregar disciplinas:', error);
+    } catch {
+      // Silenciar erro ao carregar disciplinas
     }
   }, []);
 
@@ -180,8 +178,7 @@ export default function PlantaoOnlineStudent() {
         title: 'Link copiado',
         description: `Link do plantão ${title ? `"${title}"` : ''} copiado para a área de transferência!`,
       });
-    } catch (error) {
-      console.error('Erro ao copiar link:', error);
+    } catch {
       toast({
         title: 'Erro',
         description: 'Não foi possível copiar o link. Tente novamente.',
