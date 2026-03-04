@@ -25,11 +25,29 @@ interface ConquistasCardProps {
   onRedeem?: () => void;
 }
 
+/** Retorna lista de { achievement_id, medalha } que podem ser resgatados */
+function getResgataveis(conquistas: Conquista[]): { achievement_id: string; medalha: MedalhaTipo }[] {
+  const out: { achievement_id: string; medalha: MedalhaTipo }[] = [];
+  for (const c of conquistas) {
+    if (c.niveis?.length) {
+      for (const n of c.niveis) {
+        if (n.desbloqueada && !n.resgatado && n.moedas_valor > 0)
+          out.push({ achievement_id: c.achievement_id, medalha: n.medalha });
+      }
+    } else if (c.medalha && (c.moedas_valor ?? 0) > 0 && !c.resgatado) {
+      out.push({ achievement_id: c.achievement_id, medalha: c.medalha as MedalhaTipo });
+    }
+  }
+  return out;
+}
+
 const ConquistasCard: React.FC<ConquistasCardProps> = ({ onRedeem }) => {
   const [conquistas, setConquistas] = useState<Conquista[]>([]);
   const [loading, setLoading] = useState(true);
   const [resgatandoId, setResgatandoId] = useState<string | null>(null);
+  const [resgatandoTodas, setResgatandoTodas] = useState(false);
   const { toast } = useToast();
+  const resgataveis = React.useMemo(() => getResgataveis(conquistas), [conquistas]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,6 +94,41 @@ const ConquistasCard: React.FC<ConquistasCardProps> = ({ onRedeem }) => {
     } finally {
       setResgatandoId(null);
     }
+  };
+
+  const handleResgatarTodas = async () => {
+    if (resgataveis.length === 0) return;
+    setResgatandoTodas(true);
+    let sucesso = 0;
+    for (const { achievement_id, medalha } of resgataveis) {
+      try {
+        const result = await resgatarConquista({ achievement_id, medalha });
+        sucesso++;
+        toast({
+          title: "Resgate realizado",
+          description: `+${result.moedas_creditadas} moedas. Saldo: ${result.novo_saldo}`,
+          variant: "default",
+        });
+      } catch {
+        toast({
+          title: "Erro ao resgatar",
+          description: "Não foi possível resgatar um dos itens.",
+          variant: "destructive",
+        });
+      }
+    }
+    if (sucesso > 0) {
+      onRedeem?.();
+      await load();
+      if (sucesso === resgataveis.length) {
+        toast({
+          title: "Todas resgatadas",
+          description: `${sucesso} conquista(s) resgatada(s) com sucesso.`,
+          variant: "default",
+        });
+      }
+    }
+    setResgatandoTodas(false);
   };
 
   const renderNivel = (
@@ -259,6 +312,24 @@ const ConquistasCard: React.FC<ConquistasCardProps> = ({ onRedeem }) => {
           </div>
         ) : (
           <>
+            {resgataveis.length > 1 && (
+              <Button
+                size="sm"
+                variant="default"
+                className="w-full mb-3 flex-shrink-0 gap-2 bg-amber-600 hover:bg-amber-700 text-white"
+                onClick={handleResgatarTodas}
+                disabled={resgatandoTodas}
+              >
+                {resgatandoTodas ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Coins className="w-4 h-4" />
+                    Resgatar todas ({resgataveis.length})
+                  </>
+                )}
+              </Button>
+            )}
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 space-y-3">
               {conquistas.slice(0, 3).map((c, index) => {
                 const nome = c.estado === "oculta" && !c.nome ? "???" : (c.nome || "???");
