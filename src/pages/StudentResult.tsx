@@ -120,13 +120,13 @@ const StatCard = ({
   color?: string;
   subtitle?: string;
 }) => (
-  <Card className="hover:shadow-lg transition-shadow duration-300">
+  <Card className="hover:shadow-lg transition-shadow duration-300 bg-card border-border">
     <CardContent className="p-4">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
           <p className="text-sm font-medium text-muted-foreground">{title}</p>
           <div className="flex items-center gap-2">
-            <span className="text-2xl font-bold">{value}</span>
+            <span className="text-2xl font-bold text-foreground">{value}</span>
             {subtitle && <span className="text-sm text-muted-foreground">{subtitle}</span>}
           </div>
         </div>
@@ -152,13 +152,13 @@ const RankingCard = ({
   icon: React.ElementType;
   color?: string;
 }) => (
-  <Card className="hover:shadow-lg transition-shadow duration-300">
+  <Card className="hover:shadow-lg transition-shadow duration-300 bg-card border-border">
     <CardContent className="p-4">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
           <p className="text-sm font-medium text-muted-foreground">{title}</p>
           <div className="flex items-center gap-2">
-            <span className="text-2xl font-bold">{position}º</span>
+            <span className="text-2xl font-bold text-foreground">{position}º</span>
             <span className="text-sm text-muted-foreground">de {totalStudents}</span>
           </div>
         </div>
@@ -170,18 +170,18 @@ const RankingCard = ({
   </Card>
 );
 
-// Componente para badge de classificação
+// Componente para badge de classificação (com suporte a dark mode)
 const ClassificationBadge = ({ classification }: { classification: string }) => {
   const getBadgeStyle = (classification: string) => {
     switch (classification.toLowerCase()) {
       case 'avançado':
-        return 'bg-green-100 text-green-800 border-green-200';
+        return 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/40 dark:text-green-200 dark:border-green-700';
       case 'adequado':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/40 dark:text-blue-200 dark:border-blue-700';
       case 'básico':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/40 dark:text-yellow-200 dark:border-yellow-700';
       case 'abaixo do básico':
-        return 'bg-red-100 text-red-800 border-red-200';
+        return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-200 dark:border-red-700';
       default:
         return 'bg-muted text-foreground border-border';
     }
@@ -574,8 +574,8 @@ export default function StudentResult() {
     <div className="container mx-auto px-4 py-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <BarChart3 className="w-8 h-8 text-blue-600" />
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3 text-foreground">
+            <BarChart3 className="w-8 h-8 text-blue-600 dark:text-blue-400" />
             {pageTitle}
           </h1>
           <p className="text-muted-foreground">{evaluationTitle}</p>
@@ -583,7 +583,7 @@ export default function StudentResult() {
         <Button variant="ghost" onClick={() => navigate(myItemsButtonPath)}>{myItemsButtonText}</Button>
       </div>
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden bg-card border-border">
         <CardHeader className={isOlimpiada 
           ? "bg-gradient-to-r from-yellow-600 via-amber-600 to-orange-600 text-white"
           : "bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white"
@@ -608,7 +608,7 @@ export default function StudentResult() {
           {locked ? (
             <div className="flex flex-col items-center justify-center text-center py-8">
               <Lock className="h-10 w-10 text-muted-foreground mb-3" />
-              <p className="text-gray-700 mb-1">Complete a avaliação para ver seus resultados.</p>
+              <p className="text-foreground mb-1">Complete a avaliação para ver seus resultados.</p>
               <p className="text-muted-foreground flex items-center gap-2">
                 <Clock className="h-4 w-4" />
                 Resultados disponíveis após finalizar a avaliação
@@ -626,17 +626,17 @@ export default function StudentResult() {
                   <div className="relative flex items-center justify-center">
                     <div className={`absolute -z-10 h-56 w-56 rounded-full blur-2xl ${
                       isOlimpiada 
-                        ? "bg-gradient-to-tr from-yellow-200 via-amber-200 to-orange-100" 
-                        : "bg-gradient-to-tr from-purple-200 via-pink-200 to-yellow-100"
+                        ? "bg-gradient-to-tr from-yellow-200 via-amber-200 to-orange-100 dark:from-yellow-900/50 dark:via-amber-800/40 dark:to-orange-900/40" 
+                        : "bg-gradient-to-tr from-purple-200 via-pink-200 to-yellow-100 dark:from-purple-900/50 dark:via-pink-800/40 dark:to-indigo-900/40"
                     }`} />
                     <div className={`relative h-48 w-48 rounded-full p-1 ${
                       isOlimpiada 
                         ? "bg-gradient-to-br from-yellow-600 to-amber-600" 
                         : "bg-gradient-to-br from-indigo-600 to-purple-600"
                     }`}>
-                      <div className="h-full w-full rounded-full bg-white flex flex-col items-center justify-center">
+                      <div className="h-full w-full rounded-full bg-white dark:bg-card flex flex-col items-center justify-center border border-transparent dark:border-border/50">
                         <div className="text-xs uppercase tracking-wide text-muted-foreground">Sua Nota</div>
-                        <div className={`text-5xl font-extrabold ${passedGood ? "text-green-600" : "text-orange-600"}`}>
+                        <div className={`text-5xl font-extrabold ${passedGood ? "text-green-600 dark:text-green-400" : "text-orange-600 dark:text-orange-400"}`}>
                           {gradeRounded != null ? (Math.ceil(gradeRounded * 10) / 10).toString().replace('.', ',') : "-"}
                         </div>
                         <div className="text-xs text-muted-foreground">de 10</div>
@@ -653,11 +653,11 @@ export default function StudentResult() {
                   {/* Mensagem de feedback */}
                   <div className="flex items-center gap-2 mb-4">
                     {passedGood ? (
-                      <Trophy className="h-6 w-6 text-yellow-500" />
+                      <Trophy className="h-6 w-6 text-yellow-500 dark:text-yellow-400" />
                     ) : (
-                      <Target className="h-6 w-6 text-purple-600" />
+                      <Target className="h-6 w-6 text-purple-600 dark:text-purple-400" />
                     )}
-                    <p className="text-gray-700">
+                    <p className="text-foreground">
                       {passedGood ? "Excelente! Continue assim." : "Bom esforço! Você está no caminho."}
                     </p>
                   </div>
@@ -691,7 +691,7 @@ export default function StudentResult() {
                     {/* Classificação */}
                     {classification && (
                       <div className="md:col-span-2">
-                        <Card className="hover:shadow-lg transition-shadow duration-300">
+                        <Card className="hover:shadow-lg transition-shadow duration-300 bg-card border-border">
                           <CardContent className="p-4">
                             <div className="flex items-center justify-between">
                               <div className="space-y-1">
@@ -736,7 +736,7 @@ export default function StudentResult() {
                   )}
                   
                   <div>
-                    <Button variant="outline" onClick={() => navigate(backButtonPath)}>{backButtonText}</Button>
+                    <Button variant="outline" className="border-border bg-transparent hover:bg-muted" onClick={() => navigate(backButtonPath)}>{backButtonText}</Button>
                   </div>
                 </div>
               </div>

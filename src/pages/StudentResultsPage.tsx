@@ -13,9 +13,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { Trophy, FileText, ExternalLink, BarChart2, Star, Target, Medal, Zap, Flame, RefreshCw, BookOpen, Calendar } from "lucide-react"
+import { Trophy, FileText, ExternalLink, BarChart2, Star, Target, Medal, RefreshCw, BookOpen, Calendar, Loader2, ArrowRight } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { StudentResultSummaryCharts } from "@/components/student/StudentResultSummaryCharts"
+import { getConquistas, type Conquista } from "@/services/conquistasApi"
+import { MedalIcon } from "@/components/conquistas/medalConfig"
+import type { MedalhaTipo } from "@/services/conquistasApi"
 
 function formatDataDisplay(value: string): string {
   if (!value || value === "—") return "—"
@@ -80,6 +83,8 @@ export default function StudentResultsPage() {
   const { toast } = useToast()
   const [items, setItems] = useState<StudentResultListItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [conquistasReais, setConquistasReais] = useState<Conquista[]>([])
+  const [loadingConquistas, setLoadingConquistas] = useState(true)
   const [filterDiscipline, setFilterDiscipline] = useState<string>("todas")
   const [sortBy, setSortBy] = useState<SortOption>("recent")
   const [expandedResultId, setExpandedResultId] = useState<string | null>(null)
@@ -124,6 +129,22 @@ export default function StudentResultsPage() {
     fetchCompleted()
   }, [fetchCompleted])
 
+  useEffect(() => {
+    let cancelled = false
+    setLoadingConquistas(true)
+    getConquistas()
+      .then((data) => {
+        if (!cancelled) setConquistasReais(data ?? [])
+      })
+      .catch(() => {
+        if (!cancelled) setConquistasReais([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingConquistas(false)
+      })
+    return () => { cancelled = true }
+  }, [])
+
   const disciplines = useMemo(() => {
     const set = new Set<string>()
     items.forEach((i) => set.add(i.disciplina))
@@ -146,21 +167,16 @@ export default function StudentResultsPage() {
     return { total: items.length, media, melhorNota, xpTotal, nivel, progressoNivel }
   }, [items])
 
-  // Conquistas derivadas dos dados reais
-  const conquistas = useMemo(() => {
-    const list: { id: string; label: string; icon: "trophy" | "star" | "target" | "medal" | "zap" | "flame"; unlocked: boolean }[] = []
-    const total = items.length
-    const grades = items.map((i) => i.nota ?? 0)
-    const media = grades.length ? grades.reduce((a, b) => a + b, 0) / grades.length : 0
-    const temNota10 = items.some((i) => (i.nota ?? 0) >= 9.9)
-    list.push({ id: "first", label: "Primeira avaliação", icon: "medal", unlocked: total >= 1 })
-    list.push({ id: "five", label: "5 avaliações concluídas", icon: "trophy", unlocked: total >= 5 })
-    list.push({ id: "ten", label: "10 avaliações concluídas", icon: "star", unlocked: total >= 10 })
-    list.push({ id: "nota10", label: "Nota 10 conquistada", icon: "star", unlocked: temNota10 })
-    list.push({ id: "media7", label: "Média acima de 7", icon: "target", unlocked: media >= 7 && total > 0 })
-    list.push({ id: "media8", label: "Média acima de 8", icon: "zap", unlocked: media >= 8 && total > 0 })
-    return list
-  }, [items])
+  // Conquistas reais da API: considerar desbloqueada se tem estado desbloqueada, medalha atual ou algum nível desbloqueado
+  const isConquistaUnlocked = useCallback((c: Conquista) => {
+    if (c.estado === "desbloqueada" || c.medalha) return true
+    if (c.niveis?.some((n) => n.desbloqueada)) return true
+    return false
+  }, [])
+  const conquistasUnlockedCount = useMemo(
+    () => conquistasReais.filter(isConquistaUnlocked).length,
+    [conquistasReais, isConquistaUnlocked]
+  )
 
   const filteredAndSorted = useMemo(() => {
     let list = filterDiscipline === "todas" ? items : items.filter((i) => i.disciplina === filterDiscipline)
@@ -195,14 +211,21 @@ export default function StudentResultsPage() {
 
   const expandedItem = expandedResultId ? filteredAndSorted.find((i) => i.id === expandedResultId) : null
 
+  // test_ids em ordem cronológica (mais antiga → mais recente) para POST /test/student/compare; inclui a avaliação aberta, máx. 5
+  const testIdsForCompare = useMemo(() => {
+    if (!expandedResultId || !items.length) return []
+    const byDate = [...items].sort(
+      (a, b) => new Date(a.data_aplicacao).getTime() - new Date(b.data_aplicacao).getTime()
+    )
+    const idx = byDate.findIndex((i) => i.id === expandedResultId)
+    if (idx < 0) return []
+    const start = Math.max(0, idx - 3)
+    return byDate.slice(start, idx + 1).map((i) => i.id)
+  }, [items, expandedResultId])
+
   if (user?.role !== "aluno") {
     navigate("/aluno")
     return null
-  }
-
-  const ConquistaIcon = ({ name }: { name: "trophy" | "star" | "target" | "medal" | "zap" | "flame" }) => {
-    const C = { trophy: Trophy, star: Star, target: Target, medal: Medal, zap: Zap, flame: Flame }[name]
-    return <C className="h-4 w-4" />
   }
 
   return (
@@ -298,7 +321,7 @@ export default function StudentResultsPage() {
                   <div>
                     <p className="text-sm text-muted-foreground font-medium">Conquistas</p>
                     <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                      {conquistas.filter((c) => c.unlocked).length}/{conquistas.length}
+                      {loadingConquistas ? "—" : `${conquistasUnlockedCount}/${conquistasReais.length}`}
                     </p>
                   </div>
                   <Medal className="h-8 w-8 text-purple-500 dark:text-purple-400 flex-shrink-0" />
@@ -316,18 +339,46 @@ export default function StudentResultsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="flex flex-wrap gap-2">
-                {conquistas.map((c) => (
-                  <Badge
-                    key={c.id}
-                    variant={c.unlocked ? "default" : "outline"}
-                    className={c.unlocked ? "bg-gradient-to-r from-amber-500 to-yellow-500 text-white border-0 gap-1 shadow-sm hover:scale-105 transition-transform" : "opacity-60 gap-1"}
-                  >
-                    <ConquistaIcon name={c.icon} />
-                    {c.label}
-                  </Badge>
-                ))}
-              </div>
+              {loadingConquistas ? (
+                <div className="flex items-center justify-center py-6 gap-2 text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span className="text-sm">Carregando conquistas...</span>
+                </div>
+              ) : conquistasReais.length === 0 ? (
+                <div className="py-4 text-center">
+                  <p className="text-sm text-muted-foreground">Nenhuma conquista disponível ainda.</p>
+                  <Link to="/aluno/conquistas" className="inline-flex items-center gap-1.5 mt-2 text-sm font-medium text-amber-600 dark:text-amber-400 hover:underline">
+                    Ver página de conquistas <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-2 overflow-hidden content-start" style={{ maxHeight: "4rem", lineHeight: 1.5 }}>
+                    {conquistasReais.map((c) => {
+                      const unlocked = isConquistaUnlocked(c)
+                      const label = c.estado === "oculta" && !c.nome ? "???" : (c.nome || "???")
+                      const medalhaMaior = c.medalha ?? (c.niveis?.filter((n) => n.desbloqueada).slice(-1)[0]?.medalha)
+                      return (
+                        <Badge
+                          key={c.achievement_id}
+                          variant={unlocked ? "default" : "outline"}
+                          className={`shrink-0 ${unlocked ? "bg-gradient-to-r from-amber-500 to-yellow-500 text-white border-0 gap-1.5 shadow-sm hover:scale-105 transition-transform" : "opacity-60 gap-1.5"}`}
+                        >
+                          {medalhaMaior ? (
+                            <MedalIcon tipo={medalhaMaior as MedalhaTipo} size={14} />
+                          ) : (
+                            <Medal className="h-4 w-4 shrink-0" />
+                          )}
+                          <span className="whitespace-nowrap">{label}</span>
+                        </Badge>
+                      )
+                    })}
+                  </div>
+                  <Link to="/aluno/conquistas" className="inline-flex items-center gap-1.5 mt-3 text-sm font-medium text-amber-600 dark:text-amber-400 hover:underline">
+                    Ver todas as conquistas <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </>
+              )}
             </CardContent>
           </Card>
         </>
@@ -471,7 +522,11 @@ export default function StudentResultsPage() {
           </p>
           {expandedItem && (
             <div className="mt-6">
-              <StudentResultSummaryCharts item={expandedItem} />
+              <StudentResultSummaryCharts
+                item={expandedItem}
+                studentId={user?.id}
+                testIdsForCompare={testIdsForCompare}
+              />
             </div>
           )}
         </SheetContent>

@@ -1,38 +1,125 @@
-import React from "react"
+import React, { useEffect, useState } from "react"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Trophy, Star, Sparkles } from "lucide-react"
+import { Trophy, Star, Sparkles, Loader2 } from "lucide-react"
 import type { StudentResultListItem } from "@/pages/StudentResultsPage"
+import { getStudentResultByTest, studentCompare, type StudentResultByTestResponse, type StudentCompareResponse } from "@/services/studentResultApi"
+
+const COLORS = ["#7B3FE4", "#a78bfa", "#c4b5fd", "#8b5cf6", "#6366f1"]
 
 interface StudentResultSummaryChartsProps {
   item: StudentResultListItem
+  /** user_id do aluno logado (para POST /test/student/compare) */
+  studentId?: string
+  /** test_ids em ordem cronológica (mais antiga → mais recente), incluindo esta avaliação; mínimo 2 para evolução */
+  testIdsForCompare?: string[]
 }
 
 /**
  * Gráficos de resumo do resultado do aluno.
- * Dados mockados; substituir por chamadas à API quando os endpoints estiverem prontos.
+ * - Acertos por disciplina: GET /test/student/result/<test_id>
+ * - Evolução: POST /test/student/compare (body: student_id, test_ids)
  */
-export function StudentResultSummaryCharts({ item }: StudentResultSummaryChartsProps) {
+export function StudentResultSummaryCharts({ item, studentId, testIdsForCompare = [] }: StudentResultSummaryChartsProps) {
   const nota = item.nota ?? 0
   const acertos = item.acertos
   const total = item.total_questions_result || item.total_questions || 1
-  const pct = total > 0 ? Math.round((acertos / total) * 100) : 0
 
-  // Mock: acertos por disciplina (2-3 disciplinas fictícias)
-  const mockAcertosPorDisciplina = [
-    { name: item.disciplina || "Disciplina 1", acertos: acertos, fill: "#7B3FE4" },
-    { name: "Outra área (mock)", acertos: Math.max(0, Math.floor(acertos * 0.85)), fill: "#a78bfa" },
-    { name: "Geral (mock)", acertos: Math.max(0, Math.floor(acertos * 0.9)), fill: "#c4b5fd" },
-  ]
+  const [acertosData, setAcertosData] = useState<StudentResultByTestResponse | null>(null)
+  const [evolucaoData, setEvolucaoData] = useState<StudentCompareResponse | null>(null)
+  const [loadingAcertos, setLoadingAcertos] = useState(true)
+  const [loadingEvolucao, setLoadingEvolucao] = useState(true)
+  const [errorAcertos, setErrorAcertos] = useState<string | null>(null)
+  const [errorEvolucao, setErrorEvolucao] = useState<string | null>(null)
 
-  // Mock: evolução (últimas 4 avaliações fictícias)
-  const mockEvolucao = [
-    { label: "Aval. 1", nota: Math.max(0, nota - 1.5) },
-    { label: "Aval. 2", nota: Math.max(0, nota - 0.8) },
-    { label: "Aval. 3", nota: Math.max(0, nota - 0.2) },
-    { label: "Esta", nota },
-  ]
+  // GET /test/student/result/<test_id> — acertos por disciplina
+  useEffect(() => {
+    if (!item.id) {
+      setLoadingAcertos(false)
+      return
+    }
+    let cancelled = false
+    setLoadingAcertos(true)
+    setErrorAcertos(null)
+    getStudentResultByTest(item.id)
+      .then((data) => {
+        if (!cancelled) setAcertosData(data)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setErrorAcertos(err instanceof Error ? err.message : "Erro ao carregar acertos por disciplina")
+          setAcertosData(null)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAcertos(false)
+      })
+    return () => { cancelled = true }
+  }, [item.id])
+
+  // POST /test/student/compare — evolução entre provas
+  const shouldFetchEvolucao = Boolean(
+    studentId &&
+    testIdsForCompare.length >= 2 &&
+    testIdsForCompare.includes(item.id)
+  )
+  useEffect(() => {
+    if (!shouldFetchEvolucao) {
+      setLoadingEvolucao(false)
+      setEvolucaoData(null)
+      setErrorEvolucao(null)
+      return
+    }
+    let cancelled = false
+    setLoadingEvolucao(true)
+    setErrorEvolucao(null)
+    studentCompare(studentId!, testIdsForCompare)
+      .then((data) => {
+        if (!cancelled) setEvolucaoData(data)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setErrorEvolucao(err instanceof Error ? err.message : "Erro ao carregar evolução")
+          setEvolucaoData(null)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingEvolucao(false)
+      })
+    return () => { cancelled = true }
+  }, [shouldFetchEvolucao, studentId, testIdsForCompare.join(",")])
+
+  // Dados para o gráfico de barras (acertos por disciplina + Geral)
+  const barChartData = (() => {
+    if (!acertosData) return []
+    const rows = (acertosData.acertos_por_disciplina ?? []).map((d, i) => ({
+      name: d.subject_name,
+      acertos: d.correct_answers,
+      fill: COLORS[i % COLORS.length],
+    }))
+    if (acertosData.geral != null) {
+      rows.push({ name: "Geral", acertos: acertosData.geral.correct_answers, fill: COLORS[COLORS.length - 1] })
+    }
+    return rows
+  })()
+
+  // Dados para o gráfico de linha (evolução): uma nota por avaliação
+  const evolucaoLineData = (() => {
+    if (!evolucaoData?.evaluations?.length || !evolucaoData.comparisons?.length) return []
+    const comps = evolucaoData.comparisons
+    const grades: number[] = []
+    const first = comps[0].general_comparison?.student_grade
+    if (first != null) grades.push(first.evaluation_1)
+    comps.forEach((c) => {
+      const g = c.general_comparison?.student_grade?.evaluation_2
+      if (g != null) grades.push(g)
+    })
+    return evolucaoData.evaluations.slice(0, grades.length).map((e, i) => ({
+      label: e.title || `Aval. ${i + 1}`,
+      nota: grades[i] ?? 0,
+    }))
+  })()
 
   const isDestaque = nota >= 9
   const isParabens = nota >= 8
@@ -87,20 +174,27 @@ export function StudentResultSummaryCharts({ item }: StudentResultSummaryChartsP
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Acertos por disciplina (dados mockados)</CardTitle>
+          <CardTitle className="text-sm">Acertos por disciplina</CardTitle>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={mockAcertosPorDisciplina} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Bar dataKey="acertos" name="Acertos" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-          <p className="text-xs text-muted-foreground mt-2">
-            Dados mockados; substituir por endpoint quando disponível.
-          </p>
+          {loadingAcertos ? (
+            <div className="h-[180px] flex items-center justify-center text-muted-foreground">
+              <Loader2 className="h-8 w-8 animate-spin" aria-hidden />
+            </div>
+          ) : errorAcertos ? (
+            <p className="text-sm text-muted-foreground py-4">{errorAcertos}</p>
+          ) : barChartData.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4">Nenhum dado por disciplina disponível.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={barChartData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Bar dataKey="acertos" name="Acertos" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
 
@@ -131,21 +225,30 @@ export function StudentResultSummaryCharts({ item }: StudentResultSummaryChartsP
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Evolução (dados mockados)</CardTitle>
+          <CardTitle className="text-sm">Evolução (entre provas)</CardTitle>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={160}>
-            <LineChart data={mockEvolucao} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-50" />
-              <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-              <YAxis domain={[0, 10]} tick={{ fontSize: 10 }} />
-              <Tooltip formatter={(value: number) => [value.toFixed(1).replace(".", ","), "Nota"]} />
-              <Line type="monotone" dataKey="nota" name="Nota" stroke="#7B3FE4" strokeWidth={2} dot={{ r: 4 }} />
-            </LineChart>
-          </ResponsiveContainer>
-          <p className="text-xs text-muted-foreground mt-2">
-            Dados mockados; substituir por endpoint de evolução quando disponível.
-          </p>
+          {loadingEvolucao ? (
+            <div className="h-[160px] flex items-center justify-center text-muted-foreground">
+              <Loader2 className="h-8 w-8 animate-spin" aria-hidden />
+            </div>
+          ) : errorEvolucao ? (
+            <p className="text-sm text-muted-foreground py-4">{errorEvolucao}</p>
+          ) : !shouldFetchEvolucao ? (
+            <p className="text-sm text-muted-foreground py-4">Selecione pelo menos 2 avaliações completas para ver a evolução.</p>
+          ) : evolucaoLineData.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4">Nenhum dado de evolução disponível.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={160}>
+              <LineChart data={evolucaoLineData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" className="opacity-50" />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                <YAxis domain={[0, 10]} tick={{ fontSize: 10 }} />
+                <Tooltip formatter={(value: number) => [value.toFixed(1).replace(".", ","), "Nota"]} />
+                <Line type="monotone" dataKey="nota" name="Nota" stroke="#7B3FE4" strokeWidth={2} dot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
     </div>
