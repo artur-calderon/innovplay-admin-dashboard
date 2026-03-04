@@ -9,9 +9,13 @@ import { DashboardApiService } from "@/services/dashboardApi";
 import ConquistasCard from "@/components/dashboard/ConquistasCard";
 import InnovCoinsCard from "@/components/dashboard/InnovCoinsCard";
 import RankingCard from "@/components/dashboard/RankingCard";
-import EvolutionChart from "@/components/dashboard/EvolutionChart";
+import { EvolutionCharts } from "@/components/evolution/EvolutionCharts";
+import type { ProcessedEvolutionData } from "@/components/evolution/EvolutionCharts";
+import { processComparisonData } from "@/utils/evolutionDataProcessor";
+import { studentComparisonToComparisonResponse } from "@/utils/studentComparisonAdapter";
 import StudentFriendlyResultCard from "@/components/dashboard/StudentFriendlyResultCard";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { ChevronRight, X, Sparkles, Trophy, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -393,9 +397,27 @@ const StudentDashboard = () => {
   const [evaluationResults, setEvaluationResults] = useState<StudentEvaluationResults | null>(null);
   const [isLoadingEvaluations, setIsLoadingEvaluations] = useState(true);
   
-  // Estados para gráfico de evolução (comparação dinâmica)
+  // Estados para gráfico de evolução (comparação dinâmica) — mesmo formato e gráficos da Evolution.tsx
   const [comparisonData, setComparisonData] = useState<StudentCompareResponse | null>(null);
   const [isLoadingComparison, setIsLoadingComparison] = useState(false);
+  const processedComparisonData = useMemo((): ProcessedEvolutionData | null => {
+    const adapted = studentComparisonToComparisonResponse(comparisonData);
+    return adapted ? processComparisonData(adapted) : null;
+  }, [comparisonData]);
+
+  // Barra de carregamento ao adicionar avaliação à comparação (valor animado 0–90)
+  const [comparisonProgress, setComparisonProgress] = useState(0);
+  useEffect(() => {
+    if (!isLoadingComparison) {
+      setComparisonProgress(0);
+      return;
+    }
+    setComparisonProgress(0);
+    const t = setInterval(() => {
+      setComparisonProgress((prev) => (prev >= 90 ? 15 : prev + 15));
+    }, 400);
+    return () => clearInterval(t);
+  }, [isLoadingComparison]);
   const [hasLoadedData, setHasLoadedData] = useState(false);
   const [evaluationIdsForComparison, setEvaluationIdsForComparison] = useState<string[]>([]);
   const [resultsByEvaluationId, setResultsByEvaluationId] = useState<Record<string, StudentEvaluationResults>>({});
@@ -1071,6 +1093,7 @@ const StudentDashboard = () => {
             ranking={dashboardRanking ?? emptyRankingCardData}
             rankingFilter={rankingFilter}
             onRankingFilterChange={handleRankingFilterChange}
+            isLoading={isLoadingRanking}
             userName={user?.name}
             currentUserAvatar={(() => {
               if (dashboardRanking?.lista?.length && dashboardRanking.posicaoAtual > 0) {
@@ -1248,14 +1271,17 @@ const StudentDashboard = () => {
               </div>
               {isLoadingComparison && (
                 <Card className="rounded-2xl border-2 border-dashed border-cyan-300/50 dark:border-cyan-500/30 bg-gradient-to-r from-cyan-500/5 to-violet-500/5">
-                  <CardContent className="py-6 flex justify-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-cyan-200 border-t-cyan-500 dark:border-t-cyan-400" aria-label="Carregando comparação" />
+                  <CardContent className="py-6 space-y-4">
+                    <p className="text-sm font-medium text-center text-foreground">
+                      Adicionando avaliação à comparação…
+                    </p>
+                    <Progress value={comparisonProgress} className="h-2 w-full" aria-label="Carregando comparação" />
                   </CardContent>
                 </Card>
               )}
-              {comparisonData && !isLoadingComparison && (
+              {processedComparisonData && !isLoadingComparison && (
                 <div className="w-full pt-2">
-                  <EvolutionChart data={comparisonData} isLoading={false} />
+                  <EvolutionCharts data={processedComparisonData} isLoading={false} onlyOverviewTab />
                 </div>
               )}
             </>

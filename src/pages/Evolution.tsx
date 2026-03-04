@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -93,7 +94,8 @@ export default function Evolution() {
   const [comparisonData, setComparisonData] = useState<ComparisonResponse | null>(null);
   const [processedData, setProcessedData] = useState<ProcessedEvolutionData | null>(null);
   const [comparisonError, setComparisonError] = useState<string | null>(null);
-  
+  const [comparisonProgress, setComparisonProgress] = useState(0);
+
   // Ref para evitar chamadas duplicadas e para só aplicar resultado se a seleção não mudou
   const lastComparisonIdsRef = useRef<string>('');
   const selectedIdsRef = useRef<string>('');
@@ -101,6 +103,19 @@ export default function Evolution() {
   const prevMunicipalityRef = useRef<string>(selectedMunicipality);
   const prevSchoolRef = useRef<string>(selectedSchool);
   const prevGradeRef = useRef<string>(selectedGrade);
+
+  // Barra de carregamento ao adicionar avaliação à comparação
+  useEffect(() => {
+    if (!isLoadingComparison) {
+      setComparisonProgress(0);
+      return;
+    }
+    setComparisonProgress(0);
+    const t = setInterval(() => {
+      setComparisonProgress((prev) => (prev >= 90 ? 15 : prev + 15));
+    }, 400);
+    return () => clearInterval(t);
+  }, [isLoadingComparison]);
 
   // Carregar estados via GET /evaluation-results/evolucao/opcoes-filtros (sem params)
   const loadInitialFilters = useCallback(async () => {
@@ -1277,10 +1292,10 @@ export default function Evolution() {
 
 
 
-      {/* Loading dos dados com design melhorado */}
+      {/* Loading dos dados: não exibe a evolução enquanto adiciona avaliação à comparação */}
       {isLoadingComparison && (
         <Card className="shadow-lg border-0 bg-card/90 backdrop-blur-sm">
-          <CardContent className="flex flex-col items-center justify-center py-16">
+          <CardContent className="flex flex-col items-center justify-center py-16 space-y-6">
             <div className="relative">
               <div className="w-20 h-20 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full flex items-center justify-center mb-6">
                 <RefreshCw className="h-10 w-10 animate-spin text-white" />
@@ -1291,6 +1306,9 @@ export default function Evolution() {
             <p className="text-muted-foreground text-center max-w-md">
               Estamos comparando suas avaliações e gerando insights detalhados. Isso pode levar alguns momentos...
             </p>
+            <div className="w-full max-w-sm">
+              <Progress value={comparisonProgress} className="h-2" aria-label="Carregando comparação" />
+            </div>
           </CardContent>
         </Card>
       )}
@@ -1319,11 +1337,11 @@ export default function Evolution() {
         </Card>
       )}
 
-      {/* Gráficos de Evolução */}
-      {processedData && (
+      {/* Gráficos de Evolução — exibidos apenas quando não estiver carregando nova comparação */}
+      {processedData && !isLoadingComparison && (
         <EvolutionCharts 
           data={processedData} 
-          isLoading={isLoadingComparison}
+          isLoading={false}
         />
       )}
     </div>

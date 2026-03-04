@@ -1163,3 +1163,37 @@
     width: 100%;
     max-width: 100vw;
   }
+
+  /* Barra de rolagem moderna para lista do ranking */
+  .ranking-list-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  }
+  .ranking-list-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .ranking-list-scroll::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 4px;
+  }
+  .ranking-list-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.35);
+    border-radius: 4px;
+  }
+  .ranking-list-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+  .dark .ranking-list-scroll {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent;
+  }
+  .dark .ranking-list-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.25);
+  }
+  .dark .ranking-list-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.4);
+  }
+
+  @keyframes ranking-loading {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(200%); }
+  }

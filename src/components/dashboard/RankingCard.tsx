@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Trophy, ArrowUp, ArrowDown, Info, FileText } from "lucide-react";
+import { Trophy, ArrowUp, ArrowDown, Info, FileText, Loader2 } from "lucide-react";
 import { AvatarPreview } from "@/components/profile/AvatarPreview";
 import type { AvatarConfig } from "@/context/authContext";
 import { MedalIcon } from "@/components/conquistas/medalConfig";
@@ -46,6 +46,8 @@ interface RankingCardProps {
   userName?: string;
   /** Avatar do usuário logado (para a seção "Sua posição") */
   currentUserAvatar?: { profile_picture?: string | null; avatar_config?: AvatarConfig | Record<string, unknown> | null };
+  /** Exibe carregamento ao trocar de escopo (turma/escola/município) */
+  isLoading?: boolean;
 }
 
 /** Normaliza avatar_config da API (pode vir com "icon") para AvatarConfig (usa "seed") */
@@ -90,14 +92,15 @@ const RankingCard: React.FC<RankingCardProps> = ({
   rankingFilter, 
   onRankingFilterChange, 
   userName,
-  currentUserAvatar 
+  currentUserAvatar,
+  isLoading = false,
 }) => {
   // Verificar se há dados de ranking (lista ou sua posição)
   const hasData = ranking.lista.length > 0;
   const hasMyPosition = ranking.posicaoAtual > 0;
 
   return (
-    <Card className="h-full flex flex-col hover:shadow-lg transition-shadow duration-300">
+    <Card className="h-full flex flex-col hover:shadow-lg transition-shadow duration-300 relative overflow-hidden">
       <CardHeader className="pb-3 flex-shrink-0">
         <CardTitle className="flex items-center gap-2 sm:gap-3">
           <div className="p-2 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg flex-shrink-0">
@@ -116,6 +119,7 @@ const RankingCard: React.FC<RankingCardProps> = ({
             variant={rankingFilter === 'turma' ? 'default' : 'ghost'} 
             className="text-xs px-1 sm:px-2 py-1"
             onClick={() => onRankingFilterChange('turma')}
+            disabled={isLoading}
           >
             <span className="hidden sm:inline">Turma</span>
             <span className="sm:hidden">T</span>
@@ -125,6 +129,7 @@ const RankingCard: React.FC<RankingCardProps> = ({
             variant={rankingFilter === 'escola' ? 'default' : 'ghost'} 
             className="text-xs px-1 sm:px-2 py-1"
             onClick={() => onRankingFilterChange('escola')}
+            disabled={isLoading}
           >
             <span className="hidden sm:inline">Escola</span>
             <span className="sm:hidden">E</span>
@@ -134,14 +139,23 @@ const RankingCard: React.FC<RankingCardProps> = ({
             variant={rankingFilter === 'municipio' ? 'default' : 'ghost'} 
             className="text-xs px-1 sm:px-2 py-1"
             onClick={() => onRankingFilterChange('municipio')}
+            disabled={isLoading}
           >
             <span className="hidden sm:inline">Município</span>
             <span className="sm:hidden">M</span>
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col min-h-0">
-        {!hasData ? (
+      <CardContent className="flex-1 flex flex-col min-h-0 relative">
+        {isLoading ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-8 px-4 space-y-4">
+            <Loader2 className="h-10 w-10 animate-spin text-amber-500" aria-hidden />
+            <p className="text-sm font-medium text-muted-foreground text-center">Carregando ranking…</p>
+            <div className="w-full max-w-[200px] h-1.5 rounded-full bg-muted overflow-hidden">
+              <div className="h-full w-1/3 rounded-full bg-amber-500/70 animate-[ranking-loading_1.2s_ease-in-out_infinite]" />
+            </div>
+          </div>
+        ) : !hasData ? (
           /* Mensagem quando não há dados */
           <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
             <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
@@ -203,7 +217,7 @@ const RankingCard: React.FC<RankingCardProps> = ({
             )}
 
             {/* Lista em formato de linha (como no painel admin): posição/medalha, avatar, nome, turma • escola, média, avaliações */}
-            <div className="space-y-1 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-muted-foreground/30">
+            <div className="space-y-1 max-h-[320px] overflow-y-auto ranking-list-scroll">
               {ranking.lista.map((item, index) => {
                 const medalha = item.medalha ?? (index === 0 ? "platina" : index === 1 ? "ouro" : index === 2 ? "prata" : index === 3 ? "bronze" : null);
                 const colors: Record<NonNullable<typeof medalha>, { bg: string; border: string; text: string }> = {

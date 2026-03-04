@@ -56,6 +56,8 @@ export interface ProcessedEvolutionData {
 interface EvolutionChartsProps {
   data: ProcessedEvolutionData;
   isLoading?: boolean;
+  /** Se true, exibe apenas o conteúdo da aba "Visão Geral" (sem abas Por Disciplina / Por Níveis) */
+  onlyOverviewTab?: boolean;
 }
 
 const colors = {
@@ -334,7 +336,7 @@ function mergeByName(rows: EvolutionData[]): EvolutionDataWithDynamicKeys[] {
   return [...map.values()];
 }
 
-export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProps) {
+export function EvolutionCharts({ data, isLoading = false, onlyOverviewTab = false }: EvolutionChartsProps) {
   const [activeTab, setActiveTab] = useState<'general' | 'subjects' | 'levels'>('general');
   const [hiddenByChart, setHiddenByChart] = useState<Record<string, Set<string>>>({});
   const [collapsedCharts, setCollapsedCharts] = useState<Set<string>>(new Set());
@@ -822,20 +824,22 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
 
   return (
     <Tabs defaultValue="general" className="w-full">
-      <TabsList className="grid w-full grid-cols-3">
-        <TabsTrigger value="general" className="flex items-center gap-2">
-          <TrendingUp className="h-4 w-4" />
-          Visão Geral
-        </TabsTrigger>
-        <TabsTrigger value="subjects" className="flex items-center gap-2">
-          <BookOpen className="h-4 w-4" />
-          Por Disciplina
-        </TabsTrigger>
-        <TabsTrigger value="levels" className="flex items-center gap-2">
-          <Users className="h-4 w-4" />
-          Por Níveis
-        </TabsTrigger>
-      </TabsList>
+      {!onlyOverviewTab && (
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="general" className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4" />
+            Visão Geral
+          </TabsTrigger>
+          <TabsTrigger value="subjects" className="flex items-center gap-2">
+            <BookOpen className="h-4 w-4" />
+            Por Disciplina
+          </TabsTrigger>
+          <TabsTrigger value="levels" className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            Por Níveis
+          </TabsTrigger>
+        </TabsList>
+      )}
 
       {/* VISÃO GERAL */}
       <TabsContent value="general" className="space-y-6">
@@ -1121,6 +1125,8 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         </div>
       </TabsContent>
 
+      {!onlyOverviewTab && (
+        <>
       {/* POR DISCIPLINA */}
       <TabsContent value="subjects" className="space-y-6">
         {/* Header para disciplinas */}
@@ -1701,6 +1707,8 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
           </div>
         )}
       </TabsContent>
+        </>
+      )}
     </Tabs>
   );
 }
