@@ -108,8 +108,7 @@ export class DashboardApiService {
     try {
       const response = await api.get<AdminDashboard>("/dashboard/admin");
       return response.data;
-    } catch (error) {
-      console.error("❌ Erro ao buscar dashboard admin:", error);
+    } catch {
       return null;
     }
   }
@@ -122,8 +121,7 @@ export class DashboardApiService {
     try {
       const response = await api.get<AdminDashboard>("/dashboard/tecadm");
       return response.data;
-    } catch (error) {
-      console.error("❌ Erro ao buscar dashboard tecadm:", error);
+    } catch {
       return null;
     }
   }
@@ -136,8 +134,7 @@ export class DashboardApiService {
     try {
       const response = await api.get<DiretorDashboard>("/dashboard/diretor");
       return response.data;
-    } catch (error) {
-      console.error("❌ Erro ao buscar dashboard diretor:", error);
+    } catch {
       return null;
     }
   }
@@ -150,8 +147,7 @@ export class DashboardApiService {
     try {
       const response = await api.get<DiretorDashboard>("/dashboard/coordenador");
       return response.data;
-    } catch (error) {
-      console.error("❌ Erro ao buscar dashboard coordenador:", error);
+    } catch {
       return null;
     }
   }
@@ -164,8 +160,7 @@ export class DashboardApiService {
     try {
       const response = await api.get<ProfessorDashboard>("/dashboard/professor");
       return response.data;
-    } catch (error) {
-      console.error("❌ Erro ao buscar dashboard professor:", error);
+    } catch {
       return null;
     }
   }
@@ -201,8 +196,7 @@ export class DashboardApiService {
         params: { limit: safeLimit, offset: safeOffset },
       });
       return response.data ?? null;
-    } catch (error) {
-      console.error("Erro ao buscar ranking de escolas:", error);
+    } catch {
       return null;
     }
   }
@@ -238,8 +232,7 @@ export class DashboardApiService {
         params: { limit: safeLimit, offset: safeOffset },
       });
       return response.data ?? null;
-    } catch (error) {
-      console.error("Erro ao buscar ranking de turmas:", error);
+    } catch {
       return null;
     }
   }
@@ -247,11 +240,23 @@ export class DashboardApiService {
   /**
    * Ranking de alunos (dashboard).
    * GET /dashboard/ranking-alunos
-   * Cada item inclui position, student_id, name, school_name, class_name, serie, media, completed_evaluations.
-   * @param limit - máximo de alunos (padrão 10, máximo 100)
-   * @param offset - paginação (padrão 0)
+   * Mesmo endpoint para todos os escopos; variam apenas os query params.
+   * Sem scope/ids o backend usa o escopo do usuário logado.
+   * @param options.scope - "turma" | "escola" | "municipio" (opcional; se omitido, backend usa contexto do usuário)
+   * @param options.class_id - usado se scope=turma
+   * @param options.school_id - usado se scope=escola
+   * @param options.city_id - usado se scope=municipio
+   * @param options.limit - quantidade de alunos (default 20, máx. 50)
    */
-  static async getStudentRanking(limit: number = 10, offset: number = 0): Promise<{
+  static async getStudentRanking(options: {
+    scope?: "turma" | "escola" | "municipio";
+    class_id?: string | null;
+    school_id?: string | null;
+    city_id?: string | null;
+    limit?: number;
+    /** Contexto de cidade para X-City-ID (obrigatório quando a rota usa @requires_city_context) */
+    meta?: { cityId?: string };
+  }): Promise<{
     ranking: Array<{
       position: number;
       student_id: string;
@@ -261,20 +266,29 @@ export class DashboardApiService {
       serie: string;
       media: number;
       completed_evaluations: number;
+      profile_picture?: string | null;
+      avatar_config?: Record<string, unknown> | null;
+      /** Classificação por posição: 1º platina, 2º ouro, 3º prata, 4º bronze, 5º+ null */
+      medalha?: "platina" | "ouro" | "prata" | "bronze" | null;
     }>;
     total?: number;
-    limit?: number;
-    offset?: number;
   } | null> {
     try {
-      const safeLimit = Math.min(100, Math.max(1, limit));
-      const safeOffset = Math.max(0, offset);
-      const response = await api.get("/dashboard/ranking-alunos", {
-        params: { limit: safeLimit, offset: safeOffset },
-      });
+      const { scope, class_id, school_id, city_id, limit = 20 } = options;
+      const safeLimit = Math.min(50, Math.max(1, limit));
+      const params: Record<string, string | number> = { limit: safeLimit };
+      // Sempre envia scope quando informado (turma | escola | municipio); ids opcionais (backend usa contexto se faltar)
+      if (scope) {
+        params.scope = scope;
+        if (scope === "turma" && class_id) params.class_id = class_id;
+        else if (scope === "escola" && school_id) params.school_id = school_id;
+        else if (scope === "municipio" && city_id) params.city_id = city_id;
+      }
+      const config = { params } as { params: Record<string, string | number>; meta?: { cityId?: string } };
+      if (options.meta?.cityId) config.meta = { cityId: options.meta.cityId };
+      const response = await api.get("/dashboard/ranking-alunos", config);
       return response.data ?? null;
-    } catch (error) {
-      console.error("Erro ao buscar ranking de alunos:", error);
+    } catch {
       return null;
     }
   }
@@ -305,8 +319,7 @@ export class DashboardApiService {
         params: { limit: safeLimit },
       });
       return response.data ?? null;
-    } catch (error) {
-      console.error("Erro ao buscar avaliações recentes:", error);
+    } catch {
       return null;
     }
   }
@@ -347,8 +360,7 @@ export class DashboardApiService {
         params: { limit: safeLimit, offset: safeOffset },
       });
       return response.data ?? null;
-    } catch (error) {
-      console.error("Erro ao buscar questões do dashboard:", error);
+    } catch {
       return null;
     }
   }
@@ -361,8 +373,7 @@ export class DashboardApiService {
     try {
       const response = await api.get<AnaliseSistemaResponse>("/dashboard/analise-sistema");
       return response.data ?? null;
-    } catch (error) {
-      console.error("Erro ao buscar análise do sistema:", error);
+    } catch {
       return null;
     }
   }
@@ -375,8 +386,7 @@ export class DashboardApiService {
     try {
       const response = await api.get<{ quantidade: number }>("/dashboard/avisos/quantidade");
       return response.data?.quantidade ?? 0;
-    } catch (error) {
-      console.error("Erro ao buscar quantidade de avisos:", error);
+    } catch {
       return 0;
     }
   }
@@ -401,7 +411,6 @@ export class DashboardApiService {
       case "professor":
         return this.getProfessorDashboard();
       default:
-        console.warn(`Role não reconhecido: ${role}`);
         return null;
     }
   }

@@ -958,28 +958,89 @@ export default function Results() {
       
    
       if (evaluationsResponse) {
-        setApiData(evaluationsResponse);
+        let dataToSet = evaluationsResponse;
+
+        // ✅ Quando escola/série/turma estão selecionados e a API não retornou tabela_detalhada, buscar dados completos e filtrar no front
+        const hasFilter = selectedSchool !== 'all' || selectedGrade !== 'all' || selectedClass !== 'all';
+        if (
+          selectedEvaluation !== 'all' &&
+          selectedState !== 'all' &&
+          selectedMunicipality !== 'all' &&
+          hasFilter &&
+          !evaluationsResponse.tabela_detalhada?.disciplinas?.length
+        ) {
+          const fullResponse = await EvaluationResultsApiService.getEvaluationsList(1, 500, {
+            estado: selectedState,
+            municipio: selectedMunicipality,
+            avaliacao: selectedEvaluation,
+          });
+          const fullTabela = fullResponse?.tabela_detalhada;
+          if (fullTabela?.disciplinas?.length) {
+            const selectedSchoolName = selectedSchool !== 'all' && schools.length > 0
+              ? schools.find(s => s.id === selectedSchool)?.name
+              : null;
+            const selectedGradeName = selectedGrade !== 'all' && grades.length > 0
+              ? grades.find(g => g.id === selectedGrade)?.name
+              : null;
+            const selectedClassName = selectedClass !== 'all' && classes.length > 0
+              ? classes.find(c => c.id === selectedClass)?.name
+              : null;
+            const filterBySchool = selectedSchoolName != null;
+            const filterByGrade = selectedGradeName != null;
+            const filterByClass = selectedClassName != null;
+            const filteredDisciplinas = fullTabela.disciplinas.map((d: { alunos: Array<{ escola?: string; serie?: string; turma?: string }>; questoes?: unknown[] }) => ({
+              ...d,
+              alunos: (d.alunos || []).filter((aluno: { escola?: string; serie?: string; turma?: string }) => {
+                if (filterBySchool && (aluno.escola || '') !== selectedSchoolName) return false;
+                if (filterByGrade && (aluno.serie || '') !== selectedGradeName) return false;
+                if (filterByClass && (aluno.turma || '') !== selectedClassName) return false;
+                return true;
+              }),
+            }));
+            const filteredGeral = fullTabela.geral?.alunos
+              ? {
+                  ...fullTabela.geral,
+                  alunos: fullTabela.geral.alunos.filter((aluno: { escola?: string; serie?: string; turma?: string }) => {
+                    if (filterBySchool && (aluno.escola || '') !== selectedSchoolName) return false;
+                    if (filterByGrade && (aluno.serie || '') !== selectedGradeName) return false;
+                    if (filterByClass && (aluno.turma || '') !== selectedClassName) return false;
+                    return true;
+                  }),
+                }
+              : fullTabela.geral;
+            dataToSet = {
+              ...evaluationsResponse,
+              tabela_detalhada: {
+                ...fullTabela,
+                disciplinas: filteredDisciplinas,
+                geral: filteredGeral,
+              },
+            };
+          }
+        }
+
+        setApiData(dataToSet);
 
         // ✅ CORRIGIDO: Usar APENAS dados de estatisticas_gerais do backend
-        if (selectedEvaluation !== 'all' && evaluationsResponse.estatisticas_gerais) {
+        if (selectedEvaluation !== 'all' && dataToSet.estatisticas_gerais) {
           const resumo: EvaluationInfoSummary = {
             id: selectedEvaluation,
-            titulo: evaluationsResponse.estatisticas_gerais.nome || 'Avaliação',
+            titulo: dataToSet.estatisticas_gerais.nome || 'Avaliação',
             status: 'pendente',
-            total_alunos: evaluationsResponse.estatisticas_gerais.total_alunos,
-            alunos_participantes: evaluationsResponse.estatisticas_gerais.alunos_participantes,
-            alunos_ausentes: evaluationsResponse.estatisticas_gerais.alunos_ausentes,
-            media_nota: evaluationsResponse.estatisticas_gerais.media_nota_geral,
-            media_proficiencia: evaluationsResponse.estatisticas_gerais.media_proficiencia_geral,
+            total_alunos: dataToSet.estatisticas_gerais.total_alunos,
+            alunos_participantes: dataToSet.estatisticas_gerais.alunos_participantes,
+            alunos_ausentes: dataToSet.estatisticas_gerais.alunos_ausentes,
+            media_nota: dataToSet.estatisticas_gerais.media_nota_geral,
+            media_proficiencia: dataToSet.estatisticas_gerais.media_proficiencia_geral,
             escola: selectedSchool === 'all' 
               ? 'Todas as Escolas' 
-              : evaluationsResponse.estatisticas_gerais.escola,
-            municipio: evaluationsResponse.estatisticas_gerais.municipio,
-            serie: evaluationsResponse.estatisticas_gerais.serie,
+              : dataToSet.estatisticas_gerais.escola,
+            municipio: dataToSet.estatisticas_gerais.municipio,
+            serie: dataToSet.estatisticas_gerais.serie,
           };
 
         // Coletar disciplinas dos resultados por disciplina
-        const subjectsFromResults = evaluationsResponse.resultados_por_disciplina
+        const subjectsFromResults = (dataToSet.resultados_por_disciplina || [])
           .map(d => {
             const subject = d.disciplina;
             if (typeof subject === 'string') return subject;
@@ -1023,6 +1084,9 @@ export default function Results() {
     selectedSchool,
     selectedGrade,
     selectedClass,
+    schools,
+    grades,
+    classes,
     toast,
     currentPage,
     perPage

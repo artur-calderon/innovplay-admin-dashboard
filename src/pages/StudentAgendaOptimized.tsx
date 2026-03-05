@@ -80,21 +80,7 @@ export default function StudentAgendaOptimized() {
 
   const handleEventClick = async (clickInfo: EventClickArg) => {
     const e = clickInfo.event;
-    
-    // Log para ver os dados do evento retornado
-    console.log('=== DADOS DO EVENTO RETORNADO (StudentAgendaOptimized) ===');
-    console.log('ID:', e.id);
-    console.log('Title:', e.title);
-    console.log('Start (string):', e.startStr);
-    console.log('End (string):', e.endStr);
-    console.log('Start (Date):', e.start);
-    console.log('End (Date):', e.end);
-    console.log('allDay:', e.allDay);
-    console.log('extendedProps:', e.extendedProps);
-    console.log('Has time in start:', hasTimeInfo(e.startStr));
-    console.log('Has time in end:', hasTimeInfo(e.endStr));
-    console.log('===========================================================');
-    
+
     setSelected({
       id: e.id,
       title: e.title,
@@ -107,9 +93,8 @@ export default function StudentAgendaOptimized() {
     if (!e.extendedProps?.read) {
       try { 
         await CalendarService.markRead(e.id); 
-      } catch (error) {
-        // Silenciosamente ignora erros ao marcar como lido
-        console.error('Erro ao marcar evento como lido:', error);
+      } catch {
+        // Silenciar erro ao marcar como lido
       }
     }
   };

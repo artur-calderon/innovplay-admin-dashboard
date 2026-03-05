@@ -28,8 +28,8 @@ export default function TopStudentsTable() {
         setIsLoading(true);
         setError(null);
 
-        // Preferir endpoint do dashboard (ranking-alunos com serie e media)
-        const apiRanking = await DashboardApiService.getStudentRanking(10, 0);
+        // Preferir endpoint do dashboard (ranking-alunos; sem scope = escopo do usuário logado)
+        const apiRanking = await DashboardApiService.getStudentRanking({ limit: 10 });
         if (apiRanking?.ranking?.length) {
           const mapped: StudentRanking[] = apiRanking.ranking.map((item, index) => ({
             position: item.position ?? index + 1,

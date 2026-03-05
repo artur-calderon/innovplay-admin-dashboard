@@ -70,13 +70,8 @@ export function ManageSchoolLinksModal({
   const fetchLinks = useCallback(async () => {
     setIsLoading(true);
     try {
-      console.log('🔗 Buscando managers da escola:', schoolId);
       const response = await api.get(`/managers/school/${schoolId}`);
-      console.log('🔗 Response managers:', response);
-      console.log('🔗 Data managers:', response.data);
-      
       if (response.data && response.data.managers) {
-        console.log('🔗 Managers da escola:', response.data.managers);
         setLinks(response.data.managers);
       } else {
         setLinks([]);
@@ -107,13 +102,7 @@ export function ManageSchoolLinksModal({
   const handleRemoveLink = async (userId: string) => {
     setIsRemoving(userId);
     try {
-      console.log('🗑️ Remover manager:', userId);
-      console.log('🗑️ URL da requisição:', `/managers/school-link/${userId}`);
-      
       await api.delete(`/managers/school-link/${userId}`);
-
-      console.log('✅ Manager removido com sucesso!');
-
       setLinks(prev => prev.filter(link => link.user.id !== userId));
       
       toast({
@@ -123,7 +112,6 @@ export function ManageSchoolLinksModal({
       
       onSuccess();
     } catch (error) {
-      console.error("Erro ao remover manager:", error);
       toast({
         title: "Erro",
         description: "Erro ao remover manager",

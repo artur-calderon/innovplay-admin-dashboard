@@ -264,19 +264,19 @@ export default function CompetitionStudentDetail() {
 
   if (loading) {
     return (
-      <div className="container mx-auto py-12 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="container mx-auto py-12 flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-violet-600" />
       </div>
     );
   }
 
   if (error || !competition) {
     return (
-      <div className="container mx-auto py-12">
-        <Button variant="ghost" onClick={() => navigate('/aluno/competitions')} className="mb-4">
+      <div className="container mx-auto py-12 min-h-screen">
+        <Button variant="ghost" onClick={() => navigate('/aluno/competitions')} className="mb-4 rounded-full border-violet-300 dark:border-violet-500/50 hover:bg-violet-500/15">
           <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
         </Button>
-        <Card>
+        <Card className="rounded-2xl border-2 border-violet-200/50 dark:border-violet-500/30 overflow-hidden">
           <CardContent className="py-12 text-center text-destructive">
             {error || 'Competição não encontrada.'}
           </CardContent>
@@ -344,9 +344,9 @@ export default function CompetitionStudentDetail() {
     (competition.reward_config?.ranking_rewards?.length ?? 0) > 0;
 
   return (
-    <div className="container mx-auto space-y-6 py-6 px-4">
+    <div className="container mx-auto space-y-6 py-6 px-4 min-h-screen">
       {/* Hero gamificado + CTA único */}
-      <Card className={`overflow-hidden border-l-4 ${subjectColors.border} ${subjectColors.bg}`}>
+      <Card className={`overflow-hidden rounded-2xl border-2 border-l-4 ${subjectColors.border} ${subjectColors.bg} transition-all duration-300 hover:shadow-lg hover:shadow-violet-500/10 animate-fade-in-up`}>
         <CardContent className="p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">

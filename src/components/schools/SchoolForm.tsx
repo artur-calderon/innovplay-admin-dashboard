@@ -56,7 +56,6 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
         const response = await api.get("/city/");
         setCities(response.data);
       } catch (error) {
-        console.error("Error fetching cities:", error);
         toast({
           title: "Erro",
           description: "Erro ao carregar municípios",
@@ -85,7 +84,6 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
     try {
       onSave(formData);
     } catch (error) {
-      console.error("Error saving school:", error);
     } finally {
       setIsDeleting(false);
     }
@@ -104,7 +102,6 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
       });
       onClose();
     } catch (error) {
-      console.error("Error deleting school:", error);
       toast({
         title: "Erro",
         description: "Erro ao excluir escola",

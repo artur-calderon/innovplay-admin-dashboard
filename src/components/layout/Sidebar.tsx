@@ -162,6 +162,12 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           role: ["aluno"]
         },
         {
+          icon: BarChart3,
+          label: "Resultados",
+          href: "/aluno/resultados",
+          role: ["aluno"]
+        },
+        {
           icon: NotebookPen,
           label: "Questionário",
           href: `${user.role === 'aluno' ? "/aluno/questionario" : "/app/questionario"}`,

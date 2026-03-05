@@ -39,8 +39,6 @@ export class CertificatesApiService {
       const isTecadm = !isAdmin && !!municipalityId && !schoolId;
 
       if (isAdmin || isTecadm) {
-        // Admin e tecadm: usar /test/ (backend já filtra por escopo; tecadm vê do município)
-        console.log(isAdmin ? 'Buscando avaliações para admin via /test/' : 'Buscando avaliações para tecadm via /test/');
         const response = await api.get('/test/', {
           params: {
             page: 1,
@@ -51,15 +49,10 @@ export class CertificatesApiService {
 
         const testsData = response.data?.data || response.data || [];
         evaluations = Array.isArray(testsData) ? testsData : testsData.tests || [];
-        console.log(`${isAdmin ? 'Admin' : 'Tecadm'}: ${evaluations.length} avaliações encontradas`);
       } else {
-        // Para diretor/coordenador/tecadm: diretor/coordenador têm escola; tecadm tem só município
         if (!municipalityId) {
-          console.log('Faltando municipalityId');
           return [];
         }
-        
-        console.log(`Buscando avaliações: escola=${schoolId ?? '(todas)'}, municipio=${municipalityId}`);
         
         // Buscar o município para obter o estado
         try {
@@ -74,8 +67,6 @@ export class CertificatesApiService {
             page: '1',
             per_page: '1000'
           };
-          
-          console.log('Parâmetros da requisição:', params);
           const response = await api.get('/evaluation-results/avaliacoes', { params });
           
           // Extrair avaliações da resposta
@@ -114,16 +105,12 @@ export class CertificatesApiService {
             });
             
             evaluations = Array.from(uniqueEvaluationsMap.values());
-            console.log(`Diretor: ${evaluations.length} avaliações únicas encontradas`);
           } else if (data?.data && Array.isArray(data.data)) {
             evaluations = data.data;
           } else if (Array.isArray(data)) {
             evaluations = data;
           }
         } catch (error: any) {
-          console.error('Erro ao buscar avaliações aplicadas:', error);
-          console.error('URL da requisição:', error.config?.url);
-          console.error('Status:', error.response?.status);
           return [];
         }
       }
@@ -186,9 +173,6 @@ export class CertificatesApiService {
         };
       });
     } catch (error: any) {
-      console.error('Erro ao buscar avaliações:', error);
-      console.error('URL da requisição:', error.config?.url);
-      console.error('Status:', error.response?.status);
       return [];
     }
   }
@@ -203,9 +187,7 @@ export class CertificatesApiService {
       
       // O endpoint retorna um array direto de alunos aprovados
       const students = Array.isArray(response.data) ? response.data : [];
-      
-      console.log('Alunos aprovados retornados do endpoint:', students.length);
-      
+
       // Mapear para o formato esperado
       return students.map((student: any) => ({
         id: student.id || student.student_id,
@@ -216,12 +198,9 @@ export class CertificatesApiService {
         certificate_status: student.certificate_status || 'pending'
       }));
     } catch (error: any) {
-      console.error('Erro ao buscar alunos aprovados:', error);
       if (error?.response?.status === 404) {
-        console.log('Avaliação não encontrada ou sem alunos aprovados');
         return [];
       }
-      console.error('Detalhes do erro:', error.response?.data || error.message);
       return [];
     }
   }
@@ -235,12 +214,9 @@ export class CertificatesApiService {
       const response = await api.get(`/certificates/template/${evaluationId}`);
       return response.data;
     } catch (error: any) {
-      // Se não existir template no backend, retornar null (será criado localmente)
       if (error?.response?.status === 404) {
-        console.log('Template não encontrado no backend - será criado localmente');
         return null;
       }
-      console.error('Erro ao buscar template de certificado:', error);
       return null;
     }
   }
@@ -254,7 +230,6 @@ export class CertificatesApiService {
       const response = await api.post('/certificates/template', template);
       return response.data;
     } catch (error: any) {
-      console.error('Erro ao salvar template de certificado:', error);
       // Se for erro de validação, lançar o erro
       if (error?.response?.status === 400) {
         throw new Error(error.response?.data?.erro || 'Erro ao salvar template');
@@ -292,8 +267,6 @@ export class CertificatesApiService {
       const response = await api.post('/certificates/approve', requestBody);
       return response.data;
     } catch (error: any) {
-      console.error('Erro ao aprovar certificados:', error);
-      
       // Se for erro de validação, lançar erro com mensagem
       if (error?.response?.status === 400) {
         throw new Error(error.response?.data?.erro || 'Erro ao aprovar certificados');
@@ -320,8 +293,7 @@ export class CertificatesApiService {
         category: 'student'
       });
     } catch (error) {
-      // Se o endpoint de notificações não existir, apenas logar
-      console.warn('Erro ao criar notificação (pode não estar implementado):', error);
+      // Silenciar se endpoint não existir
     }
   }
 
@@ -333,7 +305,6 @@ export class CertificatesApiService {
       const response = await api.get(`/certificates/student/${studentId}`);
       return response.data?.data || response.data || [];
     } catch (error) {
-      console.error('Erro ao buscar certificados do aluno:', error);
       return [];
     }
   }
@@ -346,7 +317,6 @@ export class CertificatesApiService {
       const response = await api.get('/certificates/me');
       return response.data?.data || response.data || [];
     } catch (error) {
-      console.error('Erro ao buscar meus certificados:', error);
       return [];
     }
   }
@@ -359,7 +329,6 @@ export class CertificatesApiService {
       const response = await api.get(`/certificates/${certificateId}`);
       return response.data;
     } catch (error) {
-      console.error('Erro ao buscar certificado:', error);
       return null;
     }
   }

@@ -137,21 +137,7 @@ export default function StudentAgenda() {
   // Callback para clique em evento (visualizar detalhes)
   const handleStudentEventClick = async (clickInfo: EventClickArg) => {
     const eventData = clickInfo.event;
-    
-    // Log para ver os dados do evento retornado
-    console.log('=== DADOS DO EVENTO RETORNADO (StudentAgenda) ===');
-    console.log('ID:', eventData.id);
-    console.log('Title:', eventData.title);
-    console.log('Start (string):', eventData.startStr);
-    console.log('End (string):', eventData.endStr);
-    console.log('Start (Date):', eventData.start);
-    console.log('End (Date):', eventData.end);
-    console.log('allDay:', eventData.allDay);
-    console.log('extendedProps:', eventData.extendedProps);
-    console.log('Has time in start:', hasTimeInfo(eventData.startStr));
-    console.log('Has time in end:', hasTimeInfo(eventData.endStr));
-    console.log('================================================');
-    
+
     setSelectedEvent({
       id: eventData.id,
       title: eventData.title,
@@ -168,20 +154,24 @@ export default function StudentAgenda() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
-      {/* Header */}
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-          <Calendar className="w-8 h-8 text-blue-600" />
-          Agenda Acadêmica
+    <div className="container mx-auto px-4 py-6 space-y-6 min-h-screen">
+      {/* Header — gamificado (padrão Resultados) */}
+      <div className="space-y-2 animate-fade-in-up">
+        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3" id="agenda-page-title">
+          <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110">
+            <Calendar className="w-5 h-5 text-white drop-shadow" />
+          </span>
+          <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">
+            Agenda Acadêmica
+          </span>
         </h1>
-                  <p className="text-muted-foreground">
+        <p className="text-muted-foreground font-medium">
           Acompanhe suas aulas, provas e eventos acadêmicos
         </p>
       </div>
 
       {/* Calendário */}
-      <Card className="shadow-sm border-border/50">
+      <Card className="shadow-sm border-2 border-violet-200/50 dark:border-violet-500/30 rounded-2xl overflow-hidden bg-gradient-to-br from-violet-500/5 to-transparent transition-all duration-300 hover:shadow-lg hover:shadow-violet-500/10 animate-fade-in-up">
               <CardHeader className="pb-4">
           <CardTitle className="text-xl font-semibold tracking-tight">📅 Minha Agenda</CardTitle>
           <CardDescription className="text-muted-foreground/80">

@@ -34,7 +34,6 @@ export default function PlayTvVideoView() {
       setVideo(response.data);
     } catch (err) {
       const error = err as ApiError;
-      console.error('Erro ao carregar vídeo:', error);
       // Se o endpoint não existir (404), mostrar mensagem amigável
       if (error.response?.status === 404) {
         setError('Vídeo não encontrado ou endpoint ainda não implementado');

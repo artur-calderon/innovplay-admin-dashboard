@@ -5,13 +5,8 @@ import { EvolutionData } from '@/components/evolution/EvolutionChart';
  * Valida e limita variações percentuais extremas
  * Variações acima de 1000% ou abaixo de -1000% são provavelmente erros de cálculo
  */
-function validateVariation(variation: number, fromValue?: number, toValue?: number, context?: string): number {
+function validateVariation(variation: number, _fromValue?: number, _toValue?: number, _context?: string): number {
   if (Math.abs(variation) > 1000) {
-    console.warn(`⚠️ Variação extrema detectada: ${variation}%${context ? ` (${context})` : ''}`);
-    if (fromValue !== undefined && toValue !== undefined) {
-      console.warn(`⚠️ Valores: ${fromValue} → ${toValue}`);
-    }
-    // Limitar a ±1000%
     return variation > 0 ? 1000 : -1000;
   }
   return variation;
@@ -73,11 +68,7 @@ function processGeneralComparison(comparison: ComparisonResponse): EvolutionData
     return [];
   }
 
-  console.log('🔍 processGeneralComparison - Total de comparações:', comparison.comparisons.length);
-  console.log('🔍 processGeneralComparison - Total de avaliações esperadas:', comparison.total_evaluations);
-  console.log('🔍 processGeneralComparison - Avaliações:', comparison.evaluations?.map(e => ({ id: e.id, title: e.title, order: e.order })));
-
-  // NOVO: Coletar todos os valores das avaliações
+  // Coletar todos os valores das avaliações
   const values: number[] = [];
   const variations: number[] = [];
   
@@ -88,14 +79,6 @@ function processGeneralComparison(comparison: ComparisonResponse): EvolutionData
       values.push(first.average_grade.evaluation_1);
       values.push(first.average_grade.evaluation_2);
       variations.push(first.average_grade.evolution.percentage);
-      console.log('🔍 Primeira comparação:', {
-        from: comparison.comparisons[0].from_evaluation?.title,
-        to: comparison.comparisons[0].to_evaluation?.title,
-        eval1: first.average_grade.evaluation_1,
-        eval2: first.average_grade.evaluation_2,
-      });
-    } else {
-      console.warn('⚠️ Primeira comparação não tem average_grade');
     }
   }
   
@@ -105,25 +88,9 @@ function processGeneralComparison(comparison: ComparisonResponse): EvolutionData
     if (comp.average_grade) {
       values.push(comp.average_grade.evaluation_2);
       variations.push(comp.average_grade.evolution.percentage);
-      console.log(`🔍 Comparação ${i + 1}:`, {
-        from: comparison.comparisons[i].from_evaluation?.title,
-        to: comparison.comparisons[i].to_evaluation?.title,
-        eval2: comp.average_grade.evaluation_2,
-      });
-    } else {
-      console.warn(`⚠️ Comparação ${i + 1} não tem average_grade`);
     }
   }
-  
-  console.log('🔍 Valores coletados:', values);
-  console.log('🔍 Total de valores:', values.length);
-  console.log('🔍 Esperado:', comparison.total_evaluations);
-  
-  // Verificar se o número de valores coletados corresponde ao número de avaliações
-  if (values.length !== comparison.total_evaluations) {
-    console.warn(`⚠️ Discrepância: coletamos ${values.length} valores, mas esperávamos ${comparison.total_evaluations} avaliações`);
-  }
-  
+
   // Criar UM único registro com todas as etapas dinamicamente
   const result: any = {
     name: "GERAL",
@@ -138,23 +105,9 @@ function processGeneralComparison(comparison: ComparisonResponse): EvolutionData
   // Adicionar todas as variações dinamicamente
   variations.forEach((variation, index) => {
     const variacaoKey = `variacao_${index + 1}_${index + 2}`;
-    const validVariation = validateVariation(
-      variation,
-      values[index],
-      values[index + 1],
-      `etapa ${index + 1} → ${index + 2}`
-    );
-    result[variacaoKey] = validVariation;
-    console.log(`🔍 Variação ${variacaoKey}:`, {
-      original: variation,
-      validada: validVariation,
-      valor1: values[index],
-      valor2: values[index + 1],
-    });
+    result[variacaoKey] = validateVariation(variation);
   });
-  
-  console.log('🔍 Resultado final:', result);
-  
+
   return [result];
 }
 

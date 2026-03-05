@@ -83,8 +83,7 @@ const StudentProfessorIndex = () => {
         setIsLoading(true);
         const savedLinks = await quickLinksApi.getUserQuickLinks(user.id);
         setQuickLinks(savedLinks);
-      } catch (error) {
-        console.error('Erro ao carregar atalhos:', error);
+      } catch {
         toast({
           title: "Erro",
           description: "Não foi possível carregar os atalhos rápidos.",

@@ -26,7 +26,6 @@ export function StudentList({ evaluationId, onSelectStudent }: StudentListProps)
         const data = await CertificatesApiService.getApprovedStudents(evaluationId);
         setStudents(data);
       } catch (error) {
-        console.error('Erro ao carregar alunos participantes:', error);
       } finally {
         setIsLoading(false);
       }

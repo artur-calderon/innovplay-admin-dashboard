@@ -66,7 +66,6 @@ export default function PlayTvStudent() {
         return;
       }
       
-      console.error('Erro ao carregar vídeos:', error);
       toast({
         title: 'Erro',
         description: error.response?.data?.message || error.message || 'Não foi possível carregar os vídeos.',
@@ -104,8 +103,8 @@ export default function PlayTvStudent() {
           if (classData.school_id) {
             setStudentSchool(classData.school_id);
           }
-        } catch (classError) {
-          console.error('Erro ao buscar dados da turma:', classError);
+        } catch {
+          // Ignorar erro ao buscar turma
         }
       } else if (!studentData.grade_id && studentData.grade?.id) {
         // Tentar usar o objeto grade se disponível
@@ -122,8 +121,7 @@ export default function PlayTvStudent() {
       }
     } catch (err) {
       const error = err as ApiError;
-      console.error('Erro ao carregar informações do aluno:', error);
-      
+
       // Se for erro 404, o aluno pode não ter registro completo
       if (error.response?.status === 404) {
         toast({
@@ -148,8 +146,8 @@ export default function PlayTvStudent() {
     try {
       const response = await api.get('/subjects');
       setSubjects(response.data || []);
-    } catch (error) {
-      console.error('Erro ao carregar disciplinas:', error);
+    } catch {
+      // Silenciar erro ao carregar disciplinas
     }
   }, []);
 
@@ -213,9 +211,9 @@ export default function PlayTvStudent() {
 
   if (isLoading || isLoadingStudentInfo) {
     return (
-      <div className="container mx-auto py-6">
+      <div className="container mx-auto py-6 min-h-screen">
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin mr-2" />
+          <Loader2 className="w-8 h-8 animate-spin mr-2 text-violet-600" />
           <span>Carregando vídeos...</span>
         </div>
       </div>
@@ -223,17 +221,19 @@ export default function PlayTvStudent() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div className="container mx-auto py-6 space-y-6 min-h-screen">
+      {/* Header — gamificado (padrão Resultados) */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fade-in-up">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Tv className="w-8 h-8 text-blue-600" />
-            Play TV
+          <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3" id="playtv-page-title">
+            <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110">
+              <Tv className="w-5 h-5 text-white drop-shadow" />
+            </span>
+            <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">Play TV</span>
           </h2>
-          <p className="text-muted-foreground">Assista aos vídeos educacionais disponíveis para sua série</p>
+          <p className="text-muted-foreground font-medium">Assista aos vídeos educacionais disponíveis para sua série</p>
         </div>
-        <Button variant="outline" onClick={handleRefresh} disabled={isLoading} size="sm">
+        <Button variant="outline" onClick={handleRefresh} disabled={isLoading} size="sm" className="rounded-full border-violet-300 dark:border-violet-500/50 hover:bg-violet-500/15 hover:border-violet-400 transition-all">
           <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
           Atualizar
         </Button>

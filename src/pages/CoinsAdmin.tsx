@@ -186,7 +186,6 @@ export default function CoinsAdmin() {
         })).filter((s) => s.id);
         setStates(data);
       } catch (err) {
-        console.error('Erro ao carregar estados:', err);
         toast({ title: 'Erro', description: 'Não foi possível carregar os estados.', variant: 'destructive' });
       } finally {
         setLoadingStates(false);
@@ -330,7 +329,6 @@ export default function CoinsAdmin() {
         );
       }
     } catch (err) {
-      console.error('Erro ao carregar alunos:', err);
       setStudents([]);
       toast({ title: 'Erro', description: 'Não foi possível carregar os alunos.', variant: 'destructive' });
     } finally {

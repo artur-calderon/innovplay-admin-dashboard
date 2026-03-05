@@ -63,7 +63,6 @@ export default function TakeEvaluation() {
         // Buscar a questão embaralhada
         const shuffledQuestion = shuffledQuestions.find(q => q.id === questionId);
         if (!shuffledQuestion?.positionMapping) {
-            console.warn('⚠️ Questão não tem mapeamento de posições:', questionId);
             return textToMap; // Fallback para resposta direta
         }
         
@@ -86,37 +85,20 @@ export default function TakeEvaluation() {
         }
         
         if (!selectedOption) {
-            console.warn('⚠️ Opção selecionada não encontrada:', textToMap, {
-                availableOptions: shuffledQuestion.options?.map(opt => ({ id: opt.id, text: opt.text?.substring(0, 50) }))
-            });
             return textToMap; // Fallback para resposta direta
         }
         
         // Encontrar o índice embaralhado da opção selecionada
         const shuffledIndex = shuffledQuestion.options?.findIndex(opt => opt.id === selectedOption.id);
         if (shuffledIndex === -1 || shuffledIndex === undefined) {
-            console.warn('⚠️ Índice embaralhado não encontrado para opção:', selectedOption.id);
             return textToMap; // Fallback para resposta direta
         }
         
         // Buscar o mapeamento para essa posição
         const mapping = shuffledQuestion.positionMapping[shuffledIndex];
         if (!mapping) {
-            console.warn('⚠️ Mapeamento não encontrado para índice:', shuffledIndex);
             return textToMap; // Fallback para resposta direta
         }
-        
-        console.log('✅ Mapeamento de resposta para letra original:', {
-            questionId,
-            selectedText: textToMap,
-            selectedOptionId: selectedOption.id,
-            shuffledIndex,
-            originalIndex: mapping.originalIndex,
-            shuffledLetter: mapping.shuffledLetter, // A, B, C, D... (posição no frontend)
-            originalLetter: mapping.originalLetter, // A, B, C, D... (posição original)
-            originalText: mapping.originalText,
-            shuffledText: mapping.shuffledText
-        });
         
         // Retornar a letra da posição original (A, B, C, D...)
         return mapping.originalLetter;
@@ -145,18 +127,8 @@ export default function TakeEvaluation() {
     // ✅ Verificar se avaliação já foi enviada antes de iniciar
     useEffect(() => {
         if (evaluationState === 'completed' && !results) {
-            console.log('⚠️ Avaliação já foi enviada anteriormente - bloqueando acesso');
-            console.log('🔍 Debug do estado:', {
-                evaluationState,
-                hasResults: !!results,
-                testData: !!testData,
-                session: !!session
-            });
-            
-            // ✅ NOVO: Verificação adicional para evitar falsos positivos
-            // Se não há dados da avaliação ou sessão, pode ser um erro de carregamento
+            // Verificação adicional: se não há dados da avaliação ou sessão, pode ser erro de carregamento
             if (!testData || !session) {
-                console.log('⚠️ Dados incompletos - pode ser erro de carregamento, não bloqueando acesso');
                 return;
             }
             
@@ -176,7 +148,6 @@ export default function TakeEvaluation() {
     // ✅ Auto-iniciar avaliação automaticamente
     useEffect(() => {
         if (evaluationState === 'instructions' && testData && !session) {
-            console.log('🚀 Auto-iniciando avaliação...');
             startTestSession();
         }
     }, [evaluationState, testData, session, startTestSession]);
@@ -242,19 +213,6 @@ export default function TakeEvaluation() {
     // ✅ REMOVIDO: useEffect que fechava automaticamente o fullscreen ao navegar
     // Agora o modo tela cheia persiste durante a navegação entre questões
 
-    // Log para debug da questão atual (apenas quando muda)
-    useEffect(() => {
-        if (currentQuestionIndex >= 0 && shuffledQuestions?.[currentQuestionIndex]) {
-            const currentQuestion = shuffledQuestions[currentQuestionIndex];
-            console.log('🔍 Questão atual:', {
-                index: currentQuestionIndex,
-                questionId: currentQuestion?.id,
-                currentAnswer: answers[currentQuestion?.id]?.answer,
-                questionType: currentQuestion?.type
-            });
-        }
-    }, [currentQuestionIndex, shuffledQuestions, answers]);
-
     // ✅ NOVO: Scroll automático para o topo da questão quando mudar
     useEffect(() => {
         if (currentQuestionIndex >= 0) {
@@ -293,10 +251,6 @@ export default function TakeEvaluation() {
     // ✅ Organizar questões por disciplina e embaralhar alternativas
     useEffect(() => {
         if (testData?.questions?.length && shuffledQuestions.length === 0) {
-            console.log('🔄 Organizando questões por disciplina...', testData.questions.length);
-            
-
-            
             // Agrupar questões por disciplina
             const questionsBySubject = testData.questions.reduce((acc, question) => {
                 const subjectName = question.subject?.name || 'Sem disciplina';
@@ -307,17 +261,11 @@ export default function TakeEvaluation() {
                 return acc;
             }, {} as Record<string, Question[]>);
 
-            console.log('📚 Questões agrupadas por disciplina:', Object.keys(questionsBySubject));
-
             // Processar questões de cada disciplina
             const processedQuestions: Question[] = [];
             
             Object.entries(questionsBySubject).forEach(([subject, questions]) => {
-                console.log(`📖 Processando disciplina: ${subject} (${questions.length} questões)`);
-                
                 const processedSubjectQuestions = questions.map((q, questionIndex) => {
-                    console.log(`Questão ${questionIndex + 1} de ${subject}:`, q.type, q.options?.length);
-                    
                     if (
                         ["multiple_choice", "multipleChoice", "multiple_choice"].includes(q.type) &&
                         (q.options || q.alternatives) &&
@@ -340,13 +288,6 @@ export default function TakeEvaluation() {
                     shuffledText: shuffledOpt.text
                 };
             });
-            
-            console.log(`✅ Questão ${questionIndex + 1} de ${subject} embaralhada:`, {
-                original: optionsToShuffle.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
-                shuffled: shuffledOptions.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
-                positionMapping: positionMapping.map(m => `${m.shuffledLetter}→${m.originalLetter}`),
-                totalOptions: shuffledOptions.length
-            });
 
             return {
                 ...q,
@@ -362,7 +303,6 @@ export default function TakeEvaluation() {
                 processedQuestions.push(...processedSubjectQuestions);
             });
 
-            console.log('🎯 Questões organizadas por disciplina definidas:', processedQuestions.length);
             setShuffledQuestions(processedQuestions);
         }
     }, [testData, shuffledQuestions.length]);
@@ -418,7 +358,6 @@ export default function TakeEvaluation() {
             });
             
             if (allAnswered) {
-                console.log('🎉 Todas as questões foram respondidas!');
                 setShowCompletionDialog(true);
                 setHasSeenCompletionDialog(true);
             }
@@ -438,20 +377,7 @@ export default function TakeEvaluation() {
 
     // ✅ Redirecionamento automático quando avaliação é concluída (exceto competição)
     useEffect(() => {
-        console.log('🔍 Verificando redirecionamento:', {
-            evaluationState,
-            hasResults: !!results,
-            fromCompetition: competitionState?.fromCompetition,
-            shouldRedirect: evaluationState === 'completed' && !competitionState?.fromCompetition
-        });
-        
         if (evaluationState === 'completed' && !competitionState?.fromCompetition) {
-            console.log('📊 Avaliação enviada com sucesso, redirecionando...', {
-                evaluationState,
-                hasResults: !!results,
-                resultsData: results
-            });
-            
             setShowFullscreenQuestion(false);
             setShowCompletionDialog(false);
             setShowSubmitDialog(false);
@@ -463,24 +389,12 @@ export default function TakeEvaluation() {
             });
             
             const timer = setTimeout(() => {
-                console.log('🔄 Executando redirecionamento para /aluno/avaliacoes');
                 navigate("/aluno/avaliacoes");
             }, 1500);
             
             return () => clearTimeout(timer);
         }
     }, [evaluationState, results, navigate, toast, competitionState?.fromCompetition]);
-
-    // ✅ NOVO: Log para debug do estado da avaliação
-    useEffect(() => {
-        console.log('🔍 Estado da avaliação mudou:', {
-            evaluationState,
-            hasResults: !!results,
-            showCompletionDialog,
-            showSubmitDialog,
-            showFullscreenQuestion
-        });
-    }, [evaluationState, results, showCompletionDialog, showSubmitDialog, showFullscreenQuestion]);
 
     // ✅ REMOVIDO: useEffect duplicado que estava causando conflitos
 
@@ -683,7 +597,6 @@ export default function TakeEvaluation() {
     if (evaluationState === 'active' && testData && session) {
         // ✅ Verificação adicional para garantir que os dados estão carregados
         if (!shuffledQuestions || shuffledQuestions.length === 0) {
-            console.log('⚠️ shuffledQuestions vazio, usando testData.questions como fallback');
             if (testData?.questions?.length) {
                 setShuffledQuestions(testData.questions);
                 return null; // Aguardar re-render
@@ -975,25 +888,30 @@ export default function TakeEvaluation() {
 
                 <div className="flex-1 overflow-hidden">
                     <div className="h-full flex">
-                        {/* ✅ Navegação lateral - escondida em mobile */}
-                        <div className="hidden md:flex md:w-64 lg:w-72 xl:w-80 bg-card border-r border-border flex-col">
-                            {/* Header da navegação */}
-                            <div className="p-3 lg:p-4 border-b border-border">
-                                <div className="flex items-center justify-between mb-3">
-                                    <div className="flex items-center gap-2 lg:gap-3">
-                                        <h3 className="text-xs lg:text-sm font-semibold text-foreground">Navegação</h3>
-                                        <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                                            {Object.keys(answers).length}/{shuffledQuestions.length}
+                        {/* Navegação lateral - design moderno */}
+                        <div className="hidden md:flex md:w-64 lg:w-72 xl:w-80 flex-col shrink-0 bg-gradient-to-b from-card to-card/95 dark:from-card dark:to-card/90 border-r border-border/80 shadow-[4px_0_24px_-8px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_24px_-8px_rgba(0,0,0,0.3)]">
+                            {/* Header */}
+                            <div className="p-4 lg:p-5 border-b border-border/60">
+                                <div className="flex items-center justify-between gap-2 mb-4">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 dark:bg-primary/20">
+                                            <Menu className="h-4 w-4 text-primary" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-semibold text-foreground tracking-tight">Questões</h3>
+                                            <p className="text-[11px] text-muted-foreground">
+                                                {Object.keys(answers).length} de {shuffledQuestions.length} respondidas
+                                            </p>
                                         </div>
                                     </div>
                                     <Button
                                         size="sm"
                                         onClick={() => setShowSubmitDialog(true)}
                                         disabled={isTimeUp || isSubmitting || Object.keys(answers).length < shuffledQuestions.length}
-                                        className={`px-2 lg:px-3 py-1 h-7 lg:h-8 text-xs ${
+                                        className={`shrink-0 h-8 px-3 text-xs font-medium rounded-xl shadow-sm transition-all ${
                                             Object.keys(answers).length >= shuffledQuestions.length
-                                                ? 'bg-green-600 hover:bg-green-700 text-white'
-                                                : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white hover:shadow-md'
+                                                : 'bg-muted text-muted-foreground cursor-not-allowed'
                                         }`}
                                         title={
                                             Object.keys(answers).length < shuffledQuestions.length
@@ -1001,30 +919,26 @@ export default function TakeEvaluation() {
                                                 : 'Enviar avaliação'
                                         }
                                     >
-                                        <Send className="h-3 w-3 mr-1" />
-                                        <span className="hidden lg:inline">Enviar</span>
+                                        <Send className="h-3.5 w-3 mr-1.5" />
+                                        Enviar
                                     </Button>
                                 </div>
-                                
-                                {/* Progresso visual */}
-                                <div className="mb-3 lg:mb-4">
-                                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                                {/* Barra de progresso */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
                                         <span>Progresso</span>
-                                        <span>{Math.round((Object.keys(answers).length / shuffledQuestions.length) * 100)}%</span>
+                                        <span className="tabular-nums text-foreground/80">{Math.round((Object.keys(answers).length / shuffledQuestions.length) * 100)}%</span>
                                     </div>
-                                    <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
-                                        <div 
-                                            className="bg-gradient-to-r from-purple-500 to-blue-600 h-full transition-all duration-300 ease-out"
-                                            style={{ 
-                                                width: `${(Object.keys(answers).length / shuffledQuestions.length) * 100}%` 
-                                            }}
+                                    <div className="w-full h-2 bg-muted/80 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full rounded-full bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 transition-all duration-500 ease-out shadow-sm"
+                                            style={{ width: `${(Object.keys(answers).length / shuffledQuestions.length) * 100}%` }}
                                         />
                                     </div>
                                 </div>
                             </div>
-                            
-                            {/* Grid de navegação */}
-                            <div className="flex-1 overflow-y-auto p-3 lg:p-4">
+                            {/* Grid de questões */}
+                            <div className="flex-1 overflow-y-auto p-3 lg:p-4 min-h-0">
                                 <div className="grid grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
                                     {shuffledQuestions.map((question, index) => {
                                         const hasAnswer = answers[question.id]?.answer && answers[question.id]?.answer !== "";
@@ -1034,12 +948,13 @@ export default function TakeEvaluation() {
                                             <button
                                                 key={question.id}
                                                 className={`
-                                                    relative w-10 h-10 lg:w-11 lg:h-11 xl:w-12 xl:h-12 rounded-lg text-xs lg:text-sm font-medium flex items-center justify-center transition-all
-                                                    ${isCurrent 
-                                                        ? 'bg-purple-600 text-white ring-2 ring-purple-300 shadow-lg scale-105' 
-                                                        : hasAnswer 
-                                                            ? 'bg-green-100 dark:bg-green-950/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-800 hover:bg-green-200 dark:hover:bg-green-950/50 hover:scale-105' 
-                                                            : 'bg-muted text-muted-foreground border border-border hover:bg-muted/80 hover:scale-105'
+                                                    relative w-10 h-10 lg:w-11 lg:h-11 xl:w-12 xl:h-12 rounded-xl text-xs lg:text-sm font-semibold flex items-center justify-center
+                                                    transition-all duration-200 ease-out
+                                                    ${isCurrent
+                                                        ? 'bg-gradient-to-br from-violet-600 to-purple-600 text-white shadow-lg shadow-violet-500/30 ring-2 ring-violet-400/50 scale-105'
+                                                        : hasAnswer
+                                                            ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-400/40 dark:border-emerald-500/40 hover:bg-emerald-500/25 dark:hover:bg-emerald-500/30 hover:scale-105'
+                                                            : 'bg-muted/70 dark:bg-muted/50 text-muted-foreground border border-transparent hover:bg-muted hover:text-foreground hover:scale-105 hover:border-border'
                                                     }
                                                     ${isTimeUp ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
                                                 `}
@@ -1049,7 +964,10 @@ export default function TakeEvaluation() {
                                             >
                                                 {index + 1}
                                                 {hasAnswer && !isCurrent && (
-                                                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full border border-white"></div>
+                                                    <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                                                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                                                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-background" />
+                                                    </span>
                                                 )}
                                             </button>
                                         );
@@ -1125,26 +1043,8 @@ export default function TakeEvaluation() {
                                                 answer={answers[currentQuestion?.id]?.answer}
                                                 onAnswerChange={(newAnswer) => {
                                                     if (currentQuestion?.id) {
-                                                        console.log('💾 Salvando resposta:', {
-                                                            questionId: currentQuestion.id,
-                                                            interfaceAnswer: newAnswer,
-                                                            questionType: currentQuestion.type,
-                                                            currentAnswers: Object.keys(answers)
-                                                        });
-                                                        
-                                                        // ✅ NOVO: Mapear resposta para letra original antes de salvar
                                                         const displayAnswer = Array.isArray(newAnswer) ? newAnswer[0] : newAnswer;
                                                         const originalLetter = mapAnswerToOriginalLetter(currentQuestion.id, displayAnswer);
-                                                        
-                                                        console.log('💾 Salvando resposta mapeada:', {
-                                                            questionId: currentQuestion.id,
-                                                            interfaceAnswer: displayAnswer,
-                                                            originalLetter: originalLetter,
-                                                            questionType: currentQuestion.type,
-                                                            currentAnswers: Object.keys(answers)
-                                                        });
-                                                        
-                                                        // Salvar a letra original (A, B, C, D...) no backend
                                                         saveAnswer(currentQuestion.id, originalLetter);
 
                                                         // Avanço automático
@@ -1260,19 +1160,28 @@ export default function TakeEvaluation() {
                              }}
                          />
                          
-                         {/* Modal de navegação na FRENTE */}
-                         <div className="fixed inset-x-0 bottom-0 z-50 bg-card rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col animate-slide-up">
-                             {/* Header do modal */}
-                             <div className="p-4 border-b border-border flex items-center justify-between">
+                         {/* Modal de navegação - design moderno */}
+                         <div className="fixed inset-x-0 bottom-0 z-50 bg-gradient-to-b from-card to-card/98 dark:from-card dark:to-card/95 rounded-t-3xl shadow-[0_-8px_40px_-12px_rgba(0,0,0,0.15)] dark:shadow-[0_-8px_40px_-12px_rgba(0,0,0,0.4)] border-t border-border/60 max-h-[85vh] flex flex-col animate-slide-up">
+                             {/* Alça visual */}
+                             <div className="flex justify-center pt-3 pb-1">
+                                 <div className="w-12 h-1 rounded-full bg-muted-foreground/20" />
+                             </div>
+                             {/* Header */}
+                             <div className="px-4 pb-4 flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <h3 className="text-base font-bold text-foreground">Navegação</h3>
-                                    <div className="text-xs text-muted-foreground bg-muted px-3 py-1.5 rounded-full font-semibold">
-                                        {Object.keys(answers).length}/{shuffledQuestions.length}
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 dark:bg-primary/20">
+                                        <Menu className="h-5 w-5 text-primary" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-semibold text-foreground tracking-tight">Questões</h3>
+                                        <p className="text-xs text-muted-foreground">
+                                            {Object.keys(answers).length} de {shuffledQuestions.length} respondidas
+                                        </p>
                                     </div>
                                 </div>
                                 <Button
                                     variant="ghost"
-                                    size="sm"
+                                    size="icon"
                                     onClick={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
@@ -1283,32 +1192,26 @@ export default function TakeEvaluation() {
                                         e.stopPropagation();
                                         setShowMobileNav(false);
                                     }}
-                                    className="h-8 w-8 p-0 rounded-full touch-manipulation"
+                                    className="h-9 w-9 rounded-xl touch-manipulation"
                                 >
                                     <X className="h-5 w-5" />
                                 </Button>
                              </div>
-                             
-                             {/* Progresso */}
-                             <div className="px-4 pt-3 pb-2">
-                                <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-                                    <span className="font-medium">Progresso da Avaliação</span>
-                                    <span className="font-bold text-purple-600">
-                                        {Math.round((Object.keys(answers).length / shuffledQuestions.length) * 100)}%
-                                    </span>
+                             {/* Barra de progresso */}
+                             <div className="px-4 pb-4">
+                                <div className="flex items-center justify-between text-xs font-medium text-muted-foreground mb-2">
+                                    <span>Progresso</span>
+                                    <span className="tabular-nums text-foreground/80">{Math.round((Object.keys(answers).length / shuffledQuestions.length) * 100)}%</span>
                                 </div>
-                                <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
-                                    <div 
-                                        className="bg-gradient-to-r from-purple-500 to-blue-600 h-full transition-all duration-300 ease-out"
-                                        style={{ 
-                                            width: `${(Object.keys(answers).length / shuffledQuestions.length) * 100}%` 
-                                        }}
+                                <div className="w-full h-2.5 bg-muted/80 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full rounded-full bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 transition-all duration-500 ease-out"
+                                        style={{ width: `${(Object.keys(answers).length / shuffledQuestions.length) * 100}%` }}
                                     />
                                 </div>
                              </div>
-                             
-                             {/* Grid de navegação */}
-                             <div className="flex-1 overflow-y-auto p-4">
+                             {/* Grid de questões */}
+                             <div className="flex-1 overflow-y-auto px-4 pb-4 min-h-0">
                                 <div className="grid grid-cols-5 sm:grid-cols-6 gap-2.5">
                                     {shuffledQuestions.map((question, index) => {
                                         const hasAnswer = answers[question.id]?.answer && answers[question.id]?.answer !== "";
@@ -1318,12 +1221,13 @@ export default function TakeEvaluation() {
                                             <button
                                                 key={question.id}
                                                 className={`
-                                                    relative w-full aspect-square rounded-xl text-sm font-bold flex items-center justify-center transition-all
-                                                    ${isCurrent 
-                                                        ? 'bg-purple-600 text-white ring-2 ring-purple-300 shadow-lg scale-105' 
-                                                        : hasAnswer 
-                                                            ? 'bg-green-100 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-2 border-green-400 dark:border-green-800 hover:bg-green-200 dark:hover:bg-green-950/50 hover:scale-105' 
-                                                            : 'bg-muted text-muted-foreground border-2 border-border hover:bg-muted/80 hover:scale-105'
+                                                    relative w-full aspect-square rounded-xl text-sm font-semibold flex items-center justify-center
+                                                    transition-all duration-200 ease-out
+                                                    ${isCurrent
+                                                        ? 'bg-gradient-to-br from-violet-600 to-purple-600 text-white shadow-lg shadow-violet-500/30 ring-2 ring-violet-400/50 scale-105'
+                                                        : hasAnswer
+                                                            ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-400/40 dark:border-emerald-500/40 hover:bg-emerald-500/25 dark:hover:bg-emerald-500/30 hover:scale-105'
+                                                            : 'bg-muted/70 dark:bg-muted/50 text-muted-foreground border border-transparent hover:bg-muted hover:text-foreground hover:scale-105 hover:border-border'
                                                     }
                                                     ${isTimeUp ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
                                                 `}
@@ -1347,16 +1251,18 @@ export default function TakeEvaluation() {
                                             >
                                                 {index + 1}
                                                 {hasAnswer && !isCurrent && (
-                                                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                                                    <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
+                                                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                                                        <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500 border-2 border-background" />
+                                                    </span>
                                                 )}
                                             </button>
                                         );
                                     })}
                                 </div>
                              </div>
-                             
-                             {/* Botão de enviar */}
-                             <div className="p-4 border-t border-border bg-muted">
+                             {/* Botão enviar */}
+                             <div className="p-4 pt-3 border-t border-border/60 bg-muted/30 dark:bg-muted/20">
                                 <Button
                                     onClick={(e) => {
                                         e.preventDefault();
@@ -1371,16 +1277,16 @@ export default function TakeEvaluation() {
                                         setShowSubmitDialog(true);
                                     }}
                                     disabled={isTimeUp || isSubmitting || Object.keys(answers).length < shuffledQuestions.length}
-                                    className={`w-full py-4 text-base font-bold rounded-xl touch-manipulation ${
+                                    className={`w-full py-4 text-base font-semibold rounded-xl touch-manipulation transition-all ${
                                         Object.keys(answers).length >= shuffledQuestions.length
-                                            ? 'bg-green-600 hover:bg-green-700 active:bg-green-800 text-white shadow-lg'
-                                            : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                                            ? 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-lg hover:shadow-md'
+                                            : 'bg-muted text-muted-foreground cursor-not-allowed'
                                     }`}
                                 >
                                     <Send className="h-5 w-5 mr-2" />
-                                    Enviar Avaliação ({Object.keys(answers).length}/{shuffledQuestions.length})
+                                    Enviar ({Object.keys(answers).length}/{shuffledQuestions.length})
                                 </Button>
-                                    {Object.keys(answers).length < shuffledQuestions.length && (
+                                {Object.keys(answers).length < shuffledQuestions.length && (
                                     <p className="text-xs text-center text-muted-foreground mt-2">
                                         Responda todas as questões para enviar
                                     </p>
@@ -1531,7 +1437,6 @@ export default function TakeEvaluation() {
                                      <button
                                          className="w-full sm:w-auto order-2 sm:order-1 bg-muted hover:bg-muted/80 text-foreground font-medium py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors text-sm sm:text-base"
                                          onClick={() => {
-                                             console.log('🔍 Fechando modal de conclusão para permitir revisão...');
                                              setShowCompletionDialog(false);
                                              setHasSeenCompletionDialog(false);
                                              setIsCompletionDialogClosed(true);
@@ -1545,17 +1450,13 @@ export default function TakeEvaluation() {
                                          className="w-full sm:w-auto order-1 sm:order-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors shadow-lg hover:shadow-xl text-sm sm:text-base flex items-center justify-center"
                                          onClick={() => {
                                              if (isSubmitting) {
-                                                 console.log('⚠️ Tentativa de envio bloqueada - já está enviando');
                                                  return;
                                              }
-                                             // ✅ NOVO: Verificar se já foi enviada
                                              if (evaluationState !== 'active') {
-                                                 console.log('⚠️ Tentativa de envio bloqueada - avaliação não está ativa');
                                                  return;
                                              }
-                                             console.log('🚀 Modal de conclusão: Enviando avaliação...');
-                                             
-                                             // ✅ CORRIGIDO: Não fechar modal imediatamente - deixar o hook gerenciar
+
+                                             // Não fechar modal imediatamente - deixar o hook gerenciar - deixar o hook gerenciar
                                              // Apenas marcar que está enviando
                                              setHasSeenCompletionDialog(false);
                                              
@@ -1832,20 +1733,10 @@ function QuestionOptions({
                         return optionId;
                     })()}
                     onValueChange={(val) => {
-                        console.log('🔄 RadioGroup onValueChange:', val);
-                        // ✅ CORRIGIDO: Enviar diretamente o ID da opção (letra A, B, C, D)
                         const option = questionOptions.find(opt => opt.id === val);
                         if (option) {
-                            console.log('📝 Resposta selecionada:', {
-                                selectedValue: val,
-                                selectedId: option.id,
-                                selectedText: option.text,
-                                totalOptions: questionOptions.length
-                            });
-                            // Enviar o ID da opção (letra) diretamente
                             onAnswerChange(option.id);
                         } else {
-                            console.log('❌ Opção não encontrada:', val);
                             onAnswerChange("");
                         }
                     }}

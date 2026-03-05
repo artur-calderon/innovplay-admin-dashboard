@@ -150,7 +150,6 @@ export default function SchoolDetails() {
         const response = await api.get(`/school/${id}`);
         setSchool(response.data);
       } catch (error) {
-        console.error("Error fetching school:", error);
         toast({
           title: "Erro",
           description: user.role === 'professor' 
@@ -174,10 +173,7 @@ export default function SchoolDetails() {
       
       setIsLoadingClasses(true);
       try {
-        console.log('🏫 Buscando turmas da escola:', id);
         const response = await api.get(`/classes/school/${id}`);
-        console.log('🏫 Response turmas:', response);
-        console.log('🏫 Data turmas:', response.data);
         const classesData = response.data || [];
         setClasses(classesData);
         
@@ -186,7 +182,6 @@ export default function SchoolDetails() {
           await fetchClassDetails(classesData);
         }
       } catch (error) {
-        console.error('Error fetching classes:', error);
         setClasses([]);
       } finally {
         setIsLoadingClasses(false);
@@ -238,7 +233,6 @@ export default function SchoolDetails() {
             students: classStudents
           };
         } catch (error) {
-          console.error(`Erro ao buscar detalhes da turma ${classItem.id}:`, error);
           return {
             classId: classItem.id,
             teachers: [],
@@ -257,10 +251,8 @@ export default function SchoolDetails() {
 
       setClassTeachers(teachersData);
       setClassStudents(studentsData);
-      
-      console.log('📊 Dados das turmas carregados:', { teachersData, studentsData });
     } catch (error) {
-      console.error('Erro ao buscar detalhes das turmas:', error);
+      // Silenciar erro ao buscar detalhes das turmas
     }
   };
 
@@ -269,24 +261,11 @@ export default function SchoolDetails() {
       if (!id) return;
 
       try {
-        console.log('👨‍🏫 Buscando professores da escola:', id);
         const response = await api.get(`/school-teacher`);
-        console.log('👨‍🏫 Response professores:', response);
-        console.log('👨‍🏫 Data professores:', response.data);
-        console.log('👨‍🏫 RETORNO COMPLETO DA API /school-teacher:', JSON.stringify(response.data, null, 2));
-        
-        // A API retorna um objeto com 'vinculos', não um array direto
         const vinculos = response.data?.vinculos || [];
-        console.log('👨‍🏫 Vínculos encontrados:', vinculos);
-        
-        // Mapear os vínculos para o formato esperado pelo componente
         const allTeachers = vinculos.reduce((acc: any[], vinculo: any) => {
           const professor = vinculo?.professor;
-
-          if (!professor) {
-            console.warn("Vínculo de professor sem dados do professor encontrado:", vinculo);
-            return acc;
-          }
+          if (!professor) return acc;
 
           acc.push({
             id: professor.id,
@@ -300,19 +279,9 @@ export default function SchoolDetails() {
 
           return acc;
         }, []);
-        
-        console.log('👨‍🏫 Todos os professores mapeados:', allTeachers);
-        
-        // Filtrar apenas professores da escola específica
-        const teachers = allTeachers.filter(teacher => 
-          teacher.school_id === id
-        );
-        
-        console.log('👨‍🏫 Professores filtrados para a escola:', teachers);
-        
+        const teachers = allTeachers.filter(teacher => teacher.school_id === id);
         setTeachers(teachers);
       } catch (error) {
-        console.error("Error fetching teachers:", error);
         toast({
           title: "Erro",
           description: "Erro ao carregar professores",
@@ -331,26 +300,14 @@ export default function SchoolDetails() {
       if (!id) return;
 
       try {
-        console.log('🔗 Buscando managers da escola:', id);
         const response = await api.get(`/managers/school/${id}`);
-        console.log('🔗 Response managers:', response);
-        console.log('🔗 Data managers:', response.data);
-        
         if (response.data && response.data.managers) {
-          console.log('🔗 Managers da escola:', response.data.managers);
-          
-          // Separar por tipo de usuário
-          const schoolDirectors = response.data.managers.filter((manager: any) => 
+          const schoolDirectors = response.data.managers.filter((manager: any) =>
             manager.user?.role === 'diretor'
           );
-          const schoolCoordinators = response.data.managers.filter((manager: any) => 
+          const schoolCoordinators = response.data.managers.filter((manager: any) =>
             manager.user?.role === 'coordenador'
           );
-          
-          console.log('🔗 Diretores da escola:', schoolDirectors);
-          console.log('🔗 Coordenadores da escola:', schoolCoordinators);
-          
-          // Atualizar estados com os dados dos managers
           const directorsData = schoolDirectors.map((manager: any) => ({
             id: manager.user.id,
             name: manager.user.name,
@@ -371,7 +328,7 @@ export default function SchoolDetails() {
           setCoordinators(coordinatorsData);
         }
       } catch (error) {
-        console.error("Error fetching school managers:", error);
+        // Silenciar erro ao carregar managers
       }
     };
 
@@ -383,17 +340,10 @@ export default function SchoolDetails() {
       if (!id) return;
 
       try {
-        console.log('👥 Buscando alunos da escola:', id);
         const response = await api.get(`/students/school/${id}`);
-        console.log('👥 Response alunos:', response);
-        console.log('👥 Data alunos:', response.data);
-        
         const allStudents = Array.isArray(response.data) ? response.data : [];
-        console.log('👥 Todos os alunos:', allStudents);
-        
         setStudents(allStudents);
       } catch (error) {
-        console.error("Error fetching students:", error);
         toast({
           title: "Erro",
           description: "Erro ao carregar alunos",
@@ -433,7 +383,6 @@ export default function SchoolDetails() {
       );
       setTeachers(teachers);
     } catch (error) {
-      console.error("Erro ao remover professor:", error);
       toast({
         title: "Erro",
         description: "Erro ao remover professor",
@@ -457,7 +406,6 @@ export default function SchoolDetails() {
       
       setAvailableSchools(filteredSchools);
     } catch (error) {
-      console.error("Erro ao buscar escolas:", error);
       toast({
         title: "Erro",
         description: "Erro ao carregar escolas disponíveis",
@@ -482,8 +430,6 @@ export default function SchoolDetails() {
       // Recarregar turmas
       window.location.reload();
     } catch (error: unknown) {
-      console.error("Erro ao excluir turma:", error);
-      
       let errorTitle = "Erro ao excluir";
       let errorMessage = "Ocorreu um erro ao excluir a turma";
 
@@ -552,8 +498,6 @@ export default function SchoolDetails() {
       // Recarregar turmas
       window.location.reload();
     } catch (error: unknown) {
-      console.error("Erro ao mover turma:", error);
-      
       let errorTitle = "Erro ao mover turma";
       let errorMessage = "Ocorreu um erro ao mover a turma";
 

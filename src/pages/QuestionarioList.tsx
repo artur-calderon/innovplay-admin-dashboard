@@ -179,10 +179,10 @@ const QuestionarioList = () => {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6">
+      <div className="container mx-auto p-6 min-h-screen">
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="flex flex-col items-center gap-4">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            <Loader2 className="h-8 w-8 animate-spin text-violet-600" />
             <p className="text-muted-foreground">Carregando questionários...</p>
           </div>
         </div>
@@ -191,15 +191,17 @@ const QuestionarioList = () => {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="container mx-auto p-6 space-y-6 min-h-screen">
+      {/* Header — gamificado (padrão Resultados) */}
+      <div className="flex items-center justify-between animate-fade-in-up">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <FileText className="w-8 h-8 text-blue-600" />
-            Questionários
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3" id="questionarios-page-title">
+            <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110">
+              <FileText className="w-5 h-5 text-white drop-shadow" />
+            </span>
+            <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">Questionários</span>
           </h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-muted-foreground mt-2 font-medium">
             Responda aos questionários disponíveis para você
           </p>
         </div>
@@ -239,9 +241,11 @@ const QuestionarioList = () => {
 
       {/* Lista de Questionários */}
       {filteredQuestionarios.length === 0 ? (
-        <Card>
+        <Card className="rounded-2xl border-2 border-dashed border-violet-200/60 dark:border-violet-500/40 overflow-hidden bg-gradient-to-br from-violet-500/5 to-transparent animate-fade-in-up">
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <FileText className="h-16 w-16 text-muted-foreground mb-4" />
+            <div className="w-14 h-14 rounded-full bg-violet-500/10 flex items-center justify-center mb-4">
+              <FileText className="h-8 w-8 text-violet-600 dark:text-violet-400" />
+            </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">
               Nenhum questionário encontrado
             </h3>
@@ -263,10 +267,10 @@ const QuestionarioList = () => {
             return (
               <Card 
                 key={questionario.id} 
-                className={`hover:shadow-lg transition-shadow ${
+                className={`rounded-2xl border-2 transition-all duration-300 hover:scale-[1.02] hover:-translate-y-0.5 hover:shadow-xl ${
                   deadlineExpired && questionario.status !== 'completed' 
-                    ? 'border-red-300 bg-red-50/30' 
-                    : ''
+                    ? 'border-red-300 bg-red-50/30 dark:border-red-500/30 dark:bg-red-950/20' 
+                    : 'border-violet-200/60 dark:border-violet-500/30 bg-gradient-to-br from-violet-500/10 to-transparent hover:shadow-violet-500/20'
                 }`}
               >
                 <CardHeader className="pb-3">

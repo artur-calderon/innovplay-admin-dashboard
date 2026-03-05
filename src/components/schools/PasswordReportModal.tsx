@@ -96,7 +96,6 @@ export function PasswordReportModal({
 
         setGrades(Array.from(gradeMap.values()));
       } catch (error) {
-        console.error("Erro ao carregar séries:", error);
         setGrades([]);
       } finally {
         setIsLoadingGrades(false);
@@ -249,7 +248,6 @@ export function PasswordReportModal({
       });
       onClose();
     } catch (error: unknown) {
-      console.error("Erro ao gerar relatório:", error);
       let errorMessage = "Não foi possível gerar o relatório. Tente novamente.";
 
       if (error && typeof error === "object" && "response" in error) {

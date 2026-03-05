@@ -126,11 +126,8 @@ export function CreateEvaluationModal({
       try {
         // PRIMEIRO: Se estiver editando, carregar dados da avaliação (incluindo questões) ANTES de qualquer outra coisa
         if (evaluationId || initialData) {
-          console.log('🔄 Carregando dados da avaliação para edição...');
           await loadEvaluationData(evaluationId, initialData);
         } else {
-          // Apenas limpar questões se não estiver editando
-          console.log('🧹 Limpando questões (criação nova)');
           clearQuestions();
           setQuestionsLoaded(false);
         }
@@ -146,8 +143,6 @@ export function CreateEvaluationModal({
         setAllSubjects(subjectsRes.data || []);
         setStates(statesRes.data || []);
       } catch (error) {
-        console.error('❌ Erro ao carregar dados:', error);
-        // ✅ CORREÇÃO: Tratamento de erro mais robusto para evitar crash
         toast({
           title: 'Erro',
           description: error instanceof Error ? error.message : 'Erro ao carregar dados iniciais',
@@ -163,7 +158,6 @@ export function CreateEvaluationModal({
     try {
       loadInitialData();
     } catch (error) {
-      console.error('❌ Erro crítico ao inicializar modal:', error);
       toast({
         title: 'Erro crítico',
         description: 'Não foi possível inicializar o modal. Tente novamente.',
@@ -175,13 +169,8 @@ export function CreateEvaluationModal({
 
   // Carregar dados da avaliação para edição
   const loadEvaluationData = async (id?: string, data?: EvaluationFormData | null) => {
-    console.log('🔄 loadEvaluationData chamado:', { id, hasData: !!data, questionsInData: data?.questions?.length || 0 });
     try {
-      // ✅ CORREÇÃO: Validar dados antes de processar
-      if (!data && !id) {
-        console.warn('⚠️ loadEvaluationData chamado sem dados nem ID');
-        return;
-      }
+      if (!data && !id) return;
       if (data) {
         // Usar initialData se fornecido
         setTitle(data.title || '');
@@ -199,17 +188,12 @@ export function CreateEvaluationModal({
             const municipalitiesRes = await api.get(`/city/municipalities/state/${data.state}`);
             setMunicipalities(municipalitiesRes.data || []);
           } catch (err) {
-            console.error('Erro ao carregar municípios:', err);
+            // Silenciar erro ao carregar municípios
           }
         }
-        
+
         setMunicipality(data.municipality || '');
         setSelectedSchools(data.selectedSchools || []);
-        // ✅ CORREÇÃO: Log das turmas ao carregar dados
-        console.log('📋 Carregando turmas do initialData:', {
-          count: data.selectedClasses?.length || 0,
-          classes: data.selectedClasses?.map((c: any) => ({ id: c.id, name: c.name })) || []
-        });
         setSelectedClasses(data.selectedClasses || []);
         setSelectedSubjects(data.subjects || []);
         

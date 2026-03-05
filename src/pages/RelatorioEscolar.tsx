@@ -738,7 +738,7 @@ export default function RelatorioEscolar() {
               setSelectedState(matchedState.id);
             }
           } catch (e) {
-            console.error("Erro ao mapear estado do contexto:", e);
+            // Silenciar erro ao mapear estado
           }
         }
 
@@ -762,7 +762,6 @@ export default function RelatorioEscolar() {
         }
 
       } catch (error) {
-        console.error('Erro ao carregar contexto hierárquico:', error);
         toast({
           title: "Aviso",
           description: "Não foi possível carregar suas permissões. Algumas funcionalidades podem estar limitadas.",
@@ -785,7 +784,6 @@ export default function RelatorioEscolar() {
           try {
             await autoLogin();
           } catch (error) {
-            console.error("Erro no login automático:", error);
             toast({
               title: "Erro de Autenticação",
               description: "Não foi possível fazer login automático. Verifique suas credenciais.",
@@ -1485,7 +1483,7 @@ export default function RelatorioEscolar() {
           reader.readAsDataURL(blob);
         });
       } catch (error) {
-        console.warn('Não foi possível carregar logo, continuando sem ela:', error);
+        // Continuar sem logo
       }
 
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -2321,7 +2319,6 @@ export default function RelatorioEscolar() {
       });
 
     } catch (error) {
-      console.error("Erro ao gerar relatório:", error);
       toast({
         title: "Erro ao gerar PDF",
         description: "Não foi possível criar o arquivo. Tente novamente.",
@@ -2472,7 +2469,6 @@ export default function RelatorioEscolar() {
             setApiData(null);
           }
         } catch (error) {
-          console.error("Erro ao carregar dados:", error);
           toast({
             title: "Erro ao carregar dados",
             description: "Não foi possível carregar os dados do relatório. Tente novamente.",
