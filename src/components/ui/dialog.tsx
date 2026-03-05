@@ -29,8 +29,12 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { hideClose?: boolean }
->(({ className, children, hideClose, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    hideClose?: boolean;
+    /** Título para leitores de tela. Se não for passado, usa "Dialog" (oculto visualmente). */
+    ariaTitle?: string;
+  }
+>(({ className, children, hideClose, ariaTitle, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -45,6 +49,9 @@ const DialogContent = React.forwardRef<
       )}
       {...props}
     >
+      <DialogPrimitive.Title className="sr-only">
+        {ariaTitle ?? "Dialog"}
+      </DialogPrimitive.Title>
       {children}
       {!hideClose && (
         <DialogPrimitive.Close className="absolute right-2 top-2 sm:right-4 sm:top-4 z-[100] rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground pointer-events-auto touch-manipulation">

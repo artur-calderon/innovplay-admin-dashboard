@@ -379,7 +379,7 @@ export default function StartEvaluationModal({
                   </div>
                   <div>
                     <span className="font-medium">Duração:</span>
-                    <p className="mt-1">{evaluation.duration || 60} minutos</p>
+                    <p className="mt-1">{evaluation.duration ?? evaluation.duration_minutes ?? 60} minutos</p>
                   </div>
                 </div>
               </div>

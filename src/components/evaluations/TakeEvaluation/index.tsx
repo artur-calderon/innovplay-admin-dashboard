@@ -112,6 +112,7 @@ export default function TakeEvaluation() {
         answers,
         isSubmitting,
         isSaving,
+        isSavingPartial,
         results,
         timeRemaining,
         isTimeUp,
@@ -870,14 +871,13 @@ export default function TakeEvaluation() {
                                         timeRemaining={timeRemaining}
                                         isTimeUp={isTimeUp}
                                         isPaused={isPaused}
-                                        timeLimitMinutes={testData?.duration}
-                                        remainingMinutes={session?.remaining_time_minutes}
+                                        timeLimitMinutes={testData?.duration ?? testData?.duration_minutes}
                                     />
 
-                                    {isSaving && (
+                                    {(isSaving || isSavingPartial) && (
                                         <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
                                             <Loader2 className="h-3 w-3 animate-spin" />
-                                            <span className="hidden md:inline">Salvando...</span>
+                                            <span className="hidden md:inline">{isSavingPartial ? 'Salvando respostas...' : 'Salvando...'}</span>
                                         </div>
                                     )}
                                 </div>

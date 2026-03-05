@@ -1,12 +1,32 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { EvaluationApiService } from '@/services/evaluationApi';
+import { EvaluationApiService, SessionGone410Response } from '@/services/evaluationApi';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/authContext';
 import { TestData, TestSession, StudentAnswer, TestResults, EvaluationState, SubmitTestResponse } from '@/types/evaluation-types';
-import { api } from '@/lib/api';
 
 interface UseEvaluationProps {
     testId: string;
+}
+
+/** Converte respostas do backend (410 ou GET answers) no formato do estado (com parse de essay). */
+function processSavedAnswersIntoState(
+    questions: TestData['questions'],
+    savedAnswers: Array<{ question_id: string; answer: string }>
+): Record<string, StudentAnswer> {
+    const processed: Record<string, StudentAnswer> = {};
+    savedAnswers.forEach((saved) => {
+        const question = questions?.find((q) => q.id === saved.question_id);
+        if (!question) return;
+        let answerValue = saved.answer;
+        if (question.type === 'essay' || question.type === 'open' || question.type === 'dissertativa' || !question.options?.length) {
+            try {
+                const parsed = JSON.parse(answerValue);
+                if (Array.isArray(parsed)?.length && parsed[0]?.text) answerValue = parsed[0].text;
+            } catch { /* usar valor como está */ }
+        }
+        processed[saved.question_id] = { question_id: saved.question_id, answer: answerValue };
+    });
+    return processed;
 }
 
 export function useEvaluation({ testId }: UseEvaluationProps) {
@@ -18,6 +38,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
     const [answers, setAnswers] = useState<Record<string, StudentAnswer>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [isSavingPartial, setIsSavingPartial] = useState(false);
     const [results, setResults] = useState<TestResults | null>(null);
     const [timeRemaining, setTimeRemaining] = useState(0);
     const [isTimeUp, setIsTimeUp] = useState(false);
@@ -29,6 +50,10 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
     // const saveIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
     const sessionStartTimeRef = useRef<Date | null>(null);
+    const initializingRef = useRef(false);
+    const savePartialTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const answersRef = useRef<Record<string, StudentAnswer>>({});
+    const sessionRef = useRef<TestSession | null>(null);
 
     const { toast } = useToast();
     const { user } = useAuth();
@@ -44,8 +69,8 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         }
     }, [session?.session_id]);
 
-    // ✅ NOVO: Verificar se há sessão ativa
-    const checkActiveSession = useCallback(async (): Promise<boolean> => {
+    // ✅ NOVO: Verificar se há sessão ativa (retorna active e sessionId para carregar respostas ao retomar)
+    const checkActiveSession = useCallback(async (): Promise<{ active: boolean; sessionId?: string }> => {
         try {
             const sessionInfo = await EvaluationApiService.getTestSessionInfo(testId);
 
@@ -57,32 +82,27 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                         sessionTestId: sessionInfo.test_id,
                         sessionId: sessionInfo.session_id
                     });
-                    
+
                     toast({
                         title: "⚠️ Sessão inválida detectada",
                         description: "Foi encontrada uma sessão de outro teste. Limpando e iniciando nova sessão...",
                         variant: "destructive",
                     });
-                    
-                    // Não usar esta sessão - retornar false para iniciar nova
-                    return false;
+
+                    return { active: false };
                 }
 
-                // ✅ CORRIGIDO: Usar duration da avaliação em vez de time_limit_minutes da sessão
-                const evaluationDuration = testData?.duration || 60; // fallback para 60 minutos
+                // Duração total da prova: sempre duration ou duration_minutes (API), em minutos.
+                const evaluationDuration = testData?.duration ?? testData?.duration_minutes ?? 60;
 
-                // Calcular tempo restante baseado no tempo decorrido
                 const startTime = new Date(sessionInfo.actual_start_time);
-                const now = new Date();
-                const elapsedMinutes = Math.floor((now.getTime() - startTime.getTime()) / (1000 * 60));
-                const remainingMinutes = Math.max(0, evaluationDuration - elapsedMinutes);
+                const elapsedMinutes = Math.max(0, Math.floor((Date.now() - startTime.getTime()) / (1000 * 60)));
+                const remainingMinutes = Math.min(evaluationDuration, Math.max(0, evaluationDuration - elapsedMinutes));
 
                 // ✅ CORRIGIDO: Não chamar handleSubmitTest automaticamente aqui
-                // Deixar o timer local gerenciar isso para evitar duplicação
                 if (remainingMinutes <= 0) {
-                    // Apenas marcar como expirada, não submeter automaticamente
                     setIsTimeUp(true);
-                    return true;
+                    return { active: true, sessionId: sessionInfo.session_id };
                 }
 
                 setSession({
@@ -90,7 +110,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                     status: sessionInfo.status,
                     started_at: sessionInfo.started_at,
                     actual_start_time: sessionInfo.actual_start_time,
-                    time_limit_minutes: evaluationDuration, // ✅ Usar duration da avaliação
+                    time_limit_minutes: evaluationDuration,
                     remaining_time_minutes: remainingMinutes,
                     total_questions: sessionInfo.total_questions,
                     correct_answers: sessionInfo.correct_answers,
@@ -99,27 +119,20 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                     is_expired: remainingMinutes <= 0
                 });
 
-                // Configurar timer
                 setTimeRemaining(remainingMinutes * 60);
                 sessionStartTimeRef.current = startTime;
                 setIsPaused(false);
                 setEvaluationState('active');
 
-                // Iniciar sincronização de timer
                 startTimerSync(sessionInfo.session_id, elapsedMinutes, remainingMinutes);
 
-                toast({
-                    title: "🔄 Avaliação retomada!",
-                    description: `Continue respondendo suas questões. Tempo restante: ${remainingMinutes} minutos`,
-                });
-
-                return true;
+                return { active: true, sessionId: sessionInfo.session_id };
             }
 
-            return false;
+            return { active: false };
         } catch (error) {
             console.error('❌ Erro ao verificar sessão ativa:', error);
-            return false;
+            return { active: false };
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [testId, testData?.duration, toast]); // ✅ REMOVIDO: startTimerSync para evitar dependência circular
@@ -182,11 +195,11 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 syncTimerRef.current = null;
             }
 
-            // ✅ CORRIGIDO: Usar duration da avaliação em vez de time_limit_minutes da sessão
-            const evaluationDuration = testData.duration;
+            // Duração da prova em minutos (só duration/duration_minutes do teste)
+            const evaluationDuration = testData.duration ?? testData.duration_minutes ?? 60;
 
-            // Iniciar nova sessão
-            const sessionData = await EvaluationApiService.startSession(testId);
+            // Iniciar nova sessão com a duração da avaliação
+            const sessionData = await EvaluationApiService.startSession(testId, evaluationDuration);
 
             // ✅ NOVO: Validar se a sessão retornada pertence ao teste atual
             if (sessionData.test_id && sessionData.test_id !== testId) {
@@ -333,7 +346,71 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 }
             }));
 
-            // ✅ REMOVIDO: Salvamento parcial - respostas serão enviadas apenas ao final
+            // Autosave na API com debounce (2,5 s)
+            if (savePartialTimeoutRef.current) {
+                clearTimeout(savePartialTimeoutRef.current);
+                savePartialTimeoutRef.current = null;
+            }
+            const DEBOUNCE_MS = 4000;
+            savePartialTimeoutRef.current = setTimeout(async () => {
+                savePartialTimeoutRef.current = null;
+                const currentSession = sessionRef.current;
+                const currentAnswers = answersRef.current;
+                if (!currentSession?.session_id || Object.keys(currentAnswers).length === 0) return;
+
+                const answersArray = Object.values(currentAnswers).map(a => ({ question_id: a.question_id, answer: a.answer }));
+
+                const doSave = async (): Promise<void> => {
+                    await EvaluationApiService.savePartialAnswers({
+                        session_id: currentSession.session_id,
+                        answers: answersArray
+                    });
+                };
+
+                setIsSavingPartial(true);
+                try {
+                    await doSave();
+                } catch (firstError: unknown) {
+                    const res = (firstError as { response?: { status?: number; data?: SessionGone410Response } })?.response;
+                    if (res?.status === 410 && res?.data?.answers && testData?.questions) {
+                        const processed = processSavedAnswersIntoState(testData.questions, res.data.answers);
+                        setAnswers(processed);
+                        setIsTimeUp(true);
+                        setEvaluationState('expired');
+                        toast({
+                            title: 'Sessão expirada ou já finalizada',
+                            description: 'Estas foram suas respostas salvas.',
+                            variant: 'default'
+                        });
+                    } else {
+                        try {
+                            await new Promise(resolve => setTimeout(resolve, 2000));
+                            await doSave();
+                        } catch (secondError: unknown) {
+                            const res2 = (secondError as { response?: { status?: number; data?: SessionGone410Response } })?.response;
+                            if (res2?.status === 410 && res2?.data?.answers && testData?.questions) {
+                                const processed = processSavedAnswersIntoState(testData.questions, res2.data.answers);
+                                setAnswers(processed);
+                                setIsTimeUp(true);
+                                setEvaluationState('expired');
+                                toast({
+                                    title: 'Sessão expirada ou já finalizada',
+                                    description: 'Estas foram suas respostas salvas.',
+                                    variant: 'default'
+                                });
+                            } else {
+                                toast({
+                                    title: "Conexão",
+                                    description: "Respostas serão salvas quando a conexão voltar.",
+                                    variant: "default"
+                                });
+                            }
+                        }
+                    }
+                } finally {
+                    setIsSavingPartial(false);
+                }
+            }, DEBOUNCE_MS);
 
         } catch (error) {
             toast({
@@ -619,7 +696,33 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                     hasAnswer: !!a.answer
                 }))
             });
-            
+
+            // Enviar save-partial antes do submit (tempo acabou ou saiu da tela: backend recebe o que está em memória)
+            try {
+                await EvaluationApiService.savePartialAnswers({
+                    session_id: session.session_id,
+                    answers: answersArray.map(a => ({ question_id: a.question_id, answer: a.answer }))
+                });
+            } catch (flushError: unknown) {
+                const res = (flushError as { response?: { status?: number; data?: SessionGone410Response } })?.response;
+                if (res?.status === 410 && res?.data?.answers && testData?.questions) {
+                    const processed = processSavedAnswersIntoState(testData.questions, res.data.answers);
+                    setAnswers(processed);
+                    setIsTimeUp(true);
+                    setEvaluationState('expired');
+                    localStorage.removeItem(`test_session_${testId}`);
+                    localStorage.removeItem(`test_answers_${testId}`);
+                    sessionStorage.removeItem('current_evaluation');
+                    sessionStorage.removeItem('evaluation_session');
+                    toast({
+                        title: 'Sessão expirada ou já finalizada',
+                        description: 'Estas foram suas respostas salvas.',
+                        variant: 'default'
+                    });
+                    return;
+                }
+            }
+
             // ✅ NOVO: Log detalhado antes do envio para debug
             console.log('🔍 Dados que serão enviados:', {
                 session_id: session.session_id,
@@ -780,7 +883,6 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 let userTitle: string;
                 
                 if (isSessionMismatch) {
-                    // Erro por sessão de outro teste
                     userTitle = "❌ Sessão inválida";
                     userMessage = "A sessão usada pertence a outro teste. Isso pode acontecer se você iniciou outra avaliação anteriormente. Recarregue a página para iniciar uma nova sessão.";
                     console.error('❌ Erro 410: Sessão de outro teste detectada', {
@@ -789,45 +891,34 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                         errorMessage: errorMessageFromServer
                     });
                 } else {
-                    // Erro por tempo expirado ou avaliação expirada
-                    // ✅ MELHORADO: Mensagem mais específica baseada na mensagem do servidor
-                    if (errorMessageFromServer.toLowerCase().includes('avaliação expirada') || 
-                        errorMessageFromServer.toLowerCase().includes('avaliacao expirada')) {
-                        userTitle = "⏰ Período de disponibilidade expirado";
-                        userMessage = "O período de disponibilidade desta avaliação expirou. Você não pode mais submeter respostas. Entre em contato com o professor se acredita que isso é um erro.";
-                    } else if (errorMessageFromServer.toLowerCase().includes('tempo') || 
-                               errorMessageFromServer.toLowerCase().includes('time')) {
-                        userTitle = "⏰ Tempo esgotado";
-                        userMessage = errorMessageFromServer || 
-                            "O tempo limite da avaliação foi excedido. Entre em contato com o professor se acredita que isso é um erro.";
-                    } else {
-                        userTitle = "⏰ Avaliação expirada";
-                        userMessage = errorMessageFromServer || 
-                            "A avaliação expirou. O tempo limite foi excedido ou o período de disponibilidade terminou. Entre em contato com o professor se acredita que isso é um erro.";
-                    }
-                    console.log('⏰ Erro 410: Tempo expirado ou avaliação expirada', {
+                    // Sessão expirada/finalizada: usar mensagem amigável e, se vieram respostas no 410, exibir
+                    userTitle = "Sessão expirada ou já finalizada";
+                    userMessage = "Estas foram suas respostas salvas.";
+                    console.log('⏰ Erro 410: Sessão expirada ou finalizada', {
                         sessionId: session?.session_id,
                         testId: testId,
-                        errorMessage: errorMessageFromServer
+                        hasAnswersInResponse: !!(errorData as SessionGone410Response)?.answers
                     });
+                }
+
+                const data410 = errorData as SessionGone410Response | undefined;
+                if (data410?.answers && testData?.questions) {
+                    const processed = processSavedAnswersIntoState(testData.questions, data410.answers);
+                    setAnswers(processed);
                 }
                 
                 toast({
                     title: userTitle,
                     description: userMessage,
-                    variant: "destructive",
+                    variant: "default",
                 });
                 
-                // ✅ MELHORADO: Parar timers, marcar como expirada e limpar dados
                 setIsTimeUp(true);
                 setEvaluationState('expired');
-                
-                // Limpar dados do localStorage
                 localStorage.removeItem(`test_session_${testId}`);
                 localStorage.removeItem(`test_answers_${testId}`);
                 sessionStorage.removeItem("current_evaluation");
                 sessionStorage.removeItem("evaluation_session");
-                
                 return;
             } else if (isNetworkError || isTimeoutError) {
                 // ✅ Verificar erros de rede/timeout antes de erros genéricos do servidor
@@ -898,8 +989,12 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
     // ✅ NOVO: Ref para evitar dependência circular
     const handleSubmitTestRef = useRef(handleSubmitTest);
     handleSubmitTestRef.current = handleSubmitTest;
+    const isSubmittingRef = useRef(isSubmitting);
+    isSubmittingRef.current = isSubmitting;
+    const evaluationStateRef = useRef(evaluationState);
+    evaluationStateRef.current = evaluationState;
 
-    // ✅ NOVO: Timer countdown local
+    // ✅ NOVO: Timer countdown local (interval criado uma vez por sessão ativa, não a cada segundo)
     useEffect(() => {
         if (evaluationState === 'active' && session && !isTimeUp && timeRemaining > 0) {
 
@@ -907,8 +1002,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 setTimeRemaining(prev => {
                     const newTime = prev - 1;
 
-                    // Avisos de tempo
-                    if (newTime === 300) { // 5 minutos
+                    if (newTime === 300) {
                         toast({
                             title: "⏰ Atenção!",
                             description: "Restam apenas 5 minutos",
@@ -918,9 +1012,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
                     if (newTime <= 0) {
                         setIsTimeUp(true);
-                        // ✅ CORRIGIDO: Verificar se já foi enviada antes de chamar
-                        // E usar uma única chamada protegida
-                        if (!isSubmitting && evaluationState === 'active') {
+                        if (!isSubmittingRef.current && evaluationStateRef.current === 'active') {
                             console.log('⏰ Tempo esgotado - submetendo avaliação automaticamente');
                             handleSubmitTestRef.current(true);
                         }
@@ -937,7 +1029,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 }
             };
         }
-    }, [evaluationState, session, isTimeUp, timeRemaining, toast, isSubmitting]);
+    }, [evaluationState, session, isTimeUp, toast]);
 
     // ✅ NOVO: Controle de visibilidade (pausar timer)
     useEffect(() => {
@@ -955,10 +1047,29 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         }
     }, [session?.status]);
 
+    // Refs para o callback de debounce do save-partial (evitar closure stale)
+    useEffect(() => {
+        answersRef.current = answers;
+    }, [answers]);
+    useEffect(() => {
+        sessionRef.current = session;
+    }, [session]);
+
+    // Limpar timeout do save-partial ao sair do estado active
+    useEffect(() => {
+        if (evaluationState !== 'active' && savePartialTimeoutRef.current) {
+            clearTimeout(savePartialTimeoutRef.current);
+            savePartialTimeoutRef.current = null;
+        }
+    }, [evaluationState]);
+
     // ✅ NOVO: Carregar dados iniciais
     useEffect(() => {
+        if (initializingRef.current) return;
+        initializingRef.current = true;
+
         let isMounted = true;
-        
+
         const initializeEvaluation = async () => {
             try {
                 if (!isMounted) return;
@@ -980,9 +1091,12 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 console.log('🧹 Dados do localStorage limpos para evitar conflitos');
                 console.log('🔄 Iniciando carregamento da avaliação...');
 
-                // Carregar dados da avaliação usando o endpoint principal
-                const data = await EvaluationApiService.getTestData(testId);
-                
+                // Carregar em paralelo: dados da prova + sessão com respostas (uma round-trip a menos ao reabrir)
+                const [data, activeSessionWithAnswers] = await Promise.all([
+                    EvaluationApiService.getTestData(testId),
+                    EvaluationApiService.getActiveSessionWithAnswers(testId).catch(() => null)
+                ]);
+
                 if (!isMounted) return;
 
                 console.log('📊 Dados da avaliação carregados:', {
@@ -1013,18 +1127,62 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 setTestData(processedData);
                 console.log('✅ Dados da avaliação definidos no estado');
 
-                // Verificar se há sessão ativa
-                const hasActiveSession = await checkActiveSession();
-
                 if (!isMounted) return;
-                
+
+                // with-answers já veio em paralelo com getTestData
+                if (activeSessionWithAnswers?.session_id && (activeSessionWithAnswers.session_exists !== false) && activeSessionWithAnswers.status === 'em_andamento') {
+                    const evaluationDuration = processedData.duration ?? processedData.duration_minutes ?? 60;
+                    const startTime = new Date(activeSessionWithAnswers.actual_start_time || activeSessionWithAnswers.started_at);
+                    const elapsedMinutes = Math.max(0, Math.floor((Date.now() - startTime.getTime()) / (1000 * 60)));
+                    const remainingMinutes = Math.min(evaluationDuration, Math.max(0, evaluationDuration - elapsedMinutes));
+
+                    setSession({
+                        session_id: activeSessionWithAnswers.session_id,
+                        status: activeSessionWithAnswers.status,
+                        started_at: activeSessionWithAnswers.started_at,
+                        actual_start_time: activeSessionWithAnswers.actual_start_time,
+                        time_limit_minutes: evaluationDuration,
+                        remaining_time_minutes: remainingMinutes,
+                        total_questions: activeSessionWithAnswers.total_questions ?? processedData.questions?.length ?? 0,
+                        correct_answers: activeSessionWithAnswers.correct_answers ?? 0,
+                        score: activeSessionWithAnswers.score ?? 0,
+                        grade: activeSessionWithAnswers.grade ?? '',
+                        is_expired: remainingMinutes <= 0
+                    });
+                    setTimeRemaining(remainingMinutes * 60);
+                    sessionStartTimeRef.current = startTime;
+                    setIsPaused(false);
+                    if (remainingMinutes <= 0) setIsTimeUp(true);
+                    setEvaluationState('active');
+                    startTimerSync(activeSessionWithAnswers.session_id, elapsedMinutes, remainingMinutes);
+
+                    const savedAnswers = activeSessionWithAnswers.answers ?? [];
+                    const processedAnswers: Record<string, StudentAnswer> = {};
+                    savedAnswers.forEach((saved: { question_id: string; answer: string }) => {
+                        const question = processedData.questions?.find((q: { id: string }) => q.id === saved.question_id);
+                        if (!question) return;
+                        let answerValue = saved.answer;
+                        if (question.type === 'essay' || question.type === 'open' || question.type === 'dissertativa' || !question.options?.length) {
+                            try {
+                                const parsed = JSON.parse(answerValue);
+                                if (Array.isArray(parsed)?.length && parsed[0]?.text) answerValue = parsed[0].text;
+                            } catch { /* usar valor como está */ }
+                        }
+                        processedAnswers[saved.question_id] = { question_id: saved.question_id, answer: answerValue };
+                    });
+                    setAnswers(processedAnswers);
+                    return;
+                }
+
+                // Fallback: sem with-answers ou 404 — verificar sessão e carregar respostas em duas chamadas
+                const { active: hasActiveSession, sessionId } = await checkActiveSession();
+                if (!isMounted) return;
                 if (!hasActiveSession) {
                     console.log('📝 Nenhuma sessão ativa encontrada - definindo estado como instructions');
                     setEvaluationState('instructions');
                 } else {
                     console.log('🔄 Sessão ativa encontrada - definindo estado como active');
-                    // ✅ NOVO: Carregar respostas salvas se há sessão ativa
-                    await loadSavedAnswers();
+                    if (sessionId) await loadSavedAnswers(sessionId);
                 }
 
             } catch (error) {
@@ -1036,46 +1194,43 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         };
 
         initializeEvaluation();
-        
+
         return () => {
             isMounted = false;
+            initializingRef.current = false;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [testId]); // ✅ CORRIGIDO: checkActiveSession e loadSavedAnswers são chamados dentro do useEffect, não precisam estar nas dependências
 
-    // ✅ NOVO: Carregar respostas salvas
-    const loadSavedAnswers = useCallback(async () => {
-        if (!session?.session_id || !testData) return;
+    // ✅ Carregar respostas salvas (GET /student-answers/session/<id>/answers) para restaurar estado ao retomar
+    const loadSavedAnswers = useCallback(async (sessionIdParam?: string) => {
+        const sid = sessionIdParam ?? session?.session_id;
+        if (!sid || !testData) return;
 
         try {
-            // Buscar respostas salvas do backend
-            const response = await api.get(`/student-answers/sessions/${session.session_id}/answers`);
-            const savedAnswers = response.data.answers || [];
+            const data = await EvaluationApiService.getSessionAnswers(sid);
+            const savedAnswers = data.answers || [];
 
-            // Processar respostas salvas
             const processedAnswers: Record<string, StudentAnswer> = {};
-            
+
             savedAnswers.forEach((savedAnswer: { question_id: string; answer: string }) => {
                 const question = testData.questions.find(q => q.id === savedAnswer.question_id);
                 if (!question) return;
 
                 let answerValue = savedAnswer.answer;
 
-                // ✅ CORRIGIDO: Processar respostas de questões dissertativas
-                if (question.type === "essay" || 
-                    question.type === "open" || 
+                if (question.type === "essay" ||
+                    question.type === "open" ||
                     question.type === "dissertativa" ||
                     !question.options ||
                     question.options.length === 0) {
-                    
-                    // Se a resposta está em formato JSON, extrair o texto
                     try {
                         const parsed = JSON.parse(answerValue);
                         if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].text) {
                             answerValue = parsed[0].text;
                         }
-                    } catch (e) {
-                        // Se não é JSON válido, usar o valor como está
+                    } catch {
+                        // usar valor como está
                     }
                 }
 
@@ -1086,8 +1241,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             });
 
             setAnswers(processedAnswers);
-
-        } catch (error) {
+        } catch {
             // Erro silencioso ao carregar respostas
         }
     }, [session?.session_id, testData]);
@@ -1103,21 +1257,20 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
     useEffect(() => {
         return () => {
             console.log('🧹 Cleanup: Limpando todos os timers ao desmontar');
-            
+
             if (timerRef.current) {
                 clearInterval(timerRef.current);
                 timerRef.current = null;
             }
-            
-            // ✅ REMOVIDO: saveIntervalRef não é mais usado
-            // if (saveIntervalRef.current) {
-            //     clearInterval(saveIntervalRef.current);
-            //     saveIntervalRef.current = null;
-            // }
-            
+
             if (syncTimerRef.current) {
                 clearInterval(syncTimerRef.current);
                 syncTimerRef.current = null;
+            }
+
+            if (savePartialTimeoutRef.current) {
+                clearTimeout(savePartialTimeoutRef.current);
+                savePartialTimeoutRef.current = null;
             }
         };
     }, []);
@@ -1144,6 +1297,12 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 clearInterval(syncTimerRef.current);
                 syncTimerRef.current = null;
             }
+
+            // Limpar timeout do save-partial
+            if (savePartialTimeoutRef.current) {
+                clearTimeout(savePartialTimeoutRef.current);
+                savePartialTimeoutRef.current = null;
+            }
         }
     }, [evaluationState]);
 
@@ -1167,6 +1326,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         answers,
         isSubmitting,
         isSaving,
+        isSavingPartial,
         results,
         timeRemaining,
         isTimeUp,
