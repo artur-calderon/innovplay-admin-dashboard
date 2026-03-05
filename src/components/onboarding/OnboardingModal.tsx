@@ -119,7 +119,13 @@ export function OnboardingModal({ open, onComplete, profile }: OnboardingModalPr
       nationality: (source?.nationality ?? prev.nationality) || "",
       phone: (source?.phone ?? prev.phone) || "",
       address: (source?.address ?? prev.address) || "",
-      traits: Array.isArray(source?.traits) ? source.traits : (user?.traits ?? prev.traits),
+      traits: Array.isArray(source?.traits)
+        ? source.traits
+        : Array.isArray(user?.traits)
+          ? user.traits
+          : Array.isArray(prev.traits)
+            ? prev.traits
+            : [],
     }));
     if (ac) {
       if (ac.theme && ac.theme !== "system") updateTheme(ac.theme);
@@ -139,12 +145,15 @@ export function OnboardingModal({ open, onComplete, profile }: OnboardingModalPr
   }, [step]);
 
   const toggleTrait = useCallback((traitId: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      traits: prev.traits.includes(traitId)
-        ? prev.traits.filter((t) => t !== traitId)
-        : [...prev.traits, traitId],
-    }));
+    setFormData((prev) => {
+      const current = Array.isArray(prev.traits) ? prev.traits : [];
+      return {
+        ...prev,
+        traits: current.includes(traitId)
+          ? current.filter((t) => t !== traitId)
+          : [...current, traitId],
+      };
+    });
   }, []);
 
   const handleFinish = useCallback(async () => {
@@ -165,7 +174,8 @@ export function OnboardingModal({ open, onComplete, profile }: OnboardingModalPr
       if (formData.gender) body.gender = formData.gender;
       if (formData.nationality) body.nationality = formData.nationality;
       if (formData.address?.trim()) body.address = formData.address.trim();
-      if (formData.traits.length > 0) body.traits = formData.traits;
+      const traitsArr = Array.isArray(formData.traits) ? formData.traits : [];
+      if (traitsArr.length > 0) body.traits = traitsArr;
 
       const response = await submitOnboarding(body as Parameters<typeof submitOnboarding>[0]);
       const updatedUser = response.user as User;
@@ -439,7 +449,7 @@ export function OnboardingModal({ open, onComplete, profile }: OnboardingModalPr
                 <div className="flex flex-wrap gap-2">
                   {PREDEFINED_TRAITS.map((t) => {
                     const Icon = t.icon;
-                    const selected = formData.traits.includes(t.id);
+                    const selected = (Array.isArray(formData.traits) ? formData.traits : []).includes(t.id);
                     return (
                       <button
                         key={t.id}
