@@ -56,11 +56,11 @@ const CreateQuestionPage = () => {
           
           <div className="flex items-center gap-4 mb-4">
             <div className="p-3 bg-blue-100 dark:bg-blue-900/50 rounded-xl">
-              <Plus className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+              <Plus className="h-8 w-8 text-primary" />
             </div>
             <div>
               <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                <HelpCircle className="w-8 h-8 text-blue-600" />
+                <HelpCircle className="w-8 h-8 text-primary" />
                 Criar Nova Questão
               </h1>
               <p className="text-gray-600 dark:text-muted-foreground text-lg mt-1">

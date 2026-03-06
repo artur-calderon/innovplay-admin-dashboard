@@ -545,7 +545,7 @@ const GamesManagement = () => {
             <div className="flex justify-between items-center">
                 <div>
                     <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                        <Gamepad2 className="w-8 h-8 text-blue-600" />
+                        <Gamepad2 className="w-8 h-8 text-primary" />
                         Gerenciamento de Jogos
                     </h2>
                     <p className="text-muted-foreground">

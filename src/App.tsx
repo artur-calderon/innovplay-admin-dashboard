@@ -6,8 +6,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./context/authContext";
+import { StudentPreferencesProvider } from "./context/StudentPreferencesContext";
 import Layout from "./components/layout/Layout";
 import FullscreenLayout from "./components/layout/FullscreenLayout";
+import { AppThemeStyles } from "./components/layout/AppThemeStyles";
 import { PrivateRoute } from "./components/PrivateRoute";
 import { RoleRoute } from "./components/layout/RoleRoute";
 
@@ -105,6 +107,9 @@ const Olimpiadas = React.lazy(() => import("./pages/Olimpiadas"));
 const OlimpiadasStudent = React.lazy(() => import("./pages/OlimpiadasStudent"));
 const OlimpiadaStudent = React.lazy(() => import("./pages/OlimpiadaStudent"));
 const CoinHistory = React.lazy(() => import("./pages/CoinHistory"));
+const Loja = React.lazy(() => import("./pages/Loja"));
+const StoreAdmin = React.lazy(() => import("./pages/StoreAdmin"));
+const StoreAdminForm = React.lazy(() => import("./pages/StoreAdminForm"));
 const CoinsAdmin = React.lazy(() => import("./pages/CoinsAdmin"));
 const CompetitionList = React.lazy(() => import("./pages/Competitions"));
 const CompetitionDetails = React.lazy(() => import("./pages/CompetitionDetails"));
@@ -119,7 +124,7 @@ const CompetitionRankingPage = React.lazy(() => import("./pages/CompetitionRanki
 // Loading component
 const LoadingSpinner = () => (
   <div className="flex items-center justify-center min-h-[50vh]">
-    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
   </div>
 );
 
@@ -152,6 +157,7 @@ const App = () => {
         />
         <Sonner />
 
+        <StudentPreferencesProvider>
         <Suspense fallback={<LoadingSpinner />}>
           <Routes>
             {/* Rota raiz - checa subdomínio e redireciona ou mostra login */}
@@ -172,7 +178,7 @@ const App = () => {
             {/* Rotas de autenticação */}
             <Route path="/forgot-password" element={<ForgotPassword key="forgot-password" />} />
             <Route path="/reset-password" element={<ResetPassword key="reset-password" />} />
-            <Route path="/change-password" element={<PrivateRoute><ChangePassword /></PrivateRoute>} />
+            <Route path="/change-password" element={<PrivateRoute><AppThemeStyles><ChangePassword /></AppThemeStyles></PrivateRoute>} />
 
             {/* Rotas do aluno */}
             <Route path="/aluno" element={<Layout />}>
@@ -201,6 +207,7 @@ const App = () => {
               <Route path="/aluno/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
               <Route path="/aluno/configuracoes" element={<PrivateRoute><Settings /></PrivateRoute>} />
               <Route path="/aluno/moedas/historico" element={<PrivateRoute><CoinHistory /></PrivateRoute>} />
+              <Route path="/aluno/loja" element={<PrivateRoute><Loja /></PrivateRoute>} />
               <Route path="/aluno/conquistas" element={<PrivateRoute><ConquistasPage /></PrivateRoute>} />
               <Route path="/aluno/competitions" element={<PrivateRoute><CompetitionsStudent /></PrivateRoute>} />
               <Route path="/aluno/competitions/:id" element={<PrivateRoute><CompetitionStudentDetail /></PrivateRoute>} />
@@ -306,6 +313,9 @@ const App = () => {
               <Route path="/app/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
               <Route path="/app/configuracoes" element={<PrivateRoute><Settings /></PrivateRoute>} />
               <Route path="/app/moedas" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><CoinsAdmin /></RoleRoute></PrivateRoute>} />
+              <Route path="/app/loja/gerenciar" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><StoreAdmin /></RoleRoute></PrivateRoute>} />
+              <Route path="/app/loja/gerenciar/novo" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><StoreAdminForm /></RoleRoute></PrivateRoute>} />
+              <Route path="/app/loja/gerenciar/:id/editar" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><StoreAdminForm /></RoleRoute></PrivateRoute>} />
 
               {/* Rotas de gerenciamento de questões */}
               <Route path="/app/cadastros/questao" element={<PrivateRoute><QuestionsPage /></PrivateRoute>} />
@@ -345,6 +355,7 @@ const App = () => {
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
+        </StudentPreferencesProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

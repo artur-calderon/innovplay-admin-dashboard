@@ -905,7 +905,7 @@ const FormReports = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <BarChart3 className="w-8 h-8 text-blue-600" />
+            <BarChart3 className="w-8 h-8 text-primary" />
             Relatórios de Formulários Socioeconômicos
           </h1>
           <p className="text-muted-foreground mt-2">

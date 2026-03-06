@@ -245,7 +245,7 @@ const StudentGames = () => {
         return (
             <div className="container mx-auto py-6 min-h-screen">
                 <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-8 h-8 animate-spin mr-2 text-violet-600" />
+                    <Loader2 className="w-8 h-8 animate-spin mr-2 text-primary" />
                     <span>Carregando jogos...</span>
                 </div>
             </div>

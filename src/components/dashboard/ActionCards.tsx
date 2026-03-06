@@ -33,7 +33,7 @@ function ActionCard({ icon, title, description, action, color, bgColor }: Action
             </div>
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-sm mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+            <h3 className="font-semibold text-sm mb-1 group-hover:text-primary transition-colors">
               {title}
             </h3>
             <p className="text-xs text-muted-foreground mb-3 line-clamp-2">
@@ -43,7 +43,7 @@ function ActionCard({ icon, title, description, action, color, bgColor }: Action
               onClick={action}
               size="sm" 
               variant="ghost" 
-              className="h-8 px-2 text-xs group-hover:bg-blue-50 dark:group-hover:bg-blue-950/30 group-hover:text-blue-600 transition-colors"
+              className="h-8 px-2 text-xs group-hover:bg-primary/10 group-hover:text-primary transition-colors"
             >
               Acessar
               <ArrowRight className="h-3 w-3 ml-1 group-hover:translate-x-1 transition-transform" />
@@ -69,7 +69,7 @@ export default function ActionCards({ onAnaliseSistemaClick }: ActionCardsProps)
       title: "Criar Nova Avaliação",
       description: "Crie uma nova avaliação personalizada com questões de múltipla escolha, dissertativas e mais.",
       action: () => navigate('/app/criar-avaliacao'),
-      color: "text-blue-600 dark:text-blue-400",
+      color: "text-primary",
       bgColor: "bg-blue-50 dark:bg-blue-950/30"
     },
     {
