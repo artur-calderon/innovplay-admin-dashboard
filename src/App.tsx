@@ -240,7 +240,7 @@ const App = () => {
               <Route path="/app/play-tv/:id" element={<PrivateRoute><PlayTvVideoView /></PrivateRoute>} />
               <Route path="/app/plantao" element={<PrivateRoute><PlantaoOnline /></PrivateRoute>} />
               <Route path="/app/cartao-resposta" element={<PrivateRoute><AnswerSheetGenerator /></PrivateRoute>} />
-              <Route path="/app/cartao-resposta/resultados/:gabaritoId" element={<PrivateRoute><AnswerSheetResults /></PrivateRoute>} />
+              <Route path="/app/cartao-resposta/resultados" element={<PrivateRoute><AnswerSheetResults /></PrivateRoute>} />
               <Route path="/app/lista-frequencia" element={<PrivateRoute><ListaFrequencia /></PrivateRoute>} />
               <Route path="/app/certificados" element={<PrivateRoute><Certificates /></PrivateRoute>} />
               <Route path="/app/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
