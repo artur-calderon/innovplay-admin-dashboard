@@ -29,6 +29,36 @@ export interface TestSessionInfo {
     session_exists: boolean;
 }
 
+/** Request para salvamento parcial de respostas (autosave). */
+export interface SavePartialRequest {
+    session_id: string;
+    answers: { question_id: string; answer: string }[];
+}
+
+/** Resposta de GET session answers (para restaurar estado ao retomar). */
+export interface GetSessionAnswersResponse {
+    session_id: string;
+    total_answers?: number;
+    answers: Array<{ question_id: string; answer: string; answered_at?: string; is_correct?: boolean; manual_points?: number; feedback?: string }>;
+}
+
+/** Resposta de GET active-session/:test_id/with-answers (sessão + respostas em uma chamada ao retomar). */
+export interface ActiveSessionWithAnswersResponse extends TestSessionInfo {
+    total_answers?: number;
+    answers?: Array<{ question_id: string; answer: string; answered_at?: string; is_correct?: boolean; manual_points?: number; feedback?: string }>;
+}
+
+/** Corpo da resposta 410 (Gone) em submit e save-partial: sessão expirada/finalizada, com respostas salvas. */
+export interface SessionGone410Response {
+    error?: string;
+    session_id?: string;
+    test_id?: string;
+    status?: string;
+    is_expired?: boolean;
+    answers?: Array<{ question_id: string; answer: string; answered_at?: string }>;
+    total_answers?: number;
+}
+
 export class EvaluationApiService {
     // Teste de conectividade
     static async testConnection(): Promise<boolean> {
@@ -40,12 +70,15 @@ export class EvaluationApiService {
         }
     }
 
-    // ✅ NOVO: Buscar informações da sessão do teste (nova rota)
+    /**
+     * GET /test/:id/session-info — informações da sessão (com sessão ativa).
+     * Front usa duration/duration_minutes só do teste (getTestData) para o cronômetro.
+     * Verificação backend: resposta deve incluir duration_minutes (e/ou duration) com valor da prova em minutos (ex.: 67).
+     */
     static async getTestSessionInfo(testId: string): Promise<TestSessionInfo> {
         console.log('Buscando informações da sessão do teste:', testId);
 
         try {
-            // ✅ CORRIGIDO: Usar o endpoint correto para buscar informações da sessão
             const response = await api.get(`/test/${testId}/session-info`);
             console.log('Resposta da API getTestSessionInfo:', response.data);
             return response.data;
@@ -118,12 +151,15 @@ export class EvaluationApiService {
         }
     }
 
-    // ✅ NOVO: Iniciar sessão de teste (nova rota)
+    /**
+     * POST /test/:id/start-session — inicia sessão com time_limit_minutes = duração da prova.
+     * Front envia duration/duration_minutes do teste (ex.: 67). Não usar janela application/expiration como duração.
+     * Verificação backend: resposta deve incluir duration_minutes (e/ou duration) com o mesmo valor (ex.: 67).
+     */
     static async startSession(testId: string, timeLimitMinutes: number = 60): Promise<StartSessionResponse> {
         console.log('Iniciando sessão para teste:', testId, 'com tempo limite:', timeLimitMinutes);
 
         try {
-            // ✅ CORRIGIDO: Usar o endpoint correto para iniciar sessão
             const response = await api.post(`/test/${testId}/start-session`, {
                 time_limit_minutes: timeLimitMinutes
             });
@@ -342,9 +378,39 @@ export class EvaluationApiService {
         console.error('❌ Todas as tentativas de envio falharam:', lastError);
         throw lastError;
     }
+
+    /** Autosave: salvar respostas parciais (debounce no front). */
+    static async savePartialAnswers(params: SavePartialRequest): Promise<void> {
+        const { session_id, answers } = params;
+        await api.post('/student-answers/save-partial', { session_id, answers }, { timeout: 10000 });
+    }
+
+    /** Buscar respostas já gravadas da sessão (para restaurar estado ao retomar). */
+    static async getSessionAnswers(sessionId: string): Promise<GetSessionAnswersResponse> {
+        const response = await api.get(`/student-answers/session/${sessionId}/answers`);
+        return response.data;
+    }
+
+    /**
+     * Retomar prova: uma única chamada devolve sessão + respostas (recomendado ao retomar).
+     * GET /student-answers/active-session/:test_id/with-answers
+     * @returns dados da sessão e respostas, ou null se 404 (sem sessão ativa) / 410 (expirada)
+     */
+    static async getActiveSessionWithAnswers(testId: string): Promise<ActiveSessionWithAnswersResponse | null> {
+        try {
+            const response = await api.get<ActiveSessionWithAnswersResponse>(`/student-answers/active-session/${testId}/with-answers`);
+            return response.data ?? null;
+        } catch (error: unknown) {
+            const apiError = error as { response?: { status?: number } };
+            if (apiError.response?.status === 404 || apiError.response?.status === 410) {
+                return null;
+            }
+            throw error;
+        }
+    }
 }
 
-// Funções utilitárias para localStorage
+// Funções utilitárias para localStorage (apenas sessão; respostas vão só para a API)
 export const SessionStorage = {
     // Salvar sessão no localStorage
     saveSession: (testId: string, sessionData: { session_id: string; started_at: string }) => {
@@ -361,20 +427,4 @@ export const SessionStorage = {
     removeSession: (testId: string) => {
         localStorage.removeItem(`test_session_${testId}`);
     },
-
-    // Salvar respostas temporárias
-    saveAnswers: (testId: string, answers: Record<string, { question_id: string; answer: string }>) => {
-        localStorage.setItem(`test_answers_${testId}`, JSON.stringify(answers));
-    },
-
-    // Recuperar respostas temporárias
-    getAnswers: (testId: string) => {
-        const saved = localStorage.getItem(`test_answers_${testId}`);
-        return saved ? JSON.parse(saved) : {};
-    },
-
-    // Remover respostas temporárias
-    removeAnswers: (testId: string) => {
-        localStorage.removeItem(`test_answers_${testId}`);
-    }
 }; 

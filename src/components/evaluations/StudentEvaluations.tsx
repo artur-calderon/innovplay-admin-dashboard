@@ -105,7 +105,8 @@ interface StudentEvaluation {
   course: { id: string; name: string };
   startDateTime: string;
   endDateTime?: string;
-  duration: number; // em minutos
+  duration: number; // em minutos (duration ou duration_minutes da API)
+  duration_minutes?: number; // alternativo da API
   totalQuestions: number;
   maxScore: number;
   type: string;
@@ -193,9 +194,9 @@ export default function StudentEvaluations() {
 
   const { user } = useAuth();
   const { toast } = useToast();
-  const navigate = useNavigate();
+  const navigate = useNavigate(); // único uso de useNavigate neste componente
 
-const DEFAULT_TIME_ZONE = (() => {
+  const DEFAULT_TIME_ZONE = (() => {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo";
   } catch (error) {
@@ -358,7 +359,8 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
           course: { id: 'course', name: 'Curso' },
           startDateTime: testData.application_info?.application || new Date().toISOString(),
           endDateTime: testData.application_info?.expiration,
-          duration: testData.duration || 60, // em minutos - usar o valor da API
+          duration: testData.duration ?? testData.duration_minutes ?? 60,
+          duration_minutes: testData.duration_minutes,
           totalQuestions: testData.total_questions || 0,
           maxScore: testData.max_score || 0,
           type: testData.type || 'AVALIACAO',
@@ -592,34 +594,9 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
     }
   };
 
-  const handleContinueEvaluation = async (evaluation: StudentEvaluation) => {
-    try {
-      const evaluationData = await EvaluationApiService.getTestData(evaluation.id);
-      sessionStorage.setItem("current_evaluation", JSON.stringify(evaluationData));
-      window.location.href = `/app/avaliacao/${evaluation.id}/fazer`;
-
-    } catch (error: unknown) {
-      const apiError = error as { response?: { data?: { error?: string }; status?: number } };
-
-      let errorMessage = "Não foi possível continuar a avaliação";
-
-      if (apiError.response?.status === 403) {
-        errorMessage = ERROR_MESSAGES.FORBIDDEN;
-      } else if (apiError.response?.status === 404) {
-        errorMessage = ERROR_MESSAGES.EVALUATION_NOT_FOUND;
-      } else if (apiError.response?.data?.error) {
-        errorMessage = apiError.response.data.error;
-      }
-
-      toast({
-        title: "Erro",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    }
+  const handleContinueEvaluation = (evaluation: StudentEvaluation) => {
+    navigate(`/aluno/avaliacao/${evaluation.id}/fazer`);
   };
-
-
 
   // ✅ NOVO: Função para obter badge baseado no student_status
   const getStatusBadge = (evaluation: StudentEvaluation) => {
@@ -819,73 +796,6 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
           </Button>
         </div>
       </div>
-
-      {/* ✅ TEMPORÁRIO: Card para encerrar sessões ativas */}
-      {activeSessions.length > 0 && (
-        <Card className="border-orange-300 bg-orange-50 dark:bg-orange-950/20">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-orange-600" />
-              <CardTitle className="text-lg text-orange-900 dark:text-orange-100">
-                ⚠️ TEMPORÁRIO: Sessões Ativas Encontradas
-              </CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-orange-800 dark:text-orange-200">
-              Você tem {activeSessions.length}{' '}
-              {activeSessions.length === 1 ? 'sessão ativa' : 'sessões ativas'} que podem
-              estar impedindo o início de novas avaliações ou olimpíadas.
-            </p>
-            <div className="space-y-2">
-              {activeSessions.map((session) => (
-                <div
-                  key={session.session_id}
-                  className="flex items-center justify-between p-3 bg-card rounded-md border border-orange-200 dark:border-orange-800"
-                >
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900 text-foreground">
-                      Sessão: {session.session_id.substring(0, 8)}...
-                    </p>
-                    {session.test_title && (
-                      <p className="text-xs text-muted-foreground">
-                        {session.test_title}
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    onClick={() => handleEndSession(session.session_id)}
-                    variant="destructive"
-                    size="sm"
-                    className="ml-4"
-                  >
-                    <X className="h-4 w-4 mr-2" />
-                    Encerrar Sessão
-                  </Button>
-                </div>
-              ))}
-            </div>
-            <Button
-              onClick={loadActiveSessions}
-              variant="outline"
-              size="sm"
-              disabled={loadingSessions}
-            >
-              {loadingSessions ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Carregando...
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="h-4 w-4 mr-2" />
-                  Atualizar
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Estatísticas Rápidas (apenas avaliações expiradas ou que o aluno pode iniciar) */}
       <div className="grid gap-4 md:grid-cols-5">
@@ -1162,7 +1072,11 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
                 </div>
                 <div>
                   <span className="font-medium">Duração:</span>
-                  <p className="dark:text-blue-200">{selectedEvaluation?.duration} minutos</p>
+                  <p className="dark:text-blue-200">
+                  {(selectedEvaluation?.duration ?? selectedEvaluation?.duration_minutes) != null
+                    ? `${selectedEvaluation?.duration ?? selectedEvaluation?.duration_minutes} minutos`
+                    : 'Não informado'}
+                </p>
                 </div>
                 <div>
                   <span className="font-medium">Questões:</span>
@@ -1200,8 +1114,8 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
               </div>
             </div>
 
-            {/* Tempo Disponível - SIMPLIFICADO */}
-            {selectedEvaluation && (
+            {/* Tempo disponível: janela de aplicação (De … até …) — não é a duração da prova */}
+            {selectedEvaluation && (selectedEvaluation.startDateTime || selectedEvaluation.endDateTime) && (
               <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 p-4 rounded-lg">
                 <h5 className="font-semibold text-purple-900 dark:text-purple-300 mb-2 flex items-center gap-2">
                   <Clock className="h-4 w-4 text-purple-600 dark:text-purple-400" />
