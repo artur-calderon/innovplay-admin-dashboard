@@ -5,10 +5,20 @@ import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Settings as SettingsIcon, Moon, Sun, Type, ZoomIn } from "lucide-react";
+import { Settings as SettingsIcon, Moon, Sun, Type, ZoomIn, Palette } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 import { toast } from "react-toastify";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useAuth } from "@/context/authContext";
+import { useStudentPreferences } from "@/context/StudentPreferencesContext";
+import { storeApi } from "@/services/storeService";
+import type { StudentPurchase } from "@/types/store";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  getNonStudentSidebarThemeFromStorage,
+  setNonStudentSidebarThemeInStorage,
+} from "@/constants/sidebarThemes";
+import type { SidebarThemeId } from "@/constants/sidebarThemes";
 
 const FONT_OPTIONS = [
   { value: "Inter", label: "Inter" },
@@ -30,9 +40,55 @@ const FONT_SIZE_OPTIONS = [
   { value: 130, label: "130%", display: "Extra Grande" },
 ];
 
+const SIDEBAR_THEME_LABELS: Record<string, string> = {
+  blue: "Tema azul",
+  green: "Tema verde",
+  violet: "Tema violeta",
+  amber: "Tema âmbar",
+  rose: "Tema rosa",
+  dark: "Tema escuro",
+};
+
 export default function Settings() {
   const { settings, updateTheme, updateFontFamily, updateFontSize, resetToDefaults, persistSettings, isLoading } = useSettings();
   const [isSaving, setIsSaving] = useState(false);
+  const { user } = useAuth();
+  const studentPrefs = useStudentPreferences();
+  const [sidebarPurchases, setSidebarPurchases] = useState<StudentPurchase[]>([]);
+  const [sidebarThemesLoading, setSidebarThemesLoading] = useState(false);
+  const [nonStudentThemeId, setNonStudentThemeId] = useState<SidebarThemeId>(null);
+
+  const isStudent = user?.role === "aluno";
+  const selectedSidebarThemeId = isStudent
+    ? (studentPrefs?.preferences?.sidebar_theme_id ?? null)
+    : nonStudentThemeId;
+
+  useEffect(() => {
+    if (!isStudent) setNonStudentThemeId(getNonStudentSidebarThemeFromStorage());
+  }, [isStudent]);
+
+  useEffect(() => {
+    if (!isStudent) return;
+    let cancelled = false;
+    setSidebarThemesLoading(true);
+    storeApi
+      .getMyPurchases({ limit: 100, offset: 0 })
+      .then(({ data }) => {
+        if (!cancelled) {
+          const themes = (data.purchases ?? []).filter((p) => p.reward_type === "sidebar_theme");
+          setSidebarPurchases(themes);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSidebarPurchases([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSidebarThemesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isStudent]);
 
   const handleThemeToggle = (checked: boolean) => {
     const newTheme = checked ? "dark" : "light";
@@ -88,7 +144,7 @@ export default function Settings() {
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <SettingsIcon className="w-8 h-8 text-blue-600" />
+            <SettingsIcon className="w-8 h-8 text-primary" />
             Configurações
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -201,6 +257,76 @@ export default function Settings() {
                 </div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Tema do menu lateral */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Palette className="h-5 w-5" />
+              Tema do menu lateral
+            </CardTitle>
+            <CardDescription>
+              {isStudent
+                ? "Escolha a cor do menu lateral. Só aparecem temas que você comprou na loja."
+                : "Escolha a cor do menu lateral e das páginas. Todos os temas estão disponíveis."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isStudent && sidebarThemesLoading ? (
+              <Skeleton className="h-10 w-full max-w-[300px] rounded-md" />
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="sidebar-theme" className="text-base font-medium">
+                  Tema atual
+                </Label>
+                <Select
+                  value={selectedSidebarThemeId ?? "__padrao__"}
+                  onValueChange={(value) => {
+                    const themeId = (value === "__padrao__" ? null : value) as SidebarThemeId;
+                    if (isStudent) {
+                      studentPrefs?.setPreferences({ sidebar_theme_id: themeId });
+                      toast.success(themeId ? "Tema do menu atualizado" : "Tema do menu restaurado ao padrão");
+                    } else {
+                      setNonStudentSidebarThemeInStorage(themeId);
+                      setNonStudentThemeId(themeId);
+                      toast.success(themeId ? "Tema aplicado" : "Tema restaurado ao padrão");
+                    }
+                  }}
+                >
+                  <SelectTrigger id="sidebar-theme" className="w-full md:w-[300px]">
+                    <SelectValue placeholder="Selecione o tema" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__padrao__">Padrão (cor original do menu)</SelectItem>
+                    {isStudent
+                      ? Array.from(
+                          new Map(
+                            sidebarPurchases.map((p) => {
+                              const id = p.reward_data ?? p.store_item_id;
+                              return [id, p.item_name || SIDEBAR_THEME_LABELS[id] || id];
+                            })
+                          ).entries()
+                        ).map(([id, label]) => (
+                          <SelectItem key={id} value={id}>
+                            {label}
+                          </SelectItem>
+                        ))
+                      : (Object.entries(SIDEBAR_THEME_LABELS) as [string, string][]).map(([id, label]) => (
+                          <SelectItem key={id} value={id}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                  </SelectContent>
+                </Select>
+                {isStudent && sidebarPurchases.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Você ainda não comprou temas na loja. Compre na Loja para desbloquear novas cores.
+                  </p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 

@@ -153,7 +153,7 @@ const Index = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
         <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-          <LayoutDashboard className="w-8 h-8 text-blue-600" />
+          <LayoutDashboard className="w-8 h-8 text-primary" />
           Painel Administrativo
         </h1>
         <span className="text-sm sm:text-base text-muted-foreground">
@@ -353,7 +353,7 @@ const Index = () => {
       {/* Tabelas Interativas - Nova Seção */}
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-6">
-          <Target className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+          <Target className="h-6 w-6 text-primary" />
           <h2 className="text-xl font-semibold text-foreground">Análises e Rankings</h2>
         </div>
         

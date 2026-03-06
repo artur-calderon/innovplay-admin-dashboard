@@ -105,7 +105,7 @@ export default function Evaluations() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <ClipboardList className="w-8 h-8 text-blue-600" />
+            <ClipboardList className="w-8 h-8 text-primary" />
             Central de Avaliações
           </h1>
           <p className="text-muted-foreground">

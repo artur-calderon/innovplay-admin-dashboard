@@ -103,7 +103,7 @@ export default function StudentAgendaOptimized() {
     <div className="p-4">
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3 mb-2">
-          <Calendar className="w-8 h-8 text-blue-600" />
+          <Calendar className="w-8 h-8 text-primary" />
           Minha Agenda
         </h1>
         <p className="text-muted-foreground">Acompanhe seus eventos e atividades escolares</p>

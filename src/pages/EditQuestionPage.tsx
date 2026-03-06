@@ -24,9 +24,9 @@ const EditQuestionPage = () => {
                                 Voltar
                             </Button>
                             <div className="flex items-center gap-2">
-                                <Edit3 className="h-5 w-5 text-blue-600" />
+                                <Edit3 className="h-5 w-5 text-primary" />
                                 <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                                  <HelpCircle className="w-8 h-8 text-blue-600" />
+                                  <HelpCircle className="w-8 h-8 text-primary" />
                                   Editar Questão
                                 </h1>
                             </div>

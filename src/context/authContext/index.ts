@@ -46,6 +46,8 @@ export interface AvatarConfig {
     nose?: string[];
     noseColor?: string[];
     skinColor?: string[];
+    /** Moldura ao redor do avatar: none | gold | silver | bronze | gradient */
+    frame?: string;
 }
 
 export interface User {
@@ -65,6 +67,8 @@ export interface User {
     avatar_config?: AvatarConfig | null,
     traits?: string[],
     competition_band?: string | null,
+    /** IDs das molduras compradas na loja (ex: ['gold', 'silver']) */
+    owned_frames?: string[],
 }
 
 interface ApiError {
@@ -85,6 +89,7 @@ interface AuthContext {
     setOnboardingComplete: (user: User) => void,
     persistUser: () => Promise<boolean>,
     updateAvatarConfig: (config: AvatarConfig) => Promise<void>,
+    addOwnedFrame: (frameId: string) => Promise<void>,
     fetchUserDetails: (userId: string) => Promise<void>,
 }
 
@@ -349,5 +354,26 @@ export const useAuth = create<AuthContext>((set, get) => ({
             toast.error(errorMessage);
             throw error;
         }
-    }
+    },
+    addOwnedFrame: async (frameId: string) => {
+        const currentUser = get().user;
+        const current = currentUser.owned_frames ?? [];
+        if (current.includes(frameId)) return;
+        const next = [...current, frameId];
+        set((state) => ({
+            user: {
+                ...state.user,
+                owned_frames: next,
+            },
+        }));
+        localStorage.setItem('user', JSON.stringify(get().user));
+        try {
+            await api.put(`/users/${currentUser.id}`, {
+                owned_frames: next,
+            });
+        } catch (err) {
+            console.error('Erro ao persistir molduras (owned_frames):', err);
+            // Mantém no estado local; backend pode não suportar ainda
+        }
+    },
 }))
