@@ -684,7 +684,7 @@ export default function Turmas({ embedded = false }: TurmasProps) {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-              <Users className="w-8 h-8 text-blue-600" />
+              <Users className="w-8 h-8 text-primary" />
               Gerenciar Turmas
             </h1>
             <p className="text-muted-foreground">

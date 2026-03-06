@@ -8,6 +8,7 @@ import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { NotificationBell } from "@/components/Notifications/NotificationBell";
 import { useAuth } from "@/context/authContext";
 import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
+import { useGlobalThemeStyles } from "@/hooks/useGlobalThemeStyles";
 
 type LayoutProps = {
   children: ReactNode;
@@ -17,9 +18,10 @@ export default function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const { user, needsOnboarding, onboardingProfile } = useAuth();
+  const globalThemeStyles = useGlobalThemeStyles();
 
   const showOnboarding = Boolean(user?.id) && needsOnboarding;
-  
+
   // Scroll to top on route change
   useScrollToTop();
 
@@ -53,7 +55,7 @@ export default function Layout() {
   }, [isMobileMenuOpen]);
 
   return (
-    <div className="flex min-h-screen min-h-[100dvh] bg-background">
+    <div className="flex min-h-screen min-h-[100dvh] bg-background" style={Object.keys(globalThemeStyles).length > 0 ? globalThemeStyles : undefined}>
       {showOnboarding && (
         <OnboardingModal
           open={true}

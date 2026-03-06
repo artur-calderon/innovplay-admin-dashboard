@@ -255,7 +255,7 @@ export default function Competitions() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="flex items-center gap-3 text-3xl font-bold tracking-tight">
-            <Trophy className="h-8 w-8 text-blue-600" />
+            <Trophy className="h-8 w-8 text-primary" />
             Competições
           </h1>
           <p className="mt-1 text-muted-foreground">

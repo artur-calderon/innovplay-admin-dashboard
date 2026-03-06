@@ -173,7 +173,7 @@ const FormView = () => {
         </Button>
         <div className="flex-1">
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <FileText className="w-8 h-8 text-blue-600" />
+            <FileText className="w-8 h-8 text-primary" />
             {formData.title}
           </h1>
           <p className="text-muted-foreground mt-1">{formData.description}</p>

@@ -2135,7 +2135,7 @@ export default function Results() {
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <BarChart3 className="w-8 h-8 text-blue-600" />
+            <BarChart3 className="w-8 h-8 text-primary" />
             Resultados das Avaliações
           </h1>
           <p className="text-muted-foreground">
@@ -2372,7 +2372,7 @@ export default function Results() {
       {allRequiredFiltersSelected && isLoadingData && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <RefreshCw className="h-8 w-8 animate-spin text-blue-600 dark:text-blue-400 mb-4" />
+            <RefreshCw className="h-8 w-8 animate-spin text-primary mb-4" />
             <p className="text-muted-foreground">Carregando dados...</p>
           </CardContent>
         </Card>

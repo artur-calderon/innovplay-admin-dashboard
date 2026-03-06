@@ -1,10 +1,18 @@
 import { AvatarConfig } from '@/context/authContext';
+import { cn } from '@/lib/utils';
 
 interface AvatarPreviewProps {
     config: AvatarConfig;
     size?: number;
     className?: string;
 }
+
+const FRAME_CLASSES: Record<string, string> = {
+    gold: 'p-1.5 rounded-full bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-500 shadow-lg shadow-amber-500/30',
+    silver: 'p-1.5 rounded-full bg-gradient-to-br from-slate-300 via-gray-200 to-slate-400 shadow-lg shadow-slate-400/30',
+    bronze: 'p-1.5 rounded-full bg-gradient-to-br from-amber-600 via-orange-600 to-amber-700 shadow-lg shadow-amber-700/30',
+    gradient: 'p-1.5 rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 shadow-lg shadow-purple-500/30',
+};
 
 export const AvatarPreview = ({ config, size = 128, className = '' }: AvatarPreviewProps) => {
     const generateAvatarUrl = (customConfig?: AvatarConfig): string => {
@@ -55,16 +63,33 @@ export const AvatarPreview = ({ config, size = 128, className = '' }: AvatarPrev
     };
 
     const avatarUrl = generateAvatarUrl(config);
+    const frame = config.frame && config.frame !== 'none' ? config.frame : null;
+    const frameClass = frame ? FRAME_CLASSES[frame] : null;
+
+    const img = (
+        <img
+            src={avatarUrl}
+            alt="Avatar"
+            width={size}
+            height={size}
+            className={cn(
+                'rounded-full object-cover',
+                frame ? 'border-2 border-white' : 'border-2 border-white shadow-lg'
+            )}
+        />
+    );
 
     return (
-        <div className={`flex items-center justify-center ${className}`}>
-            <img
-                src={avatarUrl}
-                alt="Avatar"
-                width={size}
-                height={size}
-                className="rounded-full border-2 border-white shadow-lg"
-            />
+        <div className={cn('flex items-center justify-center', className)}>
+            {frameClass ? (
+                <div className={cn('flex shrink-0 items-center justify-center rounded-full', frameClass)} style={{ width: size + 12, height: size + 12 }}>
+                    <div className="rounded-full overflow-hidden bg-background flex items-center justify-center" style={{ width: size, height: size }}>
+                        {img}
+                    </div>
+                </div>
+            ) : (
+                img
+            )}
         </div>
     );
 };

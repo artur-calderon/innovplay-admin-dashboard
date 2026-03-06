@@ -182,7 +182,7 @@ const QuestionarioList = () => {
       <div className="container mx-auto p-6 min-h-screen">
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="flex flex-col items-center gap-4">
-            <Loader2 className="h-8 w-8 animate-spin text-violet-600" />
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <p className="text-muted-foreground">Carregando questionários...</p>
           </div>
         </div>
@@ -244,7 +244,7 @@ const QuestionarioList = () => {
         <Card className="rounded-2xl border-2 border-dashed border-violet-200/60 dark:border-violet-500/40 overflow-hidden bg-gradient-to-br from-violet-500/5 to-transparent animate-fade-in-up">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <div className="w-14 h-14 rounded-full bg-violet-500/10 flex items-center justify-center mb-4">
-              <FileText className="h-8 w-8 text-violet-600 dark:text-violet-400" />
+              <FileText className="h-8 w-8 text-primary" />
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">
               Nenhum questionário encontrado

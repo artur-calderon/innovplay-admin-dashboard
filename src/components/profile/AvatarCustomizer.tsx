@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -7,10 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { AvatarPreview } from '@/components/profile/AvatarPreview';
-import { AvatarConfig } from '@/context/authContext';
+import { AvatarConfig, useAuth } from '@/context/authContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Save, RotateCcw, Sparkles } from 'lucide-react';
+import { Save, RotateCcw, Sparkles, Circle, Lock, ShoppingBag } from 'lucide-react';
 
 interface AvatarCustomizerProps {
     config: AvatarConfig;
@@ -187,6 +188,8 @@ const getSafeSelectValue = (arrayValue: string[] | undefined | null): string | u
 };
 
 export const AvatarCustomizer = ({ config, onConfigChange, onSave, isSaving, hideSaveButton }: AvatarCustomizerProps) => {
+    const { user } = useAuth();
+    const ownedFrames = user?.owned_frames ?? [];
     const [previewModal, setPreviewModal] = useState<{
         open: boolean;
         field: string;
@@ -289,6 +292,7 @@ export const AvatarCustomizer = ({ config, onConfigChange, onSave, isSaving, hid
             earrings: [],
             earringsColor: [],
             earringsProbability: 0,
+            frame: undefined,
         });
     };
 
@@ -353,12 +357,13 @@ export const AvatarCustomizer = ({ config, onConfigChange, onSave, isSaving, hid
 
                 <div className="lg:col-span-2 min-w-0 overflow-hidden">
                     <Tabs defaultValue="basic" className="w-full">
-                        <TabsList className="w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 h-auto gap-1 p-1.5">
+                        <TabsList className="w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 h-auto gap-1 p-1.5">
                             <TabsTrigger value="basic" className="text-xs sm:text-sm py-2 px-2">Básico</TabsTrigger>
                             <TabsTrigger value="face" className="text-xs sm:text-sm py-2 px-2">Rosto</TabsTrigger>
                             <TabsTrigger value="hair" className="text-xs sm:text-sm py-2 px-2">Cabelo</TabsTrigger>
                             <TabsTrigger value="accessories" className="text-xs sm:text-sm py-2 px-2">Acess.</TabsTrigger>
                             <TabsTrigger value="background" className="text-xs sm:text-sm py-2 px-2">Fundo</TabsTrigger>
+                            <TabsTrigger value="frame" className="text-xs sm:text-sm py-2 px-2">Moldura</TabsTrigger>
                             <TabsTrigger value="advanced" className="text-xs sm:text-sm py-2 px-2">Avançado</TabsTrigger>
                         </TabsList>
 
@@ -870,6 +875,54 @@ export const AvatarCustomizer = ({ config, onConfigChange, onSave, isSaving, hid
                                         onValueChange={([value]) => onConfigChange({ backgroundRotation: [value, value] })}
                                     />
                                 </div>
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="frame" className="space-y-4 mt-4">
+                            <Label>Moldura do avatar</Label>
+                            <p className="text-sm text-muted-foreground mb-3">
+                                Escolha uma moldura para exibir ao redor da sua foto de perfil. Molduras premium são desbloqueadas ao comprar na loja.
+                            </p>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                {[
+                                    { value: 'none', label: 'Nenhuma', icon: Circle, color: 'border-muted' },
+                                    { value: 'gold', label: 'Dourada', icon: Circle, color: 'border-amber-400 bg-gradient-to-br from-amber-300 to-amber-500' },
+                                    { value: 'silver', label: 'Prata', icon: Circle, color: 'border-slate-300 bg-gradient-to-br from-slate-200 to-slate-400' },
+                                    { value: 'bronze', label: 'Bronze', icon: Circle, color: 'border-amber-600 bg-gradient-to-br from-amber-600 to-amber-800' },
+                                    { value: 'gradient', label: 'Gradiente', icon: Circle, color: 'border-transparent bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600' },
+                                ].map((opt) => {
+                                    const isNone = opt.value === 'none';
+                                    const owned = isNone || ownedFrames.includes(opt.value);
+                                    const selected = (config.frame || 'none') === opt.value;
+                                    return (
+                                        <div key={opt.value} className="relative flex flex-col">
+                                            <button
+                                                type="button"
+                                                onClick={() => owned && onConfigChange({ frame: isNone ? undefined : opt.value })}
+                                                disabled={!owned}
+                                                className={`flex flex-col items-center gap-2 rounded-lg border-2 p-3 transition-all ${
+                                                    !owned ? 'opacity-60 cursor-not-allowed' : ''
+                                                } ${selected ? 'ring-2 ring-primary ring-offset-2' : 'hover:bg-muted/50'}`}
+                                            >
+                                                {!owned && (
+                                                    <span className="absolute top-2 right-2 rounded-full bg-muted p-1" title="Compre na loja para desbloquear">
+                                                        <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                                                    </span>
+                                                )}
+                                                <div className={`w-12 h-12 rounded-full border-2 ${opt.color} ${!owned ? 'grayscale' : ''}`} />
+                                                <span className="text-xs font-medium">{opt.label}</span>
+                                            </button>
+                                            {!owned && !isNone && (
+                                                <Button variant="link" className="h-auto p-1 text-xs mt-1" asChild>
+                                                    <Link to="/aluno/loja" className="flex items-center gap-1">
+                                                        <ShoppingBag className="h-3 w-3" />
+                                                        Comprar na loja
+                                                    </Link>
+                                                </Button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </TabsContent>
 

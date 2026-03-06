@@ -10,9 +10,11 @@ import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import { AvatarPreview } from "@/components/profile/AvatarPreview";
 import { AvatarCustomizer } from "@/components/profile/AvatarCustomizer";
+import { RewardsPreferencesSection } from "@/components/profile/RewardsPreferencesSection";
 import { ChangePasswordForm } from "@/components/profile/ChangePasswordForm";
 import { PersonalDataForm } from "@/components/profile/PersonalDataForm";
 import { useAvatarConfig } from "@/hooks/useAvatarConfig";
+import { useStudentPreferences } from "@/context/StudentPreferencesContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface StudentData {
@@ -132,6 +134,7 @@ interface UserData {
 const Profile = () => {
   const user = useAuth((state) => state.user);
   const navigate = useNavigate();
+  const studentPrefs = useStudentPreferences();
   const [profileData, setProfileData] = useState<StudentData | TeacherData | UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [userTraits, setUserTraits] = useState<string[]>([]);
@@ -600,6 +603,7 @@ const Profile = () => {
             onSave={handleSaveAvatar}
             isSaving={isSaving}
           />
+          {user?.role === 'aluno' && <RewardsPreferencesSection />}
         </TabsContent>
 
         <TabsContent value="personal-data" className="space-y-4 sm:space-y-6 mt-4">
@@ -630,6 +634,12 @@ const Profile = () => {
                     <Badge className="text-sm px-4 py-2 bg-gradient-to-r from-innov-blue to-innov-purple text-white border-0 mb-4">
                       {getRoleDisplayName(user?.role || "")}
                     </Badge>
+                    {user?.role === 'aluno' && studentPrefs?.preferences?.stamp_id && (
+                      <Badge variant="secondary" className="mb-4 flex items-center gap-1">
+                        <Shield className="h-3 w-3" />
+                        Selo ativo
+                      </Badge>
+                    )}
                   </div>
 
                   <div className="space-y-4">

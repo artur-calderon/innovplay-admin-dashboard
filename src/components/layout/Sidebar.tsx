@@ -43,12 +43,14 @@ import {
   Sparkles,
   Medal,
   Star,
-  Coins
+  Coins,
+  ShoppingBag
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/context/authContext";
+import { useStudentPreferences } from "@/context/StudentPreferencesContext";
 import { Button } from "@/components/ui/button";
 import { useGamesCount } from "@/hooks/useGamesCount";
 import { useOpenCompetitionsCount } from "@/hooks/useOpenCompetitionsCount";
@@ -59,6 +61,12 @@ import { AvatarPreview } from "@/components/profile/AvatarPreview";
 import { CoinBalance } from "@/components/coins/CoinBalance";
 import { NotificationBell } from "@/components/Notifications/NotificationBell";
 import { StudentBandBadge } from "@/components/competitions/StudentBandBadge";
+import {
+  getSidebarThemeStyles,
+  getNonStudentSidebarThemeFromStorage,
+  SIDEBAR_THEME_CHANGE_EVENT,
+} from "@/constants/sidebarThemes";
+import type { SidebarThemeId } from "@/constants/sidebarThemes";
 
 type SidebarLink = {
   icon: React.ElementType;
@@ -96,6 +104,24 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
 
   const navigate = useNavigate();
   const { logout, user } = useAuth();
+  const studentPrefs = useStudentPreferences();
+  const [nonStudentThemeId, setNonStudentThemeId] = useState<SidebarThemeId>(() =>
+    user?.role !== 'aluno' ? getNonStudentSidebarThemeFromStorage() : null
+  );
+  const sidebarThemeId = (user?.role === 'aluno'
+    ? (studentPrefs?.preferences?.sidebar_theme_id ?? null)
+    : nonStudentThemeId) as SidebarThemeId;
+
+  useEffect(() => {
+    if (user?.role !== 'aluno') {
+      setNonStudentThemeId(getNonStudentSidebarThemeFromStorage());
+      const onThemeChange = () => setNonStudentThemeId(getNonStudentSidebarThemeFromStorage());
+      window.addEventListener(SIDEBAR_THEME_CHANGE_EVENT, onThemeChange);
+      return () => window.removeEventListener(SIDEBAR_THEME_CHANGE_EVENT, onThemeChange);
+    }
+  }, [user?.role]);
+
+  const themeStyles = getSidebarThemeStyles(sidebarThemeId, isDarkMode);
   useGamesCount();
   const openCompetitionsCount = useOpenCompetitionsCount();
 
@@ -292,7 +318,9 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         { icon: Sparkles, label: "Olimpíadas", href: `${user.role === 'aluno' ? "/aluno/olimpiadas" : "/app/olimpiadas"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
         { icon: Trophy, label: "Competições", href: `${user.role === 'aluno' ? "/aluno/competitions" : "/app/competitions"}`, role: ["admin", "professor", "coordenador", "diretor", "tecadm", "aluno"], badge: user.role === 'aluno' && openCompetitionsCount > 0 ? String(openCompetitionsCount) : undefined },
         { icon: Coins, label: "Administração de moedas", href: "/app/moedas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+        { icon: ShoppingBag, label: "Itens da loja", href: "/app/loja/gerenciar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: Coins, label: "Histórico de Moedas", href: "/aluno/moedas/historico", role: ["aluno"] },
+        { icon: ShoppingBag, label: "Loja", href: "/aluno/loja", role: ["aluno"] },
       ]
     },
     {
@@ -320,8 +348,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
 
     return (
       <div className="px-2 pt-1 pb-0.5 md:px-3 lg:px-3">
-        <div className="rounded-xl border bg-white/95 border-[#c9b5e0] text-slate-900 shadow-sm
-                        dark:bg-white/5 dark:border-white/10 dark:text-white">
+        <div
+          className="rounded-xl border shadow-sm"
+          style={{ backgroundColor: 'var(--sidebar-user-card-bg)', borderColor: 'var(--sidebar-user-card-border)', color: 'var(--sidebar-text)' }}
+        >
           <div className="px-2 py-1.5 md:px-3 md:py-2 lg:px-3 lg:py-1.5 flex items-center gap-2 md:gap-3">
             {user?.avatar_config ? (
               <div className="flex-shrink-0">
@@ -332,18 +362,17 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                 />
               </div>
             ) : (
-              <div className={cn(
-                "rounded-full bg-[#d4bceb] text-slate-900 flex items-center justify-center font-semibold flex-shrink-0",
-                "dark:bg-white/20 dark:text-white",
-                isMobile ? "w-9 h-9" : "w-10 h-10"
-              )}>
+              <div
+                className={cn("rounded-full flex items-center justify-center font-semibold flex-shrink-0", isMobile ? "w-9 h-9" : "w-10 h-10")}
+                style={{ backgroundColor: 'var(--sidebar-icon-bg-hover)', color: 'var(--sidebar-text)' }}
+              >
                 {user?.name ? user.name.charAt(0).toUpperCase() : "U"}
               </div>
             )}
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <p className="font-semibold text-xs md:text-sm truncate text-slate-900 dark:text-white flex items-center gap-1">
+                <p className="font-semibold text-xs md:text-sm truncate flex items-center gap-1" style={{ color: 'var(--sidebar-text)' }}>
                   <span className="truncate">{user?.name || "Usuário"}</span>
                   {user?.role === 'aluno' && user?.competition_band && (
                     <StudentBandBadge band={user.competition_band} />
@@ -355,11 +384,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                     <TooltipTrigger asChild>
                       <button
                         onClick={handleProfileClick}
-                        className="flex-shrink-0 p-1 rounded-full transition-colors
-                                   hover:bg-[#d4bceb] dark:hover:bg-white/10"
+                        className="flex-shrink-0 p-1 rounded-full transition-colors hover:bg-[var(--sidebar-button-hover-bg)] text-[var(--sidebar-icon-color)] hover:text-[var(--sidebar-icon-color-active)]"
                         aria-label="Editar perfil"
                       >
-                        <Edit className="h-3.5 w-3.5 md:h-4 md:w-4 text-slate-800 hover:text-[#7B3FE4] dark:text-white/70 dark:hover:text-white" />
+                        <Edit className="h-3.5 w-3.5 md:h-4 md:w-4" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="right">
@@ -370,7 +398,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
               </div>
 
               <div className="mt-0.5 md:mt-1">
-                <p className="text-[10px] md:text-xs truncate text-slate-700 dark:text-white/70">
+                <p className="text-[10px] md:text-xs truncate" style={{ color: 'var(--sidebar-text-muted)' }}>
                   {user?.role ? getRoleDisplayName(user.role) : "Usuário"}
                 </p>
               </div>
@@ -415,22 +443,15 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
           <div
             className={cn(
-              "flex items-center justify-center rounded-full transition-colors",
-              // fundo do ícone ajustado p/ tema claro
-              "bg-[#e0d0f2] group-hover:bg-[#d4bceb]",
-              "dark:bg-white/5 dark:group-hover:bg-white/10",
-              isCollapsed 
-                ? "h-10 w-10" 
-                : "h-8 w-8 md:h-9 md:w-9 lg:h-9 lg:w-9"
+              "flex items-center justify-center rounded-full transition-colors bg-[var(--sidebar-icon-bg)] group-hover:bg-[var(--sidebar-icon-bg-hover)]",
+              isCollapsed ? "h-10 w-10" : "h-8 w-8 md:h-9 md:w-9 lg:h-9 lg:w-9"
             )}
           >
             <link.icon
               size={isCollapsed ? 18 : 16}
               className={cn(
                 "flex-shrink-0 transition-colors md:w-[18px] md:h-[18px] lg:w-[18px] lg:h-[18px]",
-                isActive
-                  ? "text-[#7B3FE4]"
-                  : "text-slate-800 group-hover:text-[#7B3FE4] dark:text-white/80 dark:group-hover:text-white"
+                isActive ? "text-[var(--sidebar-icon-color-active)]" : "text-[var(--sidebar-icon-color)] group-hover:text-[var(--sidebar-icon-color-active)]"
               )}
             />
           </div>
@@ -439,9 +460,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
             <span
               className={cn(
                 "truncate text-xs md:text-sm font-medium transition-colors",
-                isActive
-                  ? "text-slate-900 dark:text-[#1B1F4A]"
-                  : "text-slate-800 group-hover:text-slate-900 dark:text-white/80 dark:group-hover:text-white"
+                isActive ? "text-[var(--sidebar-link-active-text)]" : "text-[var(--sidebar-text)] group-hover:text-[var(--sidebar-link-active-text)]"
               )}
             >
               {link.label}
@@ -463,8 +482,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
               <ChevronDown
                 size={isMobile ? 12 : 14}
                 className={cn(
-                  "transition-transform duration-200",
-                  "text-slate-700 group-hover:text-[#7B3FE4] dark:text-white/70 dark:group-hover:text-white",
+                  "transition-transform duration-200 text-[var(--sidebar-icon-color)] group-hover:text-[var(--sidebar-icon-color-active)]",
                   isSubmenuOpen && "rotate-180"
                 )}
               />
@@ -490,23 +508,18 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         ? "justify-center px-0 py-1" 
         : "px-2 py-2 md:px-3 md:py-2.5 lg:px-3 lg:py-2.5 rounded-full text-xs md:text-sm",
 
-      // ✅ HOVER: forçado (important) para NÃO virar branco estourado (mesmo que exista CSS externo)
-      "hover:!bg-[#d4bceb]/90 dark:hover:!bg-white/10",
+      "hover:!bg-[var(--sidebar-link-hover-bg)]",
+      isActive && !isCollapsed && "!bg-[var(--sidebar-link-active-bg)] font-semibold shadow-sm",
+      isActive && isCollapsed && "bg-[var(--sidebar-link-hover-bg)]",
 
-      // ✅ Active (tema claro e escuro)
-      isActive && !isCollapsed && "bg-[#d4bceb] text-slate-900 shadow-sm font-semibold dark:bg-[#E3DFFF] dark:text-[#1B1F4A] dark:shadow-lg",
-      isActive && isCollapsed && "bg-slate-900/10 dark:bg-white/20",
-
-      // níveis
       level > 0 && !isCollapsed && "ml-3 md:ml-4 text-xs md:text-sm",
       level > 1 && !isCollapsed && "ml-6 md:ml-8 text-[10px] md:text-xs",
 
-      // foco bonito
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B3FE4]/40"
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sidebar-focus-ring)]"
     );
 
     return (
-      <li className={cn(link.divider && "border-t border-[#c9b5e0] pt-2 mt-2 dark:border-white/10")}>
+      <li className={cn(link.divider && "border-t pt-2 mt-2")} style={link.divider ? { borderColor: 'var(--sidebar-border)' } : undefined}>
         {link.label === "Sair" ? (
           <TooltipProvider>
             <Tooltip>
@@ -555,7 +568,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         )}
 
         {link.children && isSubmenuOpen && !isCollapsed && (
-          <ul className="space-y-1 ml-1.5 md:ml-2 mt-1 border-l border-[#c9b5e0] pl-2 md:pl-3 dark:border-white/10">
+          <ul className="space-y-1 ml-1.5 md:ml-2 mt-1 border-l pl-2 md:pl-3" style={{ borderColor: 'var(--sidebar-border)' }}>
             {link.children.map((child, index) => (
               <RenderMenuItem
                 key={`${child.label}-${child.href || child.role.join('-')}-${index}`}
@@ -574,12 +587,9 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   }
 
   const CategorySeparator = ({ name }: { name: string }) => (
-    <div className={cn(
-      "px-2 pt-1.5 pb-0.5 first:pt-0.5 md:px-3 lg:px-3", 
-      isCollapsed && "px-2"
-    )}>
+    <div className={cn("px-2 pt-1.5 pb-0.5 first:pt-0.5 md:px-3 lg:px-3", isCollapsed && "px-2")}>
       {!isCollapsed && (
-        <h3 className="text-[10px] md:text-[10px] lg:text-[10px] font-medium uppercase tracking-[0.18em] text-[#5a3d8a] dark:text-white/40">
+        <h3 className="text-[10px] md:text-[10px] lg:text-[10px] font-medium uppercase tracking-[0.18em]" style={{ color: 'var(--sidebar-category-text)' }}>
           {name}
         </h3>
       )}
@@ -591,24 +601,19 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       className={cn(
         "min-h-screen h-full flex flex-col transition-all duration-300 ease-in-out z-50 relative",
         "border-r shadow-xl",
-        "dark:from-[#0B0F2B] dark:via-[#070A1E] dark:to-[#050617] dark:bg-gradient-to-b",
         isMobile 
           ? "w-screen" 
           : isCollapsed 
             ? "w-16 md:w-16 lg:w-16" 
             : "w-64 md:w-72 lg:w-64"
       )}
-      style={{
-        ...(!isDarkMode && {
-          background: 'linear-gradient(to bottom, #c9a8ec, #d6c0f2, #e2d4f7, #ede5fa)'
-        })
-      }}
+      style={{ ...themeStyles, background: 'var(--sidebar-bg)' }}
     >
       {/* Header */}
-      <div className={cn(
-        "border-b overflow-hidden border-[#c9b5e0] dark:border-white/10",
-        "px-2 py-2 md:px-3 md:py-2 lg:px-3 lg:py-1"
-      )}>
+      <div
+        className={cn("border-b overflow-hidden px-2 py-2 md:px-3 md:py-2 lg:px-3 lg:py-1")}
+        style={{ borderColor: 'var(--sidebar-border)' }}
+      >
           <div className={cn(
             "flex items-center gap-2 md:gap-3", 
             isCollapsed && !isMobile 
@@ -619,9 +624,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
               // Quando colapsado, mostra apenas a logo centralizada (substitui o botão de menu)
               <button
                 onClick={handleToggleCollapse}
-                className="flex items-center justify-center p-1 rounded-full transition-colors
-                           hover:bg-[#d4bceb] dark:hover:bg-white/10
-                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B3FE4]/40"
+                className="flex items-center justify-center p-1 rounded-full transition-colors hover:bg-[var(--sidebar-button-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sidebar-focus-ring)]"
                 aria-label="Expandir menu"
               >
                 <img
@@ -653,9 +656,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 md:h-10 md:w-10 rounded-full border transition-colors
-                               border-[#c9b5e0] text-slate-800 hover:bg-[#d4bceb] hover:text-[#7B3FE4]
-                               dark:border-white/10 dark:text-white/70 dark:hover:text-white dark:hover:bg-white/10"
+                    className="h-9 w-9 md:h-10 md:w-10 rounded-full border transition-colors border-[var(--sidebar-button-border)] text-[var(--sidebar-icon-color)] hover:bg-[var(--sidebar-button-hover-bg)] hover:text-[var(--sidebar-button-hover-text)]"
                     onClick={onMobileMenuClose}
                   >
                     <X className="h-5 w-5 md:h-6 md:w-6" />
@@ -665,9 +666,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 md:h-9 md:w-9 lg:h-8 lg:w-8 rounded-full border transition-colors
-                               border-[#c9b5e0] text-slate-800 hover:bg-[#d4bceb] hover:text-[#7B3FE4]
-                               dark:border-white/10 dark:text-white/70 dark:hover:text-white dark:hover:bg-white/10"
+                    className="h-8 w-8 md:h-9 md:w-9 lg:h-8 lg:w-8 rounded-full border transition-colors border-[var(--sidebar-button-border)] text-[var(--sidebar-icon-color)] hover:bg-[var(--sidebar-button-hover-bg)] hover:text-[var(--sidebar-button-hover-text)]"
                     onClick={handleToggleCollapse}
                   >
                     <ChevronLeft className="h-4 w-4 md:h-5 md:w-5 lg:h-4 lg:w-4" />
@@ -695,7 +694,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="rounded-lg border border-[#c9b5e0] dark:border-white/10 bg-white/90 dark:bg-white/5 px-2 py-1.5">
+                    <div className="rounded-lg border px-2 py-1.5" style={{ borderColor: 'var(--sidebar-border)', backgroundColor: 'var(--sidebar-user-card-bg)' }}>
                       <CoinBalance studentId={user.id} size="small" showLabel={false} />
                     </div>
                   </TooltipTrigger>

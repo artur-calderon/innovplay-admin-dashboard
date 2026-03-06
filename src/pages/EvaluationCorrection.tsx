@@ -580,7 +580,7 @@ export default function EvaluationCorrection() {
             </Button>
             <div>
               <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                <ClipboardList className="w-8 h-8 text-blue-600" />
+                <ClipboardList className="w-8 h-8 text-primary" />
                 Correção de Avaliação
               </h1>
               <p className="text-muted-foreground">{selectedEvaluation.testTitle}</p>
@@ -1041,7 +1041,7 @@ export default function EvaluationCorrection() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <ClipboardList className="w-8 h-8 text-blue-600" />
+            <ClipboardList className="w-8 h-8 text-primary" />
             Correção de Avaliações
           </h1>
           <p className="text-muted-foreground">

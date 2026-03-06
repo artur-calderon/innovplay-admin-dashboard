@@ -1335,7 +1335,7 @@ const QuestionsPage = () => {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <HelpCircle className="w-8 h-8 text-blue-600" />
+            <HelpCircle className="w-8 h-8 text-primary" />
             Questões
           </h1>
           <div className="flex items-center gap-1">

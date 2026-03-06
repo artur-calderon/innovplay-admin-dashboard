@@ -512,7 +512,7 @@ export default function AnaliseAvaliacoes() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <RefreshCw className="h-8 w-8 animate-spin text-blue-600" />
+        <RefreshCw className="h-8 w-8 animate-spin text-primary" />
         <span className="ml-2">Carregando...</span>
       </div>
     );
@@ -524,7 +524,7 @@ export default function AnaliseAvaliacoes() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <BarChart3 className="w-8 h-8 text-blue-600" />
+            <BarChart3 className="w-8 h-8 text-primary" />
             Análise das Avaliações
           </h1>
           <p className="text-muted-foreground mt-2">
@@ -601,7 +601,7 @@ export default function AnaliseAvaliacoes() {
       {allRequiredFiltersSelected && isLoadingData && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mb-4" />
+            <RefreshCw className="h-8 w-8 animate-spin text-primary mb-4" />
             {isProcessingReport ? (
               <>
                 <p className="text-lg font-medium text-foreground mb-2">Gerando relatório...</p>

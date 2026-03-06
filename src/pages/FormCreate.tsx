@@ -965,7 +965,7 @@ const FormCreate = () => {
         </Button>
         <div className="flex-1">
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <FileText className="w-8 h-8 text-blue-600" />
+            <FileText className="w-8 h-8 text-primary" />
             Criar Questionário
           </h1>
           <p className="text-muted-foreground mt-1">Configure e envie um novo questionário</p>

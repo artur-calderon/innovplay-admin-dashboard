@@ -471,7 +471,9 @@ const EvaluationsTable = ({
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
                           <Badge variant="outline" className="text-xs">
-                            {(evaluation?.questions || []).length}
+                            {Array.isArray(evaluation?.questions)
+                              ? evaluation.questions.length
+                              : (evaluation?.total_questions ?? evaluation?.totalQuestions ?? (evaluation as { questions_count?: number })?.questions_count ?? 0)}
                           </Badge>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">

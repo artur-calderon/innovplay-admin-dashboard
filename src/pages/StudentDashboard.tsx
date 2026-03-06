@@ -1136,7 +1136,7 @@ const StudentDashboard = () => {
           <Card className="border-2 border-dashed border-violet-300/60 dark:border-violet-500/40 overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500/5 via-fuchsia-500/5 to-cyan-500/5 dark:from-violet-500/10 dark:via-fuchsia-500/10 dark:to-cyan-500/10">
             <CardContent className="py-10 sm:py-12 text-center">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 dark:from-violet-500/30 dark:to-fuchsia-500/30 flex items-center justify-center mx-auto mb-4 animate-logo-float shadow-inner">
-                <Trophy className="h-8 w-8 text-violet-500 dark:text-violet-400" />
+                <Trophy className="h-8 w-8 text-primary" />
               </div>
               <p className="font-bold text-foreground">Nenhuma avaliação concluída ainda</p>
               <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
