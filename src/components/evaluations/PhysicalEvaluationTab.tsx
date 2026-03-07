@@ -1003,13 +1003,13 @@ export default function PhysicalEvaluationTab() {
              )}
 
              {/* Resultados */}
-             {batchCorrection.isCompleted && batchCorrection.results.length > 0 && (
+             {batchCorrection.isCompleted && (batchCorrection.results ?? []).length > 0 && (
                <div className="space-y-4">
                  <div className="p-4 bg-green-50 rounded-lg border border-green-200">
                    <div className="flex items-center gap-2 mb-3">
                      <CheckCircle className="h-6 w-6 text-green-600" />
                      <h4 className="font-medium text-green-800">
-                       Correção em Lote Concluída! ({batchCorrection.results.length} imagens processadas)
+                       Correção em Lote Concluída! ({(batchCorrection.results ?? []).length} imagens processadas)
                      </h4>
                    </div>
                    
@@ -1018,20 +1018,20 @@ export default function PhysicalEvaluationTab() {
                      <div>
                        <span className="font-medium text-gray-600">Média de Acertos:</span>
                        <span className="ml-2 text-lg font-bold text-green-600">
-                         {(batchCorrection.results.reduce((sum, r) => sum + r.correct_answers, 0) / batchCorrection.results.length).toFixed(1)}
+                         {((batchCorrection.results ?? []).reduce((sum, r) => sum + (r.correct_answers ?? 0), 0) / (batchCorrection.results ?? []).length).toFixed(1)}
                        </span>
                      </div>
                      <div>
                        <span className="font-medium text-gray-600">Média de Notas:</span>
                        <span className="ml-2 text-lg font-bold text-blue-600">
-                         {(batchCorrection.results.reduce((sum, r) => sum + r.grade, 0) / batchCorrection.results.length).toFixed(1)}
+                         {((batchCorrection.results ?? []).reduce((sum, r) => sum + (r.grade ?? 0), 0) / (batchCorrection.results ?? []).length).toFixed(1)}
                        </span>
                      </div>
                    </div>
 
                    {/* Lista de Resultados por Aluno */}
                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                     {batchCorrection.results.map((result, index) => (
+                     {(batchCorrection.results ?? []).map((result, index) => (
                        <div key={index} className="flex items-center justify-between p-2 bg-white rounded border">
                          <div className="flex items-center gap-2">
                            <CheckCircle className="h-4 w-4 text-green-600" />
@@ -1056,33 +1056,33 @@ export default function PhysicalEvaluationTab() {
              )}
 
              {/* Erros */}
-             {batchCorrection.errors.length > 0 && (
+             {(batchCorrection.errors ?? []).length > 0 && (
                <div className="space-y-2">
                  <h4 className="font-medium text-red-800">Imagens com Erro:</h4>
                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                   {batchCorrection.errors.map((error, index) => (
+                   {(batchCorrection.errors ?? []).map((error, index) => (
                      <div key={index} className="flex items-center justify-between p-2 bg-red-50 border border-red-200 rounded">
                        <div className="flex items-center gap-2">
                          <AlertCircle className="h-4 w-4 text-red-600" />
                          <span className="text-sm text-red-800">
-                           {error.student_name || `Imagem ${error.image_index + 1}`}: {error.error_message}
+                           {error.student_name || `Imagem ${(error.image_index ?? index) + 1}`}: {error.error_message}
                          </span>
                        </div>
-                       <Button
-                         variant="outline"
-                         size="sm"
-                         onClick={() => {
-                           // Implementar retry
-                           const image = batchCorrection.selectedImages[error.image_index];
-                           if (image) {
-                             batchCorrection.retryImage(error.image_index, image);
-                           }
-                         }}
-                         className="h-6 text-xs"
-                       >
-                         <RotateCcw className="h-3 w-3 mr-1" />
-                         Retry
-                       </Button>
+                       {typeof batchCorrection.retryImage === "function" && (
+                         <Button
+                           variant="outline"
+                           size="sm"
+                           onClick={() => {
+                             const imgIndex = error.image_index ?? index;
+                             const image = (batchCorrection.selectedImages ?? [])[imgIndex];
+                             if (image) batchCorrection.retryImage(imgIndex, image);
+                           }}
+                           className="h-6 text-xs"
+                         >
+                           <RotateCcw className="h-3 w-3 mr-1" />
+                           Retry
+                         </Button>
+                       )}
                      </div>
                    ))}
                  </div>

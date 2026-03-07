@@ -738,18 +738,18 @@ export default function CompetitionsStudent() {
     <div className="container mx-auto space-y-8 py-6 px-4 min-h-screen">
       {/* Header — gamificado (padrão Resultados) */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between animate-fade-in-up">
-        <div>
-          <h1 className="flex items-center gap-3 text-3xl font-bold tracking-tight" id="competitions-page-title">
-            <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110">
+        <div className="space-y-1.5">
+          <h1 className="flex flex-wrap items-center gap-2 sm:gap-3 text-2xl sm:text-3xl font-bold tracking-tight" id="competitions-page-title">
+            <span className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110 shrink-0">
               <Trophy className="h-5 w-5 text-white drop-shadow" />
             </span>
             <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">Competições</span>
           </h1>
-          <p className="mt-1 text-muted-foreground font-medium">
+          <p className="text-muted-foreground text-sm sm:text-base font-medium">
             Participe, inscreva-se e dispute o ranking por disciplina.
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto justify-center sm:justify-end">
           <Select value={subjectFilter} onValueChange={setSubjectFilter}>
             <SelectTrigger className="w-full sm:w-[200px]">
               <SelectValue placeholder="Disciplina" />

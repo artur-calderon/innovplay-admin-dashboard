@@ -53,14 +53,14 @@ export default function StudentCertificates() {
   if (isLoading) {
     return (
       <div className="container mx-auto p-6 space-y-6 min-h-screen">
-        <div className="animate-fade-in-up">
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30">
+        <div className="animate-fade-in-up space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <span className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 shrink-0">
               <Award className="w-5 h-5 text-white drop-shadow" />
             </span>
             <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">Meus Certificados</span>
           </h1>
-          <p className="text-muted-foreground mt-2 font-medium">
+          <p className="text-muted-foreground text-sm sm:text-base font-medium">
             Visualize e imprima seus certificados de desempenho
           </p>
         </div>
@@ -84,14 +84,14 @@ export default function StudentCertificates() {
   if (certificates.length === 0) {
     return (
       <div className="container mx-auto p-6 space-y-6 min-h-screen">
-        <div className="animate-fade-in-up">
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110">
+        <div className="animate-fade-in-up space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <span className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110 shrink-0">
               <Award className="w-5 h-5 text-white drop-shadow" />
             </span>
             <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">Meus Certificados</span>
           </h1>
-          <p className="text-muted-foreground mt-2 font-medium">
+          <p className="text-muted-foreground text-sm sm:text-base font-medium">
             Visualize e imprima seus certificados de desempenho
           </p>
         </div>
@@ -114,14 +114,14 @@ export default function StudentCertificates() {
 
   return (
     <div className="container mx-auto p-6 space-y-6 min-h-screen">
-      <div className="animate-fade-in-up">
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3" id="certificates-page-title">
-          <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110">
+      <div className="animate-fade-in-up space-y-1.5">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3" id="certificates-page-title">
+          <span className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110 shrink-0">
             <Award className="w-5 h-5 text-white drop-shadow" />
           </span>
           <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">Meus Certificados</span>
         </h1>
-        <p className="text-muted-foreground mt-2 font-medium">
+        <p className="text-muted-foreground text-sm sm:text-base font-medium">
           Você possui {certificates.length} certificado{certificates.length > 1 ? 's' : ''} de desempenho
         </p>
       </div>

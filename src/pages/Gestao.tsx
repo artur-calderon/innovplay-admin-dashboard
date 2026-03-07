@@ -484,13 +484,13 @@ export default function Gestao() {
 
   return (
     <div className="space-y-6 p-4 md:p-6">
-      {/* Header unificado */}
-      <div className="space-y-1">
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-          <School className="w-8 h-8 text-primary" />
+      {/* Header unificado — mobile: título/desc alinhados */}
+      <div className="space-y-1.5">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+          <School className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
           Gestão Escolar
         </h1>
-        <p className="text-muted-foreground text-sm md:text-base max-w-2xl">
+        <p className="text-muted-foreground text-sm sm:text-base max-w-2xl">
           Gerencie escolas, turmas e usuários (alunos, professores, diretores e coordenadores) em um só lugar.
         </p>
       </div>

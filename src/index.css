@@ -48,7 +48,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
     
-    /* Primary Brand Colors */
+    /* Primary Brand Colors - Tema padrão do app é ROXO (#7B3FE4), não azul */
     --primary: 267 84% 65%;
     --primary-foreground: 210 40% 98%;
     
@@ -123,8 +123,8 @@
     --popover: 220 12% 11%;
     --popover-foreground: 210 20% 98%;
     
-    /* Primary - Azul mais escuro e harmônico */
-    --primary: 217 65% 55%;
+    /* Primary - ROXO (tema padrão do app, alinhado ao #7B3FE4). Não usar azul. */
+    --primary: 267 76% 57%;
     --primary-foreground: 210 20% 98%;
     
     /* Secondary - Cinza escuro com tom azul */
@@ -135,8 +135,8 @@
     --muted: 220 8% 13%;
     --muted-foreground: 215 15% 70%;
     
-    /* Accent - Azul escuro harmonioso */
-    --accent: 217 30% 18%;
+    /* Accent - Tom escuro harmonioso com primary roxo */
+    --accent: 267 30% 18%;
     --accent-foreground: 210 20% 98%;
     
     /* Destructive - Mantém identidade visual */
@@ -146,24 +146,24 @@
     /* Border - Cinza muito escuro com leve azul */
     --border: 220 10% 16%;
     --input: 220 10% 16%;
-    --ring: 217 65% 55%;
+    --ring: 267 76% 57%;
     
-    /* Chart Colors - Ajustados para modo escuro */
-    --chart-1: 217 65% 55%;
+    /* Chart Colors - Ajustados para modo escuro (chart-1 roxo para manter identidade) */
+    --chart-1: 267 76% 57%;
     --chart-2: 200 60% 50%;
     --chart-3: 30 75% 55%;
     --chart-4: 280 60% 55%;
     --chart-5: 340 70% 55%;
     
-    /* Sidebar - Tons escuros harmoniosos */
+    /* Sidebar - Tons escuros harmoniosos; primary ROXO (tema padrão) */
     --sidebar-background: 220 15% 6%;
     --sidebar-foreground: 210 20% 95%;
-    --sidebar-primary: 217 70% 60%;
+    --sidebar-primary: 267 70% 60%;
     --sidebar-primary-foreground: 210 20% 98%;
     --sidebar-accent: 220 10% 14%;
     --sidebar-accent-foreground: 210 20% 95%;
     --sidebar-border: 220 10% 12%;
-    --sidebar-ring: 217 70% 60%;
+    --sidebar-ring: 267 70% 60%;
   }
 }
 

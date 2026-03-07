@@ -171,12 +171,12 @@ const FormView = () => {
           <ArrowLeft className="h-4 w-4 mr-2" />
           Voltar
         </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <FileText className="w-8 h-8 text-primary" />
+        <div className="flex-1 space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
             {formData.title}
           </h1>
-          <p className="text-muted-foreground mt-1">{formData.description}</p>
+          <p className="text-muted-foreground text-sm sm:text-base">{formData.description}</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={formData.isActive ? "default" : "secondary"}>

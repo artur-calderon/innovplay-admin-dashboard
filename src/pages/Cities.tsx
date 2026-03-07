@@ -246,39 +246,34 @@ export default function Cities() {
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <Card className="border-[#E5D5EA] shadow-sm dark:border-white/10">
-          <CardHeader className="pb-4 sm:pb-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#7B3FE4]/10">
-                    <MapPin className="h-5 w-5 text-[#7B3FE4]" />
-                  </div>
-                  <CardTitle className="text-xl sm:text-2xl">Municípios</CardTitle>
-                </div>
-                <CardDescription className="mt-1.5">
-                  Municípios cadastrados na plataforma. Clique no subdomínio para acessar ou em Ver usuários para listar usuários do município.
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                {!isLoading && filteredCities.length > 0 && (
-                  <span className="inline-flex items-center rounded-full bg-[#7B3FE4]/10 px-3 py-1 text-sm font-medium text-[#7B3FE4]">
-                    {filteredCities.length} município(s)
-                  </span>
-                )}
-                {user.role === "admin" && (
-                  <Button
-                    onClick={() => setIsAddDialogOpen(true)}
-                    className="gap-2 bg-[#7B3FE4] hover:bg-[#7B3FE4]/90"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Novo município
-                  </Button>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        {/* Cabeçalho padronizado: no mobile título/desc alinhados, botão centralizado abaixo */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1.5">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+              <MapPin className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
+              Municípios
+            </h1>
+            <p className="text-muted-foreground text-sm sm:text-base">
+              Municípios cadastrados na plataforma. Clique no subdomínio para acessar ou em Ver usuários para listar usuários do município.
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-center gap-2 w-full sm:w-auto sm:justify-end">
+            {!isLoading && filteredCities.length > 0 && (
+              <span className="inline-flex items-center rounded-md bg-muted px-3 py-1.5 text-sm font-medium text-muted-foreground">
+                {filteredCities.length} município(s)
+              </span>
+            )}
+            {user.role === "admin" && (
+              <Button onClick={() => setIsAddDialogOpen(true)} className="gap-2">
+                <Plus className="h-4 w-4" />
+                Novo município
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <Card className="border shadow-sm">
+          <CardContent className="pt-6 space-y-4">
             <Input
               placeholder="Buscar por nome, estado ou subdomínio..."
               value={searchQuery}

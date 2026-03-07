@@ -46,7 +46,7 @@ export const StoreItemCard: React.FC<StoreItemCardProps> = ({
 
   const purchaseButton = (
     <Button
-      className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+      className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
       size="sm"
       onClick={() => canPurchase && onPurchase(item.id)}
       disabled={!canPurchase}
@@ -70,11 +70,11 @@ export const StoreItemCard: React.FC<StoreItemCardProps> = ({
         'overflow-hidden transition-all flex flex-col',
         alreadyPurchased
           ? 'opacity-80 border-muted'
-          : 'hover:shadow-lg hover:border-amber-200 dark:hover:border-amber-800 border-amber-100/80 dark:border-amber-900/50'
+          : 'hover:shadow-lg hover:border-primary/30 border-primary/20'
       )}
     >
       <div className="relative">
-        <div className="h-28 flex items-center justify-center bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/20">
+        <div className="h-28 flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5 dark:from-primary/20 dark:to-primary/10">
           <div className={cn('flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br shadow-md', iconGradient)}>
             <Icon className="h-7 w-7 text-white" />
           </div>
@@ -94,7 +94,7 @@ export const StoreItemCard: React.FC<StoreItemCardProps> = ({
         ) : null}
         <div className="flex items-center gap-1.5 mt-3">
           <Coins className="h-4 w-4 text-primary" />
-          <span className="font-bold text-amber-700 dark:text-amber-300 tabular-nums">
+          <span className="font-bold text-primary tabular-nums">
             {formatCoins(item.price)}
           </span>
           <span className="text-xs text-muted-foreground">AfirmeCoins</span>

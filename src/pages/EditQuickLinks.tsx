@@ -320,8 +320,10 @@ const EditQuickLinks = () => {
           <ArrowLeft className="mr-2 h-4 w-4" />
           Voltar
         </Button>
-        <h1 className="text-2xl font-bold">Edição de atalhos</h1>
-        <p className="text-muted-foreground">Adicione, remova e ordene os seus atalhos favoritos.</p>
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Edição de atalhos</h1>
+          <p className="text-muted-foreground text-sm sm:text-base">Adicione, remova e ordene os seus atalhos favoritos.</p>
+        </div>
       </div>
 
       {/* Selected Quick Links */}

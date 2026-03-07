@@ -486,7 +486,7 @@ export default function AdminAgendaOptimized() {
     <div className="p-4">
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3 mb-2">
-          <Calendar className="w-8 h-8 text-blue-600" />
+          <Calendar className="w-8 h-8 text-primary" />
           Agenda Administrativa
         </h1>
         <p className="text-muted-foreground">Gerencie eventos e atividades da instituição</p>

@@ -252,13 +252,14 @@ export default function Students() {
   return (
     <>
       <div className="container mx-auto px-2 md:px-4 py-4 md:py-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Users className="w-8 h-8 text-blue-600" />
-            Alunos da escola {escolaAtual.name}
-          </h1>
-
-          <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+          <div className="space-y-1.5">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+              <Users className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
+              Alunos da escola {escolaAtual.name}
+            </h1>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto justify-center sm:justify-end">
             <div className="relative flex-grow">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
               <Input

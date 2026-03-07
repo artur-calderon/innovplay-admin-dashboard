@@ -30,6 +30,7 @@ import { formatCoins } from "@/utils/coins";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { StoreCategory } from "@/types/store";
+import { getStoreIcon, getStoreIconGradient } from "@/constants/storeIcons";
 
 const CATEGORY_TABS: { value: '' | StoreCategory; label: string }[] = [
   { value: '', label: 'Todas' },
@@ -161,31 +162,31 @@ const Loja: React.FC = () => {
 
   return (
     <div className="container mx-auto py-6 px-4 space-y-6 max-w-5xl">
-      <Card className="overflow-hidden border-2 border-amber-200/60 dark:border-amber-800/50 bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950/40 dark:to-yellow-950/30">
+      <Card className="overflow-hidden border-2 border-primary/30 bg-gradient-to-br from-primary/10 to-primary/5 dark:from-primary/20 dark:to-primary/10">
         <CardContent className="p-6 sm:p-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
             <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-600 shadow-lg">
-                <ShoppingBag className="h-7 w-7 text-white" />
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary shadow-lg">
+                <ShoppingBag className="h-7 w-7 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-xl font-semibold text-amber-900 dark:text-amber-100">
+                <h1 className="text-xl font-semibold text-primary">
                   Loja Afirme Coins
                 </h1>
-                <p className="text-sm text-amber-700/80 dark:text-amber-300/80">
+                <p className="text-sm text-muted-foreground">
                   Gaste suas moedas e ganhe itens exclusivos para personalizar sua experiência
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-3 sm:gap-4">
               <div className="text-center sm:text-right">
-                <p className="text-xs font-medium text-amber-700 dark:text-amber-300 uppercase tracking-wide mb-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
                   Seu saldo
                 </p>
                 {balanceLoading ? (
                   <Skeleton className="h-9 w-24" />
                 ) : (
-                  <div className="flex items-center gap-2 text-2xl font-semibold tabular-nums text-amber-700 dark:text-amber-300">
+                  <div className="flex items-center gap-2 text-2xl font-semibold tabular-nums text-primary">
                     <Coins className="h-7 w-7" />
                     {formatCoins(currentBalance)}
                   </div>
@@ -194,7 +195,7 @@ const Loja: React.FC = () => {
               <Button variant="outline" size="sm" asChild>
                 <Link
                   to="/aluno/moedas/historico"
-                  className="text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700"
+                  className="text-primary border-primary hover:bg-primary/10"
                 >
                   Ver histórico
                 </Link>
@@ -295,7 +296,7 @@ const Loja: React.FC = () => {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Coins className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      <Coins className="h-4 w-4 text-primary" />
                       <span className="font-semibold tabular-nums">{formatCoins(p.price_paid)}</span>
                     </div>
                   </CardContent>
@@ -314,7 +315,7 @@ const Loja: React.FC = () => {
               {selectedItem && (
                 <>
                   Você está prestes a gastar{' '}
-                  <strong className="text-amber-600 dark:text-amber-400">
+                  <strong className="text-primary">
                     {formatCoins(selectedItem.price)} AfirmeCoins
                   </strong>{' '}
                   em &quot;{selectedItem.name}&quot;. Deseja continuar?
@@ -322,20 +323,27 @@ const Loja: React.FC = () => {
               )}
             </DialogDescription>
           </DialogHeader>
-          {selectedItem && (
-            <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/50">
-                {(() => {
-                  const Icon = { frame: Sparkles, stamp: Shield, sidebar_theme: Palette, physical: Gift }[selectedItem.category] ?? Gift;
-                  return <Icon className="h-5 w-5 text-amber-600 dark:text-amber-400" />;
-                })()}
+          {selectedItem && (() => {
+            const CustomIcon = getStoreIcon(selectedItem.icon ?? '');
+            const IconComponent = CustomIcon ?? { frame: Sparkles, stamp: Shield, sidebar_theme: Palette, physical: Gift }[selectedItem.category] ?? Gift;
+            const iconColorKey = selectedItem.category === 'sidebar_theme' && selectedItem.reward_data
+              ? selectedItem.reward_data
+              : (selectedItem.icon_color ?? 'amber');
+            const iconGradient = getStoreIconGradient(iconColorKey);
+            return (
+              <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-3">
+                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br', iconGradient)}>
+                  <IconComponent className="h-5 w-5 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-medium">{selectedItem.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formatCoins(selectedItem.price)} AfirmeCoins
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="font-medium">{selectedItem.name}</p>
-                <p className="text-sm text-muted-foreground">{selectedItem.description || '—'}</p>
-              </div>
-            </div>
-          )}
+            );
+          })()}
           <DialogFooter className="gap-2 sm:gap-0">
             <Button
               variant="outline"
@@ -345,7 +353,7 @@ const Loja: React.FC = () => {
               Cancelar
             </Button>
             <Button
-              className="bg-amber-600 hover:bg-amber-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
               onClick={confirmPurchase}
               disabled={!!purchasingId}
             >

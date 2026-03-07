@@ -31,8 +31,9 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { formatCoins } from '@/utils/coins';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Pencil, Trash2, ShoppingBag, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, ShoppingBag, Loader2, Layers, Sparkles, Shield, Palette, Gift } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getStoreIcon, getStoreIconGradient } from '@/constants/storeIcons';
 
 const SCOPE_LABELS: Record<string, string> = {
   system: 'Todo o sistema',
@@ -46,6 +47,13 @@ const CATEGORY_LABELS: Record<string, string> = {
   stamp: 'Selo',
   sidebar_theme: 'Tema sidebar',
   physical: 'Físico',
+};
+
+const CATEGORY_ICONS: Record<string, React.ElementType> = {
+  frame: Sparkles,
+  stamp: Shield,
+  sidebar_theme: Palette,
+  physical: Gift,
 };
 
 export default function StoreAdmin() {
@@ -138,10 +146,16 @@ export default function StoreAdmin() {
             <ShoppingBag className="h-6 w-6 text-primary" />
             <CardTitle className="text-xl">Gerenciar itens da loja</CardTitle>
           </div>
-          <Button onClick={() => navigate('/app/loja/gerenciar/novo')}>
-            <Plus className="h-4 w-4 mr-2" />
-            Adicionar item
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => navigate('/app/loja/gerenciar/novo')} className="bg-primary text-primary-foreground hover:bg-primary/90">
+              <Plus className="h-4 w-4 mr-2" />
+              Adicionar item
+            </Button>
+            <Button onClick={() => navigate('/app/loja/gerenciar/lote')} variant="outline">
+              <Layers className="h-4 w-4 mr-2" />
+              Adicionar em lote
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-4">
@@ -176,20 +190,26 @@ export default function StoreAdmin() {
               <ShoppingBag className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p className="font-medium">Nenhum item para gerenciar</p>
               <p className="text-sm mt-1">Adicione o primeiro item da loja.</p>
-              <Button
-                className="mt-4"
-                variant="outline"
-                onClick={() => navigate('/app/loja/gerenciar/novo')}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Adicionar item
-              </Button>
+              <div className="flex flex-wrap gap-2 mt-4 justify-center">
+                <Button
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={() => navigate('/app/loja/gerenciar/novo')}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Adicionar item
+                </Button>
+                <Button variant="outline" onClick={() => navigate('/app/loja/gerenciar/lote')}>
+                  <Layers className="h-4 w-4 mr-2" />
+                  Adicionar em lote
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">Ícone</TableHead>
                     <TableHead>Nome</TableHead>
                     <TableHead>Categoria</TableHead>
                     <TableHead className="text-right">Preço</TableHead>
@@ -200,8 +220,20 @@ export default function StoreAdmin() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {items.map((item) => (
+                  {items.map((item) => {
+                    const CustomIcon = getStoreIcon(item.icon ?? '');
+                    const IconComponent = CustomIcon ?? (CATEGORY_ICONS[item.category] ?? Gift);
+                    const iconColorKey = item.category === 'sidebar_theme' && item.reward_data
+                      ? item.reward_data
+                      : (item.icon_color ?? 'amber');
+                    const iconGradient = getStoreIconGradient(iconColorKey);
+                    return (
                     <TableRow key={item.id}>
+                      <TableCell className="w-12 p-2">
+                        <div className={cn('flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br shrink-0', iconGradient)}>
+                          <IconComponent className="h-4 w-4 text-white" />
+                        </div>
+                      </TableCell>
                       <TableCell className="font-medium">{item.name}</TableCell>
                       <TableCell>
                         {CATEGORY_LABELS[item.category] ?? item.category}
@@ -248,7 +280,8 @@ export default function StoreAdmin() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  );
+                  })}
                 </TableBody>
               </Table>
             </div>

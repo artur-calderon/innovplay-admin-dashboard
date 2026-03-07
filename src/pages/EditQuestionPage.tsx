@@ -23,15 +23,15 @@ const EditQuestionPage = () => {
                                 <ArrowLeft className="h-4 w-4" />
                                 Voltar
                             </Button>
-                            <div className="flex items-center gap-2">
-                                <Edit3 className="h-5 w-5 text-primary" />
-                                <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                                  <HelpCircle className="w-8 h-8 text-primary" />
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Edit3 className="h-5 w-5 text-primary shrink-0" />
+                                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+                                  <HelpCircle className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
                                   Editar Questão
                                 </h1>
                             </div>
                         </div>
-                        <p className="text-sm text-gray-600">Faça as alterações necessárias na questão</p>
+                        <p className="text-sm text-muted-foreground">Faça as alterações necessárias na questão</p>
                     </div>
                 </div>
             </div>

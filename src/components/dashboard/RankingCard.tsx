@@ -41,8 +41,8 @@ interface RankingCardProps {
       progresso: number;
     };
   };
-  rankingFilter: 'turma' | 'escola' | 'municipio';
-  onRankingFilterChange: (filter: 'turma' | 'escola' | 'municipio') => void;
+  rankingFilter: 'turma' | 'escola';
+  onRankingFilterChange: (filter: 'turma' | 'escola') => void;
   userName?: string;
   /** Avatar do usuário logado (para a seção "Sua posição") */
   currentUserAvatar?: { profile_picture?: string | null; avatar_config?: AvatarConfig | Record<string, unknown> | null };
@@ -131,18 +131,8 @@ const RankingCard: React.FC<RankingCardProps> = ({
             onClick={() => onRankingFilterChange('escola')}
             disabled={isLoading}
           >
-            <span className="hidden sm:inline">Escola</span>
-            <span className="sm:hidden">E</span>
-          </Button>
-          <Button 
-            size="sm" 
-            variant={rankingFilter === 'municipio' ? 'default' : 'ghost'} 
-            className="text-xs px-1 sm:px-2 py-1"
-            onClick={() => onRankingFilterChange('municipio')}
-            disabled={isLoading}
-          >
-            <span className="hidden sm:inline">Município</span>
-            <span className="sm:hidden">M</span>
+            <span className="hidden sm:inline">Série</span>
+            <span className="sm:hidden">S</span>
           </Button>
         </div>
       </CardHeader>

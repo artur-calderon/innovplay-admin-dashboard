@@ -389,7 +389,7 @@ const StudentDashboard = () => {
   const { toast } = useToast();
   const [stats, setStats] = useState<StudentStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [rankingFilter, setRankingFilter] = useState<"turma" | "escola" | "municipio">("turma");
+  const [rankingFilter, setRankingFilter] = useState<"turma" | "escola">("turma");
   
   // Estados para avaliações
   const [evaluations, setEvaluations] = useState<StudentEvaluation[]>([]);
@@ -571,28 +571,6 @@ const StudentDashboard = () => {
         pontosNecessarios: 10,
         progresso: 80
       }
-    },
-    municipio: {
-      posicaoAtual: 89,
-      pontos: 285.5,
-      mudancaPosicao: -5,
-      lista: [
-        { id: 1, nome: 'Lucas Ferreira', acertos: 20, total: 20, posicao: 1, pontos: 380.0 },
-        { id: 2, nome: 'Maria Silva', acertos: 19, total: 20, posicao: 2, pontos: 375.0 },
-        { id: 3, nome: 'João Santos', acertos: 19, total: 20, posicao: 3, pontos: 370.0 },
-        { id: 4, nome: 'Ana Costa', acertos: 18, total: 20, posicao: 4, pontos: 365.0 },
-        { id: 5, nome: 'Carlos Lima', acertos: 18, total: 20, posicao: 5, pontos: 360.0 },
-        { id: 6, nome: 'Beatriz Ramos', acertos: 17, total: 20, posicao: 6, pontos: 355.0 },
-        { id: 7, nome: 'Rafael Martins', acertos: 17, total: 20, posicao: 7, pontos: 350.0 },
-        { id: 8, nome: 'Gabriela Dias', acertos: 16, total: 20, posicao: 8, pontos: 345.0 },
-        { id: 9, nome: 'Fernanda Rocha', acertos: 16, total: 20, posicao: 9, pontos: 340.0 },
-        { id: 10, nome: 'Pedro Costa', acertos: 15, total: 20, posicao: 89, pontos: 285.5 },
-      ],
-      proximoObjetivo: {
-        posicao: 88,
-        pontosNecessarios: 5,
-        progresso: 50
-      }
     }
   };
 
@@ -601,8 +579,7 @@ const StudentDashboard = () => {
     const rankings = evaluationResults?.rankings;
     const rankingKeyMap: Record<typeof rankingFilter, keyof NonNullable<StudentEvaluationResults['rankings']>> = {
       turma: 'class',
-      escola: 'school',
-      municipio: 'municipality'
+      escola: 'school'
     };
 
     if (rankings) {
@@ -622,7 +599,7 @@ const StudentDashboard = () => {
   };
 
   // Função para alterar filtro do ranking
-  const handleRankingFilterChange = (filter: 'turma' | 'escola' | 'municipio') => {
+  const handleRankingFilterChange = (filter: 'turma' | 'escola') => {
     setRankingFilter(filter);
   };
 
@@ -884,7 +861,7 @@ const StudentDashboard = () => {
       scope,
       class_id: scope === "turma" ? rankingScopeIds.class_id : undefined,
       school_id: scope === "escola" ? rankingScopeIds.school_id : undefined,
-      city_id: scope === "municipio" ? rankingScopeIds.city_id : undefined,
+      city_id: undefined,
       limit: 30,
       meta: rankingScopeIds.city_id ? { cityId: rankingScopeIds.city_id } : undefined,
     })

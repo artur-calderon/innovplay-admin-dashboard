@@ -28,7 +28,7 @@ import { ResultsCharts } from '@/components/evaluations/ResultsCharts';
 import { StudentRanking } from '@/components/evaluations/StudentRanking';
 import { cn } from '@/lib/utils';
 
-// Opções dos filtros (resposta de GET /answer-sheets/opcoes-filtros)
+// Opções dos filtros (resposta de GET /answer-sheets/opcoes-filtros-results)
 interface FilterOption {
   id: string;
   nome?: string;
@@ -159,7 +159,7 @@ export default function AnswerSheetResults() {
     const query = params.toString();
     try {
       setIsLoadingFilters(true);
-      const url = `/answer-sheets/opcoes-filtros${query ? `?${query}` : ''}`;
+      const url = `/answer-sheets/opcoes-filtros-results${query ? `?${query}` : ''}`;
       const res = await api.get<OpcoesFiltrosResponse>(url);
       setOpcoes(res.data || {});
     } catch (err: any) {
@@ -474,12 +474,37 @@ export default function AnswerSheetResults() {
         </Card>
       )}
 
-      {hasMinimumFilters && isLoadingData && (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mr-2" />
-          <span className="text-muted-foreground">Carregando resultados...</span>
-        </div>
-      )}
+{hasMinimumFilters && isLoadingData && (
+  <div className="container mx-auto px-4 py-6 flex flex-col items-center justify-center min-h-[200px]">
+    <div className="flex items-center mb-2">
+      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mr-2" />
+      <span className="text-muted-foreground text-lg font-semibold">Carregando resultados...</span>
+    </div>
+    <p className="text-muted-foreground text-sm">
+      Aguarde enquanto os dados dos resultados são carregados.
+    </p>
+  </div>
+)}
+{hasMinimumFilters && !isLoadingData && (
+  <div className="container mx-auto px-4 py-6 space-y-6">
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="space-y-1.5">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Resultados de Correção</h1>
+        <p className="text-muted-foreground text-sm sm:text-base">
+          {apiData?.resultados_detalhados?.gabaritos?.[0]?.titulo ??
+            (gabarito !== 'all' ? norm(opcoes.gabaritos?.find((g) => g.id === gabarito) ?? { id: gabarito }) : null) ??
+            'Visualize os resultados das correções realizadas'}
+        </p>
+      </div>
+      <div className="flex justify-center w-full sm:w-auto sm:justify-end">
+        <Button variant="outline" onClick={handleBack}>
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Voltar para Cartões Gerados
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
 
       {hasMinimumFilters && !isLoadingData && apiData && (
         <>

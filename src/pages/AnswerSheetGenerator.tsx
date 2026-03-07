@@ -37,6 +37,7 @@ import { api } from '@/lib/api';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { AnswerSheetConfig, StudentAnswerSheet, School as SchoolType, Serie, Turma, Estado, Municipio, Gabarito, GabaritosResponse } from '@/types/answer-sheet';
 import SkillsSelector from '@/components/evaluations/questions/SkillsSelector';
+import { useSkillsStore } from '@/stores/useSkillsStore';
 
 type Step = 1 | 2;
 
@@ -95,9 +96,11 @@ export default function AnswerSheetGenerator() {
   const [globalAlternatives, setGlobalAlternatives] = useState<('A' | 'B' | 'C' | 'D')[]>(['A', 'B', 'C', 'D']);
   const [editingQuestionAlternatives, setEditingQuestionAlternatives] = useState<number | null>(null);
 
-  // Disciplina opcional para habilidades do gabarito (todas as questões usam a mesma lista)
+  // Disciplina e série opcionais para habilidades do gabarito (todas as questões usam a mesma lista)
   const [skillSubjectId, setSkillSubjectId] = useState<string>('');
+  const [skillGradeId, setSkillGradeId] = useState<string>('');
   const [subjectsForSkills, setSubjectsForSkills] = useState<{ id: string; name: string }[]>([]);
+  const [gradesForSkills, setGradesForSkills] = useState<{ id: string; name: string }[]>([]);
   const [gabaritoSkills, setGabaritoSkills] = useState<{ id: string; code: string; description: string; name: string }[]>([]);
   const [isLoadingGabaritoSkills, setIsLoadingGabaritoSkills] = useState(false);
   const [questionSkills, setQuestionSkills] = useState<Record<number, string[]>>({});
@@ -501,28 +504,49 @@ export default function AnswerSheetGenerator() {
     fetchSubjectsForSkills();
   }, []);
 
-  // Carregar skills da disciplina selecionada (para habilidades do gabarito)
+  // Carregar séries para o select de habilidades do gabarito
+  useEffect(() => {
+    const fetchGrades = async () => {
+      try {
+        const response = await api.get<{ id: string; name: string }[]>('/grades/');
+        setGradesForSkills(Array.isArray(response.data) ? response.data : []);
+      } catch {
+        setGradesForSkills([]);
+      }
+    };
+    fetchGrades();
+  }, []);
+
+  // Carregar skills da disciplina + série selecionadas (para habilidades do gabarito)
   useEffect(() => {
     if (!skillSubjectId) {
+      setGabaritoSkills([]);
+      return;
+    }
+    if (!skillGradeId) {
       setGabaritoSkills([]);
       return;
     }
     const fetchSkills = async () => {
       try {
         setIsLoadingGabaritoSkills(true);
-        const response = await api.get<{ id: string; code: string; description: string }[]>(`/skills/subject/${skillSubjectId}`);
-        const list = Array.isArray(response.data) ? response.data : [];
-        setGabaritoSkills(list.map((s) => ({
-          id: s.id,
-          code: s.code,
-          description: s.description,
-          name: `${s.code} - ${s.description}`,
-        })));
+        const fetchSkillsBySubjectAndGrade = useSkillsStore.getState().fetchSkills;
+        const list = await fetchSkillsBySubjectAndGrade(skillSubjectId, skillGradeId);
+        setGabaritoSkills(
+          Array.isArray(list)
+            ? list.map((s) => ({
+                id: s.id,
+                code: s.code,
+                description: s.description,
+                name: s.name || `${s.code} - ${s.description}`,
+              }))
+            : []
+        );
       } catch {
         setGabaritoSkills([]);
         toast({
           title: 'Aviso',
-          description: 'Não foi possível carregar as habilidades desta disciplina.',
+          description: 'Não foi possível carregar as habilidades para esta disciplina e série.',
           variant: 'default',
         });
       } finally {
@@ -530,7 +554,7 @@ export default function AnswerSheetGenerator() {
       }
     };
     fetchSkills();
-  }, [skillSubjectId, toast]);
+  }, [skillSubjectId, skillGradeId, toast]);
 
   // Limpar blocos quando desativar separateBySubject
   useEffect(() => {
@@ -1629,31 +1653,40 @@ export default function AnswerSheetGenerator() {
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Gerador de Cartões Resposta</h1>
-        <p className="text-muted-foreground">
+      {/* Header — mobile: título/desc alinhados */}
+      <div className="space-y-1.5">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+          <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
+          Gerador de Cartões Resposta
+        </h1>
+        <p className="text-muted-foreground text-sm sm:text-base">
           Configure e gere cartões resposta personalizados para provas físicas
         </p>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — mobile: texto menor e layout que não empilha */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <div className="flex items-center gap-2 flex-wrap">
-          <TabsList>
-            <TabsTrigger value="generate">Gerar Cartões</TabsTrigger>
-            <TabsTrigger value="generated">Cartões Gerados</TabsTrigger>
-            <TabsTrigger value="correct">Corrigir Cartões</TabsTrigger>
-          </TabsList>
-          <Button
-            variant="outline"
-            className="h-10 px-4"
-            onClick={() => navigate('/app/cartao-resposta/resultados')}
-          >
-            <FileText className="h-4 w-4 mr-2" />
-            Resultados
-          </Button>
-        </div>
+<div className="flex items-center gap-2 flex-wrap">
+  <TabsList className="flex flex-wrap w-full h-auto min-h-9 gap-1.5 p-1.5">
+    <TabsTrigger value="generate" className="flex-1 min-w-0 text-xs sm:text-sm px-2 py-2 sm:px-3">
+      <span className="truncate">Gerar Cartões</span>
+    </TabsTrigger>
+    <TabsTrigger value="generated" className="flex-1 min-w-0 text-xs sm:text-sm px-2 py-2 sm:px-3">
+      <span className="truncate">Cartões Gerados</span>
+    </TabsTrigger>
+    <TabsTrigger value="correct" className="flex-1 min-w-0 text-xs sm:text-sm px-2 py-2 sm:px-3">
+      <span className="truncate">Corrigir Cartões</span>
+    </TabsTrigger>
+  </TabsList>
+  <Button
+    variant="outline"
+    className="h-10 px-4"
+    onClick={() => navigate('/app/cartao-resposta/resultados')}
+  >
+    <FileText className="h-4 w-4 mr-2" />
+    Resultados
+  </Button>
+</div>
 
         {/* Tab: Gerar Cartões */}
         <TabsContent value="generate" className="space-y-6">
@@ -2121,29 +2154,59 @@ export default function AnswerSheetGenerator() {
                 )}
 
                 {totalQuestoes > 0 && (
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium text-muted-foreground">
-                      Disciplina (para habilidades do gabarito)
-                    </Label>
-                    <Select
-                      value={skillSubjectId || 'none'}
-                      onValueChange={(v) => setSkillSubjectId(v === 'none' ? '' : v)}
-                    >
-                      <SelectTrigger className="w-full max-w-xs">
-                        <SelectValue placeholder="Opcional — selecione para definir habilidades por questão" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">
-                          <span className="text-muted-foreground">Nenhuma</span>
-                        </SelectItem>
-                        {subjectsForSkills.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.name}
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-muted-foreground">
+                        Disciplina (para habilidades do gabarito)
+                      </Label>
+                      <Select
+                        value={skillSubjectId || 'none'}
+                        onValueChange={(v) => {
+                          setSkillSubjectId(v === 'none' ? '' : v);
+                          setSkillGradeId('');
+                        }}
+                      >
+                        <SelectTrigger className="w-full max-w-xs">
+                          <SelectValue placeholder="Opcional — selecione para definir habilidades por questão" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">
+                            <span className="text-muted-foreground">Nenhuma</span>
                           </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {skillSubjectId && isLoadingGabaritoSkills && (
+                          {subjectsForSkills.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {skillSubjectId && (
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-muted-foreground">
+                          Série (para habilidades do gabarito)
+                        </Label>
+                        <Select
+                          value={skillGradeId || 'none'}
+                          onValueChange={(v) => setSkillGradeId(v === 'none' ? '' : v)}
+                        >
+                          <SelectTrigger className="w-full max-w-xs">
+                            <SelectValue placeholder="Selecione a série para ver as habilidades" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">
+                              <span className="text-muted-foreground">Nenhuma</span>
+                            </SelectItem>
+                            {gradesForSkills.map((g) => (
+                              <SelectItem key={g.id} value={g.id}>
+                                {g.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {skillSubjectId && skillGradeId && isLoadingGabaritoSkills && (
                       <p className="text-xs text-muted-foreground">Carregando habilidades...</p>
                     )}
                   </div>
@@ -2216,8 +2279,14 @@ export default function AnswerSheetGenerator() {
                               size="sm"
                               className="h-8 px-2 text-xs ml-2"
                               onClick={() => setEditingQuestionSkills(numeroQuestao)}
-                              disabled={!skillSubjectId || gabaritoSkills.length === 0}
-                              title={!skillSubjectId ? 'Selecione uma disciplina acima para habilitar' : undefined}
+                              disabled={!skillSubjectId || !skillGradeId || gabaritoSkills.length === 0}
+                              title={
+                                !skillSubjectId
+                                  ? 'Selecione disciplina e série acima para habilitar'
+                                  : !skillGradeId
+                                    ? 'Selecione a série acima para habilitar'
+                                    : undefined
+                              }
                             >
                               Habilidade
                               {(questionSkills[numeroQuestao]?.length ?? 0) > 0 && (
