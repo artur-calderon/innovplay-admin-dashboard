@@ -572,15 +572,17 @@ export default function StudentResult() {
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3 text-foreground">
-            <BarChart3 className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3 text-foreground">
+            <BarChart3 className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 dark:text-blue-400 shrink-0" />
             {pageTitle}
           </h1>
-          <p className="text-muted-foreground">{evaluationTitle}</p>
+          <p className="text-muted-foreground text-sm sm:text-base">{evaluationTitle}</p>
         </div>
-        <Button variant="ghost" onClick={() => navigate(myItemsButtonPath)}>{myItemsButtonText}</Button>
+        <div className="flex justify-center w-full sm:w-auto sm:justify-end">
+          <Button variant="ghost" onClick={() => navigate(myItemsButtonPath)}>{myItemsButtonText}</Button>
+        </div>
       </div>
 
       <Card className="overflow-hidden bg-card border-border">

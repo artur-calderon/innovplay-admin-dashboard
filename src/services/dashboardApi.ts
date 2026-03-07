@@ -311,6 +311,13 @@ export class DashboardApiService {
       disciplina: string;
       escola: string;
       escolas: string[];
+      /** Média de notas da avaliação (quando disponível) */
+      media?: number | null;
+      nota_media?: number | null;
+      average_score?: number | null;
+      /** Data de início (quando disponível) */
+      data_inicio?: string | null;
+      start_date?: string | null;
     }>;
   } | null> {
     try {
@@ -341,7 +348,8 @@ export class DashboardApiService {
       ano_serie: string;
       autor: string;
       data_criacao: string;
-      dificuldade: string;
+      dificuldade?: string;
+      classification?: string;
       tipo_questao: string;
       quantidade_respostas: number;
       taxa_acerto: number | null;

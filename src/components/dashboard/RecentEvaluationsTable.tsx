@@ -50,20 +50,25 @@ export default function RecentEvaluationsTable(_props: RecentEvaluationsTablePro
 
         const dataRecentes = await DashboardApiService.getAvaliacoesRecentes(5);
         if (dataRecentes?.avaliacoes?.length > 0) {
-          const mapped: RecentEvaluation[] = dataRecentes.avaliacoes.map((av) => ({
-            id: av.avaliacao_id,
-            title: av.titulo,
-            subject: av.disciplina || "—",
-            school: av.escola || (av.escolas?.length ? av.escolas.join(", ") : "—"),
-            status: normalizeStatus(av.status),
-            progress: Number(av.progresso ?? 0),
-            totalStudents: Number(av.quantidade_alunos_vao_fazer ?? 0),
-            completedStudents: Number(av.quantidade_alunos_fizeram ?? 0),
-            averageScore: 0,
-            startDate: "",
-            endDate: av.prazo || "",
-            timeRemaining: formatTimeRemaining(av.prazo),
-          }));
+          const mapped: RecentEvaluation[] = dataRecentes.avaliacoes.map((av) => {
+            const rawMedia = av.media ?? av.nota_media ?? av.average_score;
+            const averageScore = typeof rawMedia === "number" && !Number.isNaN(rawMedia) ? rawMedia : 0;
+            const startDate = av.data_inicio ?? av.start_date ?? "";
+            return {
+              id: av.avaliacao_id,
+              title: av.titulo,
+              subject: av.disciplina || "—",
+              school: av.escola || (av.escolas?.length ? av.escolas.join(", ") : "—"),
+              status: normalizeStatus(av.status),
+              progress: Number(av.progresso ?? 0),
+              totalStudents: Number(av.quantidade_alunos_vao_fazer ?? 0),
+              completedStudents: Number(av.quantidade_alunos_fizeram ?? 0),
+              averageScore,
+              startDate,
+              endDate: av.prazo || "",
+              timeRemaining: formatTimeRemaining(av.prazo),
+            };
+          });
           setEvaluations(mapped);
         } else {
           setEvaluations([]);

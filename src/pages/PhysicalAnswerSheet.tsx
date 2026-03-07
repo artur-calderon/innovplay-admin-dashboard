@@ -240,10 +240,13 @@ export default function PhysicalAnswerSheet() {
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Cartão Resposta Digital</h1>
-        <p className="text-muted-foreground">
+      {/* Header — mobile: título/desc alinhados */}
+      <div className="space-y-1.5">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+          <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
+          Cartão Resposta Digital
+        </h1>
+        <p className="text-muted-foreground text-sm sm:text-base">
           Preencha os gabaritos das avaliações físicas aplicadas
         </p>
       </div>

@@ -21,7 +21,6 @@ import {
   CheckCircle2,
   Clock,
   Eye,
-  ListPlus,
   MoreVertical,
   Pencil,
   Play,
@@ -43,7 +42,6 @@ interface CompetitionCardProps {
   onEdit?: (id: string) => void;
   onCancel?: (id: string) => void;
   onDelete?: (id: string) => void;
-  onAddQuestions?: (id: string) => void;
   /** Fluxo unificado: abre modal para agendar inscrição/prova e publicar. */
   onScheduleAndPublish?: (id: string) => void;
   className?: string;
@@ -145,7 +143,6 @@ export function CompetitionCard({
   onEdit,
   onCancel,
   onDelete,
-  onAddQuestions,
   onScheduleAndPublish,
   className,
 }: CompetitionCardProps) {
@@ -153,7 +150,6 @@ export function CompetitionCard({
   const StatusIcon = statusConfig.icon;
   const draft = isDraft(competition.status);
   const cancelled = String(competition.status).toLowerCase() === 'cancelled' || String(competition.status).toLowerCase() === 'cancelada';
-  const canAddQuestions = competition.question_mode === 'manual';
 
   return (
     <Card className={cn('flex flex-col transition-shadow hover:shadow-md', className)}>
@@ -237,12 +233,6 @@ export function CompetitionCard({
             >
               <Send className="mr-1 h-4 w-4" />
               Aplicação
-            </Button>
-          )}
-          {onAddQuestions && canAddQuestions && draft && (
-            <Button variant="outline" size="sm" onClick={() => onAddQuestions(competition.id)}>
-              <ListPlus className="mr-1 h-4 w-4" />
-              Questões
             </Button>
           )}
         </div>

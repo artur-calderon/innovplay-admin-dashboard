@@ -670,12 +670,12 @@ export default function UsersTable({ embedded = false }: UsersTableProps) {
 
   return (
     <div className={embedded ? "space-y-4" : "container mx-auto py-4 space-y-4"}>
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
+      {/* Header — mobile: título alinhado, botões centralizados abaixo */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 flex-wrap">
           {!embedded && (
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-              <User className="w-8 h-8 text-blue-600" />
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+              <User className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
               Usuários
             </h1>
           )}
@@ -694,7 +694,7 @@ export default function UsersTable({ embedded = false }: UsersTableProps) {
             </Badge>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-center gap-2 w-full sm:w-auto sm:justify-end">
           {selectedIds.length > 0 && (
             <Button
               variant="destructive"

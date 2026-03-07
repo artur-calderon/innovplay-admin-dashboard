@@ -90,19 +90,19 @@ export default function Avisos() {
   return (
     <div className="container mx-auto py-6 px-4 space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <AlertCircle className="w-8 h-8 text-blue-600" />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <AlertCircle className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
             Avisos
           </h1>
-          <p className="text-muted-foreground">
-            {canCreate 
+          <p className="text-muted-foreground text-sm sm:text-base">
+            {canCreate
               ? 'Visualize e gerencie avisos importantes do sistema'
               : 'Visualize avisos importantes do sistema'}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap justify-center gap-3 w-full sm:w-auto sm:justify-end">
           {unreadCount > 0 && (
             <Badge variant="destructive" className="text-sm px-3 py-1">
               {unreadCount} {unreadCount === 1 ? 'novo' : 'novos'}

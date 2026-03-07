@@ -221,12 +221,14 @@ export default function Serie() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <Skeleton className="h-9 w-64 mb-2" />
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1.5">
+            <Skeleton className="h-9 w-64" />
             <Skeleton className="h-5 w-48" />
           </div>
-          <Skeleton className="h-10 w-32" />
+          <div className="flex justify-center sm:justify-end">
+            <Skeleton className="h-10 w-32" />
+          </div>
         </div>
 
         <div className="flex items-center space-x-2">
@@ -262,20 +264,22 @@ export default function Serie() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <GraduationCap className="w-8 h-8 text-blue-600" />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <GraduationCap className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
             Gerenciar Séries
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground text-sm sm:text-base">
             Cadastre e gerencie as séries por etapa de ensino
           </p>
         </div>
-        <Button onClick={openCreateModal}>
-          <PlusCircle className="h-4 w-4 mr-2" />
-          Nova Série
-        </Button>
+        <div className="flex justify-center w-full sm:w-auto sm:justify-end">
+          <Button onClick={openCreateModal}>
+            <PlusCircle className="h-4 w-4 mr-2" />
+            Nova Série
+          </Button>
+        </div>
       </div>
 
 

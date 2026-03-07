@@ -156,16 +156,16 @@ export default function StudentAgenda() {
   return (
     <div className="container mx-auto px-4 py-6 space-y-6 min-h-screen">
       {/* Header — gamificado (padrão Resultados) */}
-      <div className="space-y-2 animate-fade-in-up">
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3" id="agenda-page-title">
-          <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110">
+      <div className="space-y-1.5 animate-fade-in-up">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3" id="agenda-page-title">
+          <span className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110 shrink-0">
             <Calendar className="w-5 h-5 text-white drop-shadow" />
           </span>
           <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">
             Agenda Acadêmica
           </span>
         </h1>
-        <p className="text-muted-foreground font-medium">
+        <p className="text-muted-foreground text-sm sm:text-base font-medium">
           Acompanhe suas aulas, provas e eventos acadêmicos
         </p>
       </div>

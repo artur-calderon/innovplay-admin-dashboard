@@ -266,11 +266,11 @@ export const ConquistasPage: React.FC = () => {
             <ArrowLeft className="w-5 h-5" />
           </Link>
         </Button>
-        <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-600 dark:from-amber-500 dark:via-yellow-400 dark:to-amber-500 bg-clip-text text-transparent">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-600 dark:from-amber-500 dark:via-yellow-400 dark:to-amber-500 bg-clip-text text-transparent">
             Todas as conquistas
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="text-muted-foreground text-sm sm:text-base">
             Desbloqueie níveis e resgate moedas por cada medalha.
           </p>
         </div>

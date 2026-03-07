@@ -697,19 +697,19 @@ export default function Evolution() {
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <TrendingUp className="w-8 h-8 text-blue-600" />
+      {/* Header — mobile: título/desc alinhados, botões centralizados abaixo */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between lg:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <TrendingUp className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
             Análise de Evolução
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground text-sm sm:text-base">
             Compare múltiplas avaliações e acompanhe a evolução dos resultados ao longo do tempo com insights detalhados.
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-center gap-2 w-full sm:w-auto sm:justify-end">
           <Button 
             variant="outline" 
             onClick={() => window.location.reload()} 

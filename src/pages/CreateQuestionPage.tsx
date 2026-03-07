@@ -58,12 +58,12 @@ const CreateQuestionPage = () => {
             <div className="p-3 bg-blue-100 dark:bg-blue-900/50 rounded-xl">
               <Plus className="h-8 w-8 text-primary" />
             </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                <HelpCircle className="w-8 h-8 text-primary" />
+            <div className="space-y-1.5">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+                <HelpCircle className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
                 Criar Nova Questão
               </h1>
-              <p className="text-gray-600 dark:text-muted-foreground text-lg mt-1">
+              <p className="text-muted-foreground text-sm sm:text-base">
                 Adicione uma nova questão ao banco de questões da plataforma
               </p>
             </div>

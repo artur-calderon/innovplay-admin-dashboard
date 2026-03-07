@@ -542,20 +542,20 @@ const GamesManagement = () => {
 
     return (
         <div className="container mx-auto py-6 space-y-6">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                        <Gamepad2 className="w-8 h-8 text-primary" />
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1.5">
+                    <h2 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+                        <Gamepad2 className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
                         Gerenciamento de Jogos
                     </h2>
-                    <p className="text-muted-foreground">
-                        {activeTab === 'my_games' 
-                            ? 'Gerencie os jogos que você criou' 
+                    <p className="text-muted-foreground text-sm sm:text-base">
+                        {activeTab === 'my_games'
+                            ? 'Gerencie os jogos que você criou'
                             : 'Visualize todos os jogos disponíveis'}
                     </p>
                 </div>
                 {canCreateGames && (
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap justify-center gap-2 w-full sm:w-auto sm:justify-end">
                         <Button
                             variant="outline"
                             onClick={() => navigate('/app/jogos/adicionar')}

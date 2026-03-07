@@ -353,9 +353,9 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Voltar
                 </Button>
-                <div className="flex-1">
-                    <h1 className="text-2xl font-bold">Resultados Detalhados do Aluno</h1>
-                    <p className="text-muted-foreground">
+                <div className="flex-1 space-y-1.5">
+                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Resultados Detalhados do Aluno</h1>
+                    <p className="text-muted-foreground text-sm sm:text-base">
                         Análise individual da avaliação
                     </p>
                 </div>

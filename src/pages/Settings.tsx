@@ -47,7 +47,44 @@ const SIDEBAR_THEME_LABELS: Record<string, string> = {
   amber: "Tema âmbar",
   rose: "Tema rosa",
   dark: "Tema escuro",
+  cyan: "Tema ciano",
+  indigo: "Tema índigo",
+  emerald: "Tema esmeralda",
+  orange: "Tema laranja",
+  fuchsia: "Tema fúcsia",
+  teal: "Tema teal",
 };
+
+/** Cor de prévia para cada tema (mesma cor predominante do tema) */
+const SIDEBAR_THEME_PREVIEW_COLORS: Record<string, string> = {
+  blue: "#3b82f6",
+  green: "#22c55e",
+  violet: "#7c3aed",
+  amber: "#d97706",
+  rose: "#f43f5e",
+  dark: "#64748b",
+  cyan: "#06b6d4",
+  indigo: "#6366f1",
+  emerald: "#10b981",
+  orange: "#ea580c",
+  fuchsia: "#c026d3",
+  teal: "#14b8a6",
+  __padrao__: "#7c3aed",
+};
+
+function ThemeOption({ themeId, label }: { themeId: string; label: string }) {
+  const color = SIDEBAR_THEME_PREVIEW_COLORS[themeId] ?? SIDEBAR_THEME_PREVIEW_COLORS.__padrao__;
+  return (
+    <span className="flex items-center gap-2">
+      <span
+        className="h-4 w-4 shrink-0 rounded-full border border-border shadow-sm"
+        style={{ backgroundColor: color }}
+        aria-hidden
+      />
+      {label}
+    </span>
+  );
+}
 
 export default function Settings() {
   const { settings, updateTheme, updateFontFamily, updateFontSize, resetToDefaults, persistSettings, isLoading } = useSettings();
@@ -142,12 +179,12 @@ export default function Settings() {
     <div className="container mx-auto p-4 md:p-6 max-w-4xl">
       <div className="space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <SettingsIcon className="w-8 h-8 text-primary" />
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <SettingsIcon className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
             Configurações
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground text-sm sm:text-base">
             Personalize a aparência e preferências do sistema
           </p>
         </div>
@@ -296,10 +333,17 @@ export default function Settings() {
                   }}
                 >
                   <SelectTrigger id="sidebar-theme" className="w-full md:w-[300px]">
-                    <SelectValue placeholder="Selecione o tema" />
+                    <SelectValue placeholder="Selecione o tema">
+                      <ThemeOption
+                        themeId={selectedSidebarThemeId ?? "__padrao__"}
+                        label={selectedSidebarThemeId ? SIDEBAR_THEME_LABELS[selectedSidebarThemeId] ?? selectedSidebarThemeId : "Padrão (cor original do menu)"}
+                      />
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__padrao__">Padrão (cor original do menu)</SelectItem>
+                    <SelectItem value="__padrao__">
+                      <ThemeOption themeId="__padrao__" label="Padrão (cor original do menu)" />
+                    </SelectItem>
                     {isStudent
                       ? Array.from(
                           new Map(
@@ -310,12 +354,12 @@ export default function Settings() {
                           ).entries()
                         ).map(([id, label]) => (
                           <SelectItem key={id} value={id}>
-                            {label}
+                            <ThemeOption themeId={id} label={label} />
                           </SelectItem>
                         ))
                       : (Object.entries(SIDEBAR_THEME_LABELS) as [string, string][]).map(([id, label]) => (
                           <SelectItem key={id} value={id}>
-                            {label}
+                            <ThemeOption themeId={id} label={label} />
                           </SelectItem>
                         ))}
                   </SelectContent>

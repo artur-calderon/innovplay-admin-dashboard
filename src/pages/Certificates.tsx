@@ -206,13 +206,13 @@ export default function Certificates() {
   if (!selectedEvaluation) {
     return (
       <div className="container mx-auto p-6 space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Award className="w-8 h-8 text-blue-600" />
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <Award className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
             Certificados
           </h1>
-          <p className="text-muted-foreground mt-2">
-            {user.role === 'admin' 
+          <p className="text-muted-foreground text-sm sm:text-base">
+            {user.role === 'admin'
               ? 'Visualize todas as avaliações do sistema para gerenciar certificados'
               : 'Selecione uma avaliação para gerenciar certificados dos alunos participantes'}
           </p>
@@ -235,12 +235,12 @@ export default function Certificates() {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Voltar
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-              <Award className="w-8 h-8 text-blue-600" />
+          <div className="space-y-1.5">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+              <Award className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
               Personalizar Certificado
             </h1>
-            <p className="text-muted-foreground mt-2">
+            <p className="text-muted-foreground text-sm sm:text-base">
               Personalize o certificado que será enviado aos alunos
             </p>
           </div>
@@ -256,23 +256,23 @@ export default function Certificates() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={handleBack}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <Button variant="ghost" onClick={handleBack} className="self-start sm:self-auto">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Voltar
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-              <Award className="w-8 h-8 text-blue-600" />
+          <div className="space-y-1.5">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+              <Award className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
               Gerenciar Certificados
             </h1>
-            <p className="text-muted-foreground mt-2">
+            <p className="text-muted-foreground text-sm sm:text-base">
               Personalize e aprove certificados para os alunos participantes
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-center gap-2 w-full sm:w-auto sm:justify-end">
           <Button
             variant="outline"
             onClick={() => setIsCustomizing(true)}

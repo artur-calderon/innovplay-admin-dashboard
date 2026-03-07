@@ -1653,31 +1653,40 @@ export default function AnswerSheetGenerator() {
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Gerador de Cartões Resposta</h1>
-        <p className="text-muted-foreground">
+      {/* Header — mobile: título/desc alinhados */}
+      <div className="space-y-1.5">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+          <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
+          Gerador de Cartões Resposta
+        </h1>
+        <p className="text-muted-foreground text-sm sm:text-base">
           Configure e gere cartões resposta personalizados para provas físicas
         </p>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — mobile: texto menor e layout que não empilha */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <div className="flex items-center gap-2 flex-wrap">
-          <TabsList>
-            <TabsTrigger value="generate">Gerar Cartões</TabsTrigger>
-            <TabsTrigger value="generated">Cartões Gerados</TabsTrigger>
-            <TabsTrigger value="correct">Corrigir Cartões</TabsTrigger>
-          </TabsList>
-          <Button
-            variant="outline"
-            className="h-10 px-4"
-            onClick={() => navigate('/app/cartao-resposta/resultados')}
-          >
-            <FileText className="h-4 w-4 mr-2" />
-            Resultados
-          </Button>
-        </div>
+<div className="flex items-center gap-2 flex-wrap">
+  <TabsList className="flex flex-wrap w-full h-auto min-h-9 gap-1.5 p-1.5">
+    <TabsTrigger value="generate" className="flex-1 min-w-0 text-xs sm:text-sm px-2 py-2 sm:px-3">
+      <span className="truncate">Gerar Cartões</span>
+    </TabsTrigger>
+    <TabsTrigger value="generated" className="flex-1 min-w-0 text-xs sm:text-sm px-2 py-2 sm:px-3">
+      <span className="truncate">Cartões Gerados</span>
+    </TabsTrigger>
+    <TabsTrigger value="correct" className="flex-1 min-w-0 text-xs sm:text-sm px-2 py-2 sm:px-3">
+      <span className="truncate">Corrigir Cartões</span>
+    </TabsTrigger>
+  </TabsList>
+  <Button
+    variant="outline"
+    className="h-10 px-4"
+    onClick={() => navigate('/app/cartao-resposta/resultados')}
+  >
+    <FileText className="h-4 w-4 mr-2" />
+    Resultados
+  </Button>
+</div>
 
         {/* Tab: Gerar Cartões */}
         <TabsContent value="generate" className="space-y-6">
