@@ -28,7 +28,7 @@ import { ResultsCharts } from '@/components/evaluations/ResultsCharts';
 import { StudentRanking } from '@/components/evaluations/StudentRanking';
 import { cn } from '@/lib/utils';
 
-// Opções dos filtros (resposta de GET /answer-sheets/opcoes-filtros)
+// Opções dos filtros (resposta de GET /answer-sheets/opcoes-filtros-results)
 interface FilterOption {
   id: string;
   nome?: string;
@@ -159,7 +159,7 @@ export default function AnswerSheetResults() {
     const query = params.toString();
     try {
       setIsLoadingFilters(true);
-      const url = `/answer-sheets/opcoes-filtros${query ? `?${query}` : ''}`;
+      const url = `/answer-sheets/opcoes-filtros-results${query ? `?${query}` : ''}`;
       const res = await api.get<OpcoesFiltrosResponse>(url);
       setOpcoes(res.data || {});
     } catch (err: any) {
