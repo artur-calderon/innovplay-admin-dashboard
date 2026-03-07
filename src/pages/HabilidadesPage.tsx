@@ -251,7 +251,7 @@ const HabilidadesPage = () => {
   return (
     <div className="container mx-auto py-4 px-2 sm:px-4 space-y-4">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
@@ -261,18 +261,18 @@ const HabilidadesPage = () => {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2">
-              <BookOpen className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 dark:text-blue-400" />
+          <div className="space-y-1.5">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+              <BookOpen className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 dark:text-blue-400 shrink-0" />
               Banco de Habilidades BNCC
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-muted-foreground text-sm sm:text-base">
               Consulte todas as habilidades da Base Nacional Comum Curricular
             </p>
           </div>
         </div>
         {canManageSkills && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-center gap-2 w-full sm:w-auto sm:justify-end">
             <Button onClick={() => setAddSkillOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Adicionar habilidade

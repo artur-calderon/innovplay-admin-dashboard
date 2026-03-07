@@ -56,10 +56,10 @@ import {
 } from '@/constants/storeIcons';
 
 const CATEGORIES = [
-  { value: 'frame', label: 'Moldura', description: 'Moldura para foto de perfil do aluno', icon: Sparkles, color: 'from-amber-400 to-yellow-500' },
-  { value: 'stamp', label: 'Selo', description: 'Selo exibido no perfil ou conquistas', icon: Shield, color: 'from-slate-400 to-slate-600' },
-  { value: 'sidebar_theme', label: 'Tema da sidebar', description: 'Cor e estilo do menu lateral', icon: Palette, color: 'from-violet-400 to-purple-600' },
-  { value: 'physical', label: 'Item físico', description: 'Prêmio entregue fora do sistema', icon: Package, color: 'from-emerald-400 to-teal-600' },
+  { value: 'sidebar_theme', label: 'Tema da sidebar', description: 'Cor e estilo do menu lateral', icon: Palette, color: 'from-violet-400 to-purple-600', inDevelopment: false },
+  { value: 'physical', label: 'Item físico', description: 'Prêmio entregue fora do sistema', icon: Package, color: 'from-emerald-400 to-teal-600', inDevelopment: false },
+  { value: 'frame', label: 'Moldura', description: 'Moldura para foto de perfil do aluno', icon: Sparkles, color: 'from-amber-400 to-yellow-500', inDevelopment: true },
+  { value: 'stamp', label: 'Selo', description: 'Selo exibido no perfil ou conquistas', icon: Shield, color: 'from-slate-400 to-slate-600', inDevelopment: true },
 ];
 
 const SCOPE_OPTIONS: { value: StoreScopeType; label: string; icon: React.ElementType }[] = [
@@ -90,6 +90,12 @@ const THEME_OPTIONS = [
   { value: 'amber', label: 'Tema âmbar', rewardData: 'amber' },
   { value: 'rose', label: 'Tema rosa', rewardData: 'rose' },
   { value: 'dark', label: 'Tema escuro', rewardData: 'dark' },
+  { value: 'cyan', label: 'Tema ciano', rewardData: 'cyan' },
+  { value: 'indigo', label: 'Tema índigo', rewardData: 'indigo' },
+  { value: 'emerald', label: 'Tema esmeralda', rewardData: 'emerald' },
+  { value: 'orange', label: 'Tema laranja', rewardData: 'orange' },
+  { value: 'fuchsia', label: 'Tema fúcsia', rewardData: 'fuchsia' },
+  { value: 'teal', label: 'Tema teal', rewardData: 'teal' },
 ];
 
 /**
@@ -465,11 +471,14 @@ export default function StoreAdminForm() {
               {CATEGORIES.map((c) => {
                 const Icon = c.icon;
                 const selected = category === c.value;
+                const inDev = (c as { inDevelopment?: boolean }).inDevelopment === true;
                 return (
                   <button
                     key={c.value}
                     type="button"
+                    disabled={inDev}
                     onClick={() => {
+                      if (inDev) return;
                       setCategory(c.value);
                       const defaultVal = getDefaultRewardValueForCategory(c.value);
                       const { rewardType: t, rewardData: d } = getRewardFromCategory(c.value, defaultVal);
@@ -477,13 +486,20 @@ export default function StoreAdminForm() {
                       setRewardData(d ?? '');
                     }}
                     className={cn(
-                      'flex flex-col items-center gap-2 rounded-xl border-2 p-4 text-center transition-all hover:shadow-md',
-                      selected
-                        ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-600'
-                        : 'border-muted hover:border-amber-200 dark:hover:border-amber-900'
+                      'flex flex-col items-center gap-2 rounded-xl border-2 p-4 text-center transition-all relative',
+                      inDev
+                        ? 'border-muted bg-muted/50 cursor-not-allowed opacity-75'
+                        : selected
+                          ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-600 hover:shadow-md'
+                          : 'border-muted hover:border-amber-200 dark:hover:border-amber-900 hover:shadow-md'
                     )}
                   >
-                    <div className={cn('flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br text-white', c.color)}>
+                    {inDev && (
+                      <span className="absolute top-1.5 right-1.5 z-10 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-medium leading-tight text-amber-800 dark:bg-amber-900/60 dark:text-amber-200">
+                        Em dev.
+                      </span>
+                    )}
+                    <div className={cn('flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br text-white shrink-0', c.color, inDev && 'opacity-80')}>
                       <Icon className="h-6 w-6" />
                     </div>
                     <span className="font-medium text-sm">{c.label}</span>
@@ -978,7 +994,7 @@ export default function StoreAdminForm() {
           <Button type="button" variant="outline" onClick={() => navigate('/app/loja/gerenciar')} className="sm:min-w-[120px]">
             Cancelar
           </Button>
-          <Button type="submit" disabled={saving} className="bg-amber-600 hover:bg-amber-700 sm:min-w-[180px]">
+          <Button type="submit" disabled={saving} className="bg-primary text-primary-foreground hover:bg-primary/90 sm:min-w-[180px]">
             {saving ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />

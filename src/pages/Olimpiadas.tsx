@@ -854,18 +854,18 @@ export default function Olimpiadas() {
 
   return (
     <div className="container mx-auto py-6 px-4 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Trophy className="w-8 h-8 text-primary" />
+      {/* Header — mobile: título/desc alinhados, botões centralizados abaixo */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <Trophy className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
             Olimpíadas
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground text-sm sm:text-base">
             Gerencie olimpíadas para treinamento de alunos
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-center gap-2 w-full sm:w-auto sm:justify-end">
           <Button
             variant="outline"
             onClick={() => setShowAllResultsModal(true)}

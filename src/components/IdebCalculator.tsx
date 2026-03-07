@@ -130,13 +130,13 @@ export default function IdebCalculator() {
 
     return (
         <div className="container mx-auto p-6 space-y-6">
-            {/* Header */}
-            <div className="space-y-2">
-                <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                    <Calculator className="w-8 h-8 text-blue-600" />
+            {/* Header — mobile: título/desc alinhados */}
+            <div className="space-y-1.5">
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+                    <Calculator className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
                     Calculadora SAEB/IDEB
                 </h1>
-                <p className="text-gray-600 max-w-2xl mx-auto">
+                <p className="text-muted-foreground text-sm sm:text-base max-w-2xl">
                     Calcule o Índice de Desenvolvimento da Educação Básica (IDEB) com base nas notas ou proficiências SAEB
                 </p>
             </div>

@@ -132,19 +132,19 @@ export default function CompetitionTemplatesList() {
   return (
     <div className="container mx-auto space-y-6 py-6 px-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="flex items-center gap-3 text-3xl font-bold tracking-tight">
-            <span className="rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 p-2.5 text-white shadow-sm">
-              <Layers className="h-7 w-7" />
+        <div className="space-y-1.5">
+          <h1 className="flex flex-wrap items-center gap-2 sm:gap-3 text-2xl sm:text-3xl font-bold tracking-tight">
+            <span className="rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 p-2 sm:p-2.5 text-white shadow-sm shrink-0">
+              <Layers className="h-6 w-6 sm:h-7 sm:w-7" />
             </span>
             Templates de Competições
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground max-w-xl">
+          <p className="text-sm text-muted-foreground max-w-xl">
             Defina modelos recorrentes de competições por disciplina e nível. O backend
             cuida das datas e gera automaticamente as próximas edições.
           </p>
         </div>
-        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center justify-center sm:justify-end w-full sm:w-auto">
           <div className="flex items-center gap-2 rounded-full border bg-background/80 px-3 py-1">
             <TooltipProvider>
               <Tooltip>

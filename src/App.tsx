@@ -110,6 +110,7 @@ const CoinHistory = React.lazy(() => import("./pages/CoinHistory"));
 const Loja = React.lazy(() => import("./pages/Loja"));
 const StoreAdmin = React.lazy(() => import("./pages/StoreAdmin"));
 const StoreAdminForm = React.lazy(() => import("./pages/StoreAdminForm"));
+const StoreAdminBatchForm = React.lazy(() => import("./pages/StoreAdminBatchForm"));
 const CoinsAdmin = React.lazy(() => import("./pages/CoinsAdmin"));
 const CompetitionList = React.lazy(() => import("./pages/Competitions"));
 const CompetitionDetails = React.lazy(() => import("./pages/CompetitionDetails"));
@@ -315,6 +316,7 @@ const App = () => {
               <Route path="/app/moedas" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><CoinsAdmin /></RoleRoute></PrivateRoute>} />
               <Route path="/app/loja/gerenciar" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><StoreAdmin /></RoleRoute></PrivateRoute>} />
               <Route path="/app/loja/gerenciar/novo" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><StoreAdminForm /></RoleRoute></PrivateRoute>} />
+              <Route path="/app/loja/gerenciar/lote" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><StoreAdminBatchForm /></RoleRoute></PrivateRoute>} />
               <Route path="/app/loja/gerenciar/:id/editar" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><StoreAdminForm /></RoleRoute></PrivateRoute>} />
 
               {/* Rotas de gerenciamento de questões */}

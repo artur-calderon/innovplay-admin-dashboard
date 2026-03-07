@@ -1626,12 +1626,12 @@ const InseSaebReport = () => {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-          <BarChart3 className="w-8 h-8 text-primary" />
+      <div className="space-y-1.5">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+          <BarChart3 className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
           INSE x SAEB
         </h1>
-        <p className="text-muted-foreground mt-2">
+        <p className="text-muted-foreground text-sm sm:text-base">
           Relatório socioeconômico (INSE) cruzado com resultados SAEB
         </p>
       </div>

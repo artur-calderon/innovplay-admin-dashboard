@@ -15,6 +15,8 @@ const MAX_VISIBLE = 10;
 
 type Nivel = "Avançado" | "Adequado" | "Básico" | "Abaixo do Básico";
 
+const NIVEIS_VALIDOS: Nivel[] = ["Avançado", "Adequado", "Básico", "Abaixo do Básico"];
+
 type QuestaoDashboard = {
   id: string;
   titulo: string;
@@ -22,7 +24,8 @@ type QuestaoDashboard = {
   ano_serie: string;
   autor: string;
   data_criacao: string;
-  dificuldade: string;
+  dificuldade?: string;
+  classification?: string;
   tipo_questao: string;
   quantidade_respostas: number;
   taxa_acerto: number | null;
@@ -31,12 +34,28 @@ type QuestaoDashboard = {
   habilidade: string | null;
 };
 
+function parseNivelFromApi(value: string | null | undefined): Nivel | null {
+  if (!value || typeof value !== "string") return null;
+  const normalized = value.trim();
+  const found = NIVEIS_VALIDOS.find((n) => n === normalized);
+  return found ?? null;
+}
+
 function getNivelFromTaxaAcerto(taxa: number | null): Nivel | null {
   if (taxa == null) return null;
   if (taxa >= 75) return "Avançado";
   if (taxa >= 50) return "Adequado";
   if (taxa >= 25) return "Básico";
   return "Abaixo do Básico";
+}
+
+/** Usa classification ou dificuldade do JSON; fallback para nível calculado pela taxa de acerto. */
+function resolveNivel(q: QuestaoDashboard): Nivel | null {
+  const fromClassification = parseNivelFromApi(q.classification);
+  if (fromClassification != null) return fromClassification;
+  const fromDificuldade = parseNivelFromApi(q.dificuldade);
+  if (fromDificuldade != null) return fromDificuldade;
+  return getNivelFromTaxaAcerto(q.taxa_acerto);
 }
 
 function getNivelBadgeClass(nivel: Nivel): string {
@@ -154,7 +173,7 @@ export default function QuestionsList() {
         ) : (
           <div className="grid grid-cols-1 gap-2 h-full">
             {exibir.map((q) => {
-              const nivel = getNivelFromTaxaAcerto(q.taxa_acerto);
+              const nivel = resolveNivel(q);
               return (
                 <div
                   key={q.id}

@@ -253,20 +253,22 @@ export default function Competitions() {
   return (
     <div className="container mx-auto space-y-6 py-6 px-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="flex items-center gap-3 text-3xl font-bold tracking-tight">
-            <Trophy className="h-8 w-8 text-primary" />
+        <div className="space-y-1.5">
+          <h1 className="flex flex-wrap items-center gap-2 sm:gap-3 text-2xl sm:text-3xl font-bold tracking-tight">
+            <Trophy className="h-7 w-7 sm:h-8 sm:w-8 text-primary shrink-0" />
             Competições
           </h1>
-          <p className="mt-1 text-muted-foreground">
+          <p className="text-muted-foreground text-sm sm:text-base">
             Lista de competições cadastradas.
           </p>
         </div>
         {canManage && (
-          <Button onClick={() => setModalOpen(true)} className="shrink-0">
-            <Plus className="mr-2 h-4 w-4" />
-            Nova Competição
-          </Button>
+          <div className="flex justify-center w-full sm:w-auto sm:justify-end">
+            <Button onClick={() => setModalOpen(true)} className="shrink-0">
+              <Plus className="mr-2 h-4 w-4" />
+              Nova Competição
+            </Button>
+          </div>
         )}
       </div>
 
@@ -370,7 +372,6 @@ export default function Competitions() {
                 onEdit={canManage ? handleEdit : undefined}
                 onCancel={canManage ? handleCancelClick : undefined}
                 onDelete={canManage ? handleDeleteClick : undefined}
-                onAddQuestions={canManage ? handleAddQuestions : undefined}
                 onScheduleAndPublish={canManage ? handleScheduleAndPublish : undefined}
               />
             ))}

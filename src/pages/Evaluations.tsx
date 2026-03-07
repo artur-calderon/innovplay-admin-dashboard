@@ -101,14 +101,14 @@ export default function Evaluations() {
   // Default view for teachers and admins
   return (
     <div className="container mx-auto px-2 md:px-4 py-4 md:py-6 space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <ClipboardList className="w-8 h-8 text-primary" />
+      {/* Header — mobile: título/desc alinhados, botão centralizado abaixo */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <ClipboardList className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
             Central de Avaliações
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground text-sm sm:text-base">
             Gerencie avaliações virtuais, físicas e acompanhe resultados
           </p>
         </div>
@@ -185,26 +185,26 @@ export default function Evaluations() {
         </Card>
       </div>
 
-      {/* Tabs Expandidas */}
+      {/* Tabs Expandidas — mobile: 2 colunas, texto menor; desktop: grid completo */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className={`grid w-full gap-2 ${user.role !== 'professor' ? 'grid-cols-4' : 'grid-cols-3'}`}>
-          <TabsTrigger value="ready" className="flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            Minhas Avaliações
+        <TabsList className={`grid w-full gap-1.5 p-1.5 h-auto min-h-9 grid-cols-2 sm:grid-cols-3 ${user.role !== 'professor' ? 'lg:grid-cols-4' : ''}`}>
+          <TabsTrigger value="ready" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2 sm:px-3">
+            <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+            <span className="truncate">Minhas Avaliações</span>
           </TabsTrigger>
           {user.role !== 'professor' && (
-            <TabsTrigger value="all" className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              Todas Avaliações
+            <TabsTrigger value="all" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2 sm:px-3">
+              <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+              <span className="truncate">Todas Avaliações</span>
             </TabsTrigger>
           )}
-          <TabsTrigger value="create" className="flex items-center gap-2">
-            <Plus className="h-4 w-4" />
-            Criar Nova
+          <TabsTrigger value="create" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2 sm:px-3">
+            <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+            <span className="truncate">Criar Nova</span>
           </TabsTrigger>
-          <TabsTrigger value="physical" className="flex items-center gap-2">
-            <ClipboardList className="h-4 w-4" />
-            Cartão Resposta
+          <TabsTrigger value="physical" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2 sm:px-3">
+            <ClipboardList className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+            <span className="truncate">Cartão Resposta</span>
           </TabsTrigger>
         </TabsList>
 

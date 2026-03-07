@@ -222,17 +222,19 @@ export default function AnswerSheetResults() {
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Resultados de Correção</h1>
-          <p className="text-muted-foreground">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Resultados de Correção</h1>
+          <p className="text-muted-foreground text-sm sm:text-base">
             {results[0]?.gabarito_title || 'Visualize os resultados das correções realizadas'}
           </p>
         </div>
-        <Button variant="outline" onClick={handleBack}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Voltar para Cartões Gerados
-        </Button>
+        <div className="flex justify-center w-full sm:w-auto sm:justify-end">
+          <Button variant="outline" onClick={handleBack}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Voltar para Cartões Gerados
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-6">

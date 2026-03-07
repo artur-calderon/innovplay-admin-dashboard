@@ -382,6 +382,18 @@ export function CreateCompetitionModal({
     if (!formData.name?.trim()) newErrors.name = 'Nome é obrigatório';
     if (!formData.subject_id) newErrors.subject_id = 'Disciplina é obrigatória';
 
+    const isManual = (formData.question_mode ?? 'manual').toLowerCase() === 'manual';
+    if (isManual) {
+      if (selectedQuestions.length === 0) {
+        newErrors.questions = 'Adicione pelo menos uma questão antes de criar a competição.';
+      }
+    } else {
+      const rules = parseQuestionRules(formData.question_rules);
+      if (!rules.num_questions || rules.num_questions < 1) {
+        newErrors.questions = 'Defina a quantidade de questões (mínimo 1) no modo aleatório.';
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -1018,6 +1030,9 @@ export function CreateCompetitionModal({
           </div>
         )}
 
+        {errors.questions && (
+          <p className="text-sm text-destructive mt-2 shrink-0">{errors.questions}</p>
+        )}
         {!loadingEdit && (
           <div className="flex justify-between pt-4 mt-4 border-t shrink-0">
             <Button variant="outline" onClick={step > 1 ? () => setStep(step - 1) : onClose}>

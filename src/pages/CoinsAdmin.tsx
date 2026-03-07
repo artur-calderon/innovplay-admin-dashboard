@@ -463,12 +463,12 @@ export default function CoinsAdmin() {
 
   return (
     <div className="container max-w-6xl mx-auto py-6 px-4 space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-          <Coins className="h-8 w-8 text-primary" />
+      <div className="space-y-1.5">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+          <Coins className="h-7 w-7 sm:h-8 sm:w-8 text-primary shrink-0" />
           {pageTitle}
         </h1>
-        <p className="text-muted-foreground">
+        <p className="text-muted-foreground text-sm sm:text-base">
           {canEdit
             ? 'Filtre os alunos, selecione um e credite ou debite moedas.'
             : 'Consulte saldos dos alunos conforme seu escopo de acesso.'}
