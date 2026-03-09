@@ -398,8 +398,47 @@ export function CreateCompetitionModal({
     return Object.keys(newErrors).length === 0;
   };
 
+  /** Valida apenas a etapa atual — só permite avançar com tudo preenchido. */
+  const isStepValid = (s: number): boolean => {
+    if (s === 1) {
+      if (!formData.name?.trim() || !formData.subject_id) return false;
+      if (formData.scope && formData.scope !== 'individual') {
+        if (formData.scope === 'municipio') {
+          if (!selectedStateForMunicipio) return false;
+          const ids = formData.scope_filter?.municipality_ids ?? [];
+          if (ids.length === 0) return false;
+        } else {
+          const ids =
+            formData.scope === 'turma' ? formData.scope_filter?.class_ids ?? []
+              : formData.scope === 'escola' ? formData.scope_filter?.school_ids ?? []
+              : formData.scope === 'estado' ? formData.scope_filter?.state_ids ?? []
+              : [];
+          if (ids.length === 0) return false;
+        }
+      }
+      return true;
+    }
+    if (s === 2) {
+      const isManual = (formData.question_mode ?? 'manual').toLowerCase() === 'manual';
+      if (isManual) return selectedQuestions.length > 0;
+      const rules = parseQuestionRules(formData.question_rules);
+      return rules.num_questions >= 1;
+    }
+    if (s === 3) {
+      const hasParticipation = formData.reward_participation != null && String(formData.reward_participation).trim() !== '';
+      const hasRanking = formData.reward_ranking != null && String(formData.reward_ranking).trim() !== '';
+      return hasParticipation && hasRanking;
+    }
+    return true;
+  };
+
   const buildPayloadWithISODates = () => {
     const payload = { ...formData };
+
+    const subjectName = formData.subject_id
+      ? (subjects.find((s) => s.id === formData.subject_id)?.name ?? '')
+      : '';
+    (payload as Record<string, unknown>).subject_name = subjectName;
 
     const now = new Date();
     const fiveMinutesMs = 5 * 60 * 1000;
@@ -1040,7 +1079,13 @@ export function CreateCompetitionModal({
             </Button>
             <div className="flex gap-2">
               {step < 3 ? (
-                <Button onClick={() => setStep(step + 1)}>Próximo</Button>
+                <Button
+                  onClick={() => setStep(step + 1)}
+                  disabled={!isStepValid(step)}
+                  title={!isStepValid(step) ? 'Preencha todos os campos desta etapa para continuar' : undefined}
+                >
+                  Próximo
+                </Button>
               ) : (
                 <Button onClick={handleSubmit} disabled={loading}>
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
