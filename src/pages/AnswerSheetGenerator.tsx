@@ -1099,6 +1099,18 @@ export default function AnswerSheetGenerator() {
 
   const handlePreviousStep = () => {
     if (currentStep > 1) {
+      if (currentStep === 2) {
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        setJobId(null);
+        setJobTasks([]);
+        setJobProgress({ completed_tasks: 0, total_tasks: 0, percentage: 0 });
+        setJobDownloadUrl(null);
+        setJobWarnings([]);
+        setJobScopeType('');
+      }
       setCurrentStep((currentStep - 1) as Step);
     }
   };
@@ -1386,7 +1398,7 @@ export default function AnswerSheetGenerator() {
         num_questions: totalQuestoes,
         correct_answers: gabaritoManual,
         question_skills,
-        use_blocks: useBlocks,
+        use_blocks: separateBySubject,
         ...(useBlocks && !separateBySubject && {
           blocks_config: {
             num_blocks: numBlocks,
