@@ -59,7 +59,12 @@ export default function AnswerSheetCreateGabarito() {
   // Step 2: blocos
   const [useBlocks, setUseBlocks] = useState(false);
   const [numBlocks, setNumBlocks] = useState(2);
-  const [questionsPerBlock, setQuestionsPerBlock] = useState(5);
+  const [questionsPerBlock, setQuestionsPerBlock] = useState(6);
+  const MIN_BLOCKS = 2;
+  const MAX_BLOCKS = 4;
+  const MIN_QUESTIONS_PER_BLOCK = 1;
+  const MAX_QUESTIONS_PER_BLOCK = 22;
+  const MAX_QUESTIONS_TOTAL = 22;
   const [separateBySubject, setSeparateBySubject] = useState(false);
   const [disciplines, setDisciplines] = useState<{ id: string; name: string }[]>([]);
   const [isLoadingDisciplines, setIsLoadingDisciplines] = useState(false);
@@ -166,7 +171,7 @@ export default function AnswerSheetCreateGabarito() {
     }
     const startQuestion = currentTotal + 1;
     const remaining = numQuestions - currentTotal;
-    const defaultCount = Math.min(26, remaining);
+    const defaultCount = Math.min(MAX_QUESTIONS_PER_BLOCK, Math.max(MIN_QUESTIONS_PER_BLOCK, remaining));
     setBlocksByDiscipline([
       ...blocksByDiscipline,
       {
@@ -195,9 +200,16 @@ export default function AnswerSheetCreateGabarito() {
   };
 
   const handleUpdateBlockQuestions = (blockId: number, newCount: number) => {
-    const validCount = Math.min(Math.max(1, newCount), 26);
+    const validCount = Math.min(Math.max(MIN_QUESTIONS_PER_BLOCK, newCount), MAX_QUESTIONS_PER_BLOCK);
     const blockIndex = blocksByDiscipline.findIndex((b) => b.block_id === blockId);
     if (blockIndex === -1) return;
+    if (newCount < MIN_QUESTIONS_PER_BLOCK || newCount > MAX_QUESTIONS_PER_BLOCK) {
+      toast({
+        title: 'Limite',
+        description: `Cada bloco deve ter entre ${MIN_QUESTIONS_PER_BLOCK} e ${MAX_QUESTIONS_PER_BLOCK} questões.`,
+        variant: 'destructive',
+      });
+    }
     const otherTotal = blocksByDiscipline.filter((b) => b.block_id !== blockId).reduce((s, b) => s + b.questions_count, 0);
     if (otherTotal + validCount > numQuestions) {
       toast({ title: 'Limite', description: `Total de questões: ${numQuestions}.`, variant: 'destructive' });
@@ -217,11 +229,15 @@ export default function AnswerSheetCreateGabarito() {
   const validateDisciplineBlocks = (): { isValid: boolean; warnings: string[] } => {
     const warnings: string[] = [];
     if (blocksByDiscipline.length === 0) {
-      warnings.push('Adicione pelo menos uma disciplina.');
+      warnings.push('Adicione pelo menos 2 disciplinas (mín. 2, máx. 4 blocos).');
       return { isValid: false, warnings };
     }
-    if (blocksByDiscipline.length > 4) {
-      warnings.push('Máximo 4 blocos.');
+    if (blocksByDiscipline.length < MIN_BLOCKS) {
+      warnings.push(`Mínimo ${MIN_BLOCKS} blocos por disciplina.`);
+      return { isValid: false, warnings };
+    }
+    if (blocksByDiscipline.length > MAX_BLOCKS) {
+      warnings.push(`Máximo ${MAX_BLOCKS} blocos.`);
       return { isValid: false, warnings };
     }
     const total = blocksByDiscipline.reduce((s, b) => s + b.questions_count, 0);
@@ -229,8 +245,12 @@ export default function AnswerSheetCreateGabarito() {
       warnings.push(`Soma dos blocos (${total}) deve ser igual ao total de questões (${numQuestions}).`);
       return { isValid: false, warnings };
     }
-    if (blocksByDiscipline.some((b) => b.questions_count > 26)) {
-      warnings.push('Máximo 26 questões por bloco.');
+    if (blocksByDiscipline.some((b) => b.questions_count < MIN_QUESTIONS_PER_BLOCK)) {
+      warnings.push(`Mínimo ${MIN_QUESTIONS_PER_BLOCK} questões por bloco.`);
+      return { isValid: false, warnings };
+    }
+    if (blocksByDiscipline.some((b) => b.questions_count > MAX_QUESTIONS_PER_BLOCK)) {
+      warnings.push(`Máximo ${MAX_QUESTIONS_PER_BLOCK} questões por bloco.`);
       return { isValid: false, warnings };
     }
     return { isValid: true, warnings };
@@ -330,13 +350,13 @@ export default function AnswerSheetCreateGabarito() {
   const canProceedStep0 = title.trim() !== '' && institution.trim() !== '';
   const canProceedStep1 =
     numQuestions >= 1 &&
-    numQuestions <= 200 &&
+    numQuestions <= MAX_QUESTIONS_TOTAL &&
     Array.from({ length: numQuestions }, (_, i) => i + 1).every((n) => {
       const ans = correctAnswers[n];
       const opts = getAvailableAlternatives(n);
       return ans && opts.includes(ans);
     });
-  const canProceedStep2 = !useBlocks || (separateBySubject ? validateDisciplineBlocks().isValid : numBlocks >= 1 && questionsPerBlock >= 1);
+  const canProceedStep2 = !useBlocks || (separateBySubject ? validateDisciplineBlocks().isValid : numBlocks >= MIN_BLOCKS && numBlocks <= MAX_BLOCKS && questionsPerBlock >= MIN_QUESTIONS_PER_BLOCK && questionsPerBlock <= MAX_QUESTIONS_PER_BLOCK);
 
   const handleSubmit = async () => {
     const question_skills: Record<string, string[]> = {};
@@ -347,13 +367,11 @@ export default function AnswerSheetCreateGabarito() {
       num_questions: numQuestions,
       correct_answers: correctAnswers,
       question_skills,
-      use_blocks: separateBySubject,
+      use_blocks: useBlocks || separateBySubject,
+      separate_by_subject: separateBySubject,
       questions_options: buildQuestionsOptions() || {},
       test_data: { institution: institution.trim(), title: title.trim() },
     };
-    if (useBlocks && !separateBySubject) {
-      payload.blocks_config = { num_blocks: numBlocks, questions_per_block: questionsPerBlock };
-    }
     if (separateBySubject) {
       payload.blocks_config = {
         blocks: blocksByDiscipline.map((b) => ({
@@ -364,6 +382,10 @@ export default function AnswerSheetCreateGabarito() {
           end_question: b.end_question,
         })),
       };
+    } else if (useBlocks) {
+      payload.blocks_config = { num_blocks: numBlocks, questions_per_block: questionsPerBlock };
+    } else {
+      payload.blocks_config = { num_blocks: 1, questions_per_block: numQuestions };
     }
 
     try {
@@ -435,7 +457,7 @@ export default function AnswerSheetCreateGabarito() {
                   </div>
                   <div>
                     <CardTitle>Informações básicas</CardTitle>
-                    <CardDescription>Título da avaliação e instituição.</CardDescription>
+                    <CardDescription>Título da avaliação e secretaria.</CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -451,12 +473,12 @@ export default function AnswerSheetCreateGabarito() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="institution">Instituição</Label>
+                  <Label htmlFor="institution">Secretaria</Label>
                   <div className="relative max-w-md">
                     <Building2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="institution"
-                      placeholder="Ex: Escola Municipal"
+                      placeholder="Ex: Secretaria Municipal de Educação"
                       value={institution}
                       onChange={(e) => setInstitution(e.target.value)}
                       className="pl-9"
@@ -487,11 +509,20 @@ export default function AnswerSheetCreateGabarito() {
                     id="numQuestions"
                     type="number"
                     min={1}
-                    max={200}
-                    value={numQuestions || ''}
-                    onChange={(e) => setNumQuestions(Math.min(200, Math.max(0, parseInt(e.target.value, 10) || 0)))}
+                    max={MAX_QUESTIONS_TOTAL}
+                    value={numQuestions ? Math.min(MAX_QUESTIONS_TOTAL, Math.max(1, numQuestions)) : ''}
+                    onChange={(e) => {
+                      const raw = parseInt(e.target.value, 10);
+                      if (Number.isNaN(raw) || e.target.value === '') {
+                        setNumQuestions(0);
+                        return;
+                      }
+                      const clamped = Math.min(MAX_QUESTIONS_TOTAL, Math.max(1, raw));
+                      setNumQuestions(clamped);
+                    }}
                     className="max-w-[120px]"
                   />
+                  <p className="text-xs text-muted-foreground">Máximo {MAX_QUESTIONS_TOTAL} questões</p>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Checkbox
@@ -647,16 +678,27 @@ export default function AnswerSheetCreateGabarito() {
                 {separateBySubject && numQuestions > 0 && (
                   <div className="space-y-3 rounded-lg border-l-4 border-primary/50 pl-4">
                     <Label>Disciplinas e quantidade de questões</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Mín. {MIN_BLOCKS} e máx. {MAX_BLOCKS} blocos. Entre {MIN_QUESTIONS_PER_BLOCK} e {MAX_QUESTIONS_PER_BLOCK} questões por bloco.
+                    </p>
                     {blocksByDiscipline.map((block) => (
                       <div key={block.block_id} className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-3">
                         <Badge variant="outline">Bloco {block.block_id}</Badge>
                         <span className="text-sm font-medium">{block.subject_name}</span>
                         <Input
                           type="number"
-                          min={1}
-                          max={26}
-                          value={block.questions_count}
-                          onChange={(e) => handleUpdateBlockQuestions(block.block_id, parseInt(e.target.value, 10) || 1)}
+                          min={MIN_QUESTIONS_PER_BLOCK}
+                          max={MAX_QUESTIONS_PER_BLOCK}
+                          value={Math.min(MAX_QUESTIONS_PER_BLOCK, Math.max(MIN_QUESTIONS_PER_BLOCK, block.questions_count))}
+                          onChange={(e) => {
+                            const raw = parseInt(e.target.value, 10);
+                            if (Number.isNaN(raw)) return;
+                            const clamped = Math.min(MAX_QUESTIONS_PER_BLOCK, Math.max(MIN_QUESTIONS_PER_BLOCK, raw));
+                            handleUpdateBlockQuestions(block.block_id, clamped);
+                            if (raw !== clamped) {
+                              toast({ title: 'Limite', description: `Entre ${MIN_QUESTIONS_PER_BLOCK} e ${MAX_QUESTIONS_PER_BLOCK} questões por bloco.`, variant: 'destructive' });
+                            }
+                          }}
                           className="w-20 h-8"
                         />
                         <span className="text-xs text-muted-foreground">Q{block.start_question}–{block.end_question}</span>
@@ -696,15 +738,55 @@ export default function AnswerSheetCreateGabarito() {
                 )}
 
                 {useBlocks && !separateBySubject && (
-                  <div className="flex gap-4 flex-wrap">
-                    <div className="space-y-2">
-                      <Label>Quantidade de blocos</Label>
-                      <Input type="number" min={1} value={numBlocks} onChange={(e) => setNumBlocks(Math.max(1, parseInt(e.target.value, 10) || 1))} className="w-24" />
+                  <div className="space-y-4">
+                    <p className="text-xs text-muted-foreground">
+                      Mín. {MIN_BLOCKS} e máx. {MAX_BLOCKS} blocos. Entre {MIN_QUESTIONS_PER_BLOCK} e {MAX_QUESTIONS_PER_BLOCK} questões por bloco.
+                    </p>
+                    <div className="flex gap-4 flex-wrap">
+                      <div className="space-y-2">
+                        <Label>Quantidade de blocos</Label>
+                        <Input
+                          type="number"
+                          min={MIN_BLOCKS}
+                          max={MAX_BLOCKS}
+                          value={numBlocks}
+                          onChange={(e) => setNumBlocks(Math.min(MAX_BLOCKS, Math.max(MIN_BLOCKS, parseInt(e.target.value, 10) || MIN_BLOCKS)))}
+                          className="w-24"
+                        />
+                        <p className="text-xs text-muted-foreground">{MIN_BLOCKS} a {MAX_BLOCKS} blocos</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Questões por bloco</Label>
+                        <Input
+                          type="number"
+                          min={MIN_QUESTIONS_PER_BLOCK}
+                          max={MAX_QUESTIONS_PER_BLOCK}
+                          value={Math.min(MAX_QUESTIONS_PER_BLOCK, Math.max(MIN_QUESTIONS_PER_BLOCK, questionsPerBlock))}
+                          onChange={(e) => {
+                            const raw = parseInt(e.target.value, 10);
+                            if (Number.isNaN(raw) || e.target.value === '') {
+                              setQuestionsPerBlock(MIN_QUESTIONS_PER_BLOCK);
+                              return;
+                            }
+                            const clamped = Math.min(MAX_QUESTIONS_PER_BLOCK, Math.max(MIN_QUESTIONS_PER_BLOCK, raw));
+                            setQuestionsPerBlock(clamped);
+                            if (raw !== clamped) {
+                              toast({ title: 'Limite', description: `Entre ${MIN_QUESTIONS_PER_BLOCK} e ${MAX_QUESTIONS_PER_BLOCK} questões por bloco.`, variant: 'destructive' });
+                            }
+                          }}
+                          className="w-24"
+                        />
+                        <p className="text-xs text-muted-foreground">{MIN_QUESTIONS_PER_BLOCK} a {MAX_QUESTIONS_PER_BLOCK} questões</p>
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Questões por bloco</Label>
-                      <Input type="number" min={1} value={questionsPerBlock} onChange={(e) => setQuestionsPerBlock(Math.max(1, parseInt(e.target.value, 10) || 1))} className="w-24" />
-                    </div>
+                    {(numBlocks < MIN_BLOCKS || numBlocks > MAX_BLOCKS || questionsPerBlock < MIN_QUESTIONS_PER_BLOCK || questionsPerBlock > MAX_QUESTIONS_PER_BLOCK) && (
+                      <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>
+                          Blocos: entre {MIN_BLOCKS} e {MAX_BLOCKS}. Questões por bloco: entre {MIN_QUESTIONS_PER_BLOCK} e {MAX_QUESTIONS_PER_BLOCK}.
+                        </AlertDescription>
+                      </Alert>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -837,7 +919,7 @@ export default function AnswerSheetCreateGabarito() {
               <CardContent className="space-y-6">
                 <dl className="grid gap-2 text-sm">
                   <div><dt className="text-muted-foreground">Título</dt><dd className="font-medium">{title || '—'}</dd></div>
-                  <div><dt className="text-muted-foreground">Instituição</dt><dd className="font-medium">{institution || '—'}</dd></div>
+                  <div><dt className="text-muted-foreground">Secretaria</dt><dd className="font-medium">{institution || '—'}</dd></div>
                   <div><dt className="text-muted-foreground">Questões</dt><dd className="font-medium">{numQuestions}</dd></div>
                   {separateBySubject && blocksByDiscipline.length > 0 && (
                     <div>
@@ -901,7 +983,7 @@ export default function AnswerSheetCreateGabarito() {
             </CardHeader>
             <CardContent className="text-sm space-y-2 text-muted-foreground">
               {title && <p><span className="text-foreground font-medium">Título:</span> {title}</p>}
-              {institution && <p><span className="text-foreground font-medium">Instituição:</span> {institution}</p>}
+              {institution && <p><span className="text-foreground font-medium">Secretaria:</span> {institution}</p>}
               {numQuestions > 0 && <p><span className="text-foreground font-medium">Questões:</span> {numQuestions}</p>}
               {step >= 1 && numQuestions > 0 && (
                 <p>
