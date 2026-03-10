@@ -28,6 +28,7 @@ import {
   Menu,
   ChevronLeft,
   FileText,
+  FilePlus,
   Target,
   TrendingUp,
   Layers,
@@ -267,8 +268,12 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
         {
           icon: Ticket,
           label: "Cartão Resposta",
-          href: "/app/cartao-resposta",
-          role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
+          role: ["admin", "professor", "diretor", "coordenador", "tecadm"],
+          children: [
+            { icon: FilePlus, label: "Cadastrar Cartão Resposta", href: "/app/cartao-resposta/cadastrar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: Ticket, label: "Gerar cartões", href: "/app/cartao-resposta/gerar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: BarChart3, label: "Resultados", href: "/app/cartao-resposta/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+          ]
         },
         {
           icon: ClipboardList,

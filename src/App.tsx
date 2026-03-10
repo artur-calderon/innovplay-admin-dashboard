@@ -100,6 +100,8 @@ const PlantaoOnline = React.lazy(() => import("./pages/PlantaoOnline"));
 const PlantaoOnlineStudent = React.lazy(() => import("./pages/PlantaoOnlineStudent"));
 const AnswerSheetGenerator = React.lazy(() => import("./pages/AnswerSheetGenerator"));
 const AnswerSheetResults = React.lazy(() => import("./pages/AnswerSheetResults"));
+const AnswerSheetCreateGabarito = React.lazy(() => import("./pages/AnswerSheetCreateGabarito"));
+const AnswerSheetGenerateCards = React.lazy(() => import("./pages/AnswerSheetGenerateCards"));
 const ListaFrequencia = React.lazy(() => import("./pages/ListaFrequencia"));
 
 // Lazy loading para Olimpíadas
@@ -248,6 +250,8 @@ const App = () => {
               <Route path="/app/play-tv/:id" element={<PrivateRoute><PlayTvVideoView /></PrivateRoute>} />
               <Route path="/app/plantao" element={<PrivateRoute><PlantaoOnline /></PrivateRoute>} />
               <Route path="/app/cartao-resposta" element={<PrivateRoute><AnswerSheetGenerator /></PrivateRoute>} />
+              <Route path="/app/cartao-resposta/gerar" element={<PrivateRoute><AnswerSheetGenerateCards /></PrivateRoute>} />
+              <Route path="/app/cartao-resposta/cadastrar" element={<PrivateRoute><AnswerSheetCreateGabarito /></PrivateRoute>} />
               <Route path="/app/cartao-resposta/resultados" element={<PrivateRoute><AnswerSheetResults /></PrivateRoute>} />
               <Route path="/app/lista-frequencia" element={<PrivateRoute><ListaFrequencia /></PrivateRoute>} />
               <Route path="/app/certificados" element={<PrivateRoute><Certificates /></PrivateRoute>} />
