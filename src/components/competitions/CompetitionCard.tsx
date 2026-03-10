@@ -38,10 +38,14 @@ import { CompetitionCountdown } from '@/components/competitions/CompetitionCount
 
 interface CompetitionCardProps {
   competition: Competition;
+  /** Role do usuário logado (ex.: 'admin', 'coordenador') — define se pode Parar e quando pode Apagar. */
+  userRole?: string;
   onView?: (id: string) => void;
   onEdit?: (id: string) => void;
   onCancel?: (id: string) => void;
   onDelete?: (id: string) => void;
+  /** Parar competição (só usado na tela Ver competição; não exibido no card). */
+  onStop?: (id: string) => void;
   /** Fluxo unificado: abre modal para agendar inscrição/prova e publicar. */
   onScheduleAndPublish?: (id: string) => void;
   className?: string;
@@ -137,12 +141,23 @@ function formatDate(value: string | undefined) {
   }
 }
 
+const IN_PROGRESS_STATUSES = ['aberta', 'em_andamento', 'enrollment_open', 'active'];
+
+function isInProgress(competition: Competition): boolean {
+  const s = String(competition.status).toLowerCase();
+  if (!IN_PROGRESS_STATUSES.includes(s)) return false;
+  if (competition.is_finished === true) return false;
+  return true;
+}
+
 export function CompetitionCard({
   competition,
+  userRole,
   onView,
   onEdit,
   onCancel,
   onDelete,
+  onStop: _onStop,
   onScheduleAndPublish,
   className,
 }: CompetitionCardProps) {
@@ -150,6 +165,13 @@ export function CompetitionCard({
   const StatusIcon = statusConfig.icon;
   const draft = isDraft(competition.status);
   const cancelled = String(competition.status).toLowerCase() === 'cancelled' || String(competition.status).toLowerCase() === 'cancelada';
+  const isAdmin = (userRole ?? '').toLowerCase() === 'admin';
+  const inProgress = isInProgress(competition);
+  /** Apagar: rascunho/cancelada para todos; em andamento só para admin. */
+  const canDelete =
+    draft ||
+    cancelled ||
+    (isAdmin && (inProgress || ['aberta', 'enrollment_open', 'active'].includes(String(competition.status).toLowerCase())));
 
   return (
     <Card className={cn('flex flex-col transition-shadow hover:shadow-md', className)}>
@@ -236,7 +258,7 @@ export function CompetitionCard({
             </Button>
           )}
         </div>
-        {onDelete && (draft || cancelled) && (
+        {onDelete && canDelete && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon">

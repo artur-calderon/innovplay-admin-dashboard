@@ -238,6 +238,30 @@ export async function cancelCompetition(
   return data;
 }
 
+/** Resposta de POST /competitions/:id/stop (encerrar competição em andamento; só admin). */
+export interface StopCompetitionResponse {
+  message?: string;
+  status?: string;
+}
+
+/** Parar competição em andamento (gera ranking e encerra). Apenas admin. POST /competitions/:id/stop */
+export async function stopCompetition(
+  id: string,
+  options?: CompetitionRequestOptions
+): Promise<StopCompetitionResponse> {
+  const { data } = await api.post<StopCompetitionResponse>(`/competitions/${id}/stop`, undefined, cityConfig(options));
+  return data ?? {};
+}
+
+/** Aleatorizar questões da competição (question_mode === 'auto_random'). POST /competitions/:id/randomize-questions */
+export async function randomizeCompetitionQuestions(
+  id: string,
+  options?: CompetitionRequestOptions
+): Promise<{ message?: string }> {
+  const { data } = await api.post<{ message?: string }>(`/competitions/${id}/randomize-questions`, undefined, cityConfig(options));
+  return data ?? {};
+}
+
 export async function addCompetitionQuestions(
   id: string,
   questionIds: string[],

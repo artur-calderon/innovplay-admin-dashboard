@@ -36,6 +36,8 @@ import {
   type UpdateCompetitionTemplatePayload,
 } from '@/services/competitionTemplatesApi';
 import { CompetitionTemplateForm } from '@/components/competitions/CompetitionTemplateForm';
+import { getCompetitionSubjectDisplay } from '@/utils/competitionSubjectName';
+import { api } from '@/lib/api';
 
 function formatRecurrence(rec: string | undefined): string {
   const r = (rec ?? '').toLowerCase();
@@ -64,6 +66,15 @@ export default function CompetitionTemplateDetails() {
   const [error, setError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get<{ id: string; name: string }[]>('/subjects').then((res) => {
+      if (!cancelled && Array.isArray(res.data)) setSubjects(res.data);
+    }).catch(() => { if (!cancelled) setSubjects([]); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -130,6 +141,7 @@ export default function CompetitionTemplateDetails() {
   }
 
   const competitions = template.competitions ?? [];
+  const subjectDisplayName = getCompetitionSubjectDisplay(template, subjects);
 
   return (
     <div className="container mx-auto space-y-6 py-6 px-4">
@@ -152,7 +164,7 @@ export default function CompetitionTemplateDetails() {
           </h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant="secondary">
-              {template.subject_name ?? template.subject_id}
+              {subjectDisplayName}
             </Badge>
             <span>Nível {template.level}</span>
             <span>· {formatRecurrence(template.recurrence)}</span>
@@ -189,7 +201,7 @@ export default function CompetitionTemplateDetails() {
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground">Disciplina</p>
                 <p className="font-medium">
-                  {template.subject_name ?? template.subject_id}
+                  {subjectDisplayName}
                 </p>
               </div>
               <div className="space-y-1">

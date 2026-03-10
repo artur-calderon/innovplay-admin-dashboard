@@ -32,6 +32,7 @@ import { ptBR } from 'date-fns/locale';
 import { api } from '@/lib/api';
 import { EnrollConfirmationModal } from '@/components/competitions/EnrollConfirmationModal';
 import { formatCompetitionLevel } from '@/utils/competitionLevel';
+import { enrichListWithSubjectName } from '@/utils/competitionSubjectName';
 import { getSubjectColors } from '@/utils/competitionSubjectColors';
 import { CompetitionCountdown } from '@/components/competitions/CompetitionCountdown';
 import { StudentCompetitionClassificationCard } from '@/components/competitions/StudentCompetitionClassificationCard';
@@ -178,9 +179,18 @@ export default function CompetitionsStudent() {
     return () => { cancelled = true; };
   }, []);
 
+  const availableWithSubjectName = useMemo(
+    () => enrichListWithSubjectName(availableCompetitions, subjects),
+    [availableCompetitions, subjects],
+  );
+  const myWithSubjectName = useMemo(
+    () => enrichListWithSubjectName(myCompetitions, subjects),
+    [myCompetitions, subjects],
+  );
+
   /** Filtros aplicados às competições disponíveis (inscrição/prova). */
   const filteredAvailable = useMemo(() => {
-    let list = availableCompetitions;
+    let list = availableWithSubjectName;
     
     // Filtro por disciplina
     if (subjectFilter !== 'all') {
@@ -249,11 +259,11 @@ export default function CompetitionsStudent() {
     }
     
     return list;
-  }, [availableCompetitions, subjectFilter, levelFilter, minCoinsFilter, onlyWithSlots, dateFilter]);
+  }, [availableWithSubjectName, subjectFilter, levelFilter, minCoinsFilter, onlyWithSlots, dateFilter]);
 
   /** Filtros aplicados às competições do aluno (minhas/encerradas). */
   const filteredMy = useMemo(() => {
-    let list = myCompetitions;
+    let list = myWithSubjectName;
 
     // Filtro por disciplina
     if (subjectFilter !== 'all') {
@@ -285,7 +295,7 @@ export default function CompetitionsStudent() {
 
     // Para "minhas" competições, não aplicar filtros de vagas/data para evitar sumiço.
     return list;
-  }, [myCompetitions, subjectFilter, levelFilter, minCoinsFilter]);
+  }, [myWithSubjectName, subjectFilter, levelFilter, minCoinsFilter]);
 
   // Enriquecer competições do aluno com dados de sessão (/competitions/:id/my-session)
   // para corrigir casos em que a sessão já foi concluída mas ainda não temos attempt_* atualizados.
@@ -448,6 +458,12 @@ export default function CompetitionsStudent() {
     return Boolean(comp.attempt_completed_at) || ['completed', 'finalizada', 'finalizado', 'concluída', 'concluido'].includes(raw.toLowerCase());
   }
 
+  /** Competição finalizada (encerrada pelo admin); resultados/ranking só após isso. */
+  function isCompetitionFinalized(comp: Competition): boolean {
+    const s = String(comp.status ?? '').toLowerCase();
+    return s === 'completed' || s === 'encerrada' || comp.is_finished === true;
+  }
+
   function getProofStatusBadge(comp: Competition) {
     const completed = isAttemptCompleted(comp);
     const attemptStatus = comp.attempt_status ?? 'not_started';
@@ -588,7 +604,7 @@ export default function CompetitionsStudent() {
               <Eye className="mr-1 h-4 w-4" />
               Ver detalhes
             </Button>
-            {attemptStatus === 'completed' && (
+            {attemptStatus === 'completed' && isCompetitionFinalized(comp) && (
               <Button size="sm" variant="secondary" onClick={() => comp.test_id ? navigate(`/aluno/avaliacao/${comp.test_id}/resultado`) : navigate(`/aluno/competitions/${comp.id}`)}>
                 <CheckCircle className="mr-1 h-4 w-4" />
                 Ver resultado

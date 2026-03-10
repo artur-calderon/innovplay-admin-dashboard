@@ -27,21 +27,24 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { Loader2, ArrowLeft, Calendar, Clock, Trophy, BookOpen, Coins, Users, Award, Pencil, Send, Trash2, XCircle, UserCheck, Flag, ChevronDown, ChevronUp, BarChart3, Eye } from 'lucide-react';
+import { Loader2, ArrowLeft, Calendar, Clock, Trophy, BookOpen, Coins, Users, Award, Pencil, Send, Square, Trash2, XCircle, UserCheck, Flag, ChevronDown, ChevronUp, BarChart3, Eye, Shuffle } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import {
   getCompetition,
-  publishCompetition,
+  updateCompetition,
   cancelCompetition,
   deleteCompetition,
+  stopCompetition,
+  randomizeCompetitionQuestions,
   getEligibleStudentsForCompetition,
   getEnrolledStudentsForCompetition,
   getCompetitionRanking,
@@ -52,6 +55,7 @@ import {
 } from '@/services/competitionsApi';
 import type { Competition, CompetitionStatus } from '@/types/competition-types';
 import { EditCompetitionModal } from '@/components/competitions/EditCompetitionModal';
+import { EditCompetitionApplicationModal } from '@/components/competitions/EditCompetitionApplicationModal';
 import {
   Table,
   TableBody,
@@ -62,7 +66,10 @@ import {
 } from '@/components/ui/table';
 import { formatCoins, getMedalEmoji } from '@/utils/coins';
 import { getSubjectColors } from '@/utils/competitionSubjectColors';
+import { getCompetitionSubjectDisplay } from '@/utils/competitionSubjectName';
+import { parseISOToDatetimeLocal, convertDateTimeLocalToISONaive } from '@/utils/date';
 import { api } from '@/lib/api';
+import { useAuth } from '@/context/authContext';
 import QuestionPreview from '@/components/evaluations/questions/QuestionPreview';
 import type { Question as EvaluationQuestion } from '@/components/evaluations/types';
 
@@ -99,6 +106,7 @@ export default function CompetitionDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [competition, setCompetition] = useState<Competition | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -106,6 +114,8 @@ export default function CompetitionDetails() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [stopOpen, setStopOpen] = useState(false);
+  const [applicationModalOpen, setApplicationModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [questions, setQuestions] = useState<
@@ -126,6 +136,20 @@ export default function CompetitionDetails() {
   const [eligibleSectionOpen, setEligibleSectionOpen] = useState(false);
   const [selectedQuestion, setSelectedQuestion] = useState<EvaluationQuestion | null>(null);
   const [selectedRankingEntry, setSelectedRankingEntry] = useState<CompetitionRankingEntry | null>(null);
+  const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
+  /** Campos de data/hora para edição quando competição aberta ou em andamento (formato datetime-local). */
+  const [dateEnrollmentStart, setDateEnrollmentStart] = useState('');
+  const [dateEnrollmentEnd, setDateEnrollmentEnd] = useState('');
+  const [dateApplication, setDateApplication] = useState('');
+  const [dateExpiration, setDateExpiration] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get<{ id: string; name: string }[]>('/subjects').then((res) => {
+      if (!cancelled && Array.isArray(res.data)) setSubjects(res.data);
+    }).catch(() => { if (!cancelled) setSubjects([]); });
+    return () => { cancelled = true; };
+  }, []);
 
   const fetchCompetition = () => {
     if (!id) return;
@@ -144,6 +168,18 @@ export default function CompetitionDetails() {
     fetchCompetition();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  /** Sincroniza os campos de data/hora quando a competição está aberta ou em andamento. */
+  useEffect(() => {
+    if (!competition) return;
+    const s = String(competition.status).toLowerCase();
+    const isOpenOrActiveStatus = ['aberta', 'enrollment_open', 'active', 'em_andamento'].includes(s);
+    if (!isOpenOrActiveStatus) return;
+    setDateEnrollmentStart(parseISOToDatetimeLocal(competition.enrollment_start));
+    setDateEnrollmentEnd(parseISOToDatetimeLocal(competition.enrollment_end));
+    setDateApplication(parseISOToDatetimeLocal(competition.application));
+    setDateExpiration(parseISOToDatetimeLocal(competition.expiration));
+  }, [competition?.id, competition?.status, competition?.enrollment_start, competition?.enrollment_end, competition?.application, competition?.expiration]);
 
   useEffect(() => {
     const loadEligibleStudents = async () => {
@@ -302,12 +338,17 @@ export default function CompetitionDetails() {
     now <= enrollmentEndTime;
   /** Botão "Finalizar competição": data de expiração já passou e competição ainda aberta/em andamento. */
   const canFinalize = isOpenOrActive && isActuallyFinished;
+  const isAdmin = (user?.role ?? '').toLowerCase() === 'admin';
+  /** Parar competição em andamento: só admin; competição aberta ou em_andamento e não finalizada. */
+  const canStop = isOpenOrActive && competition?.is_finished !== true && isAdmin;
   /**
    * Excluir competição:
-   * - permitido apenas para rascunho ou já cancelada
-   * - em finalizada, primeiro cancela, depois aparece o botão de excluir.
+   * - Admin: rascunho, cancelada, aberta, em andamento ou finalizada.
+   * - Não admin: apenas rascunho ou já cancelada.
    */
-  const canDeleteDirectly = isDraft || isCancelled;
+  const canDeleteDirectly = isDraft || isCancelled || (isAdmin && (isOpenOrActive || isCompleted));
+  /** Aleatorizar questões: competição aberta ou em andamento e question_mode === 'auto_random'. */
+  const canRandomize = isOpenOrActive && (competition?.question_mode ?? '').toLowerCase() === 'auto_random';
   /**
    * Cancelar competição:
    * - disponível para competições já finalizadas (requisito: "em competições finalizadas na parte de ver")
@@ -326,21 +367,6 @@ export default function CompetitionDetails() {
       fetchCompetition();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Erro ao finalizar.';
-      toast({ title: 'Erro', description: msg, variant: 'destructive' });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handlePublish = async () => {
-    if (!id) return;
-    setActionLoading(true);
-    try {
-      await publishCompetition(id);
-      toast({ title: 'Competição publicada.' });
-      fetchCompetition();
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Erro ao publicar.';
       toast({ title: 'Erro', description: msg, variant: 'destructive' });
     } finally {
       setActionLoading(false);
@@ -382,6 +408,70 @@ export default function CompetitionDetails() {
     }
   };
 
+  const handleStop = async () => {
+    if (!id) return;
+    setActionLoading(true);
+    try {
+      await stopCompetition(id);
+      toast({ title: 'Competição encerrada. O ranking foi gerado.' });
+      setStopOpen(false);
+      fetchCompetition();
+    } catch (err: unknown) {
+      const res = (err as { response?: { data?: { error?: string }; status?: number } })?.response;
+      const msg = res?.data?.error ?? 'Não foi possível parar a competição.';
+      toast({ title: 'Erro', description: msg, variant: 'destructive' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRandomizeQuestions = async () => {
+    if (!id) return;
+    setActionLoading(true);
+    try {
+      await randomizeCompetitionQuestions(id);
+      toast({ title: 'Questões aleatorizadas com sucesso.' });
+      fetchCompetition();
+    } catch (err: unknown) {
+      const res = (err as { response?: { data?: { error?: string }; status?: number } })?.response;
+      const status = res?.status;
+      const msg =
+        status === 404
+          ? 'Competição não encontrada.'
+          : (res?.data?.error ?? 'Não foi possível aleatorizar as questões.');
+      toast({ title: 'Erro', description: msg, variant: 'destructive' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSaveDateTimeChanges = async () => {
+    if (!id) return;
+    const payload: Record<string, string> = {};
+    if (dateEnrollmentStart.trim()) payload.enrollment_start = convertDateTimeLocalToISONaive(dateEnrollmentStart.trim());
+    if (dateEnrollmentEnd.trim()) payload.enrollment_end = convertDateTimeLocalToISONaive(dateEnrollmentEnd.trim());
+    if (dateApplication.trim()) payload.application = convertDateTimeLocalToISONaive(dateApplication.trim());
+    if (dateExpiration.trim()) payload.expiration = convertDateTimeLocalToISONaive(dateExpiration.trim());
+    if (Object.keys(payload).length === 0) {
+      toast({ title: 'Nenhuma data alterada.', variant: 'destructive' });
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await updateCompetition(id, payload);
+      toast({ title: 'Datas atualizadas com sucesso.' });
+      fetchCompetition();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message
+        ?? (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? 'Não foi possível salvar as alterações.';
+      toast({ title: 'Erro', description: msg, variant: 'destructive' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto py-12 flex items-center justify-center">
@@ -405,7 +495,8 @@ export default function CompetitionDetails() {
     );
   }
 
-  const subjectColors = getSubjectColors(competition.subject_id ?? '', competition.subject_name);
+  const subjectDisplayName = getCompetitionSubjectDisplay(competition, subjects);
+  const subjectColors = getSubjectColors(competition.subject_id ?? '', subjectDisplayName);
   const questionCount = competition.selected_question_ids?.length ?? competition.question_ids?.length ?? 0;
   const enrolledCount = competition.enrolled_count ?? enrolledStudents.length;
   const maxParticipants = competition.max_participants ?? competition.limit;
@@ -437,7 +528,7 @@ export default function CompetitionDetails() {
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 {statusConfig && <Badge className={statusConfig.className}>{statusConfig.label}</Badge>}
                 <Badge variant="secondary" className={subjectColors.badge}>
-                  {competition.subject_name ?? competition.subject_id}
+                  {subjectDisplayName}
                 </Badge>
                 <span className="text-sm text-muted-foreground">
                   Nível {competition.level}
@@ -451,17 +542,17 @@ export default function CompetitionDetails() {
               )}
             </div>
             <div className="flex flex-wrap gap-2 shrink-0">
-              {canEdit && (
+              {canEdit && !isCompleted && (
                 <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
                   <Pencil className="mr-2 h-4 w-4" /> Editar
                 </Button>
               )}
               {isDraft && (
-                <Button size="sm" onClick={handlePublish} disabled={actionLoading}>
+                <Button size="sm" onClick={() => setApplicationModalOpen(true)} disabled={actionLoading}>
                   <Send className="mr-2 h-4 w-4" /> Publicar
                 </Button>
               )}
-              {canFinalize && (
+              {canFinalize && !isCompleted && (
                 <Button size="sm" onClick={handleFinalize} disabled={actionLoading}>
                   <Flag className="mr-2 h-4 w-4" /> Finalizar
                 </Button>
@@ -469,6 +560,27 @@ export default function CompetitionDetails() {
               {isCompleted && (
                 <Button variant="outline" size="sm" onClick={() => navigate(`/app/competitions/${id}/analytics`)}>
                   <BarChart3 className="mr-2 h-4 w-4" /> Analytics
+                </Button>
+              )}
+              {canRandomize && !isCompleted && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRandomizeQuestions}
+                  disabled={actionLoading}
+                >
+                  <Shuffle className="mr-2 h-4 w-4" /> Aleatorizar questões
+                </Button>
+              )}
+              {canStop && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setStopOpen(true)}
+                  disabled={actionLoading}
+                  className="border-amber-500 text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/50"
+                >
+                  <Square className="mr-2 h-4 w-4" /> Parar
                 </Button>
               )}
               {canCancel && (
@@ -521,6 +633,72 @@ export default function CompetitionDetails() {
               )}
             </div>
           </div>
+
+          {/* Edição de data/hora (apenas quando aberta ou em andamento) */}
+          {isOpenOrActive && (
+            <Card className="mt-6 border-dashed">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Alterar datas e horários
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Ajuste as datas de inscrição e da prova.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="dt-enrollment_start">Início das inscrições</Label>
+                    <Input
+                      id="dt-enrollment_start"
+                      type="datetime-local"
+                      step="60"
+                      value={dateEnrollmentStart}
+                      onChange={(e) => setDateEnrollmentStart(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dt-enrollment_end">Fim das inscrições</Label>
+                    <Input
+                      id="dt-enrollment_end"
+                      type="datetime-local"
+                      step="60"
+                      value={dateEnrollmentEnd}
+                      onChange={(e) => setDateEnrollmentEnd(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dt-application">Início da prova</Label>
+                    <Input
+                      id="dt-application"
+                      type="datetime-local"
+                      step="60"
+                      value={dateApplication}
+                      onChange={(e) => setDateApplication(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dt-expiration">Fim da prova</Label>
+                    <Input
+                      id="dt-expiration"
+                      type="datetime-local"
+                      step="60"
+                      value={dateExpiration}
+                      onChange={(e) => setDateExpiration(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <Button
+                  onClick={handleSaveDateTimeChanges}
+                  disabled={actionLoading}
+                >
+                  {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Salvar alterações de data/hora
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Recompensas resumidas */}
           {(competition.reward_config?.participation_coins != null ||
@@ -579,7 +757,7 @@ export default function CompetitionDetails() {
                         subject: competition.subject_id
                           ? {
                               id: competition.subject_id,
-                              name: competition.subject_name ?? competition.subject_id,
+                              name: subjectDisplayName,
                             }
                           : undefined,
                         educationStage: undefined,
@@ -959,6 +1137,14 @@ export default function CompetitionDetails() {
         competition={competition}
       />
 
+      <EditCompetitionApplicationModal
+        competitionId={id ?? null}
+        competitionName={competition?.name ?? ''}
+        open={applicationModalOpen}
+        onClose={() => setApplicationModalOpen(false)}
+        onSuccess={() => { fetchCompetition(); setApplicationModalOpen(false); }}
+      />
+
       <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -972,6 +1158,19 @@ export default function CompetitionDetails() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={actionLoading}>Voltar</AlertDialogCancel>
             <AlertDialogAction disabled={actionLoading} className="bg-destructive text-destructive-foreground" onClick={handleCancel}>Cancelar competição</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={stopOpen} onOpenChange={setStopOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Parar competição</AlertDialogTitle>
+            <AlertDialogDescription>Encerrar esta competição agora? O ranking será gerado.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actionLoading}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={actionLoading} onClick={handleStop}>Parar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

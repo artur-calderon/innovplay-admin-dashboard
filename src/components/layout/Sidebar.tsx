@@ -613,7 +613,7 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
       className={cn(
         "min-h-screen h-full flex flex-col z-50 relative",
         "border-r shadow-xl",
-        "transition-[width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+        "transition-[width] duration-300",
         isMobile && isMobileOpen && "animate-sidebar-slide-in",
         isMobile 
           ? "w-screen" 
@@ -621,7 +621,11 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
             ? "w-16 md:w-16 lg:w-16" 
             : "w-64 md:w-72 lg:w-64"
       )}
-      style={{ ...themeStyles, background: 'var(--sidebar-bg)' }}
+      style={{
+        ...themeStyles,
+        background: 'var(--sidebar-bg)',
+        transitionTimingFunction: 'cubic-bezier(0.32, 0.72, 0, 1)',
+      }}
     >
       {/* Header */}
       <div

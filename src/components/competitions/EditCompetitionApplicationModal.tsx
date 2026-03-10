@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { getCompetition, publishCompetition, updateCompetition } from '@/services/competitionsApi';
-import { parseISOToDatetimeLocal, convertDateTimeLocalToISONaive } from '@/utils/date';
+import { convertDateTimeLocalToISONaive } from '@/utils/date';
 import { CalendarDays, CalendarRange, Clock, Loader2 } from 'lucide-react';
 import type { Competition } from '@/types/competition-types';
 
@@ -44,26 +44,33 @@ export function EditCompetitionApplicationModal({
   const [loadingData, setLoadingData] = useState(false);
   const [competition, setCompetition] = useState<Competition | null>(null);
 
+  // Carrega competição só para validação (questões) e nome; não preenche datas.
+  // As datas devem ser sempre as selecionadas pelo usuário (sem pré-definição).
   useEffect(() => {
     if (!open || !competitionId) {
       setCompetition(null);
+      setEnrollmentStart('');
+      setEnrollmentEnd('');
+      setApplication('');
+      setExpiration('');
       return;
     }
     setLoadingData(true);
+    setEnrollmentStart('');
+    setEnrollmentEnd('');
+    setApplication('');
+    setExpiration('');
     getCompetition(competitionId)
       .then((c) => {
         setCompetition(c);
-        setEnrollmentStart(parseISOToDatetimeLocal(c.enrollment_start));
-        setEnrollmentEnd(parseISOToDatetimeLocal(c.enrollment_end));
-        setApplication(parseISOToDatetimeLocal(c.application));
-        setExpiration(parseISOToDatetimeLocal(c.expiration));
       })
       .catch(() => {
         setCompetition(null);
         toast({ title: 'Erro ao carregar competição.', variant: 'destructive' });
       })
       .finally(() => setLoadingData(false));
-  }, [open, competitionId, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- toast não deve disparar recarga
+  }, [open, competitionId]);
 
   /** Verifica se a competição tem questões configuradas (obrigatório para publicar). */
   function hasQuestions(c: Competition | null): boolean {
@@ -102,6 +109,7 @@ export function EditCompetitionApplicationModal({
       return;
     }
 
+    // Usar exatamente o valor atual dos inputs (state) para enviar ao backend
     const startStr = enrollmentStart.trim();
     const endStr = enrollmentEnd.trim();
     const appStr = application.trim();
