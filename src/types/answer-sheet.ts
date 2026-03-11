@@ -112,6 +112,8 @@ export interface Gabarito {
   generation_status?: string;
   can_download?: boolean;
   minio_url?: string;
+  /** URL do backend para download (com ?redirect=1). Usar no link "Baixar"; não usar minio_url no navegador. */
+  download_url?: string;
   /** Apenas quando scope_type === 'city' */
   schools_summary?: GabaritoSchoolSummary[];
 }
