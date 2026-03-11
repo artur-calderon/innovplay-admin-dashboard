@@ -94,7 +94,7 @@ export default function StudentResultsPage() {
     try {
       setIsLoading(true)
       const response = await api.get<StudentCompletedResponse>("/test/student/completed")
-      const data = response.data ?? {}
+      const data = (response.data as StudentCompletedResponse) || ({} as StudentCompletedResponse)
       const evaluations = data.evaluations ?? []
       const mapped = evaluations
         .filter((e) => {
@@ -331,55 +331,57 @@ export default function StudentResultsPage() {
               </CardContent>
             </Card>
           </div>
-          <Card className="border-2 border-dashed border-amber-300/60 dark:border-amber-500/40 rounded-2xl overflow-hidden bg-gradient-to-r from-amber-500/5 via-yellow-500/5 to-orange-500/5 dark:from-amber-500/10 dark:via-yellow-500/10 dark:to-orange-500/10 animate-fade-in-up">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2 font-bold">
-                <span className="p-1.5 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500">
-                  <Medal className="h-4 w-4 text-white" />
-                </span>
-                Conquistas
-              </CardTitle>
+          <Card className="border border-amber-200 dark:border-amber-500/30 rounded-2xl overflow-hidden bg-gradient-to-br from-amber-500/5 to-orange-500/5 dark:from-amber-500/10 dark:to-orange-500/10 animate-fade-in-up shadow-sm">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2 font-bold text-amber-700 dark:text-amber-400">
+                  <span className="p-1.5 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 shadow-sm">
+                    <Medal className="h-4 w-4 text-white" />
+                  </span>
+                  Suas Conquistas
+                </CardTitle>
+                <Link to="/aluno/conquistas" className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 hover:underline flex items-center gap-1 transition-colors">
+                  Ver todas <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
             </CardHeader>
             <CardContent className="pt-0">
               {loadingConquistas ? (
-                <div className="flex items-center justify-center py-6 gap-2 text-muted-foreground">
+                <div className="flex items-center py-4 gap-2 text-muted-foreground">
                   <Loader2 className="h-5 w-5 animate-spin" />
                   <span className="text-sm">Carregando conquistas...</span>
                 </div>
               ) : conquistasReais.length === 0 ? (
-                <div className="py-4 text-center">
+                <div className="py-4">
                   <p className="text-sm text-muted-foreground">Nenhuma conquista disponível ainda.</p>
-                  <Link to="/aluno/conquistas" className="inline-flex items-center gap-1.5 mt-2 text-sm font-medium text-amber-600 dark:text-amber-400 hover:underline">
-                    Ver página de conquistas <ArrowRight className="h-4 w-4" />
-                  </Link>
                 </div>
               ) : (
-                <>
-                  <div className="flex flex-wrap gap-2 overflow-hidden content-start" style={{ maxHeight: "4rem", lineHeight: 1.5 }}>
-                    {conquistasReais.map((c) => {
-                      const unlocked = isConquistaUnlocked(c)
-                      const label = c.estado === "oculta" && !c.nome ? "???" : (c.nome || "???")
-                      const medalhaMaior = c.medalha ?? (c.niveis?.filter((n) => n.desbloqueada).slice(-1)[0]?.medalha)
-                      return (
-                        <Badge
-                          key={c.achievement_id}
-                          variant={unlocked ? "default" : "outline"}
-                          className={`shrink-0 ${unlocked ? "bg-gradient-to-r from-amber-500 to-yellow-500 text-white border-0 gap-1.5 shadow-sm hover:scale-105 transition-transform" : "opacity-60 gap-1.5"}`}
-                        >
-                          {medalhaMaior ? (
-                            <MedalIcon tipo={medalhaMaior as MedalhaTipo} size={14} />
-                          ) : (
-                            <Medal className="h-4 w-4 shrink-0" />
-                          )}
-                          <span className="whitespace-nowrap">{label}</span>
-                        </Badge>
-                      )
-                    })}
-                  </div>
-                  <Link to="/aluno/conquistas" className="inline-flex items-center gap-1.5 mt-3 text-sm font-medium text-amber-600 dark:text-amber-400 hover:underline">
-                    Ver todas as conquistas <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </>
+                <div className="flex flex-wrap gap-2">
+                  {conquistasReais.slice(0, 12).map((c) => {
+                    const unlocked = isConquistaUnlocked(c)
+                    const label = c.estado === "oculta" && !c.nome ? "???" : (c.nome || "???")
+                    const medalhaMaior = c.medalha ?? (c.niveis?.filter((n) => n.desbloqueada).slice(-1)[0]?.medalha)
+                    return (
+                      <Badge
+                        key={c.achievement_id}
+                        variant={unlocked ? "default" : "outline"}
+                        className={`shrink-0 text-xs py-1 ${unlocked ? "bg-gradient-to-r from-amber-500 to-yellow-500 text-amber-950 dark:text-amber-950 border-0 gap-1.5 shadow-sm hover:scale-105 transition-transform cursor-default font-semibold" : "opacity-60 gap-1.5 bg-background font-medium hover:opacity-80 transition-opacity"}`}
+                      >
+                        {medalhaMaior ? (
+                          <MedalIcon tipo={medalhaMaior as MedalhaTipo} size={14} />
+                        ) : (
+                          <Medal className="h-3.5 w-3.5 shrink-0" />
+                        )}
+                        <span>{label}</span>
+                      </Badge>
+                    )
+                  })}
+                  {conquistasReais.length > 12 && (
+                    <Badge variant="outline" className="shrink-0 text-xs py-1 gap-1 border-dashed border-amber-300 dark:border-amber-600/50 text-amber-700 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-900/10">
+                      +{conquistasReais.length - 12} mais
+                    </Badge>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>
@@ -452,10 +454,14 @@ export default function StudentResultsPage() {
                           {item.classificacao}
                         </Badge>
                         {isTop && (
-                          <Trophy className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" title="Nota destaque" />
+                          <div title="Nota destaque" className="flex-shrink-0">
+                            <Trophy className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                          </div>
                         )}
                         {isGood && !isTop && (
-                          <Star className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" title="Bom desempenho" />
+                          <div title="Bom desempenho" className="flex-shrink-0">
+                            <Star className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                          </div>
                         )}
                       </div>
                     </div>

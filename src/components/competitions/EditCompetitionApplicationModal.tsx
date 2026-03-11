@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { getCompetition, publishCompetition, updateCompetition } from '@/services/competitionsApi';
-import { convertDateTimeLocalToISONaive } from '@/utils/date';
+import { parseISOToDatetimeLocal, convertDateTimeLocalToISONaive } from '@/utils/date';
 import { CalendarDays, CalendarRange, Clock, Loader2 } from 'lucide-react';
 import type { Competition } from '@/types/competition-types';
 
@@ -44,25 +44,20 @@ export function EditCompetitionApplicationModal({
   const [loadingData, setLoadingData] = useState(false);
   const [competition, setCompetition] = useState<Competition | null>(null);
 
-  // Carrega competição só para validação (questões) e nome; não preenche datas.
-  // As datas devem ser sempre as selecionadas pelo usuário (sem pré-definição).
+  // Carrega competição e preenche o formulário com as datas atuais (editar em cima do que já existe, como em Ver competição).
   useEffect(() => {
     if (!open || !competitionId) {
       setCompetition(null);
-      setEnrollmentStart('');
-      setEnrollmentEnd('');
-      setApplication('');
-      setExpiration('');
       return;
     }
     setLoadingData(true);
-    setEnrollmentStart('');
-    setEnrollmentEnd('');
-    setApplication('');
-    setExpiration('');
     getCompetition(competitionId)
       .then((c) => {
         setCompetition(c);
+        setEnrollmentStart(parseISOToDatetimeLocal(c.enrollment_start));
+        setEnrollmentEnd(parseISOToDatetimeLocal(c.enrollment_end));
+        setApplication(parseISOToDatetimeLocal(c.application));
+        setExpiration(parseISOToDatetimeLocal(c.expiration));
       })
       .catch(() => {
         setCompetition(null);
@@ -191,6 +186,8 @@ export function EditCompetitionApplicationModal({
 
       await updateCompetition(competitionId, payload);
       await publishCompetition(competitionId);
+      // Reaplicar as datas após publicar: o backend pode resetar datas no publish; editar de novo garante que as escolhidas permaneçam.
+      await updateCompetition(competitionId, payload);
 
       toast({ title: 'Competição agendada e publicada com sucesso.' });
       onSuccess();

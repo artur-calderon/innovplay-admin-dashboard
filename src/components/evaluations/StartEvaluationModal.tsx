@@ -375,7 +375,11 @@ export default function StartEvaluationModal({
                   </div>
                   <div>
                     <span className="font-medium">Questões:</span>
-                    <p className="mt-1">{evaluation.questions.length}</p>
+                    <p className="mt-1">
+                      {typeof evaluation.total_questions === 'number'
+                        ? evaluation.total_questions
+                        : (Array.isArray(evaluation.questions) ? evaluation.questions.length : 0)}
+                    </p>
                   </div>
                   <div>
                     <span className="font-medium">Duração:</span>

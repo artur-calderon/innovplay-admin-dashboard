@@ -193,7 +193,8 @@ export function CompetitionCard({
         </Badge>
       </CardHeader>
       <CardContent className="flex-1 space-y-2 pt-0 text-sm">
-        {competition.enrollment_end && (
+        {/* Só exibe datas no card quando não for rascunho — em rascunho as datas são definidas no modal Aplicação */}
+        {!draft && competition.enrollment_end && (
           <div className="flex flex-col gap-1">
             <p className="flex items-center gap-2 text-muted-foreground">
               <Calendar className="h-3.5 w-3.5 shrink-0" />
@@ -206,7 +207,7 @@ export function CompetitionCard({
             />
           </div>
         )}
-        {competition.application && (
+        {!draft && competition.application && (
           <div className="flex flex-col gap-1">
             <p className="flex items-center gap-2 text-muted-foreground">
               <Clock className="h-3.5 w-3.5 shrink-0" />
@@ -219,7 +220,7 @@ export function CompetitionCard({
             />
           </div>
         )}
-        {competition.expiration && (
+        {!draft && competition.expiration && (
           <div className="flex flex-col gap-1">
             <p className="flex items-center gap-2 text-muted-foreground">
               <CalendarRange className="h-3.5 w-3.5 shrink-0" />
