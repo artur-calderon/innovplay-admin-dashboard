@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react"
-import { useNavigate, Link } from "react-router-dom"
+import { useNavigate, Link, useSearchParams } from "react-router-dom"
 import { useAuth } from "@/context/authContext"
 import { api } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,8 +13,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { Trophy, FileText, ExternalLink, BarChart2, Star, Target, Medal, RefreshCw, BookOpen, Calendar, Loader2, ArrowRight } from "lucide-react"
+import { Trophy, FileText, ExternalLink, BarChart2, Star, Target, Medal, RefreshCw, BookOpen, Calendar, Loader2, ArrowRight, Award } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StudentResultSummaryCharts } from "@/components/student/StudentResultSummaryCharts"
 import { getConquistas, type Conquista } from "@/services/conquistasApi"
 import { MedalIcon } from "@/components/conquistas/medalConfig"
@@ -54,8 +55,12 @@ interface StudentCompletedResponse {
   }>
 }
 
+/** Tipo do resultado para separar em abas: avaliação, competição ou olimpíada. */
+export type ResultTypeTab = "avaliacao" | "competicao" | "olimpiada"
+
 export interface StudentResultListItem {
   id: string
+  resultType: ResultTypeTab
   titulo: string
   disciplina: string
   data_aplicacao: string
@@ -77,10 +82,21 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "questions_asc", label: "Menos questões" },
 ]
 
+const TAB_VALUES: ResultTypeTab[] = ["avaliacao", "competicao", "olimpiada"]
+const TAB_LABELS: Record<ResultTypeTab, string> = {
+  avaliacao: "Avaliações",
+  competicao: "Competições",
+  olimpiada: "Olimpíadas",
+}
+
 export default function StudentResultsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { toast } = useToast()
+  const tabFromUrl = (searchParams.get("tab") as ResultTypeTab) || "avaliacao"
+  const activeTab = TAB_VALUES.includes(tabFromUrl) ? tabFromUrl : "avaliacao"
+
   const [items, setItems] = useState<StudentResultListItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [conquistasReais, setConquistasReais] = useState<Conquista[]>([])
@@ -89,6 +105,21 @@ export default function StudentResultsPage() {
   const [sortBy, setSortBy] = useState<SortOption>("recent")
   const [expandedResultId, setExpandedResultId] = useState<string | null>(null)
 
+  const setActiveTab = (tab: ResultTypeTab) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set("tab", tab)
+      return next
+    })
+  }
+
+  function mapApiTypeToResultType(type: string | undefined): ResultTypeTab {
+    const t = (type ?? "").toLowerCase()
+    if (t.includes("olimpi")) return "olimpiada"
+    if (t.includes("compet")) return "competicao"
+    return "avaliacao"
+  }
+
   const fetchCompleted = useCallback(async () => {
     if (!user?.id) return
     try {
@@ -96,13 +127,11 @@ export default function StudentResultsPage() {
       const response = await api.get<StudentCompletedResponse>("/test/student/completed")
       const data = (response.data as StudentCompletedResponse) || ({} as StudentCompletedResponse)
       const evaluations = data.evaluations ?? []
-      const mapped = evaluations
-        .filter((e) => {
-          const type = (e.type ?? "").toLowerCase()
-          return !type.includes("olimpi") && !type.includes("compet")
-        })
-        .map((e) => ({
+      const mapped = evaluations.map((e) => {
+        const type = e.type ?? ""
+        return {
           id: e.test_id,
+          resultType: mapApiTypeToResultType(type),
           titulo: e.title ?? "—",
           disciplina: e.subject?.name ?? "—",
           data_aplicacao: e.application_info?.application ?? "—",
@@ -111,7 +140,8 @@ export default function StudentResultsPage() {
           acertos: Number(e.student_results?.correct_answers) ?? 0,
           total_questions_result: Number(e.student_results?.total_questions) ?? e.total_questions ?? 0,
           classificacao: e.student_results?.classification ?? "—",
-        }))
+        }
+      })
       setItems(mapped)
     } catch (err) {
       toast({
@@ -145,27 +175,37 @@ export default function StudentResultsPage() {
     return () => { cancelled = true }
   }, [])
 
-  const disciplines = useMemo(() => {
-    const set = new Set<string>()
-    items.forEach((i) => set.add(i.disciplina))
-    return Array.from(set).sort()
+  const itemsByTab = useMemo(() => {
+    const byTab: Record<ResultTypeTab, StudentResultListItem[]> = {
+      avaliacao: items.filter((i) => i.resultType === "avaliacao"),
+      competicao: items.filter((i) => i.resultType === "competicao"),
+      olimpiada: items.filter((i) => i.resultType === "olimpiada"),
+    }
+    return byTab
   }, [items])
 
-  // Estatísticas gamificadas (derivadas dos resultados)
+  const disciplines = useMemo(() => {
+    const list = itemsByTab[activeTab]
+    const set = new Set<string>()
+    list.forEach((i) => set.add(i.disciplina))
+    return Array.from(set).sort()
+  }, [itemsByTab, activeTab])
+
+  // Estatísticas gamificadas (derivadas dos resultados da aba ativa)
   const stats = useMemo(() => {
-    if (items.length === 0) return null
-    const grades = items.map((i) => i.nota ?? 0).filter((g) => g > 0)
+    const list = itemsByTab[activeTab]
+    if (list.length === 0) return null
+    const grades = list.map((i) => i.nota ?? 0).filter((g) => g > 0)
     const sum = grades.reduce((a, b) => a + b, 0)
     const media = grades.length > 0 ? sum / grades.length : 0
     const melhorNota = grades.length > 0 ? Math.max(...grades) : 0
-    // "XP" simulado: 10 por avaliação + bônus por nota (ex: nota * 2 por prova)
-    const xpTotal = items.reduce((acc, i) => acc + 10 + (i.nota ?? 0) * 2, 0)
+    const xpTotal = list.reduce((acc, i) => acc + 10 + (i.nota ?? 0) * 2, 0)
     const xpProximoNivel = 100
     const nivel = Math.floor(xpTotal / xpProximoNivel) + 1
     const xpNoNivel = xpTotal % xpProximoNivel
     const progressoNivel = (xpNoNivel / xpProximoNivel) * 100
-    return { total: items.length, media, melhorNota, xpTotal, nivel, progressoNivel }
-  }, [items])
+    return { total: list.length, media, melhorNota, xpTotal, nivel, progressoNivel }
+  }, [itemsByTab, activeTab])
 
   // Conquistas reais da API: considerar desbloqueada se tem estado desbloqueada, medalha atual ou algum nível desbloqueado
   const isConquistaUnlocked = useCallback((c: Conquista) => {
@@ -179,7 +219,8 @@ export default function StudentResultsPage() {
   )
 
   const filteredAndSorted = useMemo(() => {
-    let list = filterDiscipline === "todas" ? items : items.filter((i) => i.disciplina === filterDiscipline)
+    const listTab = itemsByTab[activeTab]
+    let list = filterDiscipline === "todas" ? listTab : listTab.filter((i) => i.disciplina === filterDiscipline)
     const sorted = [...list].sort((a, b) => {
       switch (sortBy) {
         case "questions_desc":
@@ -199,7 +240,7 @@ export default function StudentResultsPage() {
       }
     })
     return sorted
-  }, [items, filterDiscipline, sortBy])
+  }, [itemsByTab, activeTab, filterDiscipline, sortBy])
 
   const handleVerResultadoCompleto = (id: string) => {
     navigate(`/aluno/avaliacao/${id}/resultado`)
@@ -211,17 +252,18 @@ export default function StudentResultsPage() {
 
   const expandedItem = expandedResultId ? filteredAndSorted.find((i) => i.id === expandedResultId) : null
 
-  // test_ids em ordem cronológica (mais antiga → mais recente) para POST /test/student/compare; inclui a avaliação aberta, máx. 5
+  // test_ids em ordem cronológica (mais antiga → mais recente) para POST /test/student/compare
   const testIdsForCompare = useMemo(() => {
-    if (!expandedResultId || !items.length) return []
-    const byDate = [...items].sort(
+    const listTab = itemsByTab[activeTab]
+    if (!expandedResultId || !listTab.length) return []
+    const byDate = [...listTab].sort(
       (a, b) => new Date(a.data_aplicacao).getTime() - new Date(b.data_aplicacao).getTime()
     )
     const idx = byDate.findIndex((i) => i.id === expandedResultId)
     if (idx < 0) return []
     const start = Math.max(0, idx - 3)
     return byDate.slice(start, idx + 1).map((i) => i.id)
-  }, [items, expandedResultId])
+  }, [itemsByTab, activeTab, expandedResultId])
 
   if (user?.role !== "aluno") {
     navigate("/aluno")
@@ -388,34 +430,66 @@ export default function StudentResultsPage() {
         </>
       )}
 
-      {/* Lista de resultados (estilo Avaliações) */}
-      <div className="flex flex-wrap gap-3 items-center mb-4">
-        <Select value={filterDiscipline} onValueChange={setFilterDiscipline} aria-label="Filtrar por disciplina">
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Disciplina" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todas">Todas as disciplinas</SelectItem>
-            {disciplines.map((d) => (
-              <SelectItem key={d} value={d}>
-                {d}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)} aria-label="Ordenar por">
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Ordenar" />
-          </SelectTrigger>
-          <SelectContent>
-            {SORT_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {/* Abas: Avaliações, Competições, Olimpíadas */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ResultTypeTab)} className="space-y-4">
+        <TabsList className="grid w-full max-w-md grid-cols-3 bg-muted/60 p-1 rounded-xl">
+          <TabsTrigger value="avaliacao" className="gap-2 rounded-lg data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-700 dark:data-[state=active]:text-violet-300">
+            <FileText className="h-4 w-4" />
+            {TAB_LABELS.avaliacao}
+            {itemsByTab.avaliacao.length > 0 && (
+              <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-xs">
+                {itemsByTab.avaliacao.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="competicao" className="gap-2 rounded-lg data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-700 dark:data-[state=active]:text-violet-300">
+            <Award className="h-4 w-4" />
+            {TAB_LABELS.competicao}
+            {itemsByTab.competicao.length > 0 && (
+              <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-xs">
+                {itemsByTab.competicao.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="olimpiada" className="gap-2 rounded-lg data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-700 dark:data-[state=active]:text-violet-300">
+            <Trophy className="h-4 w-4" />
+            {TAB_LABELS.olimpiada}
+            {itemsByTab.olimpiada.length > 0 && (
+              <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-xs">
+                {itemsByTab.olimpiada.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-3 items-center">
+            <Select value={filterDiscipline} onValueChange={setFilterDiscipline} aria-label="Filtrar por disciplina">
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Disciplina" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas as disciplinas</SelectItem>
+                {disciplines.map((d) => (
+                  <SelectItem key={d} value={d}>
+                    {d}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)} aria-label="Ordenar por">
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Ordenar" />
+              </SelectTrigger>
+              <SelectContent>
+                {SORT_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -427,11 +501,17 @@ export default function StudentResultsPage() {
         <Card className="border-dashed overflow-hidden">
           <CardContent className="py-10 sm:py-12 text-center">
             <div className="w-14 h-14 rounded-full bg-[#7B3FE4]/10 dark:bg-[#7B3FE4]/20 flex items-center justify-center mx-auto mb-4">
-              <FileText className="h-7 w-7 text-[#7B3FE4]" aria-hidden />
+              {activeTab === "avaliacao" && <FileText className="h-7 w-7 text-[#7B3FE4]" aria-hidden />}
+              {activeTab === "competicao" && <Award className="h-7 w-7 text-[#7B3FE4]" aria-hidden />}
+              {activeTab === "olimpiada" && <Trophy className="h-7 w-7 text-[#7B3FE4]" aria-hidden />}
             </div>
-            <p className="font-medium text-foreground">Nenhuma avaliação com resultado</p>
+            <p className="font-medium text-foreground">
+              {activeTab === "avaliacao" && "Nenhuma avaliação com resultado"}
+              {activeTab === "competicao" && "Nenhuma competição com resultado"}
+              {activeTab === "olimpiada" && "Nenhuma olimpíada com resultado"}
+            </p>
             <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
-              Quando você concluir avaliações e tiver resultado, elas aparecerão aqui.
+              Quando você concluir e tiver resultado, ele aparecerá aqui.
             </p>
           </CardContent>
         </Card>
@@ -519,6 +599,8 @@ export default function StudentResultsPage() {
           })}
         </div>
       )}
+        </div>
+      </Tabs>
 
       <Sheet open={!!expandedResultId} onOpenChange={(open) => !open && setExpandedResultId(null)}>
         <SheetContent className="w-full sm:max-w-lg overflow-y-auto" aria-describedby="resumo-charts-desc">

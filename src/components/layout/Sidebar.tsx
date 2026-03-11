@@ -322,11 +322,17 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
       links: [
         { icon: Award, label: "Certificados", href: `${user.role === 'aluno' ? "/aluno/certificados" : "/app/certificados"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
         { icon: Sparkles, label: "Olimpíadas", href: `${user.role === 'aluno' ? "/aluno/olimpiadas" : "/app/olimpiadas"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
+      ]
+    },
+    {
+      name: "Recomposição",
+      role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
+      links: [
         { icon: Trophy, label: "Competições", href: `${user.role === 'aluno' ? "/aluno/competitions" : "/app/competitions"}`, role: ["admin", "professor", "coordenador", "diretor", "tecadm", "aluno"], badge: user.role === 'aluno' && openCompetitionsCount > 0 ? String(openCompetitionsCount) : undefined },
-        { icon: Coins, label: "Administração de moedas", href: "/app/moedas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-        { icon: ShoppingBag, label: "Itens da loja", href: "/app/loja/gerenciar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: Coins, label: "Histórico de Moedas", href: "/aluno/moedas/historico", role: ["aluno"] },
+        { icon: Coins, label: "Administração de moedas", href: "/app/moedas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: ShoppingBag, label: "Loja", href: "/aluno/loja", role: ["aluno"] },
+        { icon: ShoppingBag, label: "Itens da loja", href: "/app/loja/gerenciar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
       ]
     },
     {

@@ -37,12 +37,22 @@ interface CompetitionLocationState {
   showRankingButton?: boolean;
 }
 
+/** Retorna o tipo de contexto da prova para redirecionar ao concluir: avaliação, competição ou olimpíada. */
+function getEvaluationContext(pathname: string, state: CompetitionLocationState | null): 'avaliacao' | 'competicao' | 'olimpiada' {
+  if (state?.fromCompetition) return 'competicao';
+  if (pathname.includes('/aluno/olimpiada/')) return 'olimpiada';
+  return 'avaliacao';
+}
+
 
 export default function TakeEvaluation() {
     const { id: evaluationId } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const location = useLocation();
     const competitionState = (location.state ?? null) as CompetitionLocationState | null;
+    const evaluationContext = getEvaluationContext(location.pathname, competitionState);
+    const returnPath = evaluationContext === 'olimpiada' ? '/aluno/olimpiadas' : evaluationContext === 'competicao' ? '/aluno/competitions' : '/aluno/avaliacoes';
+    const returnLabel = evaluationContext === 'olimpiada' ? 'Voltar às Olimpíadas' : evaluationContext === 'competicao' ? 'Voltar às Competições' : 'Voltar às Avaliações';
     const { toast } = useToast();
     const [showSubmitDialog, setShowSubmitDialog] = useState(false);
     const [showCompletionDialog, setShowCompletionDialog] = useState(false);
@@ -139,12 +149,12 @@ export default function TakeEvaluation() {
                 variant: "destructive",
             });
             const timer = setTimeout(() => {
-                navigate("/aluno/avaliacoes");
+                navigate(returnPath);
             }, 2000);
             
             return () => clearTimeout(timer);
         }
-    }, [evaluationState, results, testData, session, navigate, toast]);
+    }, [evaluationState, results, testData, session, navigate, toast, returnPath]);
 
     // ✅ Auto-iniciar avaliação automaticamente
     useEffect(() => {
@@ -373,35 +383,34 @@ export default function TakeEvaluation() {
 
     // ✅ Quando conclusão é de prova de competição, abrir modal de sucesso em vez de redirecionar
     useEffect(() => {
-        if (evaluationState === 'completed' && competitionState?.fromCompetition) {
+        if (evaluationState === 'completed' && evaluationContext === 'competicao') {
             setShowFullscreenQuestion(false);
             setShowCompletionDialog(false);
             setShowSubmitDialog(false);
             setIsCompletionDialogClosed(false);
             setShowCompetitionSuccessModal(true);
         }
-    }, [evaluationState, competitionState?.fromCompetition]);
+    }, [evaluationState, evaluationContext]);
 
-    // ✅ Redirecionamento automático quando avaliação é concluída (exceto competição)
+    // ✅ Redirecionamento automático quando avaliação é concluída (avaliação ou olimpíada; competição usa modal)
     useEffect(() => {
-        if (evaluationState === 'completed' && !competitionState?.fromCompetition) {
+        if (evaluationState === 'completed' && evaluationContext !== 'competicao') {
             setShowFullscreenQuestion(false);
             setShowCompletionDialog(false);
             setShowSubmitDialog(false);
             setIsCompletionDialogClosed(false);
-            
+            const targetLabel = evaluationContext === 'olimpiada' ? 'olimpíadas' : 'avaliações';
+            const targetPath = evaluationContext === 'olimpiada' ? '/aluno/olimpiadas' : '/aluno/avaliacoes';
             toast({
-                title: "✅ Avaliação enviada com sucesso!",
-                description: "Redirecionando para a listagem de avaliações...",
+                title: "✅ Prova enviada com sucesso!",
+                description: `Redirecionando para ${targetLabel}...`,
             });
-            
             const timer = setTimeout(() => {
-                navigate("/aluno/avaliacoes");
+                navigate(targetPath);
             }, 1500);
-            
             return () => clearTimeout(timer);
         }
-    }, [evaluationState, results, navigate, toast, competitionState?.fromCompetition]);
+    }, [evaluationState, results, navigate, toast, evaluationContext]);
 
     // ✅ REMOVIDO: useEffect duplicado que estava causando conflitos
 
@@ -514,9 +523,9 @@ export default function TakeEvaluation() {
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => navigate("/aluno/avaliacoes")}
+                                        onClick={() => navigate(returnPath)}
                                     >
-                                        Voltar às Avaliações
+                                        {returnLabel}
                                     </Button>
                                 </div>
                             </div>
@@ -529,14 +538,17 @@ export default function TakeEvaluation() {
 
     // Results screen - Mostrar resultados imediatos (ou modal de competição)
     if (evaluationState === 'completed') {
-        const isCompetition = Boolean(competitionState?.fromCompetition);
+        const isCompetition = evaluationContext === 'competicao';
+        const isOlimpiada = evaluationContext === 'olimpiada';
+        const backPath = isOlimpiada ? '/aluno/olimpiadas' : '/aluno/avaliacoes';
+        const backLabel = isOlimpiada ? 'Voltar às Olimpíadas' : 'Voltar às Avaliações';
         return (
             <div className="flex items-center justify-center min-h-screen w-screen bg-background p-4">
                 <div className="max-w-lg w-full">
                     <Card>
                         <CardHeader>
                             <CardTitle className="text-center">
-                                {results ? "✅ Avaliação Concluída!" : "⚠️ Avaliação Já Enviada"}
+                                {results ? "✅ Prova Concluída!" : "⚠️ Prova Já Enviada"}
                             </CardTitle>
                             <div className="text-center space-y-2">
                                 <h2 className="text-xl font-semibold">{competitionState?.competitionName ?? testData?.title}</h2>
@@ -559,8 +571,8 @@ export default function TakeEvaluation() {
                                         results ? 'text-green-800' : 'text-yellow-800'
                                     }`}>
                                         {results 
-                                            ? "Avaliação Enviada com Sucesso!" 
-                                            : "Avaliação Já Foi Enviada Anteriormente"
+                                            ? "Prova Enviada com Sucesso!" 
+                                            : "Prova Já Foi Enviada Anteriormente"
                                         }
                                     </h3>
                                     {!isCompetition && (
@@ -576,11 +588,11 @@ export default function TakeEvaluation() {
                             {!isCompetition && (
                                 <div className="text-center">
                                     <Button
-                                        onClick={() => navigate("/aluno/avaliacoes")}
+                                        onClick={() => navigate(backPath)}
                                         className="bg-purple-600 hover:bg-purple-700"
                                     >
                                         <Home className="h-4 w-4 mr-2" />
-                                        Voltar às Avaliações
+                                        {backLabel}
                                     </Button>
                                 </div>
                             )}
@@ -646,9 +658,9 @@ export default function TakeEvaluation() {
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => navigate("/aluno/avaliacoes")}
+                                        onClick={() => navigate(returnPath)}
                                     >
-                                        Voltar às Avaliações
+                                        {returnLabel}
                                     </Button>
                                 </div>
                             </div>
@@ -690,9 +702,9 @@ export default function TakeEvaluation() {
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => navigate("/aluno/avaliacoes")}
+                                        onClick={() => navigate(returnPath)}
                                     >
-                                        Voltar às Avaliações
+                                        {returnLabel}
                                     </Button>
                                 </div>
                             </div>

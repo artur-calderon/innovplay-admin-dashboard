@@ -51,6 +51,8 @@ export interface Question {
 export interface TestData {
     id: string;
     title: string;
+    /** Tipo da avaliação: AVALIACAO, OLIMPIADA, SIMULADO, COMPETICAO, etc. */
+    type?: string;
     subject: { id: string; name: string };
     duration: number;
     duration_minutes?: number; // alternativo do backend (minutos)

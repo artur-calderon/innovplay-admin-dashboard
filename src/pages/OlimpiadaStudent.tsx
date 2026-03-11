@@ -163,21 +163,28 @@ export default function OlimpiadaStudent() {
       }
 
       // ✅ CRÍTICO: Mesclar duration da olimpíada como fallback se test.duration vier null
-      // O backend pode retornar duration null para olimpíadas mas corretamente para avaliações
       const finalDuration = test.duration || olimpiada.duration || 60;
       
       // ✅ CRÍTICO: Incluir startDateTime e endDateTime da olimpíada no testData
-      // Isso é necessário para que a validação de período funcione corretamente no useEvaluation
-      // As avaliações recebem esses campos diretamente do getTestData, mas olimpíadas precisam
-      // buscar de getOlimpiada que retorna em application_info
       const startDateTime = olimpiada.startDateTime || olimpiada.application_info?.application;
       const endDateTime = olimpiada.endDateTime || olimpiada.application_info?.expiration;
       
+      // ✅ Garantir type OLIMPIADA (backend pode vir como null/avaliacao; front precisa do tipo)
+      const testType = (test?.type || olimpiada?.type || 'OLIMPIADA').toString().toUpperCase();
+      const normalizedType = testType === 'OLIMPIADA' ? 'OLIMPIADA' : testType;
+      
+      // ✅ Evitar erro quando subject vem null (olimpíadas podem não ter subject único)
+      const subject = test?.subject && typeof test.subject === 'object'
+        ? { id: (test.subject as { id?: string }).id ?? '', name: (test.subject as { name?: string }).name ?? 'Olimpíada' }
+        : { id: '', name: 'Olimpíada' };
+      
       setTestData({
         ...test,
-        duration: finalDuration, // ✅ Garantir que duration nunca seja null/undefined
-        startDateTime: startDateTime, // ✅ CRÍTICO: Incluir data de início para validação de período
-        endDateTime: endDateTime // ✅ CRÍTICO: Incluir data de término para validação de período
+        type: normalizedType,
+        subject,
+        duration: finalDuration,
+        startDateTime,
+        endDateTime
       });
       
       // ✅ PADRONIZADO: Verificar se pode iniciar usando endpoint can-start (mesmo padrão de StudentEvaluations)
@@ -280,7 +287,7 @@ export default function OlimpiadaStudent() {
             <div className="text-center">
               <h2 className="text-xl font-semibold mb-2">{testData.title}</h2>
               <Badge variant="outline" className="text-sm">
-                {testData.subject.name}
+                {testData.subject?.name ?? 'Olimpíada'}
               </Badge>
             </div>
 

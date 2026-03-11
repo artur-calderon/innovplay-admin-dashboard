@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,14 +11,14 @@ import { Loader2, X, Plus, Trophy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
 import { useAuth } from '@/context/authContext';
-import { OlimpiadaFormData, Subject, ClassInfo } from '@/types/olimpiada-types';
+import { OlimpiadaFormData } from '@/types/olimpiada-types';
 import { OlimpiadasApiService } from '@/services/olimpiadasApi';
 import { ClassSelector } from './ClassSelector';
-import { EvaluationFormData, Question } from '@/components/evaluations/types';
+import { EvaluationFormData, Question, Subject, ClassInfo } from '@/components/evaluations/types';
 import { QuestionBank } from '@/components/evaluations/QuestionBank';
 import QuestionPreview from '@/components/evaluations/questions/QuestionPreview';
 import QuestionFormReadOnly from '@/components/evaluations/questions/QuestionFormReadOnly';
-import { Book, Eye, Trash2, Users, UserCheck } from 'lucide-react';
+import { Book, Eye, Trash2, Users, UserCheck, Search, ChevronDown, ChevronUp, Filter } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -94,6 +94,9 @@ export function CreateOlimpiadaModal({
   const [availableStudents, setAvailableStudents] = useState<Array<{ id: string; name: string; class_name?: string }>>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
+  const [studentSearchTerm, setStudentSearchTerm] = useState('');
+  /** Na aba Alunos Individuais: filtros (curso, série, local, turmas) só aparecem ao clicar no botão. */
+  const [showStudentFilters, setShowStudentFilters] = useState(false);
   
   // Opções
   const [courses, setCourses] = useState<Course[]>([]);
@@ -102,6 +105,20 @@ export function CreateOlimpiadaModal({
   const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+
+  /** Usado para exibir toast após setState (evita setState durante render). */
+  const pendingQuestionToastRef = useRef<'added' | 'duplicate' | 'created' | null>(null);
+
+  /** Alunos filtrados por nome na seleção individual. */
+  const filteredStudentsBySearch = useMemo(() => {
+    if (!studentSearchTerm.trim()) return availableStudents;
+    const term = studentSearchTerm.trim().toLowerCase();
+    return availableStudents.filter(
+      (s) =>
+        s.name.toLowerCase().includes(term) ||
+        (s.class_name && s.class_name.toLowerCase().includes(term))
+    );
+  }, [availableStudents, studentSearchTerm]);
 
   // Carregar dados iniciais
   useEffect(() => {
@@ -326,8 +343,8 @@ export function CreateOlimpiadaModal({
       setTitle(data.title || '');
       setDescription(data.description || '');
       setDuration(String(data.duration || 60));
-      setCourse(data.course || '');
-      setGrade(data.grade || data.grade_id || '');
+      setCourse(typeof data.course === 'object' && data.course !== null && 'id' in data.course ? (data.course as { id: string }).id : String(data.course ?? ''));
+      setGrade(typeof data.grade === 'object' && data.grade !== null && 'id' in data.grade ? (data.grade as { id: string }).id : String(data.grade ?? data.grade_id ?? ''));
       
       if (data.subjects) {
         setSelectedSubjects(Array.isArray(data.subjects) ? data.subjects : [data.subjects]);
@@ -376,11 +393,11 @@ export function CreateOlimpiadaModal({
 
   const handleNext = () => {
     if (step === 1) {
-      // Validar dados básicos
-      if (!title || !course || !grade || !state || !municipality || selectedSchools.length === 0 || selectedSubjects.length === 0) {
+      // Validar apenas título, duração e disciplinas no passo 1
+      if (!title?.trim() || !duration || selectedSubjects.length === 0) {
         toast({
           title: 'Campos obrigatórios',
-          description: 'Preencha todos os campos obrigatórios',
+          description: 'Preencha título, duração e selecione pelo menos uma disciplina',
           variant: 'destructive',
         });
         return;
@@ -459,44 +476,79 @@ export function CreateOlimpiadaModal({
     }
   };
 
-  // Carregar alunos quando turmas forem selecionadas e modo for alunos individuais
+  /** Carrega todos os alunos do município (GET /students — usa contexto do tenant/cidade). */
+  const loadAllStudentsFromMunicipality = async () => {
+    setLoadingStudents(true);
+    try {
+      const response = await api.get('/students');
+      const raw = Array.isArray(response.data) ? response.data : [];
+      const list: Array<{ id: string; name: string; class_name?: string }> = raw.map((item: any) => ({
+        id: String(item.user?.id ?? item.id ?? ''),
+        name: String(item.name ?? item.user?.name ?? 'Nome não informado'),
+        class_name: item.class?.name ?? item.grade?.name,
+      }));
+      setAvailableStudents(list);
+      if (list.length === 0) {
+        toast({ title: 'Nenhum aluno no município', description: 'Não há alunos cadastrados no contexto atual.', variant: 'destructive' });
+      } else {
+        toast({ title: `${list.length} aluno(s) carregado(s)`, description: 'Todos os alunos do município.' });
+      }
+    } catch (err) {
+      console.error('Erro ao carregar alunos do município:', err);
+      toast({ title: 'Erro', description: 'Não foi possível carregar os alunos do município.', variant: 'destructive' });
+      setAvailableStudents([]);
+    } finally {
+      setLoadingStudents(false);
+    }
+  };
+
+  // Carregar todos os alunos do município por padrão ao entrar na aba Alunos Individuais (step 3)
+  useEffect(() => {
+    if (step === 3 && applicationMode === 'students' && isOpen) {
+      loadAllStudentsFromMunicipality();
+    }
+    if (applicationMode === 'classes') {
+      setAvailableStudents([]);
+      setSelectedStudentIds([]);
+      setShowStudentFilters(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, applicationMode, isOpen]);
+
+  // Carregar alunos quando turmas forem selecionadas (modo alunos individuais com filtros)
   useEffect(() => {
     if (applicationMode === 'students' && selectedClasses.length > 0) {
-      // ✅ IMPORTANTE: Preservar alunos já selecionados antes de carregar
       const previouslySelected = [...selectedStudentIds];
-      
       const loadAndPreserve = async () => {
         await loadStudentsFromClasses();
-        // ✅ Restaurar apenas os alunos que ainda existem na lista carregada
-        // Usar um pequeno delay para garantir que o estado foi atualizado
         setTimeout(() => {
           setSelectedStudentIds(prev => {
-            // Se havia alunos selecionados anteriormente, filtrar apenas os que existem na lista atual
             if (previouslySelected.length > 0) {
-              // Buscar os IDs disponíveis do estado atual (que foi atualizado pelo loadStudentsFromClasses)
               const currentAvailableIds = availableStudents.map(s => s.id);
               const validSelected = previouslySelected.filter(id => currentAvailableIds.includes(id));
-              console.log('🔄 [CreateOlimpiadaModal] Preservando alunos selecionados:', {
-                previouslySelected,
-                currentAvailableIds,
-                validSelected
-              });
               return validSelected.length > 0 ? validSelected : prev;
             }
             return prev;
           });
         }, 50);
       };
-      
       loadAndPreserve();
-    } else if (applicationMode === 'classes') {
-      setAvailableStudents([]);
-      setSelectedStudentIds([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClasses, applicationMode]);
 
   const handleSubmit = async () => {
+    // Validar local apenas no modo Por Turmas (no modo Alunos Individuais os filtros são opcionais)
+    if (applicationMode === 'classes') {
+      if (!course || !grade || !state || !municipality || selectedSchools.length === 0) {
+        toast({
+          title: 'Local obrigatório',
+          description: 'Preencha curso, série, estado, município e escola para selecionar as turmas',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
     // Validar baseado no modo de aplicação
     if (applicationMode === 'classes') {
       if (selectedClasses.length === 0) {
@@ -626,6 +678,7 @@ export function CreateOlimpiadaModal({
     setStep(1);
     setTitle('');
     setApplicationMode('classes');
+    setShowStudentFilters(false);
     setSelectedStudentIds([]);
     setAvailableStudents([]);
       setDescription('');
@@ -660,7 +713,7 @@ export function CreateOlimpiadaModal({
     classes: selectedClasses.map(c => c.id),
     classId: selectedClasses.length > 0 ? selectedClasses[0].id : '',
     selectedClasses,
-    questions: selectedQuestions.map(q => q.id),
+    questions: selectedQuestions,
     startDateTime: '',
     duration,
   };
@@ -725,99 +778,6 @@ export function CreateOlimpiadaModal({
                     Tempo máximo que os alunos terão para completar a olimpíada
                   </p>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Curso *</Label>
-                    <Select value={course} onValueChange={setCourse}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o curso" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {courses.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Série *</Label>
-                    <Select value={grade} onValueChange={setGrade} disabled={!course}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione a série" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {grades.map((g) => (
-                          <SelectItem key={g.id} value={g.id}>
-                            {g.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Estado *</Label>
-                    <Select value={state} onValueChange={setState}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o estado" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {states.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Município *</Label>
-                    <Select value={municipality} onValueChange={setMunicipality} disabled={!state}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o município" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {municipalities.map((m) => (
-                          <SelectItem key={m.id} value={m.id}>
-                            {m.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Escolas *</Label>
-                  <Select
-                    value={selectedSchools[0] || ''}
-                    onValueChange={(value) => {
-                      setSelectedSchools([value]);
-                      // Limpar turmas selecionadas quando escola mudar
-                      setSelectedClasses([]);
-                    }}
-                    disabled={!municipality}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione a escola" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {schools.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
 
                 <div className="space-y-2">
                   <Label>Disciplinas *</Label>
@@ -1019,9 +979,10 @@ export function CreateOlimpiadaModal({
               </div>
             )}
 
-            {/* Step 3: Seleção de Turmas */}
+            {/* Step 3: Local e Turmas/Alunos — alternador em cima; filtros conforme o modo */}
             {step === 3 && (
               <div className="space-y-4">
+                {/* 1. Alternador: Por Turmas | Alunos Individuais (sempre no topo) */}
                 <Tabs value={applicationMode} onValueChange={(value) => setApplicationMode(value as 'classes' | 'students')}>
                   <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="classes">
@@ -1034,7 +995,98 @@ export function CreateOlimpiadaModal({
                     </TabsTrigger>
                   </TabsList>
 
+                  {/* Modo Por Turmas: Local e público como filtro para selecionar a turma */}
                   <TabsContent value="classes" className="space-y-4 mt-4">
+                    <div className="space-y-4 rounded-lg border p-4 bg-muted/30">
+                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Local e público</h3>
+                      <p className="text-sm text-muted-foreground">Use os filtros abaixo para definir o escopo e selecionar as turmas que participarão da olimpíada.</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="space-y-2">
+                          <Label>Curso *</Label>
+                          <Select value={course} onValueChange={setCourse}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione o curso" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {courses.map((c) => (
+                                <SelectItem key={c.id} value={c.id}>
+                                  {c.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Série *</Label>
+                          <Select value={grade} onValueChange={setGrade} disabled={!course}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione a série" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {grades.map((g) => (
+                                <SelectItem key={g.id} value={g.id}>
+                                  {g.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Estado *</Label>
+                          <Select value={state} onValueChange={setState}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione o estado" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {states.map((s) => (
+                                <SelectItem key={s.id} value={s.id}>
+                                  {s.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Município *</Label>
+                          <Select value={municipality} onValueChange={setMunicipality} disabled={!state}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione o município" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {municipalities.map((m) => (
+                                <SelectItem key={m.id} value={m.id}>
+                                  {m.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 max-w-md">
+                        <div className="space-y-2">
+                          <Label>Escola *</Label>
+                          <Select
+                            value={selectedSchools[0] || ''}
+                            onValueChange={(value) => {
+                              setSelectedSchools([value]);
+                              setSelectedClasses([]);
+                            }}
+                            disabled={!municipality}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione a escola" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {schools.map((s) => (
+                                <SelectItem key={s.id} value={s.id}>
+                                  {s.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
                     <Alert>
                       <Users className="h-4 w-4" />
                       <AlertDescription>
@@ -1042,38 +1094,172 @@ export function CreateOlimpiadaModal({
                       </AlertDescription>
                     </Alert>
                     <ClassSelector
+                      key={`class-${state}-${municipality}-${selectedSchools[0] || ''}-${grade}`}
                       selectedClasses={selectedClasses}
                       onClassesChange={setSelectedClasses}
                       initialState={state}
                       initialMunicipality={municipality}
                       initialSchool={selectedSchools[0]}
                       initialGrade={grade}
+                      hideFilters
                     />
                   </TabsContent>
 
+                  {/* Modo Alunos Individuais: carrega todos do município por padrão; filtros só ao clicar no botão */}
                   <TabsContent value="students" className="space-y-4 mt-4">
-                    <Alert>
-                      <UserCheck className="h-4 w-4" />
-                      <AlertDescription>
-                        Primeiro selecione as turmas para carregar os alunos, depois escolha os alunos específicos que participarão da olimpíada.
-                      </AlertDescription>
-                    </Alert>
-
-                    {/* Seleção de turmas para carregar alunos */}
-                    <div className="space-y-2">
-                      <Label>Turmas (para carregar alunos) *</Label>
-                      <ClassSelector
-                        selectedClasses={selectedClasses}
-                        onClassesChange={setSelectedClasses}
-                        initialState={state}
-                        initialMunicipality={municipality}
-                        initialSchool={selectedSchools[0]}
-                        initialGrade={grade}
-                      />
+                    {loadingStudents && availableStudents.length === 0 && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Carregando alunos do município...
+                      </div>
+                    )}
+                    <p className="text-sm text-muted-foreground">
+                      Os alunos do município são carregados automaticamente. Selecione os que participarão da olimpíada.
+                      {!showStudentFilters && (
+                        <>
+                          {' '}
+                          <Button
+                            type="button"
+                            variant="link"
+                            className="p-0 h-auto text-primary inline-flex items-center gap-1"
+                            onClick={() => setShowStudentFilters(true)}
+                          >
+                            <Filter className="h-3.5 w-3.5" />
+                            Mostrar filtros (curso, série, turma)
+                          </Button>
+                        </>
+                      )}
+                    </p>
+                    {showStudentFilters && (
+                      <>
+                        <div className="space-y-4 rounded-lg border p-4 bg-muted/20">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Filtros (por turma)</h3>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setShowStudentFilters(false)}
+                              className="text-muted-foreground"
+                            >
+                              <ChevronUp className="h-4 w-4 mr-1" />
+                              Ocultar filtros
+                            </Button>
+                          </div>
+                          <p className="text-sm text-muted-foreground">Refine por curso, série e local para carregar apenas alunos das turmas escolhidas.</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                            <div className="space-y-2">
+                              <Label>Curso</Label>
+                              <Select value={course} onValueChange={setCourse}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecione o curso" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {courses.map((c) => (
+                                    <SelectItem key={c.id} value={c.id}>
+                                      {c.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Série</Label>
+                              <Select value={grade} onValueChange={setGrade} disabled={!course}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder={course ? 'Selecione a série' : 'Selecione o curso antes'} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {grades.map((g) => (
+                                    <SelectItem key={g.id} value={g.id}>
+                                      {g.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Estado</Label>
+                              <Select value={state} onValueChange={setState}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecione o estado" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {states.map((s) => (
+                                    <SelectItem key={s.id} value={s.id}>
+                                      {s.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Município</Label>
+                              <Select value={municipality} onValueChange={setMunicipality} disabled={!state}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecione o município" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {municipalities.map((m) => (
+                                    <SelectItem key={m.id} value={m.id}>
+                                      {m.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Escola</Label>
+                              <Select
+                                value={selectedSchools[0] || ''}
+                                onValueChange={(value) => {
+                                  setSelectedSchools(value ? [value] : []);
+                                  setSelectedClasses([]);
+                                }}
+                                disabled={!municipality}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecione a escola" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {schools.map((s) => (
+                                    <SelectItem key={s.id} value={s.id}>
+                                      {s.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Turmas (para carregar só alunos dessas turmas)</Label>
+                          <ClassSelector
+                            key={`class-students-${state}-${municipality}-${selectedSchools[0] || ''}-${grade}`}
+                            selectedClasses={selectedClasses}
+                            onClassesChange={setSelectedClasses}
+                            initialState={state}
+                            initialMunicipality={municipality}
+                            initialSchool={selectedSchools[0]}
+                            initialGrade={grade}
+                            hideFilters
+                          />
+                        </div>
+                      </>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={loadAllStudentsFromMunicipality}
+                        disabled={loadingStudents}
+                      >
+                        {loadingStudents ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Users className="h-4 w-4 mr-1" />}
+                        Recarregar alunos do município
+                      </Button>
                     </div>
-
-                    {/* Seleção de alunos individuais */}
-                    {selectedClasses.length > 0 && (
+                    {availableStudents.length > 0 && (
                       <div className="space-y-2">
                         <Label>Selecionar Alunos Individuais *</Label>
                         {loadingStudents ? (
@@ -1088,9 +1274,19 @@ export function CreateOlimpiadaModal({
                           </div>
                         ) : (
                           <>
+                            <div className="relative mb-2">
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                              <Input
+                                placeholder="Buscar por nome..."
+                                value={studentSearchTerm}
+                                onChange={(e) => setStudentSearchTerm(e.target.value)}
+                                className="pl-9"
+                              />
+                            </div>
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-sm text-muted-foreground">
                                 {selectedStudentIds.length} de {availableStudents.length} aluno(s) selecionado(s)
+                                {studentSearchTerm.trim() && ` · ${filteredStudentsBySearch.length} na busca`}
                               </span>
                               <div className="flex gap-2">
                                 <Button
@@ -1111,37 +1307,45 @@ export function CreateOlimpiadaModal({
                             </div>
                             <ScrollArea className="h-[300px] border rounded-md p-4">
                               <div className="space-y-2">
-                                {availableStudents.map((student) => (
-                                  <div
-                                    key={student.id}
-                                    className="flex items-center space-x-2 p-2 hover:bg-muted rounded-md"
-                                  >
-                                    <Checkbox
-                                      id={`student-${student.id}`}
-                                      checked={selectedStudentIds.includes(student.id)}
-                                      onCheckedChange={(checked) => {
-                                        if (checked) {
-                                          setSelectedStudentIds([...selectedStudentIds, student.id]);
-                                        } else {
-                                          setSelectedStudentIds(selectedStudentIds.filter(id => id !== student.id));
-                                        }
-                                      }}
-                                    />
-                                    <label
-                                      htmlFor={`student-${student.id}`}
-                                      className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                                    >
-                                      <div className="flex items-center justify-between">
-                                        <span>{student.name}</span>
-                                        {student.class_name && (
-                                          <Badge variant="outline" className="ml-2 text-xs">
-                                            {student.class_name}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    </label>
+                                {filteredStudentsBySearch.length === 0 ? (
+                                  <div className="text-center py-6 text-muted-foreground text-sm">
+                                    {studentSearchTerm.trim()
+                                      ? 'Nenhum aluno encontrado com esse nome.'
+                                      : 'Nenhum aluno na lista.'}
                                   </div>
-                                ))}
+                                ) : (
+                                  filteredStudentsBySearch.map((student) => (
+                                    <div
+                                      key={student.id}
+                                      className="flex items-center space-x-2 p-2 hover:bg-muted rounded-md"
+                                    >
+                                      <Checkbox
+                                        id={`student-${student.id}`}
+                                        checked={selectedStudentIds.includes(student.id)}
+                                        onCheckedChange={(checked) => {
+                                          if (checked) {
+                                            setSelectedStudentIds([...selectedStudentIds, student.id]);
+                                          } else {
+                                            setSelectedStudentIds(selectedStudentIds.filter(id => id !== student.id));
+                                          }
+                                        }}
+                                      />
+                                      <label
+                                        htmlFor={`student-${student.id}`}
+                                        className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <span>{student.name}</span>
+                                          {student.class_name && (
+                                            <Badge variant="outline" className="ml-2 text-xs">
+                                              {student.class_name}
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      </label>
+                                    </div>
+                                  ))
+                                )}
                               </div>
                             </ScrollArea>
                           </>
@@ -1197,7 +1401,6 @@ export function CreateOlimpiadaModal({
             open={showQuestionBank}
             subjectId={selectedSubjectForQuestion}
             onQuestionSelected={(question) => {
-              // Verificar se a questão já foi adicionada
               const questionId = question.id;
               if (!questionId) {
                 toast({
@@ -1207,32 +1410,25 @@ export function CreateOlimpiadaModal({
                 });
                 return;
               }
-              
-              // ✅ CORRIGIDO: Usar função de atualização de estado para garantir que o estado anterior seja usado
+              const subjectId = selectedSubjectForQuestion || question.subjectId || question.subject?.id || (question as { subject_id?: string }).subject_id;
+              const questionWithSubject = { ...question, subjectId: subjectId || '' };
               setSelectedQuestions(prev => {
-                // Verificar se já existe
                 if (prev.some(q => q.id === questionId)) {
-                  toast({
-                    title: "Questão já adicionada",
-                    description: "Esta questão já está na olimpíada",
-                    variant: "destructive",
-                  });
-                  return prev; // Retornar estado anterior sem mudanças
+                  pendingQuestionToastRef.current = 'duplicate';
+                  return prev;
                 }
-                
-                // Adicionar questão com subjectId correto
-                const questionWithSubject = {
-                  ...question,
-                  subjectId: selectedSubjectForQuestion || question.subjectId || question.subject?.id || question.subject_id,
-                };
-                
-                toast({
-                  title: "Questão adicionada",
-                  description: "Questão adicionada à olimpíada",
-                });
-                
+                pendingQuestionToastRef.current = 'added';
                 return [...prev, questionWithSubject];
               });
+              setTimeout(() => {
+                const msg = pendingQuestionToastRef.current;
+                pendingQuestionToastRef.current = null;
+                if (msg === 'duplicate') {
+                  toast({ title: "Questão já adicionada", description: "Esta questão já está na olimpíada", variant: "destructive" });
+                } else if (msg === 'added') {
+                  toast({ title: "Questão adicionada", description: "Questão adicionada à olimpíada" });
+                }
+              }, 0);
             }}
             onClose={() => setShowQuestionBank(false)}
             subjects={selectedSubjects}
@@ -1270,31 +1466,25 @@ export function CreateOlimpiadaModal({
             open={showCreateQuestion}
             onClose={() => setShowCreateQuestion(false)}
             onQuestionAdded={(question) => {
-              // ✅ CORRIGIDO: Usar função de atualização de estado para garantir que o estado anterior seja usado
+              const subjectId = selectedSubjectForQuestion || question.subjectId || question.subject?.id || (question as { subject_id?: string }).subject_id;
+              const questionWithSubject = { ...question, subjectId: subjectId || '' };
               setSelectedQuestions(prev => {
-                // Verificar se já existe
                 if (prev.some(q => q.id === question.id)) {
-                  toast({
-                    title: "Questão já adicionada",
-                    description: "Esta questão já está na olimpíada",
-                    variant: "destructive",
-                  });
+                  pendingQuestionToastRef.current = 'duplicate';
                   return prev;
                 }
-                
-                // Adicionar questão com subjectId correto
-                const questionWithSubject = {
-                  ...question,
-                  subjectId: selectedSubjectForQuestion || question.subjectId || question.subject?.id || question.subject_id,
-                };
-                
-                toast({
-                  title: "Questão criada",
-                  description: "Nova questão adicionada à olimpíada",
-                });
-                
+                pendingQuestionToastRef.current = 'created';
                 return [...prev, questionWithSubject];
               });
+              setTimeout(() => {
+                const msg = pendingQuestionToastRef.current;
+                pendingQuestionToastRef.current = null;
+                if (msg === 'duplicate') {
+                  toast({ title: "Questão já adicionada", description: "Esta questão já está na olimpíada", variant: "destructive" });
+                } else if (msg === 'created') {
+                  toast({ title: "Questão criada", description: "Nova questão adicionada à olimpíada" });
+                }
+              }, 0);
               setShowCreateQuestion(false);
             }}
             questionNumber={selectedQuestions.length + 1}

@@ -274,11 +274,6 @@ export default function CompetitionStudentDetail() {
     });
   };
 
-  const handleVerResultado = () => {
-    if (!testId) return;
-    navigate(`/aluno/avaliacao/${testId}/resultado`);
-  };
-
   if (loading) {
     return (
       <div className="container mx-auto py-12 flex items-center justify-center min-h-screen">
@@ -420,7 +415,7 @@ export default function CompetitionStudentDetail() {
               {isEnrolled && (
                 <div className="flex flex-col gap-2">
                   {attemptStatus === 'completed' && competitionFinalized && (
-                    <Button size="lg" onClick={handleVerResultado} className="bg-emerald-600 hover:bg-emerald-700">
+                    <Button size="lg" onClick={() => navigate('/aluno/resultados?tab=competicao')} className="bg-emerald-600 hover:bg-emerald-700">
                       <CheckCircle className="mr-2 h-4 w-4" />
                       Ver resultado
                     </Button>
@@ -428,7 +423,7 @@ export default function CompetitionStudentDetail() {
                   {attemptStatus === 'in_progress' && testId && (inApplication || ended) && (
                     <Button
                       size="lg"
-                      onClick={ended ? (competitionFinalized ? handleVerResultado : undefined) : handleContinuarProva}
+                      onClick={ended ? (competitionFinalized ? () => navigate('/aluno/resultados?tab=competicao') : undefined) : handleContinuarProva}
                       disabled={ended && !competitionFinalized}
                     >
                       <Clock className="mr-2 h-4 w-4" />
