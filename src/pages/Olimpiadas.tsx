@@ -171,6 +171,7 @@ export default function Olimpiadas() {
       });
 
       setOlimpiadas(olimpiadasData);
+      return olimpiadasData;
     } catch (error) {
       console.error('Erro ao carregar olimpíadas:', error);
       toast({
@@ -180,6 +181,7 @@ export default function Olimpiadas() {
       });
       // Garantir que olimpiadas seja um array vazio em caso de erro
       setOlimpiadas([]);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -212,17 +214,14 @@ export default function Olimpiadas() {
       return 'scheduled';
     }
 
-    // Já aplicada: usar datas reais da aplicação (application_info) para active/completed
+    // Já aplicada: usar datas da aplicação (application_info) para active/completed.
+    // Só "agendada" se application_info.application estiver no futuro; senão ativa ou concluída.
     const now = new Date();
-    const startDate = olimpiada.application_info?.application || olimpiada.startDateTime || olimpiada.time_limit;
+    const appStart = olimpiada.application_info?.application;
     const endDate = olimpiada.application_info?.expiration || olimpiada.endDateTime || olimpiada.end_time;
 
-    if (startDate && new Date(startDate) > now) {
-      return 'scheduled';
-    }
-    if (endDate && new Date(endDate) < now) {
-      return 'completed';
-    }
+    if (appStart && new Date(appStart) > now) return 'scheduled';
+    if (endDate && new Date(endDate) < now) return 'completed';
     return 'active';
   };
 
@@ -669,27 +668,20 @@ export default function Olimpiadas() {
         setApplyEndDateTime('');
         setApplyingOlimpiada(null);
         
-        await loadOlimpiadas();
-        
-        // ✅ Mesclar selected_students + application_info para status "aplicada" e botão Aplicar sumir
-        setOlimpiadas((prev) =>
-          prev.map((o) => {
-            if (o.id !== preservedOlimpiadaId) return o;
-            const finalSelectedStudents = preservedSelectedStudents.length > 0
-              ? preservedSelectedStudents
-              : (o.selected_students || []);
-            const appEnd = new Date(preservedApplicationInfo.expiration);
-            const newStatus: OlimpiadaStatus = appEnd < new Date() ? 'completed' : 'active';
-            return {
-              ...o,
-              selected_students: finalSelectedStudents,
-              totalStudents: finalSelectedStudents.length > 0 ? finalSelectedStudents.length : o.totalStudents,
-              application_info: preservedApplicationInfo,
-              status: newStatus,
-            };
-          })
-        );
-        
+        const list = await loadOlimpiadas();
+        const newStatus: OlimpiadaStatus = new Date(preservedApplicationInfo.expiration) < new Date() ? 'completed' : 'active';
+        const merged = (Array.isArray(list) ? list : []).map((o) => {
+          if (o.id !== preservedOlimpiadaId) return o;
+          const finalSelectedStudents = preservedSelectedStudents.length > 0 ? preservedSelectedStudents : (o.selected_students || []);
+          return {
+            ...o,
+            selected_students: finalSelectedStudents,
+            totalStudents: finalSelectedStudents.length > 0 ? finalSelectedStudents.length : o.totalStudents,
+            application_info: preservedApplicationInfo,
+            status: newStatus,
+          };
+        });
+        setOlimpiadas(merged);
         setIsApplying(false);
         return;
       }
@@ -827,15 +819,12 @@ export default function Olimpiadas() {
       setApplyStartDateTime('');
       setApplyEndDateTime('');
       setApplyingOlimpiada(null);
-      await loadOlimpiadas();
-      setOlimpiadas((prev) =>
-        prev.map((o) => {
-          if (o.id !== preservedId) return o;
-          const appEnd = new Date(preservedAppInfo.expiration);
-          const newStatus: OlimpiadaStatus = appEnd < new Date() ? 'completed' : 'active';
-          return { ...o, application_info: preservedAppInfo, status: newStatus };
-        })
+      const list = await loadOlimpiadas();
+      const newStatus: OlimpiadaStatus = new Date(preservedAppInfo.expiration) < new Date() ? 'completed' : 'active';
+      const merged = (Array.isArray(list) ? list : []).map((o) =>
+        o.id === preservedId ? { ...o, application_info: preservedAppInfo, status: newStatus } : o
       );
+      setOlimpiadas(merged);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } }; message?: string };
       const message =
