@@ -23,7 +23,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Trophy, Calendar, Clock, Loader2, Eye, UserPlus, Coins, XCircle, Award, CheckCircle, AlertCircle, Timer, Sparkles, Swords, UserCheck, Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trophy, Calendar, Clock, Loader2, UserPlus, Coins, XCircle, Award, CheckCircle, AlertCircle, Timer, Sparkles, Swords, UserCheck, Filter, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getAvailableCompetitions, getMyCompetitions, getMyCompetitionSession, unenrollCompetition, startCompetition } from '@/services/competitionsApi';
 import type { Competition } from '@/types/competition-types';
@@ -32,6 +32,7 @@ import { ptBR } from 'date-fns/locale';
 import { api } from '@/lib/api';
 import { EnrollConfirmationModal } from '@/components/competitions/EnrollConfirmationModal';
 import { formatCompetitionLevel } from '@/utils/competitionLevel';
+import { enrichListWithSubjectName } from '@/utils/competitionSubjectName';
 import { getSubjectColors } from '@/utils/competitionSubjectColors';
 import { CompetitionCountdown } from '@/components/competitions/CompetitionCountdown';
 import { StudentCompetitionClassificationCard } from '@/components/competitions/StudentCompetitionClassificationCard';
@@ -178,9 +179,18 @@ export default function CompetitionsStudent() {
     return () => { cancelled = true; };
   }, []);
 
+  const availableWithSubjectName = useMemo(
+    () => enrichListWithSubjectName(availableCompetitions, subjects),
+    [availableCompetitions, subjects],
+  );
+  const myWithSubjectName = useMemo(
+    () => enrichListWithSubjectName(myCompetitions, subjects),
+    [myCompetitions, subjects],
+  );
+
   /** Filtros aplicados às competições disponíveis (inscrição/prova). */
   const filteredAvailable = useMemo(() => {
-    let list = availableCompetitions;
+    let list = availableWithSubjectName;
     
     // Filtro por disciplina
     if (subjectFilter !== 'all') {
@@ -249,11 +259,11 @@ export default function CompetitionsStudent() {
     }
     
     return list;
-  }, [availableCompetitions, subjectFilter, levelFilter, minCoinsFilter, onlyWithSlots, dateFilter]);
+  }, [availableWithSubjectName, subjectFilter, levelFilter, minCoinsFilter, onlyWithSlots, dateFilter]);
 
   /** Filtros aplicados às competições do aluno (minhas/encerradas). */
   const filteredMy = useMemo(() => {
-    let list = myCompetitions;
+    let list = myWithSubjectName;
 
     // Filtro por disciplina
     if (subjectFilter !== 'all') {
@@ -285,7 +295,14 @@ export default function CompetitionsStudent() {
 
     // Para "minhas" competições, não aplicar filtros de vagas/data para evitar sumiço.
     return list;
-  }, [myCompetitions, subjectFilter, levelFilter, minCoinsFilter]);
+  }, [myWithSubjectName, subjectFilter, levelFilter, minCoinsFilter]);
+
+  // Estabilizar dependência: só reexecutar quando a lista de IDs mudar (ex.: após inscrever),
+  // não quando apenas aplicamos o patch de sessão (evita loop infinito de my-session).
+  const myCompetitionIdsKey = useMemo(
+    () => myCompetitions.map((c) => c.id).sort().join(','),
+    [myCompetitions],
+  );
 
   // Enriquecer competições do aluno com dados de sessão (/competitions/:id/my-session)
   // para corrigir casos em que a sessão já foi concluída mas ainda não temos attempt_* atualizados.
@@ -328,7 +345,7 @@ export default function CompetitionsStudent() {
     return () => {
       cancelled = true;
     };
-  }, [myCompetitions]);
+  }, [myCompetitionIdsKey]); // não depender de myCompetitions: o patch atualiza estado e causaria loop
 
   const { abertas, proximas } = useMemo(() => {
     const a: Competition[] = [];
@@ -446,6 +463,12 @@ export default function CompetitionsStudent() {
   function isAttemptCompleted(comp: Competition): boolean {
     const raw = (comp.attempt_status ?? '') as string;
     return Boolean(comp.attempt_completed_at) || ['completed', 'finalizada', 'finalizado', 'concluída', 'concluido'].includes(raw.toLowerCase());
+  }
+
+  /** Competição finalizada (encerrada pelo admin); resultados/ranking só após isso. */
+  function isCompetitionFinalized(comp: Competition): boolean {
+    const s = String(comp.status ?? '').toLowerCase();
+    return s === 'completed' || s === 'encerrada' || comp.is_finished === true;
   }
 
   function getProofStatusBadge(comp: Competition) {
@@ -584,12 +607,8 @@ export default function CompetitionsStudent() {
             </p>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate(`/aluno/competitions/${comp.id}`)}>
-              <Eye className="mr-1 h-4 w-4" />
-              Ver detalhes
-            </Button>
-            {attemptStatus === 'completed' && (
-              <Button size="sm" variant="secondary" onClick={() => comp.test_id ? navigate(`/aluno/avaliacao/${comp.test_id}/resultado`) : navigate(`/aluno/competitions/${comp.id}`)}>
+            {attemptStatus === 'completed' && isCompetitionFinalized(comp) && (
+              <Button size="sm" variant="secondary" onClick={() => navigate('/aluno/resultados?tab=competicao')}>
                 <CheckCircle className="mr-1 h-4 w-4" />
                 Ver resultado
               </Button>
@@ -690,10 +709,6 @@ export default function CompetitionsStudent() {
             </p>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate(`/aluno/competitions/${comp.id}`)}>
-              <Eye className="mr-1 h-4 w-4" />
-              Ver detalhes
-            </Button>
             {variant === 'open' && !comp.is_enrolled && slotsFull(comp) && <Badge variant="secondary">Esgotado</Badge>}
             {variant === 'open' && canEnrollNow(comp) && (
               <Button size="sm" onClick={() => handleOpenEnrollModal(comp)} className={`bg-gradient-to-r ${colors.gradient} text-white border-0 hover:opacity-90`}>
@@ -716,10 +731,6 @@ export default function CompetitionsStudent() {
           <Badge className={`mb-2 w-fit ${colors.badge}`}>{comp.subject_name ?? comp.subject_id}</Badge>
           <h3 className="font-semibold truncate">{comp.name}</h3>
           <p className="text-sm text-muted-foreground mt-1">{formatCompetitionLevel(comp.level)} · Finalizada</p>
-          <Button variant="ghost" size="sm" className="mt-3 w-fit" onClick={() => navigate(`/aluno/competitions/${comp.id}`)}>
-            <Eye className="mr-1 h-4 w-4" />
-            Ver detalhes
-          </Button>
         </CardContent>
       </Card>
     );

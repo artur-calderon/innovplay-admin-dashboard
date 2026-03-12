@@ -112,7 +112,10 @@ export default function Settings() {
       .getMyPurchases({ limit: 100, offset: 0 })
       .then(({ data }) => {
         if (!cancelled) {
-          const themes = (data.purchases ?? []).filter((p) => p.reward_type === "sidebar_theme");
+          const list = data?.purchases ?? [];
+          const themes = list.filter(
+            (p) => String(p.reward_type ?? "").trim().toLowerCase() === "sidebar_theme"
+          );
           setSidebarPurchases(themes);
         }
       })
@@ -152,7 +155,7 @@ export default function Settings() {
     setIsSaving(true);
     try {
       await persistSettings();
-      toast.success("Configurações salvas com sucesso");
+      toast.success("Configurações salvas e confirmadas no servidor");
     } catch (error: any) {
       const backendMessage = error?.response?.data?.erro || error?.message || "Não foi possível salvar as configurações";
       toast.error(backendMessage);
@@ -161,9 +164,15 @@ export default function Settings() {
     }
   };
 
-  // Converter fontSize string para número para o slider
-  const fontSizeValue = settings.fontSize ?? "100%";
-  const fontSizeNumber = parseInt(fontSizeValue.replace("%", "")) || 100;
+  // Converter fontSize para string (API pode devolver número ex.: 110) e depois para número do slider
+  const rawFontSize = settings?.fontSize;
+  const fontSizeValue =
+    rawFontSize != null
+      ? typeof rawFontSize === "number"
+        ? `${rawFontSize}%`
+        : String(rawFontSize)
+      : "100%";
+  const fontSizeNumber = parseInt(String(fontSizeValue).replace(/%/g, ""), 10) || 100;
 
   if (isLoading) {
     return (
@@ -345,18 +354,28 @@ export default function Settings() {
                       <ThemeOption themeId="__padrao__" label="Padrão (cor original do menu)" />
                     </SelectItem>
                     {isStudent
-                      ? Array.from(
-                          new Map(
-                            sidebarPurchases.map((p) => {
-                              const id = p.reward_data ?? p.store_item_id;
-                              return [id, p.item_name || SIDEBAR_THEME_LABELS[id] || id];
+                      ? (() => {
+                          const themeEntries = sidebarPurchases
+                            .map((p) => {
+                              const id = (p.reward_data ?? p.store_item_id ?? "").trim() || null;
+                              if (!id) return null;
+                              const label = p.item_name?.trim() || SIDEBAR_THEME_LABELS[id] || id;
+                              return [id, label] as const;
                             })
-                          ).entries()
-                        ).map(([id, label]) => (
-                          <SelectItem key={id} value={id}>
-                            <ThemeOption themeId={id} label={label} />
-                          </SelectItem>
-                        ))
+                            .filter((e): e is [string, string] => e != null);
+                          const byId = new Map(themeEntries);
+                          if (selectedSidebarThemeId && !byId.has(selectedSidebarThemeId)) {
+                            byId.set(
+                              selectedSidebarThemeId,
+                              SIDEBAR_THEME_LABELS[selectedSidebarThemeId] ?? selectedSidebarThemeId
+                            );
+                          }
+                          return Array.from(byId.entries()).map(([id, label]) => (
+                            <SelectItem key={id} value={id}>
+                              <ThemeOption themeId={id} label={label} />
+                            </SelectItem>
+                          ));
+                        })()
                       : (Object.entries(SIDEBAR_THEME_LABELS) as [string, string][]).map(([id, label]) => (
                           <SelectItem key={id} value={id}>
                             <ThemeOption themeId={id} label={label} />

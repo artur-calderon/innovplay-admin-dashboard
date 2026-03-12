@@ -34,6 +34,8 @@ import {
   type CreateCompetitionTemplatePayload,
 } from '@/services/competitionTemplatesApi';
 import { CompetitionTemplateForm } from '@/components/competitions/CompetitionTemplateForm';
+import { enrichListWithSubjectName } from '@/utils/competitionSubjectName';
+import { api } from '@/lib/api';
 
 function formatRecurrence(rec: string | undefined): string {
   const r = (rec ?? '').toLowerCase();
@@ -53,6 +55,15 @@ export default function CompetitionTemplatesList() {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get<{ id: string; name: string }[]>('/subjects').then((res) => {
+      if (!cancelled && Array.isArray(res.data)) setSubjects(res.data);
+    }).catch(() => { if (!cancelled) setSubjects([]); });
+    return () => { cancelled = true; };
+  }, []);
 
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
@@ -76,10 +87,15 @@ export default function CompetitionTemplatesList() {
     void fetchTemplates();
   }, [fetchTemplates]);
 
+  const templatesWithSubjectName = useMemo(
+    () => enrichListWithSubjectName(templates, subjects),
+    [templates, subjects],
+  );
+
   const visibleTemplates = useMemo(
     () =>
-      templates.filter((t) => (showOnlyActive ? t.active : true)),
-    [templates, showOnlyActive],
+      templatesWithSubjectName.filter((t) => (showOnlyActive ? t.active : true)),
+    [templatesWithSubjectName, showOnlyActive],
   );
 
   const handleToggleActive = async (template: CompetitionTemplate) => {

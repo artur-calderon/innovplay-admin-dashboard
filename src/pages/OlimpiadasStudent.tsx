@@ -268,7 +268,7 @@ export default function OlimpiadasStudent() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2">
                       <Trophy className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                      <CardTitle className="text-xl font-bold text-foreground truncate">
+                      <CardTitle className="text-xl font-bold text-foreground break-words whitespace-normal">
                         {olimpiada.title}
                       </CardTitle>
                     </div>
@@ -331,7 +331,7 @@ export default function OlimpiadasStudent() {
                   </Button>
                 ) : olimpiada.student_status?.has_completed ? (
                   <Button
-                    onClick={() => navigate(`/aluno/olimpiada/${olimpiada.id}/resultado`)}
+                    onClick={() => navigate('/aluno/resultados?tab=olimpiada')}
                     className="w-full bg-gradient-to-r from-yellow-600 to-amber-600 hover:from-yellow-700 hover:to-amber-700 text-white"
                   >
                     <Trophy className="h-4 w-4 mr-2" />

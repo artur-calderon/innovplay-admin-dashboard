@@ -2,6 +2,9 @@ import axios from 'axios'
 
 // Permitir meta.cityId nas requisições (para admin tenant context)
 declare module 'axios' {
+    interface AxiosRequestConfig {
+        meta?: { cityId?: string }
+    }
     interface InternalAxiosRequestConfig {
         meta?: { cityId?: string }
     }

@@ -58,9 +58,10 @@ export const loadSettings = (userId: string | null): Settings => {
     const parsed = JSON.parse(stored);
     const theme = parsed.theme === "light" || parsed.theme === "dark" ? parsed.theme : DEFAULT_SETTINGS.theme;
     const fontFamily = parsed.fontFamily || DEFAULT_SETTINGS.fontFamily;
-    const validFontSize = /^\d+%$/.test(parsed.fontSize) || /^\d+px$/.test(parsed.fontSize) 
-      ? parsed.fontSize 
-      : DEFAULT_SETTINGS.fontSize;
+    const fontSizeStr =
+      parsed.fontSize != null ? (typeof parsed.fontSize === "number" ? `${parsed.fontSize}%` : String(parsed.fontSize)) : "";
+    const validFontSize =
+      /^\d+%$/.test(fontSizeStr) || /^\d+px$/.test(fontSizeStr) ? fontSizeStr : DEFAULT_SETTINGS.fontSize;
 
     return {
       theme,
@@ -93,7 +94,20 @@ const settingsApi = {
   getUserSettings: async (userId: string): Promise<Settings | null> => {
     try {
       const response = await api.get<UserSettingsResponse>(`/users/user-settings/${userId}`);
-      return response.data.settings || null;
+      const raw = response.data.settings;
+      if (!raw) return null;
+      // API pode devolver fontSize como número (ex.: 110); normalizar para string "110%"
+      const fontSize =
+        raw.fontSize != null
+          ? typeof raw.fontSize === "number"
+            ? `${raw.fontSize}%`
+            : String(raw.fontSize)
+          : DEFAULT_SETTINGS.fontSize;
+      return {
+        theme: raw.theme === "dark" ? "dark" : "light",
+        fontFamily: raw.fontFamily ?? DEFAULT_SETTINGS.fontFamily,
+        fontSize,
+      };
     } catch (error: any) {
       if (error.response?.status === 404) {
         // Se não existir configurações, retorna null
@@ -106,12 +120,12 @@ const settingsApi = {
 
   // Salvar configurações do usuário
   saveUserSettings: async (userId: string, settings: Settings): Promise<void> => {
-    try {
-      await api.post(`/users/user-settings/${userId}`, { settings });
-    } catch (error) {
-      console.warn("Erro ao salvar configurações no servidor:", error);
-      throw error;
-    }
+    await api.post(`/users/user-settings/${userId}`, { settings });
+  },
+
+  // Confirmar que as configurações foram gravadas (GET após POST)
+  verifyUserSettings: async (userId: string): Promise<Settings | null> => {
+    return settingsApi.getUserSettings(userId);
   },
 };
 
@@ -147,16 +161,15 @@ const applyFontFamily = (fontFamily: string): void => {
   }
 };
 
-// Aplicar tamanho de fonte no DOM
-const applyFontSize = (fontSize: string): void => {
+// Aplicar tamanho de fonte no DOM (aceita string ou número; API pode devolver número)
+const applyFontSize = (fontSize: string | number): void => {
   try {
+    const value =
+      typeof fontSize === "number" ? `${fontSize}%` : (fontSize != null ? String(fontSize) : DEFAULT_SETTINGS.fontSize);
     const root = document.documentElement;
-    // Aplicar via CSS variable no :root para uso global
-    root.style.setProperty("--app-font-size", fontSize);
-    
-    // Aplicar também diretamente no body para garantir compatibilidade imediata
+    root.style.setProperty("--app-font-size", value);
     if (document.body) {
-      document.body.style.fontSize = fontSize;
+      document.body.style.fontSize = value;
     }
   } catch (error) {
     console.warn("Erro ao aplicar tamanho de fonte:", error);
@@ -299,11 +312,12 @@ export const useSettings = () => {
       throw new Error("Usuário não autenticado");
     }
 
-    try {
-      await settingsApi.saveUserSettings(userId, settings);
-    } catch (error) {
-      console.warn("Erro ao salvar configurações no servidor:", error);
-      throw error;
+    await settingsApi.saveUserSettings(userId, settings);
+
+    // Garantir que salvou: refetch e confirma que o servidor devolveu as configurações
+    const verified = await settingsApi.verifyUserSettings(userId);
+    if (!verified) {
+      throw new Error("Configurações salvas, mas não foi possível confirmar no servidor. Tente novamente.");
     }
   }, [settings, userId]);
 

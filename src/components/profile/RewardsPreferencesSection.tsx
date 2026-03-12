@@ -30,8 +30,8 @@ export const RewardsPreferencesSection: React.FC = () => {
     };
   }, []);
 
-  const stamps = purchases.filter((p) => p.reward_type === 'stamp');
-  const themes = purchases.filter((p) => p.reward_type === 'sidebar_theme');
+  const stamps = purchases.filter((p) => String(p.reward_type ?? '').trim().toLowerCase() === 'stamp');
+  const themes = purchases.filter((p) => String(p.reward_type ?? '').trim().toLowerCase() === 'sidebar_theme');
   const selectedStampId = prefs?.preferences?.stamp_id ?? null;
   const selectedThemeId = prefs?.preferences?.sidebar_theme_id ?? null;
 
