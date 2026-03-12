@@ -44,6 +44,7 @@ export function EditCompetitionApplicationModal({
   const [loadingData, setLoadingData] = useState(false);
   const [competition, setCompetition] = useState<Competition | null>(null);
 
+  // Carrega competição e preenche o formulário com as datas atuais (editar em cima do que já existe, como em Ver competição).
   useEffect(() => {
     if (!open || !competitionId) {
       setCompetition(null);
@@ -63,7 +64,8 @@ export function EditCompetitionApplicationModal({
         toast({ title: 'Erro ao carregar competição.', variant: 'destructive' });
       })
       .finally(() => setLoadingData(false));
-  }, [open, competitionId, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- toast não deve disparar recarga
+  }, [open, competitionId]);
 
   /** Verifica se a competição tem questões configuradas (obrigatório para publicar). */
   function hasQuestions(c: Competition | null): boolean {
@@ -102,6 +104,7 @@ export function EditCompetitionApplicationModal({
       return;
     }
 
+    // Usar exatamente o valor atual dos inputs (state) para enviar ao backend
     const startStr = enrollmentStart.trim();
     const endStr = enrollmentEnd.trim();
     const appStr = application.trim();
@@ -183,6 +186,8 @@ export function EditCompetitionApplicationModal({
 
       await updateCompetition(competitionId, payload);
       await publishCompetition(competitionId);
+      // Reaplicar as datas após publicar: o backend pode resetar datas no publish; editar de novo garante que as escolhidas permaneçam.
+      await updateCompetition(competitionId, payload);
 
       toast({ title: 'Competição agendada e publicada com sucesso.' });
       onSuccess();

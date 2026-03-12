@@ -32,6 +32,7 @@ import { Plus, Loader2, Filter, Trophy, Search, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
 import { formatCompetitionLevel } from '@/utils/competitionLevel';
+import { enrichListWithSubjectName } from '@/utils/competitionSubjectName';
 import {
   getCompetitions,
   deleteCompetition,
@@ -164,8 +165,13 @@ export default function Competitions() {
     fetchCompetitions();
   }, [fetchCompetitions]);
 
+  const competitionsWithSubjectName = useMemo(
+    () => enrichListWithSubjectName(competitions, subjects),
+    [competitions, subjects],
+  );
+
   const filteredCompetitions = useMemo(() => {
-    let list = competitions;
+    let list = competitionsWithSubjectName;
     if (searchTerm.trim()) {
       const term = searchTerm.trim().toLowerCase();
       list = list.filter(
@@ -181,7 +187,7 @@ export default function Competitions() {
       list = list.filter((c) => c.application && new Date(c.application).getTime() <= to);
     }
     return list;
-  }, [competitions, searchTerm, debouncedFilters.from_date, debouncedFilters.to_date]);
+  }, [competitionsWithSubjectName, searchTerm, debouncedFilters.from_date, debouncedFilters.to_date]);
 
   useEffect(() => {
     let cancelled = false;
@@ -239,12 +245,12 @@ export default function Competitions() {
   };
 
   const competitionForQuestions = useMemo(
-    () => (addQuestionsId ? competitions.find((c) => c.id === addQuestionsId) : null),
-    [addQuestionsId, competitions]
+    () => (addQuestionsId ? competitionsWithSubjectName.find((c) => c.id === addQuestionsId) : null),
+    [addQuestionsId, competitionsWithSubjectName],
   );
   const competitionForSchedule = useMemo(
-    () => (schedulePublishId ? competitions.find((c) => c.id === schedulePublishId) : null),
-    [schedulePublishId, competitions]
+    () => (schedulePublishId ? competitionsWithSubjectName.find((c) => c.id === schedulePublishId) : null),
+    [schedulePublishId, competitionsWithSubjectName],
   );
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -368,6 +374,7 @@ export default function Competitions() {
               <CompetitionCard
                 key={comp.id}
                 competition={comp}
+                userRole={user?.role}
                 onView={handleView}
                 onEdit={canManage ? handleEdit : undefined}
                 onCancel={canManage ? handleCancelClick : undefined}
@@ -420,7 +427,7 @@ export default function Competitions() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir competição</AlertDialogTitle>
-            <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
+            <AlertDialogDescription>Excluir esta competição? Esta ação não pode ser desfeita.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={actionLoading}>Cancelar</AlertDialogCancel>

@@ -24,7 +24,7 @@ export function StudentPreferencesProvider({ children }: { children: React.React
     if (user?.role !== 'aluno' || !user?.id) return;
     setIsLoading(true);
     try {
-      const prefs = await getStudentPreferences();
+      const prefs = await getStudentPreferences(user.id);
       setPreferencesState(prefs);
     } catch {
       setPreferencesState({});
@@ -38,15 +38,15 @@ export function StudentPreferencesProvider({ children }: { children: React.React
   }, [refetch]);
 
   const setPreferences = useCallback(async (prefs: Partial<StudentPreferences>) => {
-    if (user?.role !== 'aluno') return;
+    if (user?.role !== 'aluno' || !user?.id) return;
     setPreferencesState((prev) => ({ ...prev, ...prefs }));
     try {
-      const next = await updateStudentPreferences(prefs);
+      const next = await updateStudentPreferences(user.id, prefs);
       setPreferencesState(next);
     } catch {
       // Backend may not have endpoint yet; local state already updated above
     }
-  }, [user?.role]);
+  }, [user?.role, user?.id]);
 
   const value: StudentPreferencesContextValue = {
     preferences,

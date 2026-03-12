@@ -37,12 +37,22 @@ interface CompetitionLocationState {
   showRankingButton?: boolean;
 }
 
+/** Retorna o tipo de contexto da prova para redirecionar ao concluir: avaliação, competição ou olimpíada. */
+function getEvaluationContext(pathname: string, state: CompetitionLocationState | null): 'avaliacao' | 'competicao' | 'olimpiada' {
+  if (state?.fromCompetition) return 'competicao';
+  if (pathname.includes('/aluno/olimpiada/')) return 'olimpiada';
+  return 'avaliacao';
+}
+
 
 export default function TakeEvaluation() {
     const { id: evaluationId } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const location = useLocation();
     const competitionState = (location.state ?? null) as CompetitionLocationState | null;
+    const evaluationContext = getEvaluationContext(location.pathname, competitionState);
+    const returnPath = evaluationContext === 'olimpiada' ? '/aluno/olimpiadas' : evaluationContext === 'competicao' ? '/aluno/competitions' : '/aluno/avaliacoes';
+    const returnLabel = evaluationContext === 'olimpiada' ? 'Voltar às Olimpíadas' : evaluationContext === 'competicao' ? 'Voltar às Competições' : 'Voltar às Avaliações';
     const { toast } = useToast();
     const [showSubmitDialog, setShowSubmitDialog] = useState(false);
     const [showCompletionDialog, setShowCompletionDialog] = useState(false);
@@ -139,12 +149,12 @@ export default function TakeEvaluation() {
                 variant: "destructive",
             });
             const timer = setTimeout(() => {
-                navigate("/aluno/avaliacoes");
+                navigate(returnPath);
             }, 2000);
             
             return () => clearTimeout(timer);
         }
-    }, [evaluationState, results, testData, session, navigate, toast]);
+    }, [evaluationState, results, testData, session, navigate, toast, returnPath]);
 
     // ✅ Auto-iniciar avaliação automaticamente
     useEffect(() => {
@@ -249,6 +259,14 @@ export default function TakeEvaluation() {
         }
     }, [answers, shuffledQuestions.length, showFullscreenQuestion]);
 
+    /** Normaliza questão para o mesmo modelo da prévia (QuestionBank): texto 1 = formattedText/text, texto 2 = secondStatement. */
+    const normalizeQuestionForDisplay = useCallback((q: Question & { formatted_text?: string; second_statement?: string }): Question => {
+        const text = q.text ?? '';
+        const formattedText = q.formattedText ?? (q as { formatted_text?: string }).formatted_text ?? text;
+        const secondStatement = (q.secondStatement ?? (q as { second_statement?: string }).second_statement ?? q.secondstatement ?? '').trim();
+        return { ...q, text, formattedText: formattedText || text, secondStatement: secondStatement || '' };
+    }, []);
+
     // ✅ Organizar questões por disciplina e embaralhar alternativas
     useEffect(() => {
         if (testData?.questions?.length && shuffledQuestions.length === 0) {
@@ -262,43 +280,41 @@ export default function TakeEvaluation() {
                 return acc;
             }, {} as Record<string, Question[]>);
 
-            // Processar questões de cada disciplina
+            // Processar questões de cada disciplina (normalizar texto 1 / texto 2 como na prévia do QuestionBank)
             const processedQuestions: Question[] = [];
-            
+
             Object.entries(questionsBySubject).forEach(([subject, questions]) => {
                 const processedSubjectQuestions = questions.map((q, questionIndex) => {
+                    const normalized = normalizeQuestionForDisplay(q as Question & { formatted_text?: string; second_statement?: string });
                     if (
-                        ["multiple_choice", "multipleChoice", "multiple_choice"].includes(q.type) &&
-                        (q.options || q.alternatives) &&
-                        Array.isArray(q.options || q.alternatives) &&
-                        (q.options || q.alternatives).length > 0
+                        ["multiple_choice", "multipleChoice", "multiple_choice"].includes(normalized.type) &&
+                        (normalized.options || normalized.alternatives) &&
+                        Array.isArray(normalized.options || normalized.alternatives) &&
+                        (normalized.options || normalized.alternatives).length > 0
                     ) {
-                        const optionsToShuffle = q.options || q.alternatives || [];
-                                    // ✅ NOVO: Embaralhar opções mantendo referência às originais
-            const shuffledOptions = [...optionsToShuffle].sort(() => Math.random() - 0.5);
-            
-            // ✅ NOVO: Criar mapeamento de posições embaralhadas para originais
-            const positionMapping = shuffledOptions.map((shuffledOpt, shuffledIndex) => {
-                const originalIndex = optionsToShuffle.findIndex(originalOpt => originalOpt.id === shuffledOpt.id);
-                return {
-                    shuffledIndex,
-                    originalIndex,
-                    originalLetter: String.fromCharCode(65 + originalIndex), // A, B, C, D...
-                    shuffledLetter: String.fromCharCode(65 + shuffledIndex), // A, B, C, D... (pode ser diferente)
-                    originalText: optionsToShuffle[originalIndex].text,
-                    shuffledText: shuffledOpt.text
-                };
-            });
+                        const optionsToShuffle = normalized.options || normalized.alternatives || [];
+                        const shuffledOptions = [...optionsToShuffle].sort(() => Math.random() - 0.5);
 
-            return {
-                ...q,
-                options: shuffledOptions,
-                alternatives: shuffledOptions, // Manter compatibilidade
-                // ✅ NOVO: Adicionar mapeamento de posições
-                positionMapping: positionMapping
-            } as Question;
+                        const positionMapping = shuffledOptions.map((shuffledOpt, shuffledIndex) => {
+                            const originalIndex = optionsToShuffle.findIndex(originalOpt => originalOpt.id === shuffledOpt.id);
+                            return {
+                                shuffledIndex,
+                                originalIndex,
+                                originalLetter: String.fromCharCode(65 + originalIndex),
+                                shuffledLetter: String.fromCharCode(65 + shuffledIndex),
+                                originalText: optionsToShuffle[originalIndex].text,
+                                shuffledText: shuffledOpt.text
+                            };
+                        });
+
+                        return {
+                            ...normalized,
+                            options: shuffledOptions,
+                            alternatives: shuffledOptions,
+                            positionMapping
+                        } as Question;
                     }
-                    return q;
+                    return normalized;
                 });
 
                 processedQuestions.push(...processedSubjectQuestions);
@@ -306,7 +322,7 @@ export default function TakeEvaluation() {
 
             setShuffledQuestions(processedQuestions);
         }
-    }, [testData, shuffledQuestions.length]);
+    }, [testData, shuffledQuestions.length, normalizeQuestionForDisplay]);
 
 
 
@@ -367,35 +383,34 @@ export default function TakeEvaluation() {
 
     // ✅ Quando conclusão é de prova de competição, abrir modal de sucesso em vez de redirecionar
     useEffect(() => {
-        if (evaluationState === 'completed' && competitionState?.fromCompetition) {
+        if (evaluationState === 'completed' && evaluationContext === 'competicao') {
             setShowFullscreenQuestion(false);
             setShowCompletionDialog(false);
             setShowSubmitDialog(false);
             setIsCompletionDialogClosed(false);
             setShowCompetitionSuccessModal(true);
         }
-    }, [evaluationState, competitionState?.fromCompetition]);
+    }, [evaluationState, evaluationContext]);
 
-    // ✅ Redirecionamento automático quando avaliação é concluída (exceto competição)
+    // ✅ Redirecionamento automático quando avaliação é concluída (avaliação ou olimpíada; competição usa modal)
     useEffect(() => {
-        if (evaluationState === 'completed' && !competitionState?.fromCompetition) {
+        if (evaluationState === 'completed' && evaluationContext !== 'competicao') {
             setShowFullscreenQuestion(false);
             setShowCompletionDialog(false);
             setShowSubmitDialog(false);
             setIsCompletionDialogClosed(false);
-            
+            const targetLabel = evaluationContext === 'olimpiada' ? 'olimpíadas' : 'avaliações';
+            const targetPath = evaluationContext === 'olimpiada' ? '/aluno/olimpiadas' : '/aluno/avaliacoes';
             toast({
-                title: "✅ Avaliação enviada com sucesso!",
-                description: "Redirecionando para a listagem de avaliações...",
+                title: "✅ Prova enviada com sucesso!",
+                description: `Redirecionando para ${targetLabel}...`,
             });
-            
             const timer = setTimeout(() => {
-                navigate("/aluno/avaliacoes");
+                navigate(targetPath);
             }, 1500);
-            
             return () => clearTimeout(timer);
         }
-    }, [evaluationState, results, navigate, toast, competitionState?.fromCompetition]);
+    }, [evaluationState, results, navigate, toast, evaluationContext]);
 
     // ✅ REMOVIDO: useEffect duplicado que estava causando conflitos
 
@@ -508,9 +523,9 @@ export default function TakeEvaluation() {
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => navigate("/aluno/avaliacoes")}
+                                        onClick={() => navigate(returnPath)}
                                     >
-                                        Voltar às Avaliações
+                                        {returnLabel}
                                     </Button>
                                 </div>
                             </div>
@@ -523,14 +538,17 @@ export default function TakeEvaluation() {
 
     // Results screen - Mostrar resultados imediatos (ou modal de competição)
     if (evaluationState === 'completed') {
-        const isCompetition = Boolean(competitionState?.fromCompetition);
+        const isCompetition = evaluationContext === 'competicao';
+        const isOlimpiada = evaluationContext === 'olimpiada';
+        const backPath = isOlimpiada ? '/aluno/olimpiadas' : '/aluno/avaliacoes';
+        const backLabel = isOlimpiada ? 'Voltar às Olimpíadas' : 'Voltar às Avaliações';
         return (
             <div className="flex items-center justify-center min-h-screen w-screen bg-background p-4">
                 <div className="max-w-lg w-full">
                     <Card>
                         <CardHeader>
                             <CardTitle className="text-center">
-                                {results ? "✅ Avaliação Concluída!" : "⚠️ Avaliação Já Enviada"}
+                                {results ? "✅ Prova Concluída!" : "⚠️ Prova Já Enviada"}
                             </CardTitle>
                             <div className="text-center space-y-2">
                                 <h2 className="text-xl font-semibold">{competitionState?.competitionName ?? testData?.title}</h2>
@@ -553,8 +571,8 @@ export default function TakeEvaluation() {
                                         results ? 'text-green-800' : 'text-yellow-800'
                                     }`}>
                                         {results 
-                                            ? "Avaliação Enviada com Sucesso!" 
-                                            : "Avaliação Já Foi Enviada Anteriormente"
+                                            ? "Prova Enviada com Sucesso!" 
+                                            : "Prova Já Foi Enviada Anteriormente"
                                         }
                                     </h3>
                                     {!isCompetition && (
@@ -570,11 +588,11 @@ export default function TakeEvaluation() {
                             {!isCompetition && (
                                 <div className="text-center">
                                     <Button
-                                        onClick={() => navigate("/aluno/avaliacoes")}
+                                        onClick={() => navigate(backPath)}
                                         className="bg-purple-600 hover:bg-purple-700"
                                     >
                                         <Home className="h-4 w-4 mr-2" />
-                                        Voltar às Avaliações
+                                        {backLabel}
                                     </Button>
                                 </div>
                             )}
@@ -640,9 +658,9 @@ export default function TakeEvaluation() {
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => navigate("/aluno/avaliacoes")}
+                                        onClick={() => navigate(returnPath)}
                                     >
-                                        Voltar às Avaliações
+                                        {returnLabel}
                                     </Button>
                                 </div>
                             </div>
@@ -684,9 +702,9 @@ export default function TakeEvaluation() {
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => navigate("/aluno/avaliacoes")}
+                                        onClick={() => navigate(returnPath)}
                                     >
-                                        Voltar às Avaliações
+                                        {returnLabel}
                                     </Button>
                                 </div>
                             </div>
@@ -764,6 +782,18 @@ export default function TakeEvaluation() {
         -webkit-line-clamp: 3;
         -webkit-box-orient: vertical;
         overflow: hidden;
+    }
+
+    /* Espaçamento entre parágrafos dentro de cada bloco (Texto 1 e Texto 2) */
+    .evaluation-question-content .question-text-block p {
+        margin-top: 1rem;
+    }
+    .evaluation-question-content .question-text-block p:first-of-type {
+        margin-top: 0;
+    }
+    /* Separação extra antes da referência bibliográfica (último parágrafo do Texto 2) */
+    .evaluation-question-content .question-second-statement p:last-of-type {
+        margin-top: 1.75rem;
     }
 
     /* Media queries para responsividade */
@@ -1011,27 +1041,31 @@ export default function TakeEvaluation() {
                                         </div>
                                     </CardHeader>
                                     <CardContent className="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8 md:space-y-10 dark:bg-card">
-                                        {/* Conteúdo da Questão */}
-                                        <div className="evaluation-question-content space-y-4 sm:space-y-6">
-                                            {/* Primeiro Enunciado */}
+                                        {/* Conteúdo da Questão — Texto 1, Texto 2 e referência com espaço entre cada um */}
+                                        <div className="evaluation-question-content space-y-8 sm:space-y-10">
+                                            {/* Texto 1 — Primeiro enunciado */}
                                             {(currentQuestion?.formattedText || currentQuestion?.text) && (
-                                                <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
-                                                    <div
-                                                        dangerouslySetInnerHTML={{
-                                                            __html: currentQuestion?.formattedText || currentQuestion?.text || '',
-                                                        }}
-                                                    />
+                                                <div className="question-text-block rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
+                                                    <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
+                                                        <div
+                                                            dangerouslySetInnerHTML={{
+                                                                __html: currentQuestion?.formattedText || currentQuestion?.text || '',
+                                                            }}
+                                                        />
+                                                    </div>
                                                 </div>
                                             )}
 
-                                            {/* Segundo Enunciado */}
+                                            {/* Texto 2 — Segundo enunciado (referência bibliográfica ganha espaço no final) */}
                                             {currentQuestion?.secondStatement?.trim() && (
-                                                <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
-                                                    <div
-                                                        dangerouslySetInnerHTML={{
-                                                            __html: currentQuestion.secondStatement.trim(),
-                                                        }}
-                                                    />
+                                                <div className="question-text-block question-second-statement rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
+                                                    <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
+                                                        <div
+                                                            dangerouslySetInnerHTML={{
+                                                                __html: currentQuestion.secondStatement.trim(),
+                                                            }}
+                                                        />
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -1548,38 +1582,42 @@ export default function TakeEvaluation() {
                            {/* Lado esquerdo/topo - Questão */}
                            <div className="fullscreen-question-container flex-1 bg-card overflow-y-auto md:w-1/2 lg:w-3/5 xl:w-2/3">
                                <div className="p-4 sm:p-5 md:p-6 lg:p-8 xl:p-10 max-w-4xl mx-auto">
-                                   <div className="evaluation-question-content space-y-3 sm:space-y-4 md:space-y-6">
-                                       {/* Primeiro Enunciado */}
+                                   <div className="evaluation-question-content space-y-8 sm:space-y-10">
+                                       {/* Texto 1 — Primeiro enunciado */}
                                        {(currentQuestion?.formattedText || currentQuestion?.text) && (
-                                           <div 
-                                               className="prose dark:prose-invert prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground dark:text-gray-100 [&_*]:dark:text-gray-100"
-                                               style={{ 
-                                                   fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
-                                                   lineHeight: '1.75' 
-                                               }}
-                                           >
-                                               <div
-                                                   dangerouslySetInnerHTML={{
-                                                       __html: currentQuestion?.formattedText || currentQuestion?.text || '',
+                                           <div className="question-text-block rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
+                                               <div 
+                                                   className="prose dark:prose-invert prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground dark:text-gray-100 [&_*]:dark:text-gray-100"
+                                                   style={{ 
+                                                       fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
+                                                       lineHeight: '1.75' 
                                                    }}
-                                               />
+                                               >
+                                                   <div
+                                                       dangerouslySetInnerHTML={{
+                                                           __html: currentQuestion?.formattedText || currentQuestion?.text || '',
+                                                       }}
+                                                   />
+                                               </div>
                                            </div>
                                        )}
 
-                                       {/* Segundo Enunciado */}
+                                       {/* Texto 2 — Segundo enunciado (referência bibliográfica com espaço abaixo) */}
                                        {currentQuestion?.secondStatement?.trim() && (
-                                           <div 
-                                               className="prose dark:prose-invert prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground dark:text-gray-100 pt-3 sm:pt-4 md:pt-6 mt-3 sm:mt-4 md:mt-6 border-t-2 border-border [&_*]:dark:text-gray-100"
-                                               style={{ 
-                                                   fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
-                                                   lineHeight: '1.75' 
-                                               }}
-                                           >
-                                               <div
-                                                   dangerouslySetInnerHTML={{
-                                                       __html: currentQuestion.secondStatement.trim(),
+                                           <div className="question-text-block question-second-statement rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
+                                               <div 
+                                                   className="prose dark:prose-invert prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground dark:text-gray-100 [&_*]:dark:text-gray-100"
+                                                   style={{ 
+                                                       fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
+                                                       lineHeight: '1.75' 
                                                    }}
-                                               />
+                                               >
+                                                   <div
+                                                       dangerouslySetInnerHTML={{
+                                                           __html: currentQuestion.secondStatement.trim(),
+                                                       }}
+                                                   />
+                                               </div>
                                            </div>
                                        )}
                                    </div>
