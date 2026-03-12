@@ -32,6 +32,7 @@ import { ResultsCharts } from '@/components/evaluations/ResultsCharts';
 import { StudentRanking } from '@/components/evaluations/StudentRanking';
 import { ClassStatistics } from '@/components/evaluations/ClassStatistics';
 import { StudentCard } from '@/components/evaluations/StudentCard';
+import { DisciplineTables } from '@/components/evaluations/DisciplineTables';
 import { cn } from '@/lib/utils';
 
 // Opções dos filtros (resposta de GET /answer-sheets/opcoes-filtros-results)
@@ -93,17 +94,64 @@ interface GabaritoAgregado {
   };
 }
 
-interface AlunoTabela {
-  student_id: string;
+// Resultados por disciplina (para gráficos) — retornado por GET /answer-sheets/resultados-agregados
+interface ResultadoPorDisciplina {
+  disciplina: string;
+  total_avaliacoes?: number;
+  total_alunos?: number;
+  alunos_participantes?: number;
+  media_nota: number;
+  media_proficiencia: number;
+  distribuicao_classificacao?: {
+    abaixo_do_basico: number;
+    basico: number;
+    adequado: number;
+    avancado: number;
+  };
+}
+
+// Aluno na visão geral (tabela_detalhada.geral.alunos)
+interface GeralAluno {
+  id: string;
   nome: string;
-  turma?: string;
+  escola?: string;
   serie?: string;
-  grade: number | null;
-  proficiency: number | null;
-  classification: string | null;
-  score_percentage: number | null;
-  correct_answers: number | null;
-  total_questions: number | null;
+  turma?: string;
+  nota_geral: number;
+  proficiencia_geral: number;
+  nivel_proficiencia_geral: string;
+  total_acertos_geral: number;
+  total_questoes_geral: number;
+  total_respondidas_geral: number;
+  total_em_branco_geral?: number;
+  percentual_acertos_geral: number;
+  status_geral: string;
+  respostas_por_questao?: Array<{ questao: number; acertou: boolean; respondeu: boolean; resposta: string }>;
+}
+
+// Disciplina em tabela_detalhada.disciplinas (questões podem ter só numero na API)
+interface DisciplinaTabela {
+  id: string;
+  nome: string;
+  questoes: Array<{ numero: number; habilidade?: string; codigo_habilidade?: string; question_id?: string }>;
+  alunos: Array<{
+    id: string;
+    nome: string;
+    escola?: string;
+    serie?: string;
+    turma?: string;
+    respostas_por_questao: Array<{ questao: number; acertou: boolean; respondeu: boolean; resposta: string }>;
+    total_acertos: number;
+    total_erros: number;
+    total_respondidas: number;
+    total_questoes_disciplina: number;
+    total_em_branco?: number;
+    nivel_proficiencia: string;
+    nota: number;
+    proficiencia: number;
+    status?: string;
+    percentual_acertos?: number;
+  }>;
 }
 
 interface RankingItem {
@@ -120,12 +168,14 @@ interface ResultadosAgregadosResponse {
   nivel_granularidade?: string;
   filtros_aplicados?: Record<string, string>;
   estatisticas_gerais: EstatisticasGerais;
+  resultados_por_disciplina?: ResultadoPorDisciplina[];
   resultados_detalhados?: {
     gabaritos: GabaritoAgregado[];
     paginacao?: { page: number; per_page: number; total: number; total_pages: number };
   };
   tabela_detalhada?: {
-    alunos: AlunoTabela[];
+    disciplinas?: DisciplinaTabela[];
+    geral?: { alunos: GeralAluno[] };
   };
   ranking?: RankingItem[];
 }
@@ -265,21 +315,21 @@ export default function AnswerSheetResults() {
 
   const handleBack = () => navigate('/app/cartao-resposta');
 
-  // Mapear resposta agregada para o formato esperado por ResultsCharts
+  // Gráficos: usar resultados_por_disciplina da API (nome das disciplinas, nota e média)
   const chartsApiData = useMemo(() => {
     if (!apiData?.estatisticas_gerais) return null;
-    const gabaritos = apiData.resultados_detalhados?.gabaritos ?? [];
+    const porDisciplina = apiData.resultados_por_disciplina ?? [];
     return {
       estatisticas_gerais: {
         media_nota_geral: apiData.estatisticas_gerais.media_nota_geral ?? 0,
         media_proficiencia_geral: apiData.estatisticas_gerais.media_proficiencia_geral ?? 0,
         distribuicao_classificacao_geral: apiData.estatisticas_gerais.distribuicao_classificacao_geral,
       },
-      resultados_por_disciplina: gabaritos.map((g) => ({
-        disciplina: g.titulo || g.serie || g.id,
-        media_nota: g.media_nota ?? 0,
-        media_proficiencia: g.media_proficiencia ?? 0,
-        distribuicao_classificacao: g.distribuicao_classificacao,
+      resultados_por_disciplina: porDisciplina.map((d) => ({
+        disciplina: d.disciplina,
+        media_nota: d.media_nota ?? 0,
+        media_proficiencia: d.media_proficiencia ?? 0,
+        distribuicao_classificacao: d.distribuicao_classificacao,
       })),
     };
   }, [apiData]);
@@ -314,7 +364,8 @@ export default function AnswerSheetResults() {
   const series = opcoes.series ?? [];
   const turmas = opcoes.turmas ?? [];
 
-  const alunos = useMemo(() => apiData?.tabela_detalhada?.alunos ?? [], [apiData?.tabela_detalhada?.alunos]);
+  const geralAlunos = useMemo(() => apiData?.tabela_detalhada?.geral?.alunos ?? [], [apiData?.tabela_detalhada?.geral?.alunos]);
+  const disciplinasTabela = useMemo(() => apiData?.tabela_detalhada?.disciplinas ?? [], [apiData?.tabela_detalhada?.disciplinas]);
   const ranking = useMemo(() => apiData?.ranking ?? [], [apiData?.ranking]);
   const hasMinimumFilters =
     estado && estado !== 'all' &&
@@ -339,12 +390,12 @@ export default function AnswerSheetResults() {
     };
   }, [apiData]);
 
-  // Alunos faltosos = na tabela com grade null (não entregaram / pendentes)
+  // Alunos faltosos/pendentes = status_geral !== 'concluida'
   const absentStudents = useMemo(() => {
-    return alunos.filter((a) => a.grade == null);
-  }, [alunos]);
+    return geralAlunos.filter((a) => (a.status_geral || '').toLowerCase() !== 'concluida');
+  }, [geralAlunos]);
 
-  // Lista unificada para Ranking e Cards: ranking tem só participantes; incluir pendentes da tabela
+  // Lista unificada para Ranking e Cards: partir de geral.alunos e enriquecer com ranking (posição)
   const filteredStudents = useMemo(() => {
     const byId = new Map<string, {
       id: string;
@@ -364,50 +415,60 @@ export default function AnswerSheetResults() {
       tempo_gasto: number;
     }>();
     ranking.forEach((r, idx) => {
-      const aluno = alunos.find((a) => a.student_id === r.student_id);
       const classNorm = (r.classification || 'Básico') as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
       byId.set(r.student_id, {
         id: r.student_id,
         nome: r.nome ?? '',
-        turma: aluno?.turma ?? '',
+        turma: '',
         escola: '',
-        serie: aluno?.serie ?? '',
+        serie: '',
         nota: r.grade ?? 0,
         proficiencia: r.proficiency ?? 0,
         classificacao: classNorm,
         status: 'concluida',
         posicao: r.posicao ?? idx + 1,
-        questoes_respondidas: aluno?.total_questions ?? 0,
-        acertos: aluno?.correct_answers ?? 0,
-        erros: (aluno?.total_questions ?? 0) - (aluno?.correct_answers ?? 0),
+        questoes_respondidas: 0,
+        acertos: 0,
+        erros: 0,
         em_branco: 0,
         tempo_gasto: 0,
       });
     });
-    alunos.forEach((a) => {
-      if (byId.has(a.student_id)) return;
-      const concluida = a.grade != null;
-      byId.set(a.student_id, {
-        id: a.student_id,
+    geralAlunos.forEach((a) => {
+      const concluida = (a.status_geral || '').toLowerCase() === 'concluida';
+      const erros = Math.max(0, (a.total_questoes_geral ?? 0) - (a.total_acertos_geral ?? 0) - (a.total_em_branco_geral ?? 0));
+      const existing = byId.get(a.id);
+      if (existing) {
+        existing.turma = a.turma ?? '';
+        existing.escola = a.escola;
+        existing.serie = a.serie;
+        existing.questoes_respondidas = a.total_respondidas_geral ?? 0;
+        existing.acertos = a.total_acertos_geral ?? 0;
+        existing.erros = erros;
+        existing.em_branco = a.total_em_branco_geral ?? 0;
+        return;
+      }
+      byId.set(a.id, {
+        id: a.id,
         nome: a.nome ?? '',
         turma: a.turma ?? '',
-        escola: '',
-        serie: a.serie ?? '',
-        nota: a.grade ?? 0,
-        proficiencia: a.proficiency ?? 0,
-        classificacao: (a.classification as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado') ?? 'Básico',
+        escola: a.escola,
+        serie: a.serie,
+        nota: a.nota_geral ?? 0,
+        proficiencia: a.proficiencia_geral ?? 0,
+        classificacao: (a.nivel_proficiencia_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado') || 'Básico',
         status: concluida ? 'concluida' : 'pendente',
-        questoes_respondidas: a.total_questions ?? 0,
-        acertos: a.correct_answers ?? 0,
-        erros: (a.total_questions ?? 0) - (a.correct_answers ?? 0),
-        em_branco: 0,
+        questoes_respondidas: a.total_respondidas_geral ?? 0,
+        acertos: a.total_acertos_geral ?? 0,
+        erros,
+        em_branco: a.total_em_branco_geral ?? 0,
         tempo_gasto: 0,
       });
     });
     return Array.from(byId.values()).sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [ranking, alunos]);
+  }, [ranking, geralAlunos]);
 
-  // Dados no formato esperado por ClassStatistics (avaliacoes = gabaritos, geral = alunos)
+  // Dados no formato esperado por ClassStatistics (avaliacoes = gabaritos, geral = geralAlunos)
   const apiDataForClassStatistics = useMemo(() => {
     if (!apiData) return null;
     const gabaritos = apiData.resultados_detalhados?.gabaritos ?? [];
@@ -425,31 +486,80 @@ export default function AnswerSheetResults() {
       media_proficiencia: g.media_proficiencia ?? 0,
       distribuicao_classificacao: g.distribuicao_classificacao,
     }));
-    const geralAlunos = alunos.map((a) => ({
-      id: a.student_id,
+    const alunosParaStats = geralAlunos.map((a) => ({
+      id: a.id,
       nome: a.nome ?? '',
       turma: a.turma ?? '',
-      nivel_proficiencia_geral: a.classification ?? '',
-      nota_geral: a.grade ?? 0,
-      proficiencia_geral: a.proficiency ?? 0,
-      total_acertos_geral: a.correct_answers ?? 0,
-      total_erros_geral: Math.max(0, (a.total_questions ?? 0) - (a.correct_answers ?? 0)),
-      total_respondidas_geral: a.total_questions ?? 0,
+      nivel_proficiencia_geral: a.nivel_proficiencia_geral ?? '',
+      nota_geral: a.nota_geral ?? 0,
+      proficiencia_geral: a.proficiencia_geral ?? 0,
+      total_acertos_geral: a.total_acertos_geral ?? 0,
+      total_erros_geral: Math.max(0, (a.total_questoes_geral ?? 0) - (a.total_acertos_geral ?? 0) - (a.total_em_branco_geral ?? 0)),
+      total_respondidas_geral: a.total_respondidas_geral ?? 0,
     }));
     return {
       nivel_granularidade: (apiData.nivel_granularidade as 'municipio' | 'escola' | 'serie' | 'turma' | 'avaliacao') ?? 'escola',
       resultados_detalhados: { avaliacoes },
       estatisticas_gerais: apiData.estatisticas_gerais,
       tabela_detalhada: {
-        geral: { alunos: geralAlunos },
+        geral: { alunos: alunosParaStats },
       },
     };
-  }, [apiData, alunos]);
+  }, [apiData, geralAlunos]);
 
   const tituloGabarito = apiData?.resultados_detalhados?.gabaritos?.[0]?.titulo ?? (gabarito !== 'all' ? norm(gabaritos.find((g) => g.id === gabarito) ?? { id: gabarito }) : null) ?? 'Cartão Resposta';
-  const hasNoData = !apiData?.resultados_detalhados?.gabaritos?.length && !alunos.length;
-  const totalQuestionsForCards = alunos.find((a) => (a.total_questions ?? 0) > 0)?.total_questions ?? 0;
+  const hasNoData = !apiData?.resultados_detalhados?.gabaritos?.length && !geralAlunos.length && !disciplinasTabela.length;
+  const totalQuestionsForCards = geralAlunos.find((a) => (a.total_questoes_geral ?? 0) > 0)?.total_questoes_geral ?? 0;
   const derivedSubjects = useMemo(() => [tituloGabarito].filter(Boolean), [tituloGabarito]);
+
+  // Mapear tabela_detalhada da API para o formato esperado por DisciplineTables (questões com numero + campos opcionais)
+  const tabelaDetalhadaForDisciplineTables = useMemo(() => {
+    if (!disciplinasTabela.length && !geralAlunos.length) return null;
+    const disciplinas = disciplinasTabela.map((d) => ({
+      id: d.id,
+      nome: d.nome,
+      questoes: (d.questoes || []).map((q) => ({
+        numero: q.numero,
+        habilidade: q.habilidade ?? '',
+        codigo_habilidade: q.codigo_habilidade ?? '',
+        question_id: q.question_id ?? `q-${q.numero}`,
+      })),
+      alunos: (d.alunos || []).map((a) => ({
+        id: a.id,
+        nome: a.nome,
+        escola: a.escola ?? '',
+        serie: a.serie ?? '',
+        turma: a.turma ?? '',
+        respostas_por_questao: a.respostas_por_questao ?? [],
+        total_acertos: a.total_acertos ?? 0,
+        total_erros: a.total_erros ?? 0,
+        total_respondidas: a.total_respondidas ?? 0,
+        total_questoes_disciplina: a.total_questoes_disciplina ?? 0,
+        nivel_proficiencia: a.nivel_proficiencia ?? '',
+        nota: a.nota ?? 0,
+        proficiencia: a.proficiencia ?? 0,
+      })),
+    }));
+    const geral = geralAlunos.length > 0 ? {
+      alunos: geralAlunos.map((a) => ({
+        id: a.id,
+        nome: a.nome,
+        escola: a.escola ?? '',
+        serie: a.serie ?? '',
+        turma: a.turma ?? '',
+        nota_geral: a.nota_geral ?? 0,
+        proficiencia_geral: a.proficiencia_geral ?? 0,
+        nivel_proficiencia_geral: a.nivel_proficiencia_geral ?? '',
+        total_acertos_geral: a.total_acertos_geral ?? 0,
+        total_questoes_geral: a.total_questoes_geral ?? 0,
+        total_respondidas_geral: a.total_respondidas_geral ?? 0,
+        total_em_branco_geral: a.total_em_branco_geral ?? 0,
+        percentual_acertos_geral: a.percentual_acertos_geral ?? 0,
+        status_geral: a.status_geral ?? '',
+      })),
+    } : undefined;
+    return { disciplinas, geral };
+  }, [disciplinasTabela, geralAlunos]);
 
   return (
     <div className="w-full min-w-0 space-y-6 pb-8">
@@ -758,10 +868,10 @@ export default function AnswerSheetResults() {
                     <div>
                       <CardTitle className="flex items-center gap-2">
                         Resultados dos Alunos
-                        <Badge variant="secondary">{alunos.length} {alunos.length === 1 ? 'aluno' : 'alunos'}</Badge>
+                        <Badge variant="secondary">{filteredStudents.length} {filteredStudents.length === 1 ? 'aluno' : 'alunos'}</Badge>
                       </CardTitle>
                       <CardDescription>
-                        Visão em tabela ou em cards por aluno
+                        Visão em tabela (por disciplina e geral) ou em cards por aluno
                       </CardDescription>
                     </div>
                     <div className="flex items-center gap-1 border rounded-lg p-1 bg-muted/30">
@@ -786,37 +896,74 @@ export default function AnswerSheetResults() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    {alunos.length > 0 ? (
+                    {tabelaDetalhadaForDisciplineTables && disciplinasTabela.length > 0 ? (
+                      viewMode === 'table' ? (
+                        <DisciplineTables
+                          tabelaDetalhada={tabelaDetalhadaForDisciplineTables}
+                          onViewStudentDetails={() => {}}
+                        />
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                          {filteredStudents.map((student) => (
+                            <StudentCard
+                              key={student.id}
+                              student={{
+                                id: student.id,
+                                nome: student.nome,
+                                turma: student.turma,
+                                nota: student.nota,
+                                proficiencia: student.proficiencia,
+                                classificacao: student.classificacao,
+                                questoes_respondidas: student.questoes_respondidas,
+                                acertos: student.acertos,
+                                erros: student.erros,
+                                em_branco: student.em_branco,
+                                tempo_gasto: student.tempo_gasto,
+                                status: student.status,
+                              }}
+                              totalQuestions={totalQuestionsForCards || 1}
+                              subjects={derivedSubjects}
+                              onViewDetails={() => {}}
+                            />
+                          ))}
+                        </div>
+                      )
+                    ) : geralAlunos.length > 0 ? (
                       viewMode === 'table' ? (
                         <div className="overflow-x-auto rounded-lg border">
                           <table className="w-full border-collapse">
                             <thead>
                               <tr className="border-b bg-muted/50">
                                 <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nome</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Escola</th>
                                 <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Turma</th>
                                 <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Série</th>
                                 <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nota</th>
                                 <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Proficiência</th>
                                 <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Classificação</th>
-                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Acertos</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Acertos / Erros</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {alunos.map((a) => (
-                                <tr key={a.student_id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                                  <td className="py-3 px-4 font-medium">{a.nome}</td>
-                                  <td className="py-3 px-4 text-muted-foreground">{a.turma ?? '—'}</td>
-                                  <td className="py-3 px-4 text-muted-foreground">{a.serie ?? '—'}</td>
-                                  <td className="py-3 px-4">{(a.grade ?? 0).toFixed(1)}</td>
-                                  <td className="py-3 px-4">{(a.proficiency ?? 0).toFixed(1)}</td>
-                                  <td className="py-3 px-4">
-                                    <Badge variant="outline" className={a.classification ? '' : 'opacity-60'}>{a.classification ?? 'Pendente'}</Badge>
-                                  </td>
-                                  <td className="py-3 px-4">
-                                    {a.total_questions != null ? `${a.correct_answers ?? 0} / ${a.total_questions} (${(a.score_percentage ?? 0).toFixed(0)}%)` : '—'}
-                                  </td>
-                                </tr>
-                              ))}
+                              {geralAlunos.map((a) => {
+                                const erros = Math.max(0, (a.total_questoes_geral ?? 0) - (a.total_acertos_geral ?? 0) - (a.total_em_branco_geral ?? 0));
+                                return (
+                                  <tr key={a.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                                    <td className="py-3 px-4 font-medium">{a.nome}</td>
+                                    <td className="py-3 px-4 text-muted-foreground">{a.escola ?? '—'}</td>
+                                    <td className="py-3 px-4 text-muted-foreground">{a.turma ?? '—'}</td>
+                                    <td className="py-3 px-4 text-muted-foreground">{a.serie ?? '—'}</td>
+                                    <td className="py-3 px-4">{(a.nota_geral ?? 0).toFixed(1)}</td>
+                                    <td className="py-3 px-4">{(a.proficiencia_geral ?? 0).toFixed(1)}</td>
+                                    <td className="py-3 px-4">
+                                      <Badge variant="outline" className={a.nivel_proficiencia_geral ? '' : 'opacity-60'}>{a.nivel_proficiencia_geral || 'Pendente'}</Badge>
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      {a.total_questoes_geral != null ? `${a.total_acertos_geral ?? 0} / ${erros} (${(a.percentual_acertos_geral ?? 0).toFixed(0)}%)` : '—'}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -937,7 +1084,7 @@ export default function AnswerSheetResults() {
                 <div className="space-y-2">
                   {absentStudents.map((a) => (
                     <div
-                      key={a.student_id}
+                      key={a.id}
                       className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors"
                     >
                       <div className="flex items-center gap-3">
@@ -949,7 +1096,7 @@ export default function AnswerSheetResults() {
                         <div>
                           <div className="font-medium text-foreground">{a.nome}</div>
                           <div className="text-sm text-muted-foreground">
-                            {[a.turma, a.serie].filter(Boolean).join(' · ') || '—'}
+                            {[a.escola, a.turma, a.serie].filter(Boolean).join(' · ') || '—'}
                           </div>
                         </div>
                       </div>

@@ -41,6 +41,7 @@ import {
   ClipboardList,
   NotebookPen,
   MapPin,
+  ScanLine,
   Sparkles,
   Medal,
   Star,
@@ -272,6 +273,7 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
           children: [
             { icon: FilePlus, label: "Cadastrar Cartão Resposta", href: "/app/cartao-resposta/cadastrar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: Ticket, label: "Gerar cartões", href: "/app/cartao-resposta/gerar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: ScanLine, label: "Corrigir cartões", href: "/app/cartao-resposta/corrigir", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: BarChart3, label: "Resultados", href: "/app/cartao-resposta/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
           ]
         },

@@ -14,18 +14,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { useAnswerSheetCorrection } from '@/hooks/useAnswerSheetCorrection';
 import { 
   ChevronRight, 
   ChevronLeft, 
   Download, 
-  CheckCircle, 
+  CheckCircle,
   AlertCircle,
   Users,
   School,
   FileText,
-  Images,
-  Upload,
   X,
   RefreshCw,
   Clock,
@@ -106,11 +103,7 @@ export default function AnswerSheetGenerator() {
   const [questionSkills, setQuestionSkills] = useState<Record<number, string[]>>({});
   const [editingQuestionSkills, setEditingQuestionSkills] = useState<number | null>(null);
 
-  // Estados para configuração de blocos
-  const [useBlocks, setUseBlocks] = useState(false);
-  const [numBlocks, setNumBlocks] = useState(2);
-  const [questionsPerBlock, setQuestionsPerBlock] = useState(5);
-  const [separateBySubject, setSeparateBySubject] = useState(false);
+  // Blocos por disciplina (único modo de blocos)
 
   // Estados para separação por disciplina
   const [disciplines, setDisciplines] = useState<{id: string; name: string}[]>([]);
@@ -164,26 +157,6 @@ export default function AnswerSheetGenerator() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteMode, setDeleteMode] = useState<'single' | 'multiple'>('single');
   const [gabaritoToDelete, setGabaritoToDelete] = useState<string | null>(null);
-
-  // Estados para correção
-  const [uploadedImage, setUploadedImage] = useState<File | null>(null);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [isProcessingSingle, setIsProcessingSingle] = useState(false);
-  const [correctionProgress, setCorrectionProgress] = useState(0);
-  const [showBatchCorrectionDialog, setShowBatchCorrectionDialog] = useState(false);
-  const [batchImages, setBatchImages] = useState<{ file: File; preview: string }[]>([]);
-  const batchFileInputRef = useRef<HTMLInputElement>(null);
-
-  // Hook para correção em lote
-  const {
-    isProcessing: isBatchProcessing,
-    isCompleted: isBatchCompleted,
-    progress: batchProgress,
-    error: batchError,
-    startSingleCorrection,
-    startBatchCorrection,
-    reset: resetBatchCorrection,
-  } = useAnswerSheetCorrection();
 
   // Função para normalizar as opções recebidas do backend
   const normalizeOptions = (rawOptions: any): FilterOption[] => {
@@ -483,13 +456,13 @@ export default function AnswerSheetGenerator() {
     }
   };
 
-  // Carregar disciplinas quando separateBySubject for ativado
+  // Carregar disciplinas quando houver questões (para a seção de blocos)
   useEffect(() => {
-    if (separateBySubject && disciplines.length === 0) {
+    if (totalQuestoes > 0 && disciplines.length === 0) {
       fetchDisciplines();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [separateBySubject]);
+  }, [totalQuestoes]);
 
   // Carregar lista de disciplinas para o select de habilidades do gabarito
   useEffect(() => {
@@ -555,13 +528,6 @@ export default function AnswerSheetGenerator() {
     };
     fetchSkills();
   }, [skillSubjectId, skillGradeId, toast]);
-
-  // Limpar blocos quando desativar separateBySubject
-  useEffect(() => {
-    if (!separateBySubject) {
-      setBlocksByDiscipline([]);
-    }
-  }, [separateBySubject]);
 
   const fetchDisciplines = async () => {
     try {
@@ -722,71 +688,15 @@ export default function AnswerSheetGenerator() {
     return { isValid: true, warnings };
   };
 
-  // Função para validar configurações de blocos
+  // Função para validar configurações de blocos (apenas por disciplina)
   const validateBlockSettings = (): { isValid: boolean; warnings: string[] } => {
-    const warnings: string[] = [];
-    let hasCriticalError = false;
-
-    // Se separar por disciplina, usar validação específica
-    if (separateBySubject) {
+    if (blocksByDiscipline.length > 0) {
       return validateDisciplineBlocks();
     }
-
-    if (!useBlocks) {
-      return { isValid: true, warnings: [] };
-    }
-
-    // Validar quantidade de blocos vs questões totais
-    if (totalQuestoes > 0) {
-      const totalQuestionsNeeded = numBlocks * questionsPerBlock;
-
-      if (numBlocks > totalQuestoes) {
-        warnings.push(
-          `⚠️ A quantidade de blocos (${numBlocks}) é maior que o número total de questões (${totalQuestoes}). ` +
-          `Isso pode resultar em blocos vazios ou com poucas questões. Considere reduzir a quantidade de blocos.`
-        );
-      }
-
-      if (questionsPerBlock > totalQuestoes) {
-        warnings.push(
-          `⚠️ A quantidade de questões por bloco (${questionsPerBlock}) é maior que o número total de questões (${totalQuestoes}). ` +
-          `Cada bloco terá no máximo ${totalQuestoes} questões. Considere reduzir a quantidade de questões por bloco.`
-        );
-      }
-
-      if (totalQuestionsNeeded > totalQuestoes) {
-        warnings.push(
-          `⚠️ A configuração atual (${numBlocks} blocos × ${questionsPerBlock} questões = ${totalQuestionsNeeded} questões) ` +
-          `ultrapassa o número total de questões (${totalQuestoes}). ` +
-          `Os blocos serão ajustados automaticamente para distribuir as questões disponíveis.`
-        );
-      }
-
-      if (numBlocks > 0 && questionsPerBlock > 0 && totalQuestionsNeeded < totalQuestoes) {
-        const remainingQuestions = totalQuestoes - totalQuestionsNeeded;
-        if (remainingQuestions > 0) {
-          warnings.push(
-            `ℹ️ Com a configuração atual, restarão ${remainingQuestions} questão(ões) sem distribuir nos blocos. ` +
-            `Considere ajustar a quantidade de blocos ou questões por bloco para aproveitar todas as questões.`
-          );
-        }
-      }
-
-      // Validações críticas que impedem a geração
-      if (numBlocks <= 0 || questionsPerBlock <= 0) {
-        hasCriticalError = true;
-        warnings.push(
-          `❌ A quantidade de blocos e questões por bloco deve ser maior que zero.`
-        );
-      }
-    } else {
-      warnings.push(
-        `ℹ️ Informe a quantidade de questões antes de configurar os blocos.`
-      );
-    }
-
-    return { isValid: !hasCriticalError, warnings };
+    return { isValid: true, warnings: [] };
   };
+
+  const hasDisciplineBlocks = blocksByDiscipline.length >= 2;
 
   const handleChangeRespostaQuestao = (numeroQuestao: number, alternativa: string) => {
     const alternativaUpper = alternativa.toUpperCase();
@@ -1074,14 +984,7 @@ export default function AnswerSheetGenerator() {
       }
     }
 
-    // Validar configurações de blocos se estiverem ativadas
-    if (useBlocks && !separateBySubject) {
-      if (numBlocks <= 0 || questionsPerBlock <= 0) {
-        return false;
-      }
-    }
-
-    if (separateBySubject) {
+    if (blocksByDiscipline.length > 0) {
       const validation = validateDisciplineBlocks();
       if (!validation.isValid) {
         return false;
@@ -1398,17 +1301,12 @@ export default function AnswerSheetGenerator() {
         num_questions: totalQuestoes,
         correct_answers: gabaritoManual,
         question_skills,
-        use_blocks: separateBySubject,
-        ...(useBlocks && !separateBySubject && {
-          blocks_config: {
-            num_blocks: numBlocks,
-            questions_per_block: questionsPerBlock,
-          },
-        }),
-        ...(separateBySubject && {
+        use_blocks: hasDisciplineBlocks,
+        ...(hasDisciplineBlocks && {
           blocks_config: {
             blocks: blocksByDiscipline.map(block => ({
               block_id: block.block_id,
+              subject_id: block.subject_id,
               subject_name: block.subject_name,
               questions_count: block.questions_count,
               start_question: block.start_question,
@@ -1525,144 +1423,6 @@ export default function AnswerSheetGenerator() {
     : 0;
   const totalQuestoesPendentes = totalQuestoes > 0 ? totalQuestoes - totalQuestoesRespondidas : 0;
 
-
-  // Funções de correção
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setUploadedImage(file);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setPreviewImage(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleProcessSingleCorrection = async () => {
-    if (!uploadedImage) {
-      toast({
-        title: 'Erro',
-        description: 'Selecione uma imagem para corrigir.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    try {
-      setIsProcessingSingle(true);
-      setCorrectionProgress(0);
-
-      // Converter imagem para base64
-      const base64Image = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(uploadedImage);
-      });
-
-      // Simular progresso
-      const progressInterval = setInterval(() => {
-        setCorrectionProgress(prev => Math.min(prev + 15, 90));
-      }, 300);
-
-      // O backend identifica o gabarito automaticamente pelo QR code na imagem
-      const result = await startSingleCorrection(base64Image);
-
-      clearInterval(progressInterval);
-      setCorrectionProgress(100);
-
-      setUploadedImage(null);
-      setPreviewImage(null);
-    } catch (error: any) {
-      
-      // O hook já exibe o toast, mas garantimos que o erro do backend seja exibido corretamente
-      // Se o hook não exibiu (erro não HTTP), exibimos aqui
-      if (!error.response) {
-        const errorMessage = error.message || "Não foi possível processar a correção. Tente novamente.";
-        toast({
-          title: 'Erro',
-          description: errorMessage,
-          variant: 'destructive',
-        });
-      }
-      // Se for erro HTTP, o hook já exibiu o toast com error.response?.data?.error
-    } finally {
-      setIsProcessingSingle(false);
-      setCorrectionProgress(0);
-    }
-  };
-
-  const handleBatchImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
-    if (files.length === 0) return;
-
-    const maxImages = 10;
-    const remainingSlots = maxImages - batchImages.length;
-    const filesToAdd = files.slice(0, remainingSlots);
-
-    if (files.length > remainingSlots) {
-      toast({
-        title: 'Limite de imagens',
-        description: `Máximo de ${maxImages} imagens por lote. Apenas ${remainingSlots} imagens foram adicionadas.`,
-        variant: 'destructive',
-      });
-    }
-
-    const newImages = await Promise.all(
-      filesToAdd.map(async (file) => {
-        const preview = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        });
-        return { file, preview };
-      })
-    );
-
-    setBatchImages(prev => [...prev, ...newImages]);
-    
-    if (batchFileInputRef.current) {
-      batchFileInputRef.current.value = '';
-    }
-  };
-
-  const handleRemoveBatchImage = (index: number) => {
-    setBatchImages(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleClearBatchImages = () => {
-    setBatchImages([]);
-  };
-
-  const handleStartBatchCorrection = async () => {
-    if (batchImages.length === 0) {
-      toast({
-        title: 'Erro',
-        description: 'Selecione pelo menos uma imagem.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    try {
-      const base64Images = batchImages.map(img => img.preview);
-      // O backend identifica o gabarito automaticamente pelo QR code nas imagens
-      await startBatchCorrection(base64Images);
-    } catch (error) {
-    }
-  };
-
-  const handleCloseBatchDialog = () => {
-    if (!isBatchProcessing) {
-      setShowBatchCorrectionDialog(false);
-      setBatchImages([]);
-      resetBatchCorrection();
-    }
-  };
-
-
-
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
       {/* Header — mobile: título/desc alinhados */}
@@ -1685,9 +1445,6 @@ export default function AnswerSheetGenerator() {
     </TabsTrigger>
     <TabsTrigger value="generated" className="flex-1 min-w-0 text-xs sm:text-sm px-2 py-2 sm:px-3">
       <span className="truncate">Cartões Gerados</span>
-    </TabsTrigger>
-    <TabsTrigger value="correct" className="flex-1 min-w-0 text-xs sm:text-sm px-2 py-2 sm:px-3">
-      <span className="truncate">Corrigir Cartões</span>
     </TabsTrigger>
   </TabsList>
   <Button
@@ -2465,64 +2222,29 @@ export default function AnswerSheetGenerator() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Opção de usar blocos */}
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="use-blocks"
-                  checked={useBlocks}
-                  onCheckedChange={(checked) => {
-                    if (checked === true) {
-                      setUseBlocks(true);
-                      setSeparateBySubject(false);
-                    } else {
-                      setUseBlocks(false);
-                    }
-                  }}
-                />
-                <Label htmlFor="use-blocks" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  Separar avaliações em blocos
-                </Label>
-              </div>
+              <p className="text-sm text-muted-foreground">
+                Opcional: divida as questões em blocos por disciplina (2 a 4 blocos). Deixe vazio para um único bloco.
+              </p>
 
-              {/* Opção de separar por disciplina */}
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="separate-by-subject"
-                  checked={separateBySubject}
-                  onCheckedChange={(checked) => {
-                    if (checked === true) {
-                      setSeparateBySubject(true);
-                      setUseBlocks(false);
-                    } else {
-                      setSeparateBySubject(false);
-                    }
-                  }}
-                />
-                <Label htmlFor="separate-by-subject" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  Separar por disciplina (1 bloco por disciplina)
-                </Label>
-              </div>
-
-              {separateBySubject && (
-                <div className="space-y-4 pl-6 border-l-2 border-blue-200 mt-4">
-                  <div className="space-y-2">
-                    <Label>Disciplinas e Distribuição de Questões</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Configure quantas questões cada disciplina terá. Máximo de 4 disciplinas, 26 questões por disciplina.
-                    </p>
-                  </div>
-                  
-                  {/* Lista de blocos configurados */}
-                  {blocksByDiscipline.length > 0 && (
-                    <div className="space-y-3">
-                      {blocksByDiscipline.map((block) => (
-                        <Card key={block.block_id} className="p-4">
-                          <div className="flex items-center gap-4">
-                            <Badge variant="outline" className="shrink-0">Bloco {block.block_id}</Badge>
-                            <div className="flex-1 grid grid-cols-2 gap-3">
-                              <div>
+              {totalQuestoes === 0 ? (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Defina a quantidade total de questões antes de configurar os blocos.
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <div className="space-y-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                  {blocksByDiscipline.length > 0 ? (
+                    <>
+                      <div className="space-y-2">
+                        {blocksByDiscipline.map((block) => (
+                          <Card key={block.block_id} className="p-4">
+                            <div className="flex flex-wrap items-center gap-4">
+                              <Badge variant="secondary" className="shrink-0">Bloco {block.block_id}</Badge>
+                              <div className="min-w-[140px]">
                                 <Label className="text-xs text-muted-foreground">Disciplina</Label>
-                                <p className="font-medium text-sm">{block.subject_name}</p>
+                                <p className="font-medium text-sm text-foreground">{block.subject_name}</p>
                               </div>
                               <div>
                                 <Label className="text-xs text-muted-foreground">Questões</Label>
@@ -2532,168 +2254,110 @@ export default function AnswerSheetGenerator() {
                                   max="26"
                                   value={block.questions_count}
                                   onChange={(e) => handleUpdateBlockQuestions(block.block_id, parseInt(e.target.value) || 1)}
-                                  className="h-8"
+                                  className="h-9 w-20"
                                 />
                               </div>
+                              <span className="text-xs text-muted-foreground shrink-0">Q{block.start_question}–{block.end_question}</span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRemoveDisciplineBlock(block.block_id)}
+                                className="ml-auto shrink-0"
+                                aria-label="Remover bloco"
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
                             </div>
-                            <div className="text-xs text-muted-foreground shrink-0">
-                              Q{block.start_question}-{block.end_question}
+                          </Card>
+                        ))}
+                      </div>
+                      {blocksByDiscipline.length < 4 && (
+                        <div>
+                          {isLoadingDisciplines ? (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Carregando disciplinas...
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRemoveDisciplineBlock(block.block_id)}
-                              className="shrink-0"
+                          ) : disciplines.length > 0 ? (
+                            <Select
+                              onValueChange={(value) => {
+                                const discipline = disciplines.find(d => d.id === value);
+                                if (discipline) handleAddDisciplineBlock(discipline.id, discipline.name);
+                              }}
+                              value=""
                             >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-                  )}
-                  
-                  {/* Botão para adicionar disciplina */}
-                  {blocksByDiscipline.length < 4 && totalQuestoes > 0 && (
-                    <div>
-                      {isLoadingDisciplines ? (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Carregando disciplinas...
+                              <SelectTrigger className="w-full max-w-sm border-dashed">
+                                <SelectValue placeholder="+ Adicionar outra disciplina" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {disciplines
+                                  .filter(d => !blocksByDiscipline.some(b => b.subject_id === d.id))
+                                  .map(discipline => (
+                                    <SelectItem key={discipline.id} value={discipline.id}>
+                                      {discipline.name}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Nenhuma disciplina disponível.</p>
+                          )}
                         </div>
+                      )}
+                      <div className="flex flex-wrap items-center gap-4 rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                        <span className="font-medium text-foreground">
+                          Total: {blocksByDiscipline.reduce((sum, b) => sum + b.questions_count, 0)} / {totalQuestoes} questões
+                        </span>
+                        <span className="text-muted-foreground">· {blocksByDiscipline.length} / 4 blocos</span>
+                      </div>
+                      {(() => {
+                        const validation = validateDisciplineBlocks();
+                        if (validation.warnings.length > 0) {
+                          return (
+                            <Alert variant={validation.isValid ? "default" : "destructive"}>
+                              <AlertCircle className="h-4 w-4" />
+                              <AlertDescription>
+                                <div className="space-y-2">
+                                  {validation.warnings.map((warning, index) => (
+                                    <p key={index} className="text-sm">{warning}</p>
+                                  ))}
+                                </div>
+                              </AlertDescription>
+                            </Alert>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed bg-background/50 py-8">
+                      <p className="text-sm text-muted-foreground text-center">Nenhum bloco adicionado. Um único bloco será usado.</p>
+                      {isLoadingDisciplines ? (
+                        <p className="text-xs text-muted-foreground">Carregando disciplinas...</p>
                       ) : disciplines.length > 0 ? (
                         <Select
                           onValueChange={(value) => {
                             const discipline = disciplines.find(d => d.id === value);
-                            if (discipline) {
-                              handleAddDisciplineBlock(discipline.id, discipline.name);
-                            }
+                            if (discipline) handleAddDisciplineBlock(discipline.id, discipline.name);
                           }}
                           value=""
                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder="+ Adicionar Disciplina" />
+                          <SelectTrigger className="w-64 border-primary/30">
+                            <SelectValue placeholder="+ Adicionar disciplina para criar blocos" />
                           </SelectTrigger>
                           <SelectContent>
-                            {disciplines
-                              .filter(d => !blocksByDiscipline.some(b => b.subject_id === d.id))
-                              .map(discipline => (
-                                <SelectItem key={discipline.id} value={discipline.id}>
-                                  {discipline.name}
-                                </SelectItem>
-                              ))}
+                            {disciplines.map(discipline => (
+                              <SelectItem key={discipline.id} value={discipline.id}>
+                                {discipline.name}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       ) : (
-                        <p className="text-sm text-muted-foreground">
-                          Nenhuma disciplina disponível para adicionar.
-                        </p>
+                        <p className="text-xs text-muted-foreground">Nenhuma disciplina disponível.</p>
                       )}
                     </div>
                   )}
-
-                  {totalQuestoes === 0 && (
-                    <Alert>
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>
-                        Defina a quantidade total de questões antes de configurar os blocos por disciplina.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                  
-                  {/* Resumo e validação */}
-                  {totalQuestoes > 0 && (
-                    <div className="p-3 bg-muted/50 rounded-lg text-sm space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground">Total de questões:</span>
-                        <span className={`font-semibold ${
-                          blocksByDiscipline.reduce((sum, b) => sum + b.questions_count, 0) === totalQuestoes 
-                            ? 'text-green-600' 
-                            : 'text-orange-600'
-                        }`}>
-                          {blocksByDiscipline.reduce((sum, b) => sum + b.questions_count, 0)} / {totalQuestoes}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground">Blocos configurados:</span>
-                        <span className="font-semibold">{blocksByDiscipline.length} / 4</span>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Avisos de validação */}
-                  {totalQuestoes > 0 && (() => {
-                    const validation = validateDisciplineBlocks();
-                    if (validation.warnings.length > 0) {
-                      return (
-                        <Alert variant={validation.isValid ? "default" : "destructive"}>
-                          <AlertCircle className="h-4 w-4" />
-                          <AlertDescription>
-                            <div className="space-y-2">
-                              {validation.warnings.map((warning, index) => (
-                                <p key={index} className="text-sm">{warning}</p>
-                              ))}
-                            </div>
-                          </AlertDescription>
-                        </Alert>
-                      );
-                    }
-                    return null;
-                  })()}
-                </div>
-              )}
-
-              {/* Configurações de blocos (apenas se useBlocks estiver ativado) */}
-              {useBlocks && (
-                <div className="space-y-4 pl-6 border-l-2 border-gray-200">
-                  <div className="space-y-2">
-                    <Label htmlFor="num-blocks">Quantidade de Blocos</Label>
-                    <Input
-                      id="num-blocks"
-                      type="number"
-                      min="1"
-                      value={numBlocks}
-                      onChange={(e) => setNumBlocks(parseInt(e.target.value) || 2)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Número de blocos que serão criados para cada cartão.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="questions-per-block">Questões por Bloco</Label>
-                    <Input
-                      id="questions-per-block"
-                      type="number"
-                      min="1"
-                      value={questionsPerBlock}
-                      onChange={(e) => setQuestionsPerBlock(parseInt(e.target.value) || 5)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Quantidade de questões que cada bloco deve conter.
-                    </p>
-                  </div>
-
-                  {/* Avisos de validação */}
-                  {(() => {
-                    const validation = validateBlockSettings();
-                    if (validation.warnings.length > 0) {
-                      return (
-                        <Alert variant={validation.isValid ? "default" : "destructive"}>
-                          <AlertDescription>
-                            <div className="space-y-2">
-                              {validation.warnings.map((warning, index) => (
-                                <p key={index} className="text-sm">
-                                  {warning}
-                                </p>
-                              ))}
-                            </div>
-                          </AlertDescription>
-                        </Alert>
-                      );
-                    }
-                    return null;
-                  })()}
                 </div>
               )}
             </CardContent>
@@ -3222,291 +2886,6 @@ export default function AnswerSheetGenerator() {
               </div>
             </DialogContent>
           </Dialog>
-        </TabsContent>
-
-        {/* Tab: Corrigir Cartões */}
-        <TabsContent value="correct" className="space-y-6">
-          {/* Correção Única */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Correção Única
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="image-upload">Imagem do Cartão Resposta Preenchido</Label>
-                <Input
-                  id="image-upload"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="cursor-pointer"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Faça upload de uma foto do cartão resposta preenchido pelo aluno.
-                </p>
-              </div>
-
-              {previewImage && (
-                <div className="space-y-4">
-                  <div>
-                    <Label>Preview da Imagem</Label>
-                    <div className="mt-2 border rounded-lg p-4">
-                      <img
-                        src={previewImage}
-                        alt="Preview"
-                        className="max-w-full h-auto max-h-64 mx-auto"
-                      />
-                    </div>
-                  </div>
-
-                  <Button
-                    onClick={handleProcessSingleCorrection}
-                    disabled={isProcessingSingle}
-                    className="w-full bg-blue-600 hover:bg-blue-700"
-                  >
-                    {isProcessingSingle ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                        Processando... {correctionProgress}%
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        Processar Correção
-                      </>
-                    )}
-                  </Button>
-
-                  {isProcessingSingle && (
-                    <div className="space-y-2">
-                      <Progress value={correctionProgress} className="w-full" />
-                      <p className="text-sm text-muted-foreground text-center">
-                        Analisando imagem e processando correção...
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Correção em Lote */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Images className="h-5 w-5" />
-                Correção em Lote
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Processe múltiplos cartões resposta de uma vez. Selecione várias imagens de cartões preenchidos
-                e o sistema irá corrigir todas automaticamente.
-              </p>
-              
-              <Dialog open={showBatchCorrectionDialog} onOpenChange={(open) => {
-                if (!open && !isBatchProcessing) {
-                  handleCloseBatchDialog();
-                } else if (open) {
-                  setShowBatchCorrectionDialog(true);
-                }
-              }}>
-                <DialogTrigger asChild>
-                  <Button 
-                    className="w-full bg-purple-600 hover:bg-purple-700"
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    Iniciar Correção em Lote
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[700px] max-h-[90vh]">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <Images className="h-5 w-5" />
-                      Correção em Lote
-                    </DialogTitle>
-                    <DialogDescription>
-                      Selecione múltiplas imagens de cartões resposta para processar de uma vez.
-                    </DialogDescription>
-                  </DialogHeader>
-
-                  <div className="space-y-4 py-4">
-                    {/* Upload de imagens */}
-                    {!isBatchProcessing && !isBatchCompleted && (
-                      <>
-                        <div className="space-y-2">
-                          <Label htmlFor="batch-image-upload">Selecionar Imagens</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              id="batch-image-upload"
-                              ref={batchFileInputRef}
-                              type="file"
-                              accept="image/*"
-                              multiple
-                              onChange={handleBatchImageUpload}
-                              className="cursor-pointer flex-1"
-                            />
-                            {batchImages.length > 0 && (
-                              <Button
-                                variant="outline"
-                                onClick={handleClearBatchImages}
-                                className="text-red-600 border-red-600 hover:bg-red-50"
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Máximo de 10 imagens por lote. Formatos aceitos: JPG, PNG, GIF, WebP.
-                          </p>
-                        </div>
-
-                        {/* Preview das imagens selecionadas */}
-                        {batchImages.length > 0 && (
-                          <div className="space-y-2">
-                            <Label>{batchImages.length} imagem(ns) selecionada(s)</Label>
-                            <ScrollArea className="h-48 border rounded-lg p-2">
-                              <div className="grid grid-cols-4 gap-2">
-                                {batchImages.map((img, index) => (
-                                  <div key={index} className="relative group">
-                                    <img
-                                      src={img.preview}
-                                      alt={`Preview ${index + 1}`}
-                                      className="w-full h-24 object-cover rounded border"
-                                    />
-                                    <button
-                                      onClick={() => handleRemoveBatchImage(index)}
-                                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    >
-                                      <X className="h-3 w-3" />
-                                    </button>
-                                    <span className="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-1 rounded">
-                                      {index + 1}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </ScrollArea>
-                          </div>
-                        )}
-
-                        {/* Botão para iniciar */}
-                        <Button
-                          onClick={handleStartBatchCorrection}
-                          disabled={batchImages.length === 0}
-                          className="w-full bg-purple-600 hover:bg-purple-700"
-                        >
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Iniciar Correção ({batchImages.length} cartões)
-                        </Button>
-                      </>
-                    )}
-
-                    {/* Erro */}
-                    {batchError && (
-                      <Alert variant="destructive">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertDescription>{batchError}</AlertDescription>
-                      </Alert>
-                    )}
-
-                    {/* Progresso */}
-                    {(isBatchProcessing || isBatchCompleted) && batchProgress && (
-                      <div className="space-y-4">
-                        {/* Header de status */}
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center gap-2">
-                            {isBatchCompleted ? (
-                              <>
-                                <CheckCircle className="h-5 w-5 text-green-500" />
-                                <span className="font-medium text-green-600">Concluído!</span>
-                              </>
-                            ) : (
-                              <>
-                                <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
-                                <span className="font-medium">Processando...</span>
-                              </>
-                            )}
-                          </span>
-                          <span className="text-sm text-muted-foreground">
-                            {batchProgress.completed}/{batchProgress.total} ({batchProgress.percentage.toFixed(0)}%)
-                          </span>
-                        </div>
-
-                        {/* Barra de progresso */}
-                        <Progress value={batchProgress.percentage} className="w-full h-3" />
-
-                        {/* Lista de itens */}
-                        <ScrollArea className="h-64 border rounded-lg">
-                          <div className="p-2 space-y-1">
-                            {Object.entries(batchProgress.items || {}).map(([index, item]) => (
-                              <div
-                                key={index}
-                                className={`flex items-center justify-between p-2 rounded text-sm ${
-                                  item.status === 'pending' ? 'bg-gray-100' :
-                                  item.status === 'processing' ? 'bg-yellow-50 border border-yellow-200' :
-                                  item.status === 'done' ? 'bg-green-50 border border-green-200' :
-                                  'bg-red-50 border border-red-200'
-                                }`}
-                              >
-                                <span className="flex items-center gap-2">
-                                  {item.status === 'pending' && <Clock className="h-4 w-4 text-gray-400" />}
-                                  {item.status === 'processing' && <Loader2 className="h-4 w-4 animate-spin text-yellow-500" />}
-                                  {item.status === 'done' && <CheckCircle className="h-4 w-4 text-green-500" />}
-                                  {item.status === 'error' && <AlertCircle className="h-4 w-4 text-red-500" />}
-                                  <span>
-                                    {item.status === 'pending' && `Cartão ${Number(index) + 1} - Aguardando...`}
-                                    {item.status === 'processing' && `Cartão ${Number(index) + 1} - Processando...`}
-                                    {item.status === 'done' && (item.student_name || `Cartão ${Number(index) + 1}`)}
-                                    {item.status === 'error' && `Cartão ${Number(index) + 1} - Erro`}
-                                  </span>
-                                </span>
-                                {item.status === 'done' && (
-                                  <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300">
-                                    {item.correct}/{item.total} ({item.percentage?.toFixed(0)}%)
-                                  </Badge>
-                                )}
-                                {item.status === 'error' && item.error && (
-                                  <span className="text-xs text-red-600 max-w-[200px] truncate">
-                                    {item.error}
-                                  </span>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </ScrollArea>
-
-                        {/* Resumo final */}
-                        {isBatchCompleted && (
-                          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                            <div className="space-y-1">
-                              <p className="text-sm font-medium">Resumo da Correção</p>
-                              <div className="flex gap-4 text-sm">
-                                <span className="text-green-600">
-                                  ✅ Sucesso: {batchProgress.successful}
-                                </span>
-                                {batchProgress.failed > 0 && (
-                                  <span className="text-red-600">
-                                    ❌ Falhas: {batchProgress.failed}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <Button onClick={handleCloseBatchDialog}>
-                              Fechar
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </CardContent>
-          </Card>
         </TabsContent>
 
       </Tabs>
