@@ -8,6 +8,12 @@ export interface ConquistaNivel {
   desbloqueada: boolean;
   moedas_valor: number;
   resgatado: boolean;
+  /** Texto do requisito para este nível (ex.: "5 avaliações concluídas") — se a API enviar */
+  requisito?: string;
+  /** Valor atual do progresso (ex.: 3) — se a API enviar junto com progresso_meta */
+  progresso_atual?: number;
+  /** Meta do progresso (ex.: 5) — se a API enviar */
+  progresso_meta?: number;
 }
 
 export interface Conquista {
@@ -23,6 +29,11 @@ export interface Conquista {
   resgatado?: boolean;
 }
 
+/** Nível bruto da API (pode trazer campos extras) */
+interface ConquistaNivelRaw extends ConquistaNivel {
+  [key: string]: unknown;
+}
+
 /** Resposta bruta da API (pode vir com id, medalha_atual, progresso_percent) */
 interface ConquistaRaw {
   id?: string;
@@ -30,7 +41,7 @@ interface ConquistaRaw {
   nome: string;
   descricao: string;
   estado: string;
-  niveis?: ConquistaNivel[];
+  niveis?: ConquistaNivelRaw[];
   medalha_atual?: MedalhaTipo | null;
   medalha?: MedalhaTipo | null;
   progresso_percent?: number;
@@ -44,13 +55,27 @@ export interface ConquistasResponse {
   conquistas: Conquista[] | ConquistaRaw[];
 }
 
+function normalizeNivel(n: ConquistaNivelRaw): ConquistaNivel {
+  return {
+    medalha: n.medalha,
+    progresso: n.progresso ?? 0,
+    desbloqueada: n.desbloqueada ?? false,
+    moedas_valor: n.moedas_valor ?? 0,
+    resgatado: n.resgatado ?? false,
+    requisito: n.requisito,
+    progresso_atual: n.progresso_atual,
+    progresso_meta: n.progresso_meta,
+  };
+}
+
 function normalizeConquista(raw: ConquistaRaw): Conquista {
+  const niveis = raw.niveis?.map((n) => normalizeNivel(n as ConquistaNivelRaw));
   return {
     achievement_id: raw.id ?? raw.achievement_id ?? "",
     nome: raw.nome ?? "",
     descricao: raw.descricao ?? "",
     estado: (raw.estado === "oculta" || raw.estado === "revelada" || raw.estado === "desbloqueada" ? raw.estado : "revelada") as Conquista["estado"],
-    niveis: raw.niveis,
+    niveis,
     medalha: raw.medalha_atual ?? raw.medalha ?? undefined,
     progresso: raw.progresso_percent ?? raw.progresso,
     moedas_valor: raw.moedas_valor,

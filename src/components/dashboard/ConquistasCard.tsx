@@ -3,7 +3,13 @@ import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, Coins, Lock, Sparkles, ArrowRight } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Loader2, Coins, Lock, Sparkles, ArrowRight, HelpCircle } from "lucide-react";
 import {
   getConquistas,
   resgatarConquista,
@@ -46,6 +52,7 @@ const ConquistasCard: React.FC<ConquistasCardProps> = ({ onRedeem }) => {
   const [loading, setLoading] = useState(true);
   const [resgatandoId, setResgatandoId] = useState<string | null>(null);
   const [resgatandoTodas, setResgatandoTodas] = useState(false);
+  const [modalOQueSaoAberto, setModalOQueSaoAberto] = useState(false);
   const { toast } = useToast();
   const resgataveis = React.useMemo(() => getResgataveis(conquistas), [conquistas]);
 
@@ -131,6 +138,15 @@ const ConquistasCard: React.FC<ConquistasCardProps> = ({ onRedeem }) => {
     setResgatandoTodas(false);
   };
 
+  const textoRequisito = (c: Conquista, nivel: ConquistaNivel) =>
+    nivel.requisito ?? c.descricao ?? "Atingir este nível";
+  const textoProgresso = (nivel: ConquistaNivel) => {
+    if (nivel.progresso_atual != null && nivel.progresso_meta != null && nivel.progresso_meta > 0) {
+      return `${nivel.progresso_atual} de ${nivel.progresso_meta}`;
+    }
+    return `${Math.min(100, Math.round(nivel.progresso))}%`;
+  };
+
   const renderNivel = (
     c: Conquista,
     nivel: ConquistaNivel,
@@ -141,65 +157,60 @@ const ConquistasCard: React.FC<ConquistasCardProps> = ({ onRedeem }) => {
       nivel.desbloqueada && !nivel.resgatado && nivel.moedas_valor > 0;
     const estaResgatando = resgatandoId === key;
     const cardStyle = nivel.desbloqueada
-      ? `rounded-lg border-2 p-2.5 shadow-sm relative overflow-hidden ${MEDALHA_CARD_STYLES[nivel.medalha].card}`
-      : `rounded-lg p-2 relative overflow-hidden ${MEDALHA_CARD_BLOQUEADO[nivel.medalha]}`;
+      ? `rounded-lg border-2 p-2 shadow-sm relative overflow-hidden ${MEDALHA_CARD_STYLES[nivel.medalha].card}`
+      : `rounded-lg p-1.5 relative overflow-hidden ${MEDALHA_CARD_BLOQUEADO[nivel.medalha]}`;
 
     return (
-      <div key={key} className={`flex items-center justify-between gap-2 ${cardStyle}`}>
-        {/* Ícone de medalha na área vazia (fundo) */}
+      <div key={key} className={`flex flex-col gap-1 ${cardStyle}`}>
+        {/* Medalha de fundo (mantida) */}
         <div
-          className={`absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none ${
+          className={`absolute right-0.5 top-1/2 -translate-y-1/2 pointer-events-none ${
             nivel.desbloqueada ? "opacity-20 text-white" : "opacity-15 text-muted-foreground"
           }`}
           aria-hidden
         >
-          {nivel.desbloqueada ? (
-            <MedalIcon tipo={nivel.medalha} size={36} />
-          ) : (
-            <MedalIcon tipo={nivel.medalha} size={36} />
-          )}
+          <MedalIcon tipo={nivel.medalha} size={28} />
         </div>
-        <div className="flex items-center gap-2 min-w-0 relative z-10">
-          {nivel.desbloqueada ? (
-            <MedalIcon tipo={nivel.medalha} size={18} withBg />
-          ) : (
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted border border-border flex items-center justify-center">
-              <Lock className="w-4 h-4 text-muted-foreground" />
-            </div>
-          )}
-          <div className="min-w-0">
-            <span
-              className={`text-xs font-semibold ${
-                nivel.desbloqueada ? "text-current" : "text-muted-foreground"
-              }`}
-            >
-              {MEDALHA_LABEL[nivel.medalha]}
-            </span>
-            {nivel.desbloqueada && (
-              <span className="ml-1 text-xs opacity-90">
-                {nivel.resgatado ? "(resgatado)" : `${nivel.moedas_valor} moedas`}
-              </span>
-            )}
-          </div>
-        </div>
-        {podeResgatar && (
-          <Button
-            size="sm"
-            variant="secondary"
-            className="flex-shrink-0 h-7 text-xs relative z-10"
-            onClick={() => handleResgatar(c.achievement_id, nivel.medalha)}
-            disabled={estaResgatando}
+        {/* Topo: badge Bronze/Prata/Ouro/Platina no canto superior direito */}
+        <div className="flex items-start justify-end gap-1 relative z-10">
+          <span
+            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${MEDALHA_STYLES[nivel.medalha]}`}
           >
-            {estaResgatando ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <>
-                <Coins className="w-3 h-3 mr-1" />
-                Resgatar
-              </>
-            )}
-          </Button>
-        )}
+            {MEDALHA_LABEL[nivel.medalha]}
+          </span>
+          {podeResgatar && (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="h-5 text-[10px] px-1.5 shrink-0"
+              onClick={() => handleResgatar(c.achievement_id, nivel.medalha)}
+              disabled={estaResgatando}
+            >
+              {estaResgatando ? (
+                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+              ) : (
+                <>
+                  <Coins className="w-2.5 h-2.5 mr-0.5" />
+                  Resgatar
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+        {/* Título em destaque: Requisito */}
+        <p className={`relative z-10 text-xs font-bold leading-tight line-clamp-1 ${nivel.desbloqueada ? "" : "text-muted-foreground"}`}>
+          {textoRequisito(c, nivel)}
+        </p>
+        <div className="relative z-10 space-y-0.5 text-[11px] leading-tight opacity-95">
+          <p className={`flex flex-wrap items-center gap-1 ${nivel.desbloqueada ? "" : "text-muted-foreground"}`}>
+            <span className="font-medium">Progresso:</span> {textoProgresso(nivel)}
+            <span className="font-medium">·</span>
+            <span className="inline-flex items-center gap-0.5">
+              <Coins className="w-2.5 h-2.5" />
+              {nivel.resgatado ? "Resgatado" : `Ao passar: ${nivel.moedas_valor} moedas`}
+            </span>
+          </p>
+        </div>
       </div>
     );
   };
@@ -214,49 +225,55 @@ const ConquistasCard: React.FC<ConquistasCardProps> = ({ onRedeem }) => {
     const estaResgatando = resgatandoId === key;
     const medalha = c.medalha as MedalhaTipo;
     const cardClass = c.medalha
-      ? `rounded-xl border-2 p-3 space-y-2 relative overflow-hidden ${MEDALHA_CARD_STYLES[medalha].card}`
-      : "rounded-lg border border-border bg-card p-3 space-y-2";
+      ? `rounded-lg border-2 p-2 space-y-1.5 relative overflow-hidden ${MEDALHA_CARD_STYLES[medalha].card}`
+      : "rounded-lg border border-border bg-card p-2 space-y-1.5";
 
     return (
       <div key={c.achievement_id} className={cardClass}>
+        {/* Medalha de fundo (mantida) */}
         {c.medalha && (
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-20 text-current pointer-events-none" aria-hidden>
-            <MedalIcon tipo={medalha} size={48} />
+          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-20 text-current pointer-events-none" aria-hidden>
+            <MedalIcon tipo={medalha} size={36} />
           </div>
         )}
-        <div className="flex items-center gap-2 relative z-10">
+        {/* Topo: título em destaque + badge no canto superior direito */}
+        <div className="flex items-start justify-between gap-2 relative z-10">
+          <h3 className="font-bold text-sm truncate leading-tight min-w-0">{c.nome}</h3>
           {c.medalha && (
-            <MedalIcon tipo={medalha} size={22} withBg />
-          )}
-          <div className="min-w-0 flex-1">
-            <span className="font-semibold text-sm truncate block">{c.nome}</span>
-            {c.medalha && (
-              <span
-                className={`text-xs px-2 py-0.5 rounded-full border inline-block mt-0.5 bg-white/20 border-white/40 ${MEDALHA_STYLES[medalha].text}`}
-              >
-                {MEDALHA_LABEL[medalha]}
-              </span>
-            )}
-          </div>
-        </div>
-        {c.descricao && (
-          <p className="text-xs opacity-90 line-clamp-2 relative z-10">{c.descricao}</p>
-        )}
-        {c.progresso != null && (
-          <Progress value={Math.min(100, c.progresso)} className="h-2 relative z-10" />
-        )}
-        <div className="flex items-center justify-between relative z-10">
-          {c.moedas_valor != null && c.moedas_valor > 0 && (
-            <span className="text-xs opacity-90 flex items-center gap-1">
-              <Coins className="w-3 h-3" />
-              {c.resgatado ? "Resgatado" : `${c.moedas_valor} moedas`}
+            <span
+              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${MEDALHA_STYLES[medalha]}`}
+            >
+              {MEDALHA_LABEL[medalha]}
             </span>
           )}
+        </div>
+        <div className="relative z-10 space-y-0.5 text-[11px] leading-tight opacity-95">
+          <p className="line-clamp-1">
+            <span className="font-medium">Requisito:</span> {c.descricao || "Atingir esta conquista"}
+          </p>
+          {c.progresso != null && (
+            <p>
+              <span className="font-medium">Progresso:</span> {Math.min(100, Math.round(c.progresso))}%
+            </p>
+          )}
+          <p className="flex items-center gap-1">
+            <Coins className="w-3 h-3" />
+            <span className="font-medium">
+              {c.moedas_valor != null && c.moedas_valor > 0
+                ? (c.resgatado ? "Resgatado" : `Ao passar para este nível: ${c.moedas_valor} moedas`)
+                : "—"}
+            </span>
+          </p>
+        </div>
+        {c.progresso != null && (
+          <Progress value={Math.min(100, c.progresso)} className="h-1.5 relative z-10" />
+        )}
+        <div className="flex items-center justify-end relative z-10">
           {podeResgatar && (
             <Button
               size="sm"
               variant="secondary"
-              className="h-7 text-xs"
+              className="h-6 text-[11px] px-1.5"
               onClick={() => handleResgatar(c.achievement_id, medalha)}
               disabled={estaResgatando}
             >
@@ -287,9 +304,40 @@ const ConquistasCard: React.FC<ConquistasCardProps> = ({ onRedeem }) => {
             <div className="text-xs text-muted-foreground font-normal">
               Desbloqueie e resgate por moedas
             </div>
+            <button
+              type="button"
+              onClick={() => setModalOQueSaoAberto(true)}
+              className="mt-1 text-xs text-primary hover:underline inline-flex items-center gap-1 font-normal focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded"
+              aria-label="O que são as conquistas? Abre explicação"
+            >
+              <HelpCircle className="w-3.5 h-3.5 flex-shrink-0" />
+              O que são as conquistas?
+            </button>
           </div>
         </CardTitle>
       </CardHeader>
+
+      <Dialog open={modalOQueSaoAberto} onOpenChange={setModalOQueSaoAberto}>
+        <DialogContent ariaTitle="O que são as conquistas?">
+          <DialogHeader>
+            <DialogTitle className="text-lg flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-amber-500" />
+              O que são as conquistas?
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-sm text-muted-foreground">
+            <p>
+              <strong className="text-foreground">Conquistas</strong> são medalhas e badges que você ganha ao cumprir certas metas no sistema — por exemplo, tirar sua primeira nota 10, fazer várias avaliações seguidas ou ficar entre os melhores no ranking.
+            </p>
+            <p>
+              <strong className="text-foreground">Para que servem?</strong> Elas mostram seu progresso e dedicação. Além disso, muitas conquistas podem ser <strong className="text-foreground">resgatadas por moedas</strong>, que você usa na loja para personalizar seu perfil (avatar, temas, etc.).
+            </p>
+            <p>
+              <strong className="text-foreground">Como conseguir?</strong> Basta participar das atividades: fazer avaliações, manter sequências de dias estudando e se esforçar para subir no ranking. Cada conquista tem um requisito; quando você atinge, ela é desbloqueada e pode ser resgatada por moedas aqui mesmo.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
       <CardContent className="pt-0 flex-1 flex flex-col min-h-0">
         {loading ? (
           <div className="flex items-center justify-center py-8">
@@ -330,7 +378,7 @@ const ConquistasCard: React.FC<ConquistasCardProps> = ({ onRedeem }) => {
                 )}
               </Button>
             )}
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 space-y-3">
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 space-y-2">
               {conquistas.slice(0, 3).map((c, index) => {
                 const nome = c.estado === "oculta" && !c.nome ? "???" : (c.nome || "???");
                 const descricao =
@@ -341,15 +389,15 @@ const ConquistasCard: React.FC<ConquistasCardProps> = ({ onRedeem }) => {
                   return (
                     <div
                       key={listKey}
-                      className="rounded-xl border border-border bg-card/80 dark:bg-card/90 p-3 space-y-2.5"
+                      className="rounded-lg border border-border bg-card/80 dark:bg-card/90 p-2 space-y-1.5"
                     >
-                      <div className="font-semibold text-sm truncate">{nome}</div>
+                      <div className="font-semibold text-xs truncate">{nome}</div>
                       {descricao && descricao !== "???" && (
-                        <p className="text-xs text-muted-foreground line-clamp-2">
+                        <p className="text-[11px] text-muted-foreground line-clamp-1">
                           {descricao}
                         </p>
                       )}
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         {c.niveis.map((nivel, idx) =>
                           renderNivel({ ...c, nome, descricao }, nivel, idx)
                         )}
