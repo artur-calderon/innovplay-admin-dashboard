@@ -339,12 +339,18 @@ export default function TakeEvaluation() {
                     images.forEach((img) => {
                         const parent = img.parentElement;
 
-                        if (parent && parent.tagName === 'P') {
-                            const before = img.previousSibling?.textContent?.trim() || '';
-                            const after = img.nextSibling?.textContent?.trim() || '';
-                            const hasTextAround = before.length > 0 || after.length > 0;
-
-                            if (hasTextAround) {
+                        // Marcar como inline: dentro de <p> com texto ao redor OU dentro de <p>/<li> (fórmulas, raiz, símbolos pequenos)
+                        if (parent) {
+                            const isInP = parent.tagName === 'P';
+                            const isInLi = parent.tagName === 'LI';
+                            if (isInP) {
+                                const before = img.previousSibling?.textContent?.trim() || '';
+                                const after = img.nextSibling?.textContent?.trim() || '';
+                                const hasTextAround = before.length > 0 || after.length > 0;
+                                if (hasTextAround) img.classList.add('inline-image');
+                                // Imagem sozinha no parágrafo (ex.: raiz, fórmula) também fica pequena
+                                else img.classList.add('inline-image');
+                            } else if (isInLi) {
                                 img.classList.add('inline-image');
                             }
                         }
@@ -718,42 +724,44 @@ export default function TakeEvaluation() {
             <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
 <style>
   {`
-    /* Imagens principais - tamanho médio/grande com tamanho mínimo */
-    .evaluation-question-content img:not(.inline-image) {
-        display: block;
-        margin: 2rem auto;
-        width: auto;
-        min-width: 300px;
-        max-width: 90%;
-        max-height: 450px;
-        height: auto;
-    }
-
-    /* Imagens inline (pequenas no meio do texto) */
-    .evaluation-question-content img.inline-image {
+    /* Padrão: todas as imagens do enunciado ficam no tamanho de fórmula/símbolo (raiz, fração, etc.) */
+    .evaluation-question-content img {
         display: inline-block !important;
         vertical-align: middle !important;
-        margin: 0 0.3rem !important;
-        max-height: 2.8em !important;
-        max-width: 4em !important;
+        max-height: 1.4em !important;
+        max-width: 2em !important;
         width: auto !important;
         height: auto !important;
         object-fit: contain !important;
-        border-radius: 4px !important;
-        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.1) !important;
+        margin: 0 0.2rem !important;
     }
 
-    /* Ajustes opcionais por alinhamento */
-    .evaluation-question-content p[style*="text-align: center"] img:not(.inline-image) {
+    /* Apenas imagens com classe .block-image podem ser grandes (diagramas, figuras) */
+    .evaluation-question-content img.block-image {
+        display: block !important;
+        margin: 2rem auto !important;
+        min-width: unset !important;
+        max-height: 350px !important;
+        max-width: 90% !important;
+    }
+
+    /* Imagens inline (reforço do padrão) */
+    .evaluation-question-content img.inline-image {
+        max-height: 1.4em !important;
+        max-width: 2em !important;
+        border-radius: 4px !important;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08) !important;
+    }
+
+    /* Ajustes por alinhamento só para block-image */
+    .evaluation-question-content p[style*="text-align: center"] img.block-image {
         max-width: 80% !important;
     }
-
-    .evaluation-question-content p[style*="text-align: right"] img:not(.inline-image) {
+    .evaluation-question-content p[style*="text-align: right"] img.block-image {
         margin: 2rem 0 2rem auto !important;
         max-width: 60% !important;
     }
-
-    .evaluation-question-content p[style*="text-align: left"] img:not(.inline-image) {
+    .evaluation-question-content p[style*="text-align: left"] img.block-image {
         margin: 2rem auto 2rem 0 !important;
         max-width: 60% !important;
     }
@@ -798,30 +806,25 @@ export default function TakeEvaluation() {
 
     /* Media queries para responsividade */
     @media (max-width: 768px) {
-      .evaluation-question-content img:not(.inline-image) {
-        max-width: 100% !important;
-        min-width: 150px !important;
-        max-height: 300px !important;
-        margin: 1rem auto !important;
+      .evaluation-question-content img {
+        max-height: 1.35em !important;
+        max-width: 1.85em !important;
       }
-      
-      .evaluation-question-content img.inline-image {
-        max-height: 2em !important;
-        max-width: 3em !important;
+      .evaluation-question-content img.block-image {
+        max-height: 280px !important;
+        margin: 1rem auto !important;
       }
     }
 
     @media (min-width: 769px) and (max-width: 1024px) {
-      .evaluation-question-content img:not(.inline-image) {
-        min-width: 250px !important;
-        max-height: 350px !important;
+      .evaluation-question-content img.block-image {
+        max-height: 320px !important;
       }
     }
 
     @media (min-width: 1536px) {
-      .evaluation-question-content img:not(.inline-image) {
-        min-width: 400px !important;
-        max-height: 550px !important;
+      .evaluation-question-content img.block-image {
+        max-height: 450px !important;
       }
     }
 
