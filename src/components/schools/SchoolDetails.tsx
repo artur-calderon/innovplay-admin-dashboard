@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -141,6 +141,22 @@ export default function SchoolDetails() {
   const [availableSchools, setAvailableSchools] = useState<School[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
+
+  // Lista única de séries (grade_id + nome) a partir das turmas da escola, para o template de importação
+  const schoolGrades = useMemo(() => {
+    const seen = new Set<string>();
+    const list: { id: string; name: string }[] = [];
+    for (const c of classes) {
+      if (!c.grade) continue;
+      const id = typeof c.grade === "object" && c.grade !== null ? (c.grade as { id: string }).id : undefined;
+      const name = typeof c.grade === "object" && c.grade !== null ? (c.grade as { name: string }).name : String(c.grade);
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        list.push({ id, name });
+      }
+    }
+    return list;
+  }, [classes]);
 
   useEffect(() => {
     const fetchSchool = async () => {
@@ -1191,6 +1207,7 @@ export default function SchoolDetails() {
           schoolAddress={school.address}
           schoolState={school.city.state}
           schoolMunicipality={school.city.name}
+          grades={schoolGrades}
           onSuccess={() => {
             // Recarregar dados da escola
             window.location.reload();
