@@ -129,13 +129,13 @@ export function StudentRanking({
         <CardContent className="p-6">
           {rankedStudents.length > 0 ? (
             <div className="space-y-4">
-              {rankedStudents.map((student) => {
+              {rankedStudents.map((student, index) => {
                 const position = student.posicao || 1;
                 const positionColor = getPositionTextColor(position);
 
                 return (
                   <div
-                    key={student.id}
+                    key={`${student.id ?? 'r'}-${index}`}
                     className={`flex items-center gap-4 p-4 rounded-lg border transition-all duration-200 hover:shadow-md ${getRankingBackground(position)}`}
                   >
                     {/* Posição no ranking */}
@@ -248,9 +248,9 @@ export function StudentRanking({
           </CardHeader>
           <CardContent className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {absentStudents.map((student) => (
+              {absentStudents.map((student, index) => (
                 <div
-                  key={student.id}
+                  key={`${student.id ?? 'a'}-${index}`}
                   className="flex items-center gap-3 p-3 bg-muted rounded-lg border border-border hover:bg-muted/80 transition-colors duration-200"
                 >
                   <div className="w-8 h-8 rounded-full bg-muted-foreground/50 flex items-center justify-center">

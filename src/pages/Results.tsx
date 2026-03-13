@@ -1663,51 +1663,18 @@ export default function Results() {
         const tableData = processTableData();
         setStudents(tableData.students);
         setLoadingProgress(80);
-      } else {
-        // ✅ FALLBACK: Usar dados do ranking se disponível (já filtrados)
-        if (apiData.ranking?.length) {
+        } else if (apiData.ranking?.length) {
+          // ✅ Usar dados do ranking quando disponível (já filtrados)
           setLoadingStep('Processando dados do ranking...');
           setLoadingProgress(50);
-          
-          // ✅ CORRIGIDO: Usar a função processRankingData que já filtra alunos que responderam
           const studentsFromRanking = processRankingData();
-          
           setStudents(studentsFromRanking);
           setLoadingProgress(80);
         } else {
-          // ✅ ÚLTIMO FALLBACK: Tentar carregar dados detalhados separadamente
-          setLoadingStep('Buscando dados detalhados...');
-          setLoadingProgress(30);
-          
-          try {
-            const detailedReportResponse = await EvaluationResultsApiService.getDetailedReport(selectedEvaluation);
-            
-            if (detailedReportResponse && detailedReportResponse.alunos) {
-              const transformedStudents = detailedReportResponse.alunos.map((aluno: DetailedReportAluno) => ({
-            id: aluno.id,
-            nome: aluno.nome,
-            turma: aluno.turma,
-            nota: aluno.nota_final,
-                proficiencia: aluno.proficiencia,
-            classificacao: aluno.classificacao as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
-            questoes_respondidas: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
-            acertos: aluno.total_acertos,
-            erros: aluno.total_erros,
-            em_branco: aluno.total_em_branco,
-                tempo_gasto: aluno.respostas?.reduce((total: number, resp: { tempo_gasto: number }) => total + resp.tempo_gasto, 0) || 0,
-            status: (aluno.status === 'concluida' ? 'concluida' : 'pendente') as 'concluida' | 'pendente'
-              }));
-        
-        setStudents(transformedStudents);
-        setLoadingProgress(80);
-      } else {
-              setStudents([]);
-            }
-                } catch (error) {
+          // Sem tabela_detalhada nem ranking: não chamar relatorio-detalhado na página de resultados.
+          // Os dados devem vir da API principal (relatório filtrado). Exibir lista vazia.
           setStudents([]);
         }
-        }
-      }
       
       // Marcar tabela como pronta
       setIsTableReady(true);

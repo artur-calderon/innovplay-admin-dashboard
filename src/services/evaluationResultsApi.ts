@@ -1747,9 +1747,12 @@ export class EvaluationResultsApiService {
       return avaliacoes.filter((evaluation: any) => {
         const raw = (evaluation.type ?? evaluation.tipo ?? '').toString().trim();
         const type = raw.toUpperCase();
+        const title = String(evaluation.titulo ?? evaluation.title ?? '').toUpperCase();
         // Excluir olimpíadas e competições (relatórios e filtros: apenas avaliações/simulados)
         if (type === 'OLIMPIADAS' || type === 'OLIMPIADA' || type.includes('OLIMPI')) return false;
         if (type === 'COMPETICAO' || type === 'COMPETIÇÃO' || type.includes('COMPET')) return false;
+        // Excluir também pelo título quando o backend não envia type (ex.: "OLIMPIADA DE MATEMÁTICA", "SIMULADO OLÍMPICO")
+        if (title.includes('OLIMPI') || title.includes('OLÍMPIC')) return false;
         // Incluir apenas AVALIACAO, SIMULADO ou sem tipo
         return type === '' || type === 'AVALIACAO' || type === 'SIMULADO';
       });
