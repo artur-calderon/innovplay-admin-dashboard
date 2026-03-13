@@ -25,6 +25,8 @@ interface BulkUploadStudentsModalProps {
   schoolAddress?: string;
   schoolState?: string;
   schoolMunicipality?: string;
+  /** Lista de séries da escola (id + nome), vinda do pai; usada para preencher serie e grade_id no template */
+  grades?: { id: string; name: string }[];
 }
 
 interface UploadResult {
@@ -66,6 +68,7 @@ export function BulkUploadStudentsModal({
   schoolAddress = "",
   schoolState = "",
   schoolMunicipality = "",
+  grades = [],
 }: BulkUploadStudentsModalProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -218,14 +221,12 @@ export function BulkUploadStudentsModal({
   };
 
   const downloadCSVTemplate = () => {
-    const csvContent = `nome,data_nascimento,matricula,turma,escola,endereco_escola,estado_escola,municipio_escola,curso,serie
-João Silva,15/03/2008,2024001,A,${schoolName},${address},${state},${municipality},Anos Finais,6º Ano
-Maria Santos,22/07/2008,2024002,A,${schoolName},${address},${state},${municipality},Anos Finais,6º Ano
-Pedro Oliveira,10/11/2008,2024003,B,${schoolName},${address},${state},${municipality},Anos Finais,6º Ano
-Ana Costa,05/05/2008,2024004,B,${schoolName},${address},${state},${municipality},Anos Finais,6º Ano
-Lucas Ferreira,18/09/2008,2024005,C,${schoolName},${address},${state},${municipality},Anos Finais,6º Ano
-Julia Rodrigues,12/12/2008,2024006,C,${schoolName},${address},${state},${municipality},Anos Finais,6º Ano
-Carlos Lima,25/04/2008,2024007,C,${schoolName},${address},${state},${municipality},Anos Finais,6º Ano`;
+    const headerRow = "nome,data_nascimento,matricula,turma,escola,endereco_escola,estado_escola,municipio_escola,curso,serie,grade_id";
+    const rows =
+      grades.length > 0
+        ? grades.map((g) => `Exemplo,01/01/2010,2024001,A,${schoolName},${address},${state},${municipality},Anos Finais,${g.name},${g.id}`)
+        : [`Exemplo,01/01/2010,2024001,A,${schoolName},${address},${state},${municipality},Anos Finais,6º Ano,`];
+    const csvContent = [headerRow, ...rows].join("\n");
 
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
@@ -240,16 +241,12 @@ Carlos Lima,25/04/2008,2024007,C,${schoolName},${address},${state},${municipalit
     try {
       const XLSX = await import("xlsx");
 
-      const templateData = [
-        ["nome", "data_nascimento", "matricula", "turma", "escola", "endereco_escola", "estado_escola", "municipio_escola", "curso", "serie"],
-        ["João Silva", "15/03/2008", "2024001", "A", schoolName, address, state, municipality, "Anos Finais", "6º Ano"],
-        ["Maria Santos", "22/07/2008", "2024002", "A", schoolName, address, state, municipality, "Anos Finais", "6º Ano"],
-        ["Pedro Oliveira", "10/11/2008", "2024003", "B", schoolName, address, state, municipality, "Anos Finais", "6º Ano"],
-        ["Ana Costa", "05/05/2008", "2024004", "B", schoolName, address, state, municipality, "Anos Finais", "6º Ano"],
-        ["Lucas Ferreira", "18/09/2008", "2024005", "C", schoolName, address, state, municipality, "Anos Finais", "6º Ano"],
-        ["Julia Rodrigues", "12/12/2008", "2024006", "C", schoolName, address, state, municipality, "Anos Finais", "6º Ano"],
-        ["Carlos Lima", "25/04/2008", "2024007", "C", schoolName, address, state, municipality, "Anos Finais", "6º Ano"],
-      ];
+      const headerRow = ["nome", "data_nascimento", "matricula", "turma", "escola", "endereco_escola", "estado_escola", "municipio_escola", "curso", "serie", "grade_id"];
+      const dataRows =
+        grades.length > 0
+          ? grades.map((g) => ["Exemplo", "01/01/2010", "2024001", "A", schoolName, address, state, municipality, "Anos Finais", g.name, g.id])
+          : [["Exemplo", "01/01/2010", "2024001", "A", schoolName, address, state, municipality, "Anos Finais", "6º Ano", ""]];
+      const templateData = [headerRow, ...dataRows];
 
       const worksheet = XLSX.utils.aoa_to_sheet(templateData);
 
@@ -264,6 +261,7 @@ Carlos Lima,25/04/2008,2024007,C,${schoolName},${address},${state},${municipalit
         { wch: 20 }, // municipio_escola
         { wch: 20 }, // curso
         { wch: 12 }, // serie
+        { wch: 38 }, // grade_id (UUID)
       ];
       worksheet["!cols"] = columnWidths;
 
@@ -405,8 +403,8 @@ Carlos Lima,25/04/2008,2024007,C,${schoolName},${address},${state},${municipalit
           </DialogTitle>
           <DialogDescription className="text-sm sm:text-base">
             Importe uma lista de alunos através de um arquivo CSV ou Excel. 
-            O arquivo deve conter as colunas: <strong>nome, data_nascimento, matricula, turma, escola, endereco_escola, estado_escola, municipio_escola, curso, serie</strong>. 
-            Preencha nome, data_nascimento, matricula e turma; escola, endereço, estado, município, curso e série vêm preenchidos no modelo ao baixar.
+            O arquivo deve conter as colunas: <strong>nome, data_nascimento, matricula, turma, escola, endereco_escola, estado_escola, municipio_escola, curso, serie, grade_id</strong>. 
+            Use <strong>grade_id</strong> (id da série) para evitar erros de comparação no backend; o modelo baixado já vem com os grade_id das séries desta escola quando houver turmas cadastradas.
           </DialogDescription>
         </DialogHeader>
 
@@ -422,7 +420,7 @@ Carlos Lima,25/04/2008,2024007,C,${schoolName},${address},${state},${municipalit
             <CardContent>
               <div className="space-y-3">
                 <div className="text-sm text-muted-foreground">
-                  Baixe o modelo CSV ou Excel. Escola, endereço, estado, município, curso e série já vêm preenchidos com os dados desta instituição. Preencha apenas nome, data de nascimento, matrícula e turma (ex.: A, B, C).
+                  Baixe o modelo CSV ou Excel. Escola, endereço, estado, município, curso, série (nome) e <strong>grade_id</strong> (id da série) vêm preenchidos quando a escola tem turmas. Preencha nome, data de nascimento, matrícula e turma (ex.: A, B, C). O <strong>grade_id</strong> evita erros de comparação no backend.
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={downloadCSVTemplate}>
@@ -435,7 +433,7 @@ Carlos Lima,25/04/2008,2024007,C,${schoolName},${address},${state},${municipalit
                   </Button>
                 </div>
                 <div className="text-xs text-muted-foreground bg-blue-50 p-2 rounded">
-                  <strong>Colunas do arquivo:</strong> nome, data_nascimento, matricula, turma, escola, endereco_escola, estado_escola, municipio_escola, curso, serie
+                  <strong>Colunas do arquivo:</strong> nome, data_nascimento, matricula, turma, escola, endereco_escola, estado_escola, municipio_escola, curso, serie, grade_id
                 </div>
               </div>
             </CardContent>
