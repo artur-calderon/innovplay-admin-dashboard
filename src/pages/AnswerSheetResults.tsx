@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Select,
@@ -12,20 +11,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   ArrowLeft,
   BarChart3,
-  Download,
   Filter,
   Loader2,
   RefreshCw,
   Users,
   BookOpen,
+  FileX,
+  Check,
+  LayoutGrid,
+  Table2,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { ResultsCharts } from '@/components/evaluations/ResultsCharts';
 import { StudentRanking } from '@/components/evaluations/StudentRanking';
+import { ClassStatistics } from '@/components/evaluations/ClassStatistics';
+import { StudentCard } from '@/components/evaluations/StudentCard';
+import { DisciplineTables } from '@/components/evaluations/DisciplineTables';
 import { cn } from '@/lib/utils';
 
 // Opções dos filtros (resposta de GET /answer-sheets/opcoes-filtros-results)
@@ -87,17 +94,64 @@ interface GabaritoAgregado {
   };
 }
 
-interface AlunoTabela {
-  student_id: string;
+// Resultados por disciplina (para gráficos) — retornado por GET /answer-sheets/resultados-agregados
+interface ResultadoPorDisciplina {
+  disciplina: string;
+  total_avaliacoes?: number;
+  total_alunos?: number;
+  alunos_participantes?: number;
+  media_nota: number;
+  media_proficiencia: number;
+  distribuicao_classificacao?: {
+    abaixo_do_basico: number;
+    basico: number;
+    adequado: number;
+    avancado: number;
+  };
+}
+
+// Aluno na visão geral (tabela_detalhada.geral.alunos)
+interface GeralAluno {
+  id: string;
   nome: string;
-  turma?: string;
+  escola?: string;
   serie?: string;
-  grade: number;
-  proficiency: number;
-  classification: string;
-  score_percentage: number;
-  correct_answers: number;
-  total_questions: number;
+  turma?: string;
+  nota_geral: number;
+  proficiencia_geral: number;
+  nivel_proficiencia_geral: string;
+  total_acertos_geral: number;
+  total_questoes_geral: number;
+  total_respondidas_geral: number;
+  total_em_branco_geral?: number;
+  percentual_acertos_geral: number;
+  status_geral: string;
+  respostas_por_questao?: Array<{ questao: number; acertou: boolean; respondeu: boolean; resposta: string }>;
+}
+
+// Disciplina em tabela_detalhada.disciplinas (questões podem ter só numero na API)
+interface DisciplinaTabela {
+  id: string;
+  nome: string;
+  questoes: Array<{ numero: number; habilidade?: string; codigo_habilidade?: string; question_id?: string }>;
+  alunos: Array<{
+    id: string;
+    nome: string;
+    escola?: string;
+    serie?: string;
+    turma?: string;
+    respostas_por_questao: Array<{ questao: number; acertou: boolean; respondeu: boolean; resposta: string }>;
+    total_acertos: number;
+    total_erros: number;
+    total_respondidas: number;
+    total_questoes_disciplina: number;
+    total_em_branco?: number;
+    nivel_proficiencia: string;
+    nota: number;
+    proficiencia: number;
+    status?: string;
+    percentual_acertos?: number;
+  }>;
 }
 
 interface RankingItem {
@@ -114,12 +168,14 @@ interface ResultadosAgregadosResponse {
   nivel_granularidade?: string;
   filtros_aplicados?: Record<string, string>;
   estatisticas_gerais: EstatisticasGerais;
+  resultados_por_disciplina?: ResultadoPorDisciplina[];
   resultados_detalhados?: {
     gabaritos: GabaritoAgregado[];
     paginacao?: { page: number; per_page: number; total: number; total_pages: number };
   };
   tabela_detalhada?: {
-    alunos: AlunoTabela[];
+    disciplinas?: DisciplinaTabela[];
+    geral?: { alunos: GeralAluno[] };
   };
   ranking?: RankingItem[];
 }
@@ -147,6 +203,10 @@ export default function AnswerSheetResults() {
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // UI: modo de visualização na aba Tabelas (tabela vs cards) e modal de faltosos
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
+  const [showAbsentStudentsModal, setShowAbsentStudentsModal] = useState(false);
+
   // Carregar opções de filtros (cascata)
   const fetchOpcoesFiltros = useCallback(async () => {
     const params = new URLSearchParams();
@@ -162,10 +222,13 @@ export default function AnswerSheetResults() {
       const url = `/answer-sheets/opcoes-filtros-results${query ? `?${query}` : ''}`;
       const res = await api.get<OpcoesFiltrosResponse>(url);
       setOpcoes(res.data || {});
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'response' in err && typeof (err as { response?: { data?: { message?: string } } }).response?.data?.message === 'string'
+        ? (err as { response: { data: { message: string } } }).response.data.message
+        : 'Não foi possível carregar os filtros.';
       toast({
         title: 'Erro',
-        description: err.response?.data?.message || 'Não foi possível carregar os filtros.',
+        description: message,
         variant: 'destructive',
       });
       setOpcoes({});
@@ -230,12 +293,15 @@ export default function AnswerSheetResults() {
         `/answer-sheets/resultados-agregados?${params.toString()}`
       );
       setApiData(res.data);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Não foi possível carregar os resultados.');
+    } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'response' in err && typeof (err as { response?: { data?: { message?: string } } }).response?.data?.message === 'string'
+        ? (err as { response: { data: { message: string } } }).response.data.message
+        : 'Não foi possível carregar os resultados.';
+      setError(msg);
       setApiData(null);
       toast({
         title: 'Erro',
-        description: err.response?.data?.message || 'Não foi possível carregar os resultados.',
+        description: msg,
         variant: 'destructive',
       });
     } finally {
@@ -249,21 +315,21 @@ export default function AnswerSheetResults() {
 
   const handleBack = () => navigate('/app/cartao-resposta');
 
-  // Mapear resposta agregada para o formato esperado por ResultsCharts
+  // Gráficos: usar resultados_por_disciplina da API (nome das disciplinas, nota e média)
   const chartsApiData = useMemo(() => {
     if (!apiData?.estatisticas_gerais) return null;
-    const gabaritos = apiData.resultados_detalhados?.gabaritos ?? [];
+    const porDisciplina = apiData.resultados_por_disciplina ?? [];
     return {
       estatisticas_gerais: {
         media_nota_geral: apiData.estatisticas_gerais.media_nota_geral ?? 0,
         media_proficiencia_geral: apiData.estatisticas_gerais.media_proficiencia_geral ?? 0,
         distribuicao_classificacao_geral: apiData.estatisticas_gerais.distribuicao_classificacao_geral,
       },
-      resultados_por_disciplina: gabaritos.map((g) => ({
-        disciplina: g.titulo || g.serie || g.id,
-        media_nota: g.media_nota ?? 0,
-        media_proficiencia: g.media_proficiencia ?? 0,
-        distribuicao_classificacao: g.distribuicao_classificacao,
+      resultados_por_disciplina: porDisciplina.map((d) => ({
+        disciplina: d.disciplina,
+        media_nota: d.media_nota ?? 0,
+        media_proficiencia: d.media_proficiencia ?? 0,
+        distribuicao_classificacao: d.distribuicao_classificacao,
       })),
     };
   }, [apiData]);
@@ -298,26 +364,217 @@ export default function AnswerSheetResults() {
   const series = opcoes.series ?? [];
   const turmas = opcoes.turmas ?? [];
 
-  const alunos = apiData?.tabela_detalhada?.alunos ?? [];
-  const ranking = apiData?.ranking ?? [];
+  const geralAlunos = useMemo(() => apiData?.tabela_detalhada?.geral?.alunos ?? [], [apiData?.tabela_detalhada?.geral?.alunos]);
+  const disciplinasTabela = useMemo(() => apiData?.tabela_detalhada?.disciplinas ?? [], [apiData?.tabela_detalhada?.disciplinas]);
+  const ranking = useMemo(() => apiData?.ranking ?? [], [apiData?.ranking]);
   const hasMinimumFilters =
     estado && estado !== 'all' &&
     municipio && municipio !== 'all' &&
     gabarito && gabarito !== 'all';
 
+  // Estatísticas derivadas (para card Informações e métricas)
+  const derivedStats = useMemo(() => {
+    if (!apiData?.estatisticas_gerais) {
+      return { totalAlunos: 0, participantes: 0, ausentes: 0, mediaNota: 0, mediaProficiencia: 0 };
+    }
+    const e = apiData.estatisticas_gerais;
+    const totalAlunos = e.total_alunos ?? 0;
+    const participantes = e.alunos_participantes ?? 0;
+    const ausentes = (e.alunos_ausentes ?? 0) + (e.alunos_pendentes ?? 0);
+    return {
+      totalAlunos,
+      participantes,
+      ausentes,
+      mediaNota: e.media_nota_geral ?? 0,
+      mediaProficiencia: e.media_proficiencia_geral ?? 0,
+    };
+  }, [apiData]);
+
+  // Alunos faltosos/pendentes = status_geral !== 'concluida'
+  const absentStudents = useMemo(() => {
+    return geralAlunos.filter((a) => (a.status_geral || '').toLowerCase() !== 'concluida');
+  }, [geralAlunos]);
+
+  // Lista unificada para Ranking e Cards: partir de geral.alunos e enriquecer com ranking (posição)
+  const filteredStudents = useMemo(() => {
+    const byId = new Map<string, {
+      id: string;
+      nome: string;
+      turma: string;
+      escola?: string;
+      serie?: string;
+      nota: number;
+      proficiencia: number;
+      classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+      status: 'concluida' | 'pendente';
+      posicao?: number;
+      questoes_respondidas: number;
+      acertos: number;
+      erros: number;
+      em_branco: number;
+      tempo_gasto: number;
+    }>();
+    ranking.forEach((r, idx) => {
+      const classNorm = (r.classification || 'Básico') as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+      byId.set(r.student_id, {
+        id: r.student_id,
+        nome: r.nome ?? '',
+        turma: '',
+        escola: '',
+        serie: '',
+        nota: r.grade ?? 0,
+        proficiencia: r.proficiency ?? 0,
+        classificacao: classNorm,
+        status: 'concluida',
+        posicao: r.posicao ?? idx + 1,
+        questoes_respondidas: 0,
+        acertos: 0,
+        erros: 0,
+        em_branco: 0,
+        tempo_gasto: 0,
+      });
+    });
+    geralAlunos.forEach((a) => {
+      const concluida = (a.status_geral || '').toLowerCase() === 'concluida';
+      const erros = Math.max(0, (a.total_questoes_geral ?? 0) - (a.total_acertos_geral ?? 0) - (a.total_em_branco_geral ?? 0));
+      const existing = byId.get(a.id);
+      if (existing) {
+        existing.turma = a.turma ?? '';
+        existing.escola = a.escola;
+        existing.serie = a.serie;
+        existing.questoes_respondidas = a.total_respondidas_geral ?? 0;
+        existing.acertos = a.total_acertos_geral ?? 0;
+        existing.erros = erros;
+        existing.em_branco = a.total_em_branco_geral ?? 0;
+        return;
+      }
+      byId.set(a.id, {
+        id: a.id,
+        nome: a.nome ?? '',
+        turma: a.turma ?? '',
+        escola: a.escola,
+        serie: a.serie,
+        nota: a.nota_geral ?? 0,
+        proficiencia: a.proficiencia_geral ?? 0,
+        classificacao: (a.nivel_proficiencia_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado') || 'Básico',
+        status: concluida ? 'concluida' : 'pendente',
+        questoes_respondidas: a.total_respondidas_geral ?? 0,
+        acertos: a.total_acertos_geral ?? 0,
+        erros,
+        em_branco: a.total_em_branco_geral ?? 0,
+        tempo_gasto: 0,
+      });
+    });
+    return Array.from(byId.values()).sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [ranking, geralAlunos]);
+
+  // Dados no formato esperado por ClassStatistics (avaliacoes = gabaritos, geral = geralAlunos)
+  const apiDataForClassStatistics = useMemo(() => {
+    if (!apiData) return null;
+    const gabaritos = apiData.resultados_detalhados?.gabaritos ?? [];
+    const avaliacoes = gabaritos.map((g) => ({
+      id: g.id,
+      titulo: g.titulo ?? '',
+      serie: g.serie,
+      turma: g.turma,
+      escola: g.escola,
+      total_alunos: g.total_alunos ?? 0,
+      alunos_participantes: g.alunos_participantes ?? 0,
+      alunos_pendentes: (g.total_alunos ?? 0) - (g.alunos_participantes ?? 0),
+      alunos_ausentes: 0,
+      media_nota: g.media_nota ?? 0,
+      media_proficiencia: g.media_proficiencia ?? 0,
+      distribuicao_classificacao: g.distribuicao_classificacao,
+    }));
+    const alunosParaStats = geralAlunos.map((a) => ({
+      id: a.id,
+      nome: a.nome ?? '',
+      turma: a.turma ?? '',
+      nivel_proficiencia_geral: a.nivel_proficiencia_geral ?? '',
+      nota_geral: a.nota_geral ?? 0,
+      proficiencia_geral: a.proficiencia_geral ?? 0,
+      total_acertos_geral: a.total_acertos_geral ?? 0,
+      total_erros_geral: Math.max(0, (a.total_questoes_geral ?? 0) - (a.total_acertos_geral ?? 0) - (a.total_em_branco_geral ?? 0)),
+      total_respondidas_geral: a.total_respondidas_geral ?? 0,
+    }));
+    return {
+      nivel_granularidade: (apiData.nivel_granularidade as 'municipio' | 'escola' | 'serie' | 'turma' | 'avaliacao') ?? 'escola',
+      resultados_detalhados: { avaliacoes },
+      estatisticas_gerais: apiData.estatisticas_gerais,
+      tabela_detalhada: {
+        geral: { alunos: alunosParaStats },
+      },
+    };
+  }, [apiData, geralAlunos]);
+
+  const tituloGabarito = apiData?.resultados_detalhados?.gabaritos?.[0]?.titulo ?? (gabarito !== 'all' ? norm(gabaritos.find((g) => g.id === gabarito) ?? { id: gabarito }) : null) ?? 'Cartão Resposta';
+  const hasNoData = !apiData?.resultados_detalhados?.gabaritos?.length && !geralAlunos.length && !disciplinasTabela.length;
+  const totalQuestionsForCards = geralAlunos.find((a) => (a.total_questoes_geral ?? 0) > 0)?.total_questoes_geral ?? 0;
+  const derivedSubjects = useMemo(() => [tituloGabarito].filter(Boolean), [tituloGabarito]);
+
+  // Mapear tabela_detalhada da API para o formato esperado por DisciplineTables (questões com numero + campos opcionais)
+  const tabelaDetalhadaForDisciplineTables = useMemo(() => {
+    if (!disciplinasTabela.length && !geralAlunos.length) return null;
+    const disciplinas = disciplinasTabela.map((d) => ({
+      id: d.id,
+      nome: d.nome,
+      questoes: (d.questoes || []).map((q) => ({
+        numero: q.numero,
+        habilidade: q.habilidade ?? '',
+        codigo_habilidade: q.codigo_habilidade ?? '',
+        question_id: q.question_id ?? `q-${q.numero}`,
+      })),
+      alunos: (d.alunos || []).map((a) => ({
+        id: a.id,
+        nome: a.nome,
+        escola: a.escola ?? '',
+        serie: a.serie ?? '',
+        turma: a.turma ?? '',
+        respostas_por_questao: a.respostas_por_questao ?? [],
+        total_acertos: a.total_acertos ?? 0,
+        total_erros: a.total_erros ?? 0,
+        total_respondidas: a.total_respondidas ?? 0,
+        total_questoes_disciplina: a.total_questoes_disciplina ?? 0,
+        nivel_proficiencia: a.nivel_proficiencia ?? '',
+        nota: a.nota ?? 0,
+        proficiencia: a.proficiencia ?? 0,
+      })),
+    }));
+    const geral = geralAlunos.length > 0 ? {
+      alunos: geralAlunos.map((a) => ({
+        id: a.id,
+        nome: a.nome,
+        escola: a.escola ?? '',
+        serie: a.serie ?? '',
+        turma: a.turma ?? '',
+        nota_geral: a.nota_geral ?? 0,
+        proficiencia_geral: a.proficiencia_geral ?? 0,
+        nivel_proficiencia_geral: a.nivel_proficiencia_geral ?? '',
+        total_acertos_geral: a.total_acertos_geral ?? 0,
+        total_questoes_geral: a.total_questoes_geral ?? 0,
+        total_respondidas_geral: a.total_respondidas_geral ?? 0,
+        total_em_branco_geral: a.total_em_branco_geral ?? 0,
+        percentual_acertos_geral: a.percentual_acertos_geral ?? 0,
+        status_geral: a.status_geral ?? '',
+      })),
+    } : undefined;
+    return { disciplinas, geral };
+  }, [disciplinasTabela, geralAlunos]);
+
   return (
-    <div className="w-full min-w-0 space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <BarChart3 className="w-8 h-8 text-blue-600" />
+    <div className="w-full min-w-0 space-y-6 pb-8">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <BarChart3 className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
             Resultados dos Cartões Resposta
           </h1>
-          <p className="text-muted-foreground">
-            Filtre por estado, município e cartão resposta para ver resultados agregados
+          <p className="text-muted-foreground text-sm sm:text-base">
+            Acompanhe o desempenho das correções por estado, município e cartão resposta
           </p>
-          {apiData && apiData.estatisticas_gerais && (
-            <div className="mt-2 flex items-center gap-2">
+          {apiData?.estatisticas_gerais && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="text-xs">
                 Nível: {(apiData.nivel_granularidade || apiData.estatisticas_gerais.tipo || 'município').charAt(0).toUpperCase() + (apiData.nivel_granularidade || apiData.estatisticas_gerais.tipo || 'município').slice(1)}
               </Badge>
@@ -327,7 +584,7 @@ export default function AnswerSheetResults() {
             </div>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-center sm:justify-end gap-2">
           <Button variant="outline" onClick={handleBack}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Voltar
@@ -450,6 +707,11 @@ export default function AnswerSheetResults() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="mt-4 p-3 rounded-lg bg-muted/50 border border-border col-span-full">
+              <p className="text-sm text-muted-foreground">
+                <strong>Ordem dos filtros:</strong> Estado → Município → Cartão resposta → Escola → Série → Turma
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -460,216 +722,408 @@ export default function AnswerSheetResults() {
         </Alert>
       )}
 
+      {/* Sem filtros obrigatórios */}
       {!hasMinimumFilters && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
-            <div className="w-20 h-20 bg-blue-50 dark:bg-blue-950/30 rounded-full flex items-center justify-center mb-6">
-              <BookOpen className="h-10 w-10 text-blue-600 dark:text-blue-400" />
+            <div className="w-20 h-20 rounded-2xl bg-primary/10 dark:bg-primary/20 flex items-center justify-center mb-6">
+              <BookOpen className="h-10 w-10 text-primary" />
             </div>
-            <h3 className="text-xl font-semibold text-foreground mb-3">Selecione Estado, Município e Cartão resposta</h3>
-            <p className="text-muted-foreground text-center max-w-md">
-              Escolha o estado, o município e o cartão resposta nos filtros acima para carregar os resultados agregados.
+            <h3 className="text-xl font-semibold text-foreground mb-2">Selecione os filtros para continuar</h3>
+            <p className="text-muted-foreground text-center max-w-md mb-4">
+              Escolha <strong>Estado</strong>, <strong>Município</strong> e <strong>Cartão resposta</strong> nos filtros acima para carregar os resultados.
+            </p>
+            <p className="text-sm text-muted-foreground text-center max-w-md">
+              Escola, Série e Turma são opcionais e permitem refinar a visualização.
             </p>
           </CardContent>
         </Card>
       )}
 
-{hasMinimumFilters && isLoadingData && (
-  <div className="container mx-auto px-4 py-6 flex flex-col items-center justify-center min-h-[200px]">
-    <div className="flex items-center mb-2">
-      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mr-2" />
-      <span className="text-muted-foreground text-lg font-semibold">Carregando resultados...</span>
-    </div>
-    <p className="text-muted-foreground text-sm">
-      Aguarde enquanto os dados dos resultados são carregados.
-    </p>
-  </div>
-)}
-{hasMinimumFilters && !isLoadingData && (
-  <div className="container mx-auto px-4 py-6 space-y-6">
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="space-y-1.5">
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Resultados de Correção</h1>
-        <p className="text-muted-foreground text-sm sm:text-base">
-          {apiData?.resultados_detalhados?.gabaritos?.[0]?.titulo ??
-            (gabarito !== 'all' ? norm(opcoes.gabaritos?.find((g) => g.id === gabarito) ?? { id: gabarito }) : null) ??
-            'Visualize os resultados das correções realizadas'}
-        </p>
-      </div>
-      <div className="flex justify-center w-full sm:w-auto sm:justify-end">
-        <Button variant="outline" onClick={handleBack}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Voltar para Cartões Gerados
-        </Button>
-      </div>
-    </div>
-  </div>
-)}
+      {/* Loading */}
+      {hasMinimumFilters && isLoadingData && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+            <p className="text-muted-foreground font-medium">Carregando resultados...</p>
+            <p className="text-sm text-muted-foreground mt-1">Aguarde enquanto os dados são processados.</p>
+          </CardContent>
+        </Card>
+      )}
 
+      {/* Conteúdo principal: Card Informações + Abas */}
       {hasMinimumFilters && !isLoadingData && apiData && (
         <>
-          {/* Cards de resumo (estatísticas gerais) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-950/50">
-                    <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+          {/* Card Informações do Cartão Resposta */}
+          <Card className="border-0 shadow-sm bg-muted/30 dark:bg-muted/20">
+            <CardHeader>
+              <CardTitle className="text-lg">Informações do Cartão Resposta</CardTitle>
+              <CardDescription>
+                {tituloGabarito} · {apiData.estatisticas_gerais.escola || apiData.estatisticas_gerais.nome || 'Escopo selecionado'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Cartão / Série</div>
+                  <div className="font-semibold">{tituloGabarito}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Escola</div>
+                  <div className="font-semibold">{apiData.estatisticas_gerais.escola || apiData.estatisticas_gerais.nome || '—'}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Município</div>
+                  <div className="font-semibold">{apiData.estatisticas_gerais.municipio || '—'}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Série</div>
+                  <div className="font-semibold">{apiData.estatisticas_gerais.serie || '—'}</div>
+                </div>
+              </div>
+              <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Total de alunos</div>
+                  <div className="text-2xl font-bold text-primary">{derivedStats.totalAlunos}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Participantes</div>
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">{derivedStats.participantes}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="text-sm font-medium text-muted-foreground">Faltosos / Pendentes</div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowAbsentStudentsModal(true)}
+                      className="h-7 px-2 text-xs text-amber-600 hover:text-amber-700 dark:text-amber-400"
+                      aria-label="Ver faltosos"
+                    >
+                      Ver lista
+                    </Button>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Participantes</p>
-                    <p className="text-2xl font-bold">
-                      {apiData.estatisticas_gerais.alunos_participantes ?? 0}
-                      <span className="text-sm font-normal text-muted-foreground">
-                        {' '}/ {apiData.estatisticas_gerais.total_alunos ?? 0}
-                      </span>
-                    </p>
+                  <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{derivedStats.ausentes}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Taxa de participação</div>
+                  <div className="text-2xl font-bold text-primary">
+                    {derivedStats.totalAlunos > 0 ? ((derivedStats.participantes / derivedStats.totalAlunos) * 100).toFixed(1) : '0'}%
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-950/50">
-                    <BarChart3 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Média da nota</p>
-                    <p className="text-2xl font-bold">
-                      {(apiData.estatisticas_gerais.media_nota_geral ?? 0).toFixed(1)}
-                    </p>
-                  </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Nota geral</div>
+                  <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{Number(derivedStats.mediaNota).toFixed(1)}</div>
                 </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-violet-100 dark:bg-violet-950/50">
-                    <BarChart3 className="h-5 w-5 text-violet-600 dark:text-violet-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Média da proficiência</p>
-                    <p className="text-2xl font-bold">
-                      {(apiData.estatisticas_gerais.media_proficiencia_geral ?? 0).toFixed(1)}
-                    </p>
-                  </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Proficiência</div>
+                  <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">{Number(derivedStats.mediaProficiencia).toFixed(1)}</div>
                 </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-950/50">
-                    <Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Distribuição</p>
-                    <p className="text-xs font-medium">
-                      Abaixo: {apiData.estatisticas_gerais.distribuicao_classificacao_geral?.abaixo_do_basico ?? 0} · Básico: {apiData.estatisticas_gerais.distribuicao_classificacao_geral?.basico ?? 0} · Adequado: {apiData.estatisticas_gerais.distribuicao_classificacao_geral?.adequado ?? 0} · Avançado: {apiData.estatisticas_gerais.distribuicao_classificacao_geral?.avancado ?? 0}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+              </div>
+            </CardContent>
+          </Card>
 
-          {/* Gráficos */}
-          {chartsApiData && (
-            <ResultsCharts
-              apiData={chartsApiData}
-              evaluationInfo={evaluationInfo}
-              inferStageGroup={inferStageGroup}
-              getMaxForDiscipline={getMaxForDiscipline}
-            />
-          )}
-
-          {/* Ranking */}
-          {ranking.length > 0 && (
+          {/* Nenhum dado para exibir */}
+          {hasNoData ? (
             <Card>
-              <CardHeader>
-                <CardTitle>Ranking</CardTitle>
-                <CardDescription>Alunos ordenados por nota e proficiência</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <StudentRanking
-                  students={ranking.map((r) => {
-                    const aluno = alunos.find((a) => a.student_id === r.student_id);
-                    return {
-                      id: r.student_id,
-                      nome: r.nome ?? '',
-                      turma: aluno?.turma ?? '',
-                      escola: '',
-                      serie: aluno?.serie ?? '',
-                      nota: r.grade ?? 0,
-                      proficiencia: r.proficiency ?? 0,
-                      classificacao: (r.classification || 'Básico') as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
-                      status: 'concluida' as const,
-                      posicao: r.posicao,
-                    };
-                  })}
-                  maxStudents={50}
-                />
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Tabela de alunos */}
-          {alunos.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Resultados dos Alunos</CardTitle>
-                <CardDescription>
-                  {alunos.length} {alunos.length === 1 ? 'aluno' : 'alunos'} no escopo selecionado
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="border-b border-border bg-muted">
-                        <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Nome</th>
-                        <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Turma</th>
-                        <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Série</th>
-                        <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Nota</th>
-                        <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Proficiência</th>
-                        <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Classificação</th>
-                        <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Acertos</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {alunos.map((a) => (
-                        <tr key={a.student_id} className="border-b border-border hover:bg-muted/50">
-                          <td className="py-3 px-3 font-medium">{a.nome}</td>
-                          <td className="py-3 px-3 text-muted-foreground">{a.turma ?? '—'}</td>
-                          <td className="py-3 px-3 text-muted-foreground">{a.serie ?? '—'}</td>
-                          <td className="py-3 px-3">{(a.grade ?? 0).toFixed(1)}</td>
-                          <td className="py-3 px-3">{(a.proficiency ?? 0).toFixed(1)}</td>
-                          <td className="py-3 px-3">
-                            <Badge variant="outline">{a.classification ?? '—'}</Badge>
-                          </td>
-                          <td className="py-3 px-3">
-                            {a.correct_answers ?? 0} / {a.total_questions ?? 0} ({(a.score_percentage ?? 0).toFixed(0)}%)
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              <CardContent className="flex flex-col items-center justify-center py-16">
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                  <FileX className="h-8 w-8 text-muted-foreground" />
                 </div>
+                <h3 className="text-lg font-medium text-foreground mb-2">Nenhum resultado para mostrar</h3>
+                <p className="text-muted-foreground text-center max-w-md">
+                  Não foram encontrados resultados para os filtros selecionados.
+                </p>
               </CardContent>
             </Card>
-          )}
+          ) : (
+            <Tabs defaultValue="charts" className="w-full">
+              <TabsList className="grid w-full grid-cols-4 h-11 bg-muted/50 p-1 rounded-lg">
+                <TabsTrigger value="charts" className="rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">Gráficos</TabsTrigger>
+                <TabsTrigger value="tables" className="rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">Tabelas</TabsTrigger>
+                <TabsTrigger value="statistics" className="rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">Estatísticas</TabsTrigger>
+                <TabsTrigger value="ranking" className="rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">Ranking</TabsTrigger>
+              </TabsList>
 
-          {alunos.length === 0 && ranking.length === 0 && (
-            <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                Nenhum resultado encontrado para os filtros selecionados.
-              </CardContent>
-            </Card>
+              <TabsContent value="charts" className="space-y-6 mt-6">
+                {chartsApiData ? (
+                  <ResultsCharts
+                    apiData={chartsApiData}
+                    evaluationInfo={evaluationInfo}
+                    inferStageGroup={inferStageGroup}
+                    getMaxForDiscipline={getMaxForDiscipline}
+                  />
+                ) : (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12">
+                      <p className="text-muted-foreground">Não há dados suficientes para gerar os gráficos.</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+
+              <TabsContent value="tables" className="space-y-6 mt-6">
+                <Card>
+                  <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        Resultados dos Alunos
+                        <Badge variant="secondary">{filteredStudents.length} {filteredStudents.length === 1 ? 'aluno' : 'alunos'}</Badge>
+                      </CardTitle>
+                      <CardDescription>
+                        Visão em tabela (por disciplina e geral) ou em cards por aluno
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-1 border rounded-lg p-1 bg-muted/30">
+                      <Button
+                        variant={viewMode === 'table' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setViewMode('table')}
+                        className="h-8 px-3"
+                      >
+                        <Table2 className="h-4 w-4 mr-1.5" />
+                        Tabela
+                      </Button>
+                      <Button
+                        variant={viewMode === 'cards' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setViewMode('cards')}
+                        className="h-8 px-3"
+                      >
+                        <LayoutGrid className="h-4 w-4 mr-1.5" />
+                        Cards
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {tabelaDetalhadaForDisciplineTables && disciplinasTabela.length > 0 ? (
+                      viewMode === 'table' ? (
+                        <DisciplineTables
+                          tabelaDetalhada={tabelaDetalhadaForDisciplineTables}
+                          onViewStudentDetails={() => {}}
+                        />
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                          {filteredStudents.map((student) => (
+                            <StudentCard
+                              key={student.id}
+                              student={{
+                                id: student.id,
+                                nome: student.nome,
+                                turma: student.turma,
+                                nota: student.nota,
+                                proficiencia: student.proficiencia,
+                                classificacao: student.classificacao,
+                                questoes_respondidas: student.questoes_respondidas,
+                                acertos: student.acertos,
+                                erros: student.erros,
+                                em_branco: student.em_branco,
+                                tempo_gasto: student.tempo_gasto,
+                                status: student.status,
+                              }}
+                              totalQuestions={totalQuestionsForCards || 1}
+                              subjects={derivedSubjects}
+                              onViewDetails={() => {}}
+                            />
+                          ))}
+                        </div>
+                      )
+                    ) : geralAlunos.length > 0 ? (
+                      viewMode === 'table' ? (
+                        <div className="overflow-x-auto rounded-lg border">
+                          <table className="w-full border-collapse">
+                            <thead>
+                              <tr className="border-b bg-muted/50">
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nome</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Escola</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Turma</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Série</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nota</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Proficiência</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Classificação</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Acertos / Erros</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {geralAlunos.map((a) => {
+                                const erros = Math.max(0, (a.total_questoes_geral ?? 0) - (a.total_acertos_geral ?? 0) - (a.total_em_branco_geral ?? 0));
+                                return (
+                                  <tr key={a.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                                    <td className="py-3 px-4 font-medium">{a.nome}</td>
+                                    <td className="py-3 px-4 text-muted-foreground">{a.escola ?? '—'}</td>
+                                    <td className="py-3 px-4 text-muted-foreground">{a.turma ?? '—'}</td>
+                                    <td className="py-3 px-4 text-muted-foreground">{a.serie ?? '—'}</td>
+                                    <td className="py-3 px-4">{(a.nota_geral ?? 0).toFixed(1)}</td>
+                                    <td className="py-3 px-4">{(a.proficiencia_geral ?? 0).toFixed(1)}</td>
+                                    <td className="py-3 px-4">
+                                      <Badge variant="outline" className={a.nivel_proficiencia_geral ? '' : 'opacity-60'}>{a.nivel_proficiencia_geral || 'Pendente'}</Badge>
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      {a.total_questoes_geral != null ? `${a.total_acertos_geral ?? 0} / ${erros} (${(a.percentual_acertos_geral ?? 0).toFixed(0)}%)` : '—'}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                          {filteredStudents.map((student) => (
+                            <StudentCard
+                              key={student.id}
+                              student={{
+                                id: student.id,
+                                nome: student.nome,
+                                turma: student.turma,
+                                nota: student.nota,
+                                proficiencia: student.proficiencia,
+                                classificacao: student.classificacao,
+                                questoes_respondidas: student.questoes_respondidas,
+                                acertos: student.acertos,
+                                erros: student.erros,
+                                em_branco: student.em_branco,
+                                tempo_gasto: student.tempo_gasto,
+                                status: student.status,
+                              }}
+                              totalQuestions={totalQuestionsForCards || 1}
+                              subjects={derivedSubjects}
+                              onViewDetails={() => {}}
+                            />
+                          ))}
+                        </div>
+                      )
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <FileX className="h-10 w-10 text-muted-foreground mb-3" />
+                        <p className="text-muted-foreground font-medium">Nenhum aluno no escopo</p>
+                        <p className="text-sm text-muted-foreground mt-1">Ajuste os filtros para ver resultados.</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="statistics" className="space-y-6 mt-6">
+                {apiDataForClassStatistics ? (
+                  <ClassStatistics apiData={apiDataForClassStatistics} />
+                ) : (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12">
+                      <p className="text-muted-foreground">Não há dados para exibir as estatísticas.</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+
+              <TabsContent value="ranking" className="space-y-6 mt-6">
+                {filteredStudents.filter((s) => s.status === 'concluida').length > 0 ? (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Ranking</CardTitle>
+                      <CardDescription>Alunos ordenados por nota e proficiência (apenas participantes)</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <StudentRanking
+                        students={filteredStudents.filter((s) => s.status === 'concluida').map((s) => ({
+                          id: s.id,
+                          nome: s.nome,
+                          turma: s.turma,
+                          escola: s.escola,
+                          serie: s.serie,
+                          nota: s.nota,
+                          proficiencia: s.proficiencia,
+                          classificacao: s.classificacao,
+                          status: s.status,
+                          posicao: s.posicao,
+                        }))}
+                        maxStudents={100}
+                      />
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12">
+                      <FileX className="h-10 w-10 text-muted-foreground mb-3" />
+                      <p className="text-muted-foreground font-medium">Nenhum participante para ranking</p>
+                      <p className="text-sm text-muted-foreground mt-1">Os alunos que realizarem a correção aparecerão aqui.</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+            </Tabs>
           )}
         </>
       )}
+
+      {/* Modal Alunos Faltosos / Pendentes */}
+      <Dialog open={showAbsentStudentsModal} onOpenChange={setShowAbsentStudentsModal}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              Faltosos / Pendentes
+              {tituloGabarito && (
+                <span className="text-sm font-normal text-muted-foreground ml-1">· {tituloGabarito}</span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto flex-1 min-h-0 py-2">
+            {absentStudents.length > 0 ? (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-semibold text-amber-800 dark:text-amber-200">
+                      {absentStudents.length} {absentStudents.length === 1 ? 'aluno' : 'alunos'} pendente(s)
+                    </span>
+                  </div>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    Estes alunos ainda não entregaram ou não tiveram o cartão resposta corrigido.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {absentStudents.map((a) => (
+                    <div
+                      key={a.id}
+                      className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
+                          <span className="text-amber-700 dark:text-amber-300 font-semibold text-sm">
+                            {a.nome.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="font-medium text-foreground">{a.nome}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {[a.escola, a.turma, a.serie].filter(Boolean).join(' · ') || '—'}
+                          </div>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700">
+                        Pendente
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
+                  <Check className="h-7 w-7 text-green-600 dark:text-green-400" />
+                </div>
+                <h3 className="font-semibold text-foreground mb-1">Nenhum faltoso</h3>
+                <p className="text-sm text-muted-foreground">Todos os alunos do escopo já têm resultado ou estão como participantes.</p>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end pt-4 border-t mt-4">
+            <Button variant="outline" onClick={() => setShowAbsentStudentsModal(false)}>
+              Fechar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

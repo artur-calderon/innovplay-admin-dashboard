@@ -151,14 +151,24 @@ export function useAnswerSheetCorrection() {
   }, [toast]);
 
   // Iniciar correção em lote (assíncrona)
-  // O backend identifica o gabarito automaticamente pelo QR code nas imagens
+  // Rota: POST /answer-sheets/process-correction — 1 a 50 imagens; 202 com job_id; progresso via GET /answer-sheets/correction-progress/<job_id>
   const startBatchCorrection = useCallback(async (images?: string[]) => {
     const imagesToProcess = images || state.selectedImages;
-    
+    const MAX_BATCH = 50;
+
     if (imagesToProcess.length === 0) {
       toast({
         title: "Nenhuma imagem selecionada",
         description: "Selecione pelo menos uma imagem para processar.",
+        variant: "destructive",
+      });
+      return null;
+    }
+
+    if (imagesToProcess.length > MAX_BATCH) {
+      toast({
+        title: "Limite excedido",
+        description: `Máximo de ${MAX_BATCH} imagens por requisição. Você enviou ${imagesToProcess.length}.`,
         variant: "destructive",
       });
       return null;
@@ -174,22 +184,22 @@ export function useAnswerSheetCorrection() {
         progress: null,
       }));
 
-      // Enviar imagens para processamento em lote
-      // O backend identifica o gabarito automaticamente pelo QR code
-      const response = await api.post('/answer-sheets/correct', {
-        images: imagesToProcess
+      // POST /answer-sheets/process-correction — body: { images: base64[] }; resposta 202 com job_id
+      const response = await api.post('/answer-sheets/process-correction', {
+        images: imagesToProcess,
       });
 
-      // Verificar se retornou job_id (processamento assíncrono)
+      // 202 Accepted com job_id e polling_url
       if (response.data.job_id) {
         const jobId = response.data.job_id;
-        
+        const total = response.data.total ?? imagesToProcess.length;
+
         setState(prev => ({
           ...prev,
           jobId,
           progress: {
             job_id: jobId,
-            total: response.data.total || imagesToProcess.length,
+            total,
             completed: 0,
             successful: 0,
             failed: 0,
@@ -200,25 +210,24 @@ export function useAnswerSheetCorrection() {
         }));
 
         return jobId;
-      } else {
-        // Resposta síncrona (não deveria acontecer para múltiplas imagens)
-        setState(prev => ({
-          ...prev,
-          isProcessing: false,
-          isCompleted: true,
-        }));
-        
-        toast({
-          title: "Correção processada!",
-          description: "A correção foi realizada com sucesso.",
-        });
-        
-        return null;
       }
-    } catch (error: any) {
+
+      setState(prev => ({
+        ...prev,
+        isProcessing: false,
+        isFailed: true,
+        error: 'Resposta inválida: job_id não retornado.',
+      }));
+      toast({
+        title: "Erro ao iniciar correção",
+        description: "O servidor não retornou job_id.",
+        variant: "destructive",
+      });
+      return null;
+    } catch (error: unknown) {
       console.error("Erro ao iniciar correção em lote:", error);
-      
-      const errorMessage = error.response?.data?.error || error.message || "Não foi possível iniciar a correção em lote.";
+      const err = error as { response?: { data?: { error?: string } }; message?: string };
+      const errorMessage = err.response?.data?.error || err.message || "Não foi possível iniciar a correção em lote.";
       
       setState(prev => ({
         ...prev,

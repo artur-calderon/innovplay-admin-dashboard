@@ -56,11 +56,12 @@ export default function AnswerSheetCreateGabarito() {
   const [questionsOptions, setQuestionsOptions] = useState<Record<number, ('A' | 'B' | 'C' | 'D')[]>>({});
   const [editingQuestionAlternatives, setEditingQuestionAlternatives] = useState<number | null>(null);
 
-  // Step 2: blocos
-  const [useBlocks, setUseBlocks] = useState(false);
-  const [numBlocks, setNumBlocks] = useState(2);
-  const [questionsPerBlock, setQuestionsPerBlock] = useState(5);
-  const [separateBySubject, setSeparateBySubject] = useState(false);
+  // Step 2: blocos (apenas por disciplina)
+  const MIN_BLOCKS = 2;
+  const MAX_BLOCKS = 4;
+  const MIN_QUESTIONS_PER_BLOCK = 1;
+  const MAX_QUESTIONS_PER_BLOCK = 22;
+  const MAX_QUESTIONS_TOTAL = 22;
   const [disciplines, setDisciplines] = useState<{ id: string; name: string }[]>([]);
   const [isLoadingDisciplines, setIsLoadingDisciplines] = useState(false);
   const [blocksByDiscipline, setBlocksByDiscipline] = useState<BlockByDiscipline[]>([]);
@@ -150,10 +151,6 @@ export default function AnswerSheetCreateGabarito() {
     fetchSkills();
   }, [skillSubjectId, skillGradeId, toast]);
 
-  useEffect(() => {
-    if (!separateBySubject) setBlocksByDiscipline([]);
-  }, [separateBySubject]);
-
   const handleAddDisciplineBlock = (disciplineId: string, disciplineName: string) => {
     if (blocksByDiscipline.length >= 4) {
       toast({ title: 'Limite', description: 'Máximo de 4 blocos.', variant: 'destructive' });
@@ -166,7 +163,7 @@ export default function AnswerSheetCreateGabarito() {
     }
     const startQuestion = currentTotal + 1;
     const remaining = numQuestions - currentTotal;
-    const defaultCount = Math.min(26, remaining);
+    const defaultCount = Math.min(MAX_QUESTIONS_PER_BLOCK, Math.max(MIN_QUESTIONS_PER_BLOCK, remaining));
     setBlocksByDiscipline([
       ...blocksByDiscipline,
       {
@@ -195,9 +192,16 @@ export default function AnswerSheetCreateGabarito() {
   };
 
   const handleUpdateBlockQuestions = (blockId: number, newCount: number) => {
-    const validCount = Math.min(Math.max(1, newCount), 26);
+    const validCount = Math.min(Math.max(MIN_QUESTIONS_PER_BLOCK, newCount), MAX_QUESTIONS_PER_BLOCK);
     const blockIndex = blocksByDiscipline.findIndex((b) => b.block_id === blockId);
     if (blockIndex === -1) return;
+    if (newCount < MIN_QUESTIONS_PER_BLOCK || newCount > MAX_QUESTIONS_PER_BLOCK) {
+      toast({
+        title: 'Limite',
+        description: `Cada bloco deve ter entre ${MIN_QUESTIONS_PER_BLOCK} e ${MAX_QUESTIONS_PER_BLOCK} questões.`,
+        variant: 'destructive',
+      });
+    }
     const otherTotal = blocksByDiscipline.filter((b) => b.block_id !== blockId).reduce((s, b) => s + b.questions_count, 0);
     if (otherTotal + validCount > numQuestions) {
       toast({ title: 'Limite', description: `Total de questões: ${numQuestions}.`, variant: 'destructive' });
@@ -217,11 +221,15 @@ export default function AnswerSheetCreateGabarito() {
   const validateDisciplineBlocks = (): { isValid: boolean; warnings: string[] } => {
     const warnings: string[] = [];
     if (blocksByDiscipline.length === 0) {
-      warnings.push('Adicione pelo menos uma disciplina.');
+      warnings.push('Adicione pelo menos 2 disciplinas (mín. 2, máx. 4 blocos).');
       return { isValid: false, warnings };
     }
-    if (blocksByDiscipline.length > 4) {
-      warnings.push('Máximo 4 blocos.');
+    if (blocksByDiscipline.length < MIN_BLOCKS) {
+      warnings.push(`Mínimo ${MIN_BLOCKS} blocos por disciplina.`);
+      return { isValid: false, warnings };
+    }
+    if (blocksByDiscipline.length > MAX_BLOCKS) {
+      warnings.push(`Máximo ${MAX_BLOCKS} blocos.`);
       return { isValid: false, warnings };
     }
     const total = blocksByDiscipline.reduce((s, b) => s + b.questions_count, 0);
@@ -229,8 +237,12 @@ export default function AnswerSheetCreateGabarito() {
       warnings.push(`Soma dos blocos (${total}) deve ser igual ao total de questões (${numQuestions}).`);
       return { isValid: false, warnings };
     }
-    if (blocksByDiscipline.some((b) => b.questions_count > 26)) {
-      warnings.push('Máximo 26 questões por bloco.');
+    if (blocksByDiscipline.some((b) => b.questions_count < MIN_QUESTIONS_PER_BLOCK)) {
+      warnings.push(`Mínimo ${MIN_QUESTIONS_PER_BLOCK} questões por bloco.`);
+      return { isValid: false, warnings };
+    }
+    if (blocksByDiscipline.some((b) => b.questions_count > MAX_QUESTIONS_PER_BLOCK)) {
+      warnings.push(`Máximo ${MAX_QUESTIONS_PER_BLOCK} questões por bloco.`);
       return { isValid: false, warnings };
     }
     return { isValid: true, warnings };
@@ -330,13 +342,14 @@ export default function AnswerSheetCreateGabarito() {
   const canProceedStep0 = title.trim() !== '' && institution.trim() !== '';
   const canProceedStep1 =
     numQuestions >= 1 &&
-    numQuestions <= 200 &&
+    numQuestions <= MAX_QUESTIONS_TOTAL &&
     Array.from({ length: numQuestions }, (_, i) => i + 1).every((n) => {
       const ans = correctAnswers[n];
       const opts = getAvailableAlternatives(n);
       return ans && opts.includes(ans);
     });
-  const canProceedStep2 = !useBlocks || (separateBySubject ? validateDisciplineBlocks().isValid : numBlocks >= 1 && questionsPerBlock >= 1);
+  const hasDisciplineBlocks = blocksByDiscipline.length >= MIN_BLOCKS;
+  const canProceedStep2 = blocksByDiscipline.length === 0 || validateDisciplineBlocks().isValid;
 
   const handleSubmit = async () => {
     const question_skills: Record<string, string[]> = {};
@@ -347,23 +360,24 @@ export default function AnswerSheetCreateGabarito() {
       num_questions: numQuestions,
       correct_answers: correctAnswers,
       question_skills,
-      use_blocks: separateBySubject,
+      use_blocks: hasDisciplineBlocks,
+      separate_by_subject: hasDisciplineBlocks,
       questions_options: buildQuestionsOptions() || {},
       test_data: { institution: institution.trim(), title: title.trim() },
     };
-    if (useBlocks && !separateBySubject) {
-      payload.blocks_config = { num_blocks: numBlocks, questions_per_block: questionsPerBlock };
-    }
-    if (separateBySubject) {
+    if (hasDisciplineBlocks) {
       payload.blocks_config = {
         blocks: blocksByDiscipline.map((b) => ({
           block_id: b.block_id,
+          subject_id: b.subject_id,
           subject_name: b.subject_name,
           questions_count: b.questions_count,
           start_question: b.start_question,
           end_question: b.end_question,
         })),
       };
+    } else {
+      payload.blocks_config = { num_blocks: 1, questions_per_block: numQuestions };
     }
 
     try {
@@ -435,7 +449,7 @@ export default function AnswerSheetCreateGabarito() {
                   </div>
                   <div>
                     <CardTitle>Informações básicas</CardTitle>
-                    <CardDescription>Título da avaliação e instituição.</CardDescription>
+                    <CardDescription>Título da avaliação e secretaria.</CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -451,12 +465,12 @@ export default function AnswerSheetCreateGabarito() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="institution">Instituição</Label>
+                  <Label htmlFor="institution">Secretaria</Label>
                   <div className="relative max-w-md">
                     <Building2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="institution"
-                      placeholder="Ex: Escola Municipal"
+                      placeholder="Ex: Secretaria Municipal de Educação"
                       value={institution}
                       onChange={(e) => setInstitution(e.target.value)}
                       className="pl-9"
@@ -487,11 +501,20 @@ export default function AnswerSheetCreateGabarito() {
                     id="numQuestions"
                     type="number"
                     min={1}
-                    max={200}
-                    value={numQuestions || ''}
-                    onChange={(e) => setNumQuestions(Math.min(200, Math.max(0, parseInt(e.target.value, 10) || 0)))}
+                    max={MAX_QUESTIONS_TOTAL}
+                    value={numQuestions ? Math.min(MAX_QUESTIONS_TOTAL, Math.max(1, numQuestions)) : ''}
+                    onChange={(e) => {
+                      const raw = parseInt(e.target.value, 10);
+                      if (Number.isNaN(raw) || e.target.value === '') {
+                        setNumQuestions(0);
+                        return;
+                      }
+                      const clamped = Math.min(MAX_QUESTIONS_TOTAL, Math.max(1, raw));
+                      setNumQuestions(clamped);
+                    }}
                     className="max-w-[120px]"
                   />
+                  <p className="text-xs text-muted-foreground">Máximo {MAX_QUESTIONS_TOTAL} questões</p>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Checkbox
@@ -622,90 +645,110 @@ export default function AnswerSheetCreateGabarito() {
                     <Layers className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <CardTitle>Blocos</CardTitle>
-                    <CardDescription>Opcional. Organize por blocos ou por disciplina.</CardDescription>
+                    <CardTitle>Blocos por disciplina</CardTitle>
+                    <CardDescription>
+                      Opcional: divida as questões em blocos por disciplina (2 a 4 blocos). Deixe vazio para um único bloco.
+                    </CardDescription>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="use-blocks" checked={useBlocks} onCheckedChange={(c) => setUseBlocks(c === true)} />
-                  <Label htmlFor="use-blocks">Separar em blocos</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="by-subject"
-                    checked={separateBySubject}
-                    onCheckedChange={(c) => {
-                      setSeparateBySubject(c === true);
-                      if (c === true) setUseBlocks(false);
-                    }}
-                  />
-                  <Label htmlFor="by-subject">Separar por disciplina (1 bloco por disciplina)</Label>
-                </div>
-
-                {separateBySubject && numQuestions > 0 && (
-                  <div className="space-y-3 rounded-lg border-l-4 border-primary/50 pl-4">
-                    <Label>Disciplinas e quantidade de questões</Label>
-                    {blocksByDiscipline.map((block) => (
-                      <div key={block.block_id} className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-3">
-                        <Badge variant="outline">Bloco {block.block_id}</Badge>
-                        <span className="text-sm font-medium">{block.subject_name}</span>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={26}
-                          value={block.questions_count}
-                          onChange={(e) => handleUpdateBlockQuestions(block.block_id, parseInt(e.target.value, 10) || 1)}
-                          className="w-20 h-8"
-                        />
-                        <span className="text-xs text-muted-foreground">Q{block.start_question}–{block.end_question}</span>
-                        <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveDisciplineBlock(block.block_id)}>
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                    {blocksByDiscipline.length < 4 && (
-                      <Select
-                        onValueChange={(value) => {
-                          const d = disciplines.find((x) => x.id === value);
-                          if (d) handleAddDisciplineBlock(d.id, d.name);
-                        }}
-                        value=""
-                      >
-                        <SelectTrigger className="w-full max-w-xs">
-                          <SelectValue placeholder={isLoadingDisciplines ? 'Carregando...' : '+ Adicionar disciplina'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {disciplines.filter((d) => !blocksByDiscipline.some((b) => b.subject_id === d.id)).map((d) => (
-                            <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      Total: {blocksByDiscipline.reduce((s, b) => s + b.questions_count, 0)} / {numQuestions} questões · {blocksByDiscipline.length} / 4 blocos
+                {numQuestions > 0 ? (
+                  <div className="space-y-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                    <p className="text-sm text-muted-foreground">
+                      Adicione disciplinas abaixo. Cada bloco terá entre {MIN_QUESTIONS_PER_BLOCK} e {MAX_QUESTIONS_PER_BLOCK} questões.
                     </p>
-                    {validateDisciplineBlocks().warnings.length > 0 && (
-                      <Alert variant="destructive">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertDescription>{validateDisciplineBlocks().warnings.join(' ')}</AlertDescription>
-                      </Alert>
+                    {blocksByDiscipline.length > 0 ? (
+                      <>
+                        <div className="space-y-2">
+                          {blocksByDiscipline.map((block) => (
+                            <div key={block.block_id} className="flex flex-wrap items-center gap-3 rounded-lg border bg-background p-3 shadow-sm">
+                              <Badge variant="secondary" className="shrink-0">Bloco {block.block_id}</Badge>
+                              <span className="min-w-[120px] font-medium text-foreground">{block.subject_name}</span>
+                              <Input
+                                type="number"
+                                min={MIN_QUESTIONS_PER_BLOCK}
+                                max={MAX_QUESTIONS_PER_BLOCK}
+                                value={Math.min(MAX_QUESTIONS_PER_BLOCK, Math.max(MIN_QUESTIONS_PER_BLOCK, block.questions_count))}
+                                onChange={(e) => {
+                                  const raw = parseInt(e.target.value, 10);
+                                  if (Number.isNaN(raw)) return;
+                                  const clamped = Math.min(MAX_QUESTIONS_PER_BLOCK, Math.max(MIN_QUESTIONS_PER_BLOCK, raw));
+                                  handleUpdateBlockQuestions(block.block_id, clamped);
+                                  if (raw !== clamped) {
+                                    toast({ title: 'Limite', description: `Entre ${MIN_QUESTIONS_PER_BLOCK} e ${MAX_QUESTIONS_PER_BLOCK} questões por bloco.`, variant: 'destructive' });
+                                  }
+                                }}
+                                className="w-20 h-9"
+                              />
+                              <span className="text-xs text-muted-foreground">questões · Q{block.start_question}–{block.end_question}</span>
+                              <Button type="button" variant="ghost" size="icon" className="ml-auto shrink-0" onClick={() => handleRemoveDisciplineBlock(block.block_id)} aria-label="Remover bloco">
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                        {blocksByDiscipline.length < 4 && (
+                          <Select
+                            onValueChange={(value) => {
+                              const d = disciplines.find((x) => x.id === value);
+                              if (d) handleAddDisciplineBlock(d.id, d.name);
+                            }}
+                            value=""
+                          >
+                            <SelectTrigger className="w-full max-w-sm border-dashed">
+                              <SelectValue placeholder={isLoadingDisciplines ? 'Carregando...' : '+ Adicionar outra disciplina'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {disciplines.filter((d) => !blocksByDiscipline.some((b) => b.subject_id === d.id)).map((d) => (
+                                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                        <div className="flex flex-wrap items-center gap-4 rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                          <span className="font-medium text-foreground">
+                            Total: {blocksByDiscipline.reduce((s, b) => s + b.questions_count, 0)} / {numQuestions} questões
+                          </span>
+                          <span className="text-muted-foreground">· {blocksByDiscipline.length} / 4 blocos</span>
+                        </div>
+                        {validateDisciplineBlocks().warnings.length > 0 && (
+                          <Alert variant="destructive">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription>{validateDisciplineBlocks().warnings.join(' ')}</AlertDescription>
+                          </Alert>
+                        )}
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed bg-background/50 py-8">
+                        <p className="text-sm text-muted-foreground text-center">Nenhum bloco adicionado. Um único bloco será usado.</p>
+                        {isLoadingDisciplines ? (
+                          <p className="text-xs text-muted-foreground">Carregando disciplinas...</p>
+                        ) : disciplines.length > 0 ? (
+                          <Select
+                            onValueChange={(value) => {
+                              const d = disciplines.find((x) => x.id === value);
+                              if (d) handleAddDisciplineBlock(d.id, d.name);
+                            }}
+                            value=""
+                          >
+                            <SelectTrigger className="w-64 border-primary/30">
+                              <SelectValue placeholder="+ Adicionar disciplina para criar blocos" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {disciplines.map((d) => (
+                                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Nenhuma disciplina disponível.</p>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-
-                {useBlocks && !separateBySubject && (
-                  <div className="flex gap-4 flex-wrap">
-                    <div className="space-y-2">
-                      <Label>Quantidade de blocos</Label>
-                      <Input type="number" min={1} value={numBlocks} onChange={(e) => setNumBlocks(Math.max(1, parseInt(e.target.value, 10) || 1))} className="w-24" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Questões por bloco</Label>
-                      <Input type="number" min={1} value={questionsPerBlock} onChange={(e) => setQuestionsPerBlock(Math.max(1, parseInt(e.target.value, 10) || 1))} className="w-24" />
-                    </div>
-                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Defina a quantidade de questões na etapa anterior.</p>
                 )}
               </CardContent>
             </Card>
@@ -837,16 +880,13 @@ export default function AnswerSheetCreateGabarito() {
               <CardContent className="space-y-6">
                 <dl className="grid gap-2 text-sm">
                   <div><dt className="text-muted-foreground">Título</dt><dd className="font-medium">{title || '—'}</dd></div>
-                  <div><dt className="text-muted-foreground">Instituição</dt><dd className="font-medium">{institution || '—'}</dd></div>
+                  <div><dt className="text-muted-foreground">Secretaria</dt><dd className="font-medium">{institution || '—'}</dd></div>
                   <div><dt className="text-muted-foreground">Questões</dt><dd className="font-medium">{numQuestions}</dd></div>
-                  {separateBySubject && blocksByDiscipline.length > 0 && (
+                  {blocksByDiscipline.length > 0 && (
                     <div>
                       <dt className="text-muted-foreground">Blocos por disciplina</dt>
                       <dd className="font-medium">{blocksByDiscipline.map((b) => `${b.subject_name} (${b.questions_count})`).join(' · ')}</dd>
                     </div>
-                  )}
-                  {useBlocks && !separateBySubject && (
-                    <div><dt className="text-muted-foreground">Blocos</dt><dd className="font-medium">{numBlocks} blocos, {questionsPerBlock} questões/bloco</dd></div>
                   )}
                 </dl>
 
@@ -901,7 +941,7 @@ export default function AnswerSheetCreateGabarito() {
             </CardHeader>
             <CardContent className="text-sm space-y-2 text-muted-foreground">
               {title && <p><span className="text-foreground font-medium">Título:</span> {title}</p>}
-              {institution && <p><span className="text-foreground font-medium">Instituição:</span> {institution}</p>}
+              {institution && <p><span className="text-foreground font-medium">Secretaria:</span> {institution}</p>}
               {numQuestions > 0 && <p><span className="text-foreground font-medium">Questões:</span> {numQuestions}</p>}
               {step >= 1 && numQuestions > 0 && (
                 <p>
@@ -913,10 +953,10 @@ export default function AnswerSheetCreateGabarito() {
                   )}
                 </p>
               )}
-              {step >= 2 && (useBlocks || separateBySubject) && (
+              {step >= 2 && blocksByDiscipline.length > 0 && (
                 <p>
                   <span className="text-foreground font-medium">Blocos:</span>{' '}
-                  {separateBySubject ? `${blocksByDiscipline.length} disciplinas` : `${numBlocks} blocos`}
+                  {blocksByDiscipline.length} disciplinas
                 </p>
               )}
               {!title && !institution && numQuestions === 0 && <p>Preencha as etapas para ver o resumo.</p>}

@@ -1777,9 +1777,11 @@ export default function Results() {
     return [];
   }, [students, processTableData, processRankingData]);
 
-  // Filtrar estudantes baseado nos filtros
+  // Filtrar estudantes baseado nos filtros (nome pode vir undefined da API)
   const filteredStudents = useMemo(() => {
-    return transformedStudents.sort((a, b) => a.nome.localeCompare(b.nome));
+    return [...transformedStudents].sort((a, b) =>
+      (a.nome ?? '').localeCompare(b.nome ?? '', undefined, { sensitivity: 'base' })
+    );
   }, [transformedStudents]);
 
   const buildDisciplineStatsForStudent = useCallback((studentId: string): DisciplineStatsMap | null => {

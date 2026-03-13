@@ -474,8 +474,18 @@ export default function AnswerSheetGenerateCards() {
               pollingRef.current = null;
             }
             setIsGenerating(false);
-            const url = d.result?.minio_url ?? d.result?.download_url ?? null;
-            setDownloadUrl(url);
+            const gabaritoId = d.gabarito_id;
+            if (gabaritoId) {
+              try {
+                const downloadRes = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`);
+                const presignedUrl = downloadRes.data?.download_url ?? null;
+                setDownloadUrl(presignedUrl);
+              } catch {
+                setDownloadUrl(null);
+              }
+            } else {
+              setDownloadUrl(null);
+            }
             await fetchGabaritos();
             toast({ title: 'Geração concluída', description: 'Cartões gerados com sucesso.' });
           }
