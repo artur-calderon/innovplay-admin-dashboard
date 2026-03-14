@@ -9,7 +9,6 @@ const EditQuestionPage = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:bg-background">
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:bg-background">
             {/* Header */}
             <div className="bg-white dark:bg-card border-b border-border shadow-sm">
                 <div className="container mx-auto px-6 py-4">
