@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { Loader2, Users, GraduationCap, Trash2, Plus, Eye, UserPlus, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, Users, GraduationCap, Trash2, Plus, Eye, EyeOff, UserPlus, CheckCircle2, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { LinkTeacherModal } from "./LinkTeacherModal";
 import { LinkStudentModal } from "./LinkStudentModal";
@@ -107,6 +107,8 @@ export function ManageClassModal({
   const [viewingTeacher, setViewingTeacher] = useState<Teacher | null>(null);
   const [activeTab, setActiveTab] = useState("manage");
   const [isCreating, setIsCreating] = useState(false);
+  const [showStudentPassword, setShowStudentPassword] = useState(false);
+  const [showTeacherPassword, setShowTeacherPassword] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -686,6 +688,51 @@ export function ManageClassModal({
                       />
                     </div>
                     <div className="space-y-2">
+                      <Label htmlFor="student-email" className="text-sm font-medium text-foreground">E-mail (Gerado automaticamente)</Label>
+                      <div className="relative">
+                        <Input
+                          id="student-email"
+                          readOnly
+                          className="h-11 bg-muted border-border font-mono text-sm cursor-not-allowed pr-8"
+                          value={formData.email}
+                          placeholder="Será gerado ao digitar o nome"
+                        />
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                          {isChecking && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                          {!isChecking && isAvailable === true && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                          {!isChecking && isAvailable === false && <AlertCircle className="h-4 w-4 text-amber-500" />}
+                        </div>
+                      </div>
+                      {!isChecking && isAvailable === false && (
+                        <p className="text-xs text-amber-600">E-mail original em uso. Usando sugestão disponível.</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="student-password" className="text-sm font-medium text-foreground">Senha (Gerada automaticamente)</Label>
+                      <div className="relative">
+                        <Input
+                          id="student-password"
+                          type={showStudentPassword ? "text" : "password"}
+                          readOnly
+                          className="h-11 bg-muted border-border font-mono text-sm cursor-not-allowed pr-10"
+                          value={formData.password}
+                          placeholder="Será gerada ao digitar o nome"
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          onClick={() => setShowStudentPassword(!showStudentPassword)}
+                          aria-label={showStudentPassword ? "Ocultar senha" : "Ver senha"}
+                        >
+                          {showStudentPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
                       <Label htmlFor="student-registration" className="text-sm font-medium text-foreground">Matrícula (Opcional)</Label>
                       <Input
                         id="student-registration"
@@ -831,14 +878,28 @@ export function ManageClassModal({
                           <Label htmlFor="teacher-senha" className="text-sm font-medium text-muted-foreground">
                             Senha (Gerada automaticamente)
                           </Label>
-                          <Input
-                            id="teacher-senha"
-                            type="text"
-                            placeholder="Senha será gerada automaticamente"
-                            className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed"
-                            value={formData.password}
-                            readOnly
-                          />
+                          <div className="relative">
+                            <Input
+                              id="teacher-senha"
+                              type={showTeacherPassword ? "text" : "password"}
+                              placeholder="Senha será gerada automaticamente"
+                              className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed pr-10"
+                              value={formData.password}
+                              readOnly
+                            />
+                            <button
+                              type="button"
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                              onClick={() => setShowTeacherPassword(!showTeacherPassword)}
+                              aria-label={showTeacherPassword ? "Ocultar senha" : "Ver senha"}
+                            >
+                              {showTeacherPassword ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                            </button>
+                          </div>
                         </div>
                         <div className="space-y-3">
                           <Label htmlFor="teacher-matricula" className="text-sm sm:text-base font-medium text-foreground">

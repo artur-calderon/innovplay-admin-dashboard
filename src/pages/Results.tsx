@@ -974,7 +974,7 @@ export default function Results() {
             municipio: selectedMunicipality,
             avaliacao: selectedEvaluation,
           });
-          const fullTabela = fullResponse?.tabela_detalhada;
+          const fullTabela = fullResponse?.tabela_detalhada as TabelaDetalhada | undefined;
           if (fullTabela?.disciplinas?.length) {
             const selectedSchoolName = selectedSchool !== 'all' && schools.length > 0
               ? schools.find(s => s.id === selectedSchool)?.name
@@ -988,9 +988,10 @@ export default function Results() {
             const filterBySchool = selectedSchoolName != null;
             const filterByGrade = selectedGradeName != null;
             const filterByClass = selectedClassName != null;
-            const filteredDisciplinas = fullTabela.disciplinas.map((d: { alunos: Array<{ escola?: string; serie?: string; turma?: string }>; questoes?: unknown[] }) => ({
+            type DisciplinaRow = TabelaDetalhada['disciplinas'][number];
+            const filteredDisciplinas: DisciplinaRow[] = fullTabela.disciplinas.map((d: DisciplinaRow) => ({
               ...d,
-              alunos: (d.alunos || []).filter((aluno: { escola?: string; serie?: string; turma?: string }) => {
+              alunos: (d.alunos || []).filter((aluno) => {
                 if (filterBySchool && (aluno.escola || '') !== selectedSchoolName) return false;
                 if (filterByGrade && (aluno.serie || '') !== selectedGradeName) return false;
                 if (filterByClass && (aluno.turma || '') !== selectedClassName) return false;

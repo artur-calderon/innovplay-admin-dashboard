@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { UserPlus, Upload, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { UserPlus, Upload, Loader2, CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { AxiosError } from "axios";
 import { useEmailCheck, generatePasswordFromName } from "@/hooks/useEmailCheck";
 
@@ -52,6 +52,7 @@ export function AddStudentForm({ schoolId, schoolName, onSuccess }: AddStudentFo
   const [birthDate, setBirthDate] = useState("");
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -251,14 +252,29 @@ export function AddStudentForm({ schoolId, schoolName, onSuccess }: AddStudentFo
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="password" className="text-sm text-gray-600">Senha (Gerada automaticamente)</Label>
-                  <Input
-                    id="password"
-                    value={generatePasswordFromName(name)}
-                    readOnly
-                    className="bg-gray-50 border-gray-200 font-mono h-11 cursor-not-allowed"
-                    placeholder="Senha será gerada"
-                    disabled={isLoading}
-                  />
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      value={generatePasswordFromName(name)}
+                      readOnly
+                      className="bg-gray-50 border-gray-200 font-mono h-11 cursor-not-allowed pr-10"
+                      placeholder="Senha será gerada"
+                      disabled={isLoading}
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? "Ocultar senha" : "Ver senha"}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
 

@@ -213,9 +213,9 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
   ];
 
   return (
-    <div className="border rounded-lg overflow-hidden bg-white dark:bg-card shadow-sm">
+    <div className="border border-border rounded-lg overflow-hidden bg-background dark:bg-card shadow-sm">
       {/* Toolbar */}
-      <div className="border-b bg-gray-50/50 dark:bg-muted/50 px-4 py-3">
+      <div className="border-b border-border bg-muted/30 dark:bg-muted/50 px-4 py-3">
         <div className="flex flex-wrap items-center gap-1">
           {/* Formatação básica */}
           <div className="flex items-center gap-1">

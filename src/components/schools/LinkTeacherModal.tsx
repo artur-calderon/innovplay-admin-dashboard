@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { Loader2, Search, UserPlus, Plus } from "lucide-react";
+import { Loader2, Search, UserPlus, Plus, Eye, EyeOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/authContext";
@@ -73,6 +73,7 @@ export function LinkTeacherModal({
   const [activeTab, setActiveTab] = useState("link");
   const [isCreating, setIsCreating] = useState(false);
   const [municipios, setMunicipios] = useState<Municipality[]>([]);
+  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     nome: "",
     email: "",
@@ -521,15 +522,29 @@ export function LinkTeacherModal({
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="senha" className="text-sm font-medium text-foreground">Senha *</Label>
-                    <Input
-                      id="senha"
-                      type="password"
-                      autoComplete="new-password"
-                      placeholder="Digite a senha"
-                      className="h-11 border-input bg-background focus:ring-2 focus:ring-blue-500"
-                      value={formData.senha}
-                      onChange={(e) => handleInputChange('senha', e.target.value)}
-                    />
+                    <div className="relative">
+                      <Input
+                        id="senha"
+                        type={showPassword ? "text" : "password"}
+                        autoComplete="new-password"
+                        placeholder="Digite a senha"
+                        className="h-11 border-input bg-background focus:ring-2 focus:ring-blue-500 pr-10"
+                        value={formData.senha}
+                        onChange={(e) => handleInputChange('senha', e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onClick={() => setShowPassword(!showPassword)}
+                        aria-label={showPassword ? "Ocultar senha" : "Ver senha"}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="matricula" className="text-sm font-medium text-foreground">Matrícula (Opcional)</Label>

@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Question } from "../types";
 import { useSkillsStore } from '@/stores/useSkillsStore';
-import { api } from "@/lib/api";
+import { api, BASE_URL } from "@/lib/api";
+import { resolveQuestionImageSrc } from "@/utils/questionImages";
 import './QuestionPreview.css';
 
 interface QuestionPreviewProps {
@@ -20,7 +21,7 @@ const SimpleHtmlRenderer = ({ content }: { content: string | null | undefined })
         return null;
     }
 
-    // Limpar e processar HTML
+    // Limpar e processar HTML (o conteúdo já pode vir com imagens resolvidas pelo pai)
     const cleanHtml = content
         .replace(/<img([^>]*?)class="([^"]*)"([^>]*)>/g, '<img$1class="$2 max-w-full h-auto"$3>')
         .replace(/<img(?![^>]*class=)([^>]*)>/g, '<img$1 class="max-w-full h-auto">')
@@ -193,12 +194,12 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                     </div>
                 ) : (
                     <div className="question-statement">
-                        <SimpleHtmlRenderer content={question.formattedText || question.text} />
+                        <SimpleHtmlRenderer content={resolveQuestionImageSrc(question.formattedText || question.text || '', BASE_URL)} />
                         
                         {/* Segundo Enunciado - integrado naturalmente */}
                         {question.secondStatement && question.secondStatement.trim() !== '' && (
                             <div className="question-continuation">
-                                <SimpleHtmlRenderer content={question.secondStatement} />
+                                <SimpleHtmlRenderer content={resolveQuestionImageSrc(question.secondStatement || '', BASE_URL)} />
                             </div>
                         )}
                     </div>
@@ -285,7 +286,7 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                     </h4>
                     <div className="resolution-content bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
                         <div className="text-base leading-relaxed text-foreground">
-                            <SimpleHtmlRenderer content={question.formattedSolution || question.solution} />
+                            <SimpleHtmlRenderer content={resolveQuestionImageSrc(question.formattedSolution || question.solution || '', BASE_URL)} />
                         </div>
                     </div>
                 </div>
