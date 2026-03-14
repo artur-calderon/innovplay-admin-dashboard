@@ -21,7 +21,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Question, Subject } from "../types";
-import { api } from "@/lib/api";
+import { api, BASE_URL } from "@/lib/api";
+import { resolveQuestionImageSrc, toRelativeQuestionImageSrc } from "@/utils/questionImages";
 import { useToast } from "@/hooks/use-toast";
 import { Option } from "@/components/ui/multi-select";
 import { useAuth } from "@/context/authContext";
@@ -242,17 +243,26 @@ const QuestionForm = ({
 
           const normalizedSkills = normalizeSkills(questionData.skills);
 
+          // Resolver URLs de imagens para exibição no editor (API devolve src="/questions/...")
+          const textForEditor = resolveQuestionImageSrc(questionData.formattedText || questionData.text || "", BASE_URL);
+          const solutionForEditor = resolveQuestionImageSrc(questionData.formattedSolution || questionData.solution || "", BASE_URL);
+          const secondStatementForEditor = resolveQuestionImageSrc(questionData.secondStatement || "", BASE_URL);
+          const optionsForEditor = (questionData.options || []).map((opt: { text?: string; isCorrect?: boolean; id?: string }) => ({
+            ...opt,
+            text: typeof opt.text === 'string' ? resolveQuestionImageSrc(opt.text, BASE_URL) : (opt as { text?: string }).text || "",
+          }));
+
                      const formData: QuestionFormValues = { // Keep the explicit type here for clarity
              title: questionData.title || "",
-             text: questionData.formattedText || questionData.text || "",
+             text: textForEditor,
              educationStageId: questionData.educationStage?.id || "",
              subjectId: questionData.subject?.id || "",
              grade: questionData.grade?.id || "",
              difficulty: questionData.difficulty || "",
              value: questionData.value?.toString() || "",
-             solution: questionData.formattedSolution || questionData.solution || "",
-             options: questionData.options || [],
-             secondStatement: questionData.secondStatement || "",
+             solution: solutionForEditor,
+             options: optionsForEditor.length > 0 ? optionsForEditor : [],
+             secondStatement: secondStatementForEditor,
             skills: normalizedSkills,
             // Corrigir o mapeamento do tipo da questão
             questionType: (questionData.type === 'multipleChoice' || (questionData.type as any) === 'multiple_choice') 
@@ -543,17 +553,22 @@ const QuestionForm = ({
     // Mapear o tipo da questão para o formato esperado pela API
     const questionTypeForAPI = data.questionType === 'multipleChoice' ? 'multipleChoice' : 'dissertativa';
     
+    // Reverter URLs de imagens para relativas antes de enviar à API
+    const formattedTextForApi = toRelativeQuestionImageSrc(data.text, BASE_URL);
+    const formattedSolutionForApi = toRelativeQuestionImageSrc(data.solution || "", BASE_URL);
+    const secondStatementForApi = toRelativeQuestionImageSrc(data.secondStatement || '', BASE_URL);
+
     // Monta as opções com id baseado na letra (apenas para múltipla escolha)
     const options = data.questionType === 'multipleChoice' && data.options ? data.options.map((opt, index) => ({
         id: String.fromCharCode(65 + index), // "A", "B", "C", "D"...
-        text: opt.text,
+        text: typeof opt.text === 'string' ? toRelativeQuestionImageSrc(opt.text, BASE_URL) : opt.text,
         isCorrect: opt.isCorrect,
     })) : [];
 
     const payload = {
       title: data.title,
       text: htmlToText(data.text),
-      formattedText: data.text,
+      formattedText: formattedTextForApi,
       type: questionTypeForAPI,
       subjectId: data.subjectId,
       educationStageId: data.educationStageId,
@@ -561,10 +576,10 @@ const QuestionForm = ({
       difficulty: data.difficulty,
       value: data.value ? parseFloat(data.value) : 0,
       solution,
-      formattedSolution: data.solution || "",
+      formattedSolution: formattedSolutionForApi,
       options: options,
       skills: data.skills, // Agora é obrigatório, não precisa de fallback
-      secondStatement: data.secondStatement || '',
+      secondStatement: secondStatementForApi,
       lastModifiedBy: user.id,
       createdBy: user.id,
     };
@@ -683,7 +698,7 @@ const QuestionForm = ({
           variant="outline"
           onClick={() => setShowPreview(!showPreview)}
           type="button"
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 text-foreground border-border"
         >
           <Eye className="h-4 w-4" />
           {showPreview ? "Voltar à Edição" : "Visualizar"}
@@ -730,7 +745,7 @@ const QuestionForm = ({
           <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
 
             {/* Seção: Informações Básicas */}
-            <div className="bg-blue-50 dark:bg-blue-950/30 rounded-xl p-6 border border-blue-200 dark:border-blue-800">
+            <div className="bg-blue-50 dark:bg-muted/40 rounded-xl p-6 border border-blue-200 dark:border-border">
               <div className="flex items-center gap-2 mb-4">
                 <Book className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 <h3 className="text-lg font-semibold text-foreground">Informações Básicas</h3>
@@ -932,7 +947,7 @@ const QuestionForm = ({
                       </FormControl>
                       <FormMessage />
                       {(field.value || []).length > 0 && (
-                        <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <div className="mt-3 p-3 bg-blue-50 dark:bg-muted/40 rounded-lg border border-blue-200 dark:border-border">
                           <div className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2">
                             Habilidades Selecionadas ({(field.value || []).length}):
                           </div>
@@ -955,7 +970,7 @@ const QuestionForm = ({
             </div>
 
             {/* Seção: Tipo de Questão */}
-            <div className="bg-purple-50 dark:bg-purple-950/30 rounded-xl p-6 border border-purple-200 dark:border-purple-800">
+            <div className="bg-purple-50 dark:bg-muted/40 rounded-xl p-6 border border-purple-200 dark:border-border">
               <div className="flex items-center gap-2 mb-4">
                 <ListIcon className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                 <h3 className="text-lg font-semibold text-foreground">Tipo de Questão</h3>
@@ -969,7 +984,7 @@ const QuestionForm = ({
                   onClick={() => handleSetQuestionType('multipleChoice')}
                   className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'multipleChoice'
                     ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg'
-                    : 'hover:bg-purple-50 dark:hover:bg-purple-950/50 hover:border-purple-300 dark:hover:border-purple-700'
+                    : 'hover:bg-purple-50 dark:hover:bg-muted/60 hover:border-purple-300 dark:hover:border-border'
                     }`}
                 >
                   <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
@@ -988,7 +1003,7 @@ const QuestionForm = ({
                   onClick={() => handleSetQuestionType('dissertativa')}
                   className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'dissertativa'
                     ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg'
-                    : 'hover:bg-purple-50 dark:hover:bg-purple-950/50 hover:border-purple-300 dark:hover:border-purple-700'
+                    : 'hover:bg-purple-50 dark:hover:bg-muted/60 hover:border-purple-300 dark:hover:border-border'
                     }`}
                 >
                   <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
@@ -1003,7 +1018,7 @@ const QuestionForm = ({
             </div>
 
             {/* Seção: Enunciados */}
-            <div className="bg-green-50 dark:bg-green-950/30 rounded-xl p-6 border border-green-200 dark:border-green-800">
+            <div className="bg-green-50 dark:bg-muted/40 rounded-xl p-6 border border-green-200 dark:border-border">
               <div className="flex items-center gap-2 mb-4">
                 <Type className="h-5 w-5 text-green-600 dark:text-green-400" />
                 <h3 className="text-lg font-semibold text-foreground">Enunciados</h3>
@@ -1051,7 +1066,7 @@ const QuestionForm = ({
 
             {/* Seção: Alternativas (apenas para múltipla escolha) */}
             {questionType === 'multipleChoice' && (
-              <div className="bg-orange-50 dark:bg-orange-950/30 rounded-xl p-6 border border-orange-200 dark:border-orange-800">
+              <div className="bg-orange-50 dark:bg-muted/40 rounded-xl p-6 border border-orange-200 dark:border-border">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <Check className="h-5 w-5 text-orange-600 dark:text-orange-400" />
@@ -1136,7 +1151,7 @@ const QuestionForm = ({
             )}
 
             {/* Seção: Resolução */}
-            <div className="bg-indigo-50 dark:bg-indigo-950/30 rounded-xl p-6 border border-indigo-200 dark:border-indigo-800">
+            <div className="bg-indigo-50 dark:bg-muted/40 rounded-xl p-6 border border-indigo-200 dark:border-border">
               <div className="flex items-center gap-2 mb-4">
                 <Save className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
                 <h3 className="text-lg font-semibold text-foreground">

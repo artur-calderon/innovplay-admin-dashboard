@@ -3,7 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pencil, Trash2, ArrowLeft, Eye, Users, BookOpen, FileText, Calendar, User, MapPin, School, Play } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, BASE_URL } from "@/lib/api";
+import { resolveQuestionImageSrc } from "@/utils/questionImages";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -1283,7 +1284,7 @@ export default function ViewEvaluation() {
                         <div className="prose prose-sm dark:prose-invert max-w-none question-statement">
                           <div
                             className="text-base leading-relaxed text-gray-700 dark:text-gray-100 p-4 bg-gray-50 dark:bg-muted/50 rounded-lg border border-gray-200 dark:border-gray-800 [&_*]:dark:text-gray-100 [&_p]:dark:text-gray-100 [&_h1]:dark:text-gray-100 [&_h2]:dark:text-gray-100 [&_h3]:dark:text-gray-100 [&_h4]:dark:text-gray-100 [&_h5]:dark:text-gray-100 [&_h6]:dark:text-gray-100 [&_li]:dark:text-gray-100 [&_span]:dark:text-gray-100 [&_strong]:dark:text-gray-100 [&_em]:dark:text-gray-100"
-                            dangerouslySetInnerHTML={{ __html: processHtmlWithImages(q.formattedText || q.text) }}
+                            dangerouslySetInnerHTML={{ __html: processHtmlWithImages(resolveQuestionImageSrc(q.formattedText || q.text, BASE_URL)) }}
                           />
                         </div>
 
@@ -1292,7 +1293,7 @@ export default function ViewEvaluation() {
                           <div className="prose prose-sm dark:prose-invert max-w-none question-continuation">
                             <div
                               className="text-base leading-relaxed text-gray-700 dark:text-gray-100 p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800 [&_*]:dark:text-gray-100 [&_p]:dark:text-gray-100 [&_h1]:dark:text-gray-100 [&_h2]:dark:text-gray-100 [&_h3]:dark:text-gray-100 [&_h4]:dark:text-gray-100 [&_h5]:dark:text-gray-100 [&_h6]:dark:text-gray-100 [&_li]:dark:text-gray-100 [&_span]:dark:text-gray-100 [&_strong]:dark:text-gray-100 [&_em]:dark:text-gray-100"
-                              dangerouslySetInnerHTML={{ __html: processHtmlWithImages(q.secondStatement || q.formattedText || '') }}
+                              dangerouslySetInnerHTML={{ __html: processHtmlWithImages(resolveQuestionImageSrc(q.secondStatement || q.formattedText || '', BASE_URL)) }}
                             />
                           </div>
                         )}
@@ -1328,7 +1329,7 @@ export default function ViewEvaluation() {
                                     <div className={`text-base leading-relaxed prose prose-sm dark:prose-invert ${
                                       option.isCorrect ? 'font-medium text-green-800 dark:text-green-300' : 'text-gray-700 dark:text-gray-300'
                                     }`}>
-                                      <div dangerouslySetInnerHTML={{ __html: processHtmlWithImages(option.text) }} />
+                                      <div dangerouslySetInnerHTML={{ __html: processHtmlWithImages(resolveQuestionImageSrc(option.text, BASE_URL)) }} />
                                     </div>
                                     {option.isCorrect && (
                                       <Badge variant="outline" className="mt-3 text-xs bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800">
@@ -1377,7 +1378,7 @@ export default function ViewEvaluation() {
                               <div className="prose prose-sm dark:prose-invert max-w-none">
                                 <div
                                   className="text-base leading-relaxed text-gray-700 dark:text-gray-300"
-                                  dangerouslySetInnerHTML={{ __html: processHtmlWithImages(q.solution) }}
+                                  dangerouslySetInnerHTML={{ __html: processHtmlWithImages(resolveQuestionImageSrc(q.formattedSolution || q.solution, BASE_URL)) }}
                                 />
                               </div>
                             </div>

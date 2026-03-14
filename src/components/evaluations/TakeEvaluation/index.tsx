@@ -26,6 +26,8 @@ import { EvaluationTimer } from "../EvaluationTimer";
 import { useEvaluation } from "@/hooks/useEvaluation";
 import { Question } from "@/types/evaluation-types";
 import { CompetitionSubmitSuccessModal } from "@/components/competitions/CompetitionSubmitSuccessModal";
+import { BASE_URL } from "@/lib/api";
+import { resolveQuestionImageSrc } from "@/utils/questionImages";
 
 /** State passado quando a prova é feita no contexto de uma competição. */
 interface CompetitionLocationState {
@@ -1052,7 +1054,7 @@ export default function TakeEvaluation() {
                                                     <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
                                                         <div
                                                             dangerouslySetInnerHTML={{
-                                                                __html: currentQuestion?.formattedText || currentQuestion?.text || '',
+                                                                __html: resolveQuestionImageSrc(currentQuestion?.formattedText || currentQuestion?.text || '', BASE_URL),
                                                             }}
                                                         />
                                                     </div>
@@ -1065,7 +1067,7 @@ export default function TakeEvaluation() {
                                                     <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
                                                         <div
                                                             dangerouslySetInnerHTML={{
-                                                                __html: currentQuestion.secondStatement.trim(),
+                                                                __html: resolveQuestionImageSrc(currentQuestion.secondStatement.trim(), BASE_URL),
                                                             }}
                                                         />
                                                     </div>
@@ -1598,7 +1600,7 @@ export default function TakeEvaluation() {
                                                >
                                                    <div
                                                        dangerouslySetInnerHTML={{
-                                                           __html: currentQuestion?.formattedText || currentQuestion?.text || '',
+                                                           __html: resolveQuestionImageSrc(currentQuestion?.formattedText || currentQuestion?.text || '', BASE_URL),
                                                        }}
                                                    />
                                                </div>
@@ -1617,7 +1619,7 @@ export default function TakeEvaluation() {
                                                >
                                                    <div
                                                        dangerouslySetInnerHTML={{
-                                                           __html: currentQuestion.secondStatement.trim(),
+                                                           __html: resolveQuestionImageSrc(currentQuestion.secondStatement.trim(), BASE_URL),
                                                        }}
                                                    />
                                                </div>
@@ -1812,7 +1814,7 @@ function QuestionOptions({
                                         <span className="font-bold text-foreground min-w-[24px] sm:min-w-[30px] text-base sm:text-lg md:text-xl flex-shrink-0">
                                             {String.fromCharCode(65 + index)})
                                         </span>
-                                        <div className="text-sm sm:text-base md:text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: optionText }} />
+                                        <div className="text-sm sm:text-base md:text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: resolveQuestionImageSrc(typeof optionText === 'string' ? optionText : '', BASE_URL) }} />
                                     </div>
                                 </Label>
                             </div>
@@ -1915,7 +1917,7 @@ function QuestionOptions({
                                         <span className="font-medium text-muted-foreground min-w-[20px] flex-shrink-0">
                                             {String.fromCharCode(65 + index)})
                                         </span>
-                                        <div className="text-xs sm:text-sm" dangerouslySetInnerHTML={{ __html: optionText }} />
+                                        <div className="text-xs sm:text-sm" dangerouslySetInnerHTML={{ __html: resolveQuestionImageSrc(typeof optionText === 'string' ? optionText : '', BASE_URL) }} />
                                     </div>
                                 </Label>
                             </div>

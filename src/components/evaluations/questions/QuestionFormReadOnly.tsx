@@ -14,7 +14,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Book, Check, List as ListIcon, Minus, Plus, Save, Eye, Heading1, Heading2, Heading3, List, Code, Type, Trash } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Question, Subject } from "../types";
-import { api } from "@/lib/api";
+import { api, BASE_URL } from "@/lib/api";
+import { resolveQuestionImageSrc } from "@/utils/questionImages";
 import { useToast } from "@/hooks/use-toast";
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -233,7 +234,7 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
             {data.solution && (
                 <div className="space-y-2">
                     <h4 className="font-medium">Resolução:</h4>
-                    <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: data.solution }} />
+                    <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: resolveQuestionImageSrc(data.solution, BASE_URL) }} />
                 </div>
             )}
         </div>
