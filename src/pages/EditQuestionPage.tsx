@@ -8,9 +8,9 @@ const EditQuestionPage = () => {
     const { id } = useParams<{ id: string }>();
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:bg-background">
             {/* Header */}
-            <div className="bg-white border-b shadow-sm">
+            <div className="bg-background border-b shadow-sm">
                 <div className="container mx-auto px-6 py-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
@@ -37,7 +37,7 @@ const EditQuestionPage = () => {
             </div>
 
             {/* Content */}
-            <div className="container mx-auto px-6 py-6">
+            <div className="container mx-auto px-6 py-6 bg-background">
                 {id ? (
                     <QuestionForm
                         questionId={id}
@@ -46,8 +46,8 @@ const EditQuestionPage = () => {
                     />
                 ) : (
                     <div className="text-center py-12">
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">
-                            <p className="text-red-800 font-medium">ID da questão não encontrado.</p>
+                        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg p-6 max-w-md mx-auto">
+                            <p className="text-red-800 dark:text-red-300 font-medium">ID da questão não encontrado.</p>
                             <Button 
                                 onClick={() => window.history.back()}
                                 className="mt-4"

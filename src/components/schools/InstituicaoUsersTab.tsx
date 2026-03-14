@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Users, User, Eye, Pencil, Building, MapPin, School, UserPlus, Trash2 } from "lucide-react";
+import { Loader2, Users, User, Eye, EyeOff, Pencil, Building, MapPin, School, UserPlus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -164,6 +164,7 @@ export function InstituicaoUsersTab({
     password: "",
     registration: "",
   });
+  const [showTecAdminPassword, setShowTecAdminPassword] = useState(false);
   const [isSubmittingAddTecAdmin, setIsSubmittingAddTecAdmin] = useState(false);
   const [userToDelete, setUserToDelete] = useState<MunicipioUser | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
@@ -822,15 +823,30 @@ export function InstituicaoUsersTab({
             </div>
             <div className="space-y-2">
               <Label htmlFor="add-tecadmin-password">Senha *</Label>
-              <Input
-                id="add-tecadmin-password"
-                type="password"
-                value={addTecAdminForm.password}
-                onChange={(e) => setAddTecAdminForm((prev) => ({ ...prev, password: e.target.value }))}
-                placeholder="Mínimo 6 caracteres"
-                required
-                minLength={6}
-              />
+              <div className="relative">
+                <Input
+                  id="add-tecadmin-password"
+                  type={showTecAdminPassword ? "text" : "password"}
+                  value={addTecAdminForm.password}
+                  onChange={(e) => setAddTecAdminForm((prev) => ({ ...prev, password: e.target.value }))}
+                  placeholder="Mínimo 6 caracteres"
+                  required
+                  minLength={6}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowTecAdminPassword(!showTecAdminPassword)}
+                  aria-label={showTecAdminPassword ? "Ocultar senha" : "Ver senha"}
+                >
+                  {showTecAdminPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="add-tecadmin-registration">Matrícula (opcional)</Label>

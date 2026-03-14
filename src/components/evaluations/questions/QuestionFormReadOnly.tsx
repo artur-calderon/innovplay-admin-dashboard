@@ -583,7 +583,7 @@ const QuestionFormReadOnly = ({
                     <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
 
                         {/* Seção: Informações Básicas */}
-                        <div className="bg-blue-50 dark:bg-blue-950/30 rounded-xl p-6 border border-blue-200 dark:border-blue-800">
+                        <div className="bg-blue-50 dark:bg-card rounded-xl p-6 border border-blue-200 dark:border-border">
                             <div className="flex items-center gap-2 mb-4">
                                 <Book className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                                 <h3 className="text-lg font-semibold text-foreground">Informações Básicas</h3>
@@ -714,7 +714,7 @@ const QuestionFormReadOnly = ({
                                     control={form.control}
                                     name="skills"
                                     render={({ field }) => (
-                                        <FormItem>
+                                        <FormItem className="sm:col-span-2 min-w-0">
                                             <FormLabel className="text-sm font-semibold text-foreground">
                                                 Habilidades (BNCC)
                                                 <span className="text-muted-foreground font-normal ml-1">
@@ -737,7 +737,7 @@ const QuestionFormReadOnly = ({
                                             </FormControl>
                                             <FormMessage />
                                             {(field.value || []).length > 0 && (
-                                                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                                                <div className="mt-3 p-3 bg-blue-50 dark:bg-muted/50 rounded-lg border border-blue-200 dark:border-border">
                                                     <div className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2">
                                                         Habilidades Selecionadas ({(field.value || []).length}):
                                                     </div>
@@ -760,7 +760,7 @@ const QuestionFormReadOnly = ({
                         </div>
 
                         {/* Seção: Tipo de Questão */}
-                        <div className="bg-purple-50 dark:bg-purple-950/30 rounded-xl p-6 border border-purple-200 dark:border-purple-800">
+                        <div className="bg-purple-50 dark:bg-card rounded-xl p-6 border border-purple-200 dark:border-border">
                             <div className="flex items-center gap-2 mb-4">
                                 <ListIcon className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                                 <h3 className="text-lg font-semibold text-foreground">Tipo de Questão</h3>
@@ -808,7 +808,7 @@ const QuestionFormReadOnly = ({
                         </div>
 
                         {/* Seção: Enunciados */}
-                        <div className="bg-green-50 dark:bg-green-950/30 rounded-xl p-6 border border-green-200 dark:border-green-800">
+                        <div className="bg-green-50 dark:bg-card rounded-xl p-6 border border-green-200 dark:border-border">
                             <div className="flex items-center gap-2 mb-4">
                                 <Type className="h-5 w-5 text-green-600 dark:text-green-400" />
                                 <h3 className="text-lg font-semibold text-foreground">Enunciados</h3>
