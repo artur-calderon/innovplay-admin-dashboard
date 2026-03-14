@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { Loader2, Search, UserPlus, Building, Plus, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, Search, UserPlus, Building, Plus, CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/context/authContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -73,6 +73,7 @@ export function LinkDirectorCoordinatorModal({
     registration: "",
     birth_date: ""
   });
+  const [showPassword, setShowPassword] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -494,13 +495,28 @@ export function LinkDirectorCoordinatorModal({
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="password" className="text-sm text-muted-foreground">Senha (Gerada automaticamente)</Label>
-                    <Input
-                      id="password"
-                      value={formData.password}
-                      readOnly
-                      className="h-11 bg-muted border-border font-mono text-sm cursor-not-allowed"
-                      placeholder="Será gerada ao digitar o nome"
-                    />
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        value={formData.password}
+                        readOnly
+                        className="h-11 bg-muted border-border font-mono text-sm cursor-not-allowed pr-10"
+                        placeholder="Será gerada ao digitar o nome"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onClick={() => setShowPassword(!showPassword)}
+                        aria-label={showPassword ? "Ocultar senha" : "Ver senha"}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="registration" className="text-sm font-medium text-foreground">Matrícula (Opcional)</Label>

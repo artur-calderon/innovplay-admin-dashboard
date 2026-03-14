@@ -36,6 +36,7 @@ import {
   Edit, 
   Trash2, 
   Eye, 
+  EyeOff,
   Users, 
   GraduationCap, 
   Building2, 
@@ -111,6 +112,7 @@ export function InstituicaoUserManagement({ schoolId, schoolName, onSuccess }: I
   const [selectedRole, setSelectedRole] = useState<string>("all");
   
   // Estados do formulário
+  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -412,14 +414,29 @@ export function InstituicaoUserManagement({ schoolId, schoolName, onSuccess }: I
                 
                 <div className="space-y-2">
                   <Label htmlFor="password" className="text-sm text-gray-600">Senha (Gerada automaticamente)</Label>
-                  <Input
-                    id="password"
-                    value={formData.password}
-                    readOnly
-                    className="bg-gray-50 border-gray-200 font-mono h-11 cursor-not-allowed"
-                    placeholder="Senha será gerada"
-                    disabled={isSubmitting}
-                  />
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      value={formData.password}
+                      readOnly
+                      className="bg-gray-50 border-gray-200 font-mono h-11 cursor-not-allowed pr-10"
+                      placeholder="Senha será gerada"
+                      disabled={isSubmitting}
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? "Ocultar senha" : "Ver senha"}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
               

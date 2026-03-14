@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { UserPlus, Search, Plus, Users, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { UserPlus, Search, Plus, Users, Loader2, CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useEmailCheck, generatePasswordFromName } from "@/hooks/useEmailCheck";
 import { useAuth } from "@/context/authContext";
 import {
@@ -141,6 +141,7 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
     const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
     const [activeTab, setActiveTab] = useState("existing");
+    const [showPassword, setShowPassword] = useState(false);
     const [formData, setFormData] = useState({
         name: "",
         email: "",
@@ -534,13 +535,28 @@ if (user.role === 'admin' || user.role === 'tecadm') return true;
                             
                             <div className="space-y-2">
                                 <Label htmlFor="password" className="text-sm text-gray-600">Senha (Gerada automaticamente)</Label>
-                                <Input
-                                    id="password"
-                                    value={formData.password}
-                                    readOnly
-                                    className="bg-gray-50 border-gray-200 font-mono cursor-not-allowed"
-                                    placeholder="Será gerada ao digitar o nome"
-                                />
+                                <div className="relative">
+                                    <Input
+                                        id="password"
+                                        type={showPassword ? "text" : "password"}
+                                        value={formData.password}
+                                        readOnly
+                                        className="bg-gray-50 border-gray-200 font-mono cursor-not-allowed pr-10"
+                                        placeholder="Será gerada ao digitar o nome"
+                                    />
+                                    <button
+                                        type="button"
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        aria-label={showPassword ? "Ocultar senha" : "Ver senha"}
+                                    >
+                                        {showPassword ? (
+                                            <EyeOff className="h-4 w-4" />
+                                        ) : (
+                                            <Eye className="h-4 w-4" />
+                                        )}
+                                    </button>
+                                </div>
                             </div>
                             
                             <div className="space-y-2">

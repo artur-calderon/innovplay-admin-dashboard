@@ -924,7 +924,7 @@ const QuestionForm = ({
                   control={form.control}
                   name="skills"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className="sm:col-span-2 min-w-0">
                       <FormLabel className="text-sm font-semibold text-foreground">
                         Habilidades (BNCC)
                         <span className="text-muted-foreground font-normal ml-1">

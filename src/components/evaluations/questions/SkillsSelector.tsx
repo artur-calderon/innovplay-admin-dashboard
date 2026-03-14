@@ -1044,13 +1044,13 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
              )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {selected.length > 0 && (
-            <Badge variant="secondary" className="text-xs">
+            <Badge variant="secondary" className="text-xs" aria-label={`${selected.length} habilidade(s) selecionada(s)`}>
               {selected.length}
             </Badge>
           )}
-          <Search className="h-4 w-4" />
+          <Search className="h-4 w-4 text-muted-foreground" aria-hidden />
         </div>
       </Button>
 

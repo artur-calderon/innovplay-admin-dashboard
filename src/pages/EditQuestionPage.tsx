@@ -9,6 +9,7 @@ const EditQuestionPage = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:bg-background">
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:bg-background">
             {/* Header */}
             <div className="bg-white dark:bg-card border-b border-border shadow-sm">
                 <div className="container mx-auto px-6 py-4">
@@ -37,7 +38,7 @@ const EditQuestionPage = () => {
             </div>
 
             {/* Content */}
-            <div className="container mx-auto px-6 py-6">
+            <div className="container mx-auto px-6 py-6 bg-background">
                 {id ? (
                     <div className="bg-card dark:bg-card/95 rounded-xl border border-border shadow-sm p-6">
                         <QuestionForm
