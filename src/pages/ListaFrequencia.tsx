@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
@@ -112,6 +114,8 @@ export default function ListaFrequencia() {
   const [isLoadingTurmasAvaliacao, setIsLoadingTurmasAvaliacao] = useState(false);
   /** Só exibir ausência (A) quando a prova já tiver expirado. Por turma = null (não aplicável). */
   const [provaExpirada, setProvaExpirada] = useState<boolean | null>(null);
+  /** Nome da avaliação customizado para impressão/PDF (editável antes de imprimir). */
+  const [nomeAvaliacaoImpressao, setNomeAvaliacaoImpressao] = useState('');
 
   // Carregar estados
   useEffect(() => {
@@ -382,6 +386,15 @@ export default function ListaFrequencia() {
     return () => { cancelled = true; };
   }, [modoLista, data, selectedAvaliacaoId]);
 
+  // Preencher o nome da avaliação para impressão quando a lista for carregada
+  useEffect(() => {
+    if (data?.length && data[0].cabecalho.nome_prova_ano) {
+      setNomeAvaliacaoImpressao(data[0].cabecalho.nome_prova_ano);
+    } else {
+      setNomeAvaliacaoImpressao('');
+    }
+  }, [data]);
+
   const handleGerarLista = async () => {
     setError(null);
     setIsLoadingLista(true);
@@ -470,10 +483,11 @@ export default function ListaFrequencia() {
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
         doc.setTextColor(...textBlack);
 
+        const tituloProva = (nomeAvaliacaoImpressao?.trim() || item.cabecalho.nome_prova_ano) || 'Nome da prova';
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...pink);
-        doc.text(item.cabecalho.nome_prova_ano, pageWidth / 2, y, { align: 'center' });
+        doc.text(tituloProva, pageWidth / 2, y, { align: 'center' });
         y += 7;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
@@ -844,7 +858,17 @@ export default function ListaFrequencia() {
 
 {data && data.length > 0 && (
         <div className="space-y-3">
-          <div className="no-print flex justify-end">
+          <div className="no-print flex flex-col sm:flex-row gap-4 items-stretch sm:items-end justify-end">
+            <div className="flex flex-col gap-2 min-w-0 sm:max-w-md">
+              <Label htmlFor="nome-avaliacao-impressao">Nome da avaliação (impressão/PDF)</Label>
+              <Input
+                id="nome-avaliacao-impressao"
+                placeholder="Ex.: Prova de Matemática - 1º Bimestre 2025"
+                value={nomeAvaliacaoImpressao}
+                onChange={(e) => setNomeAvaliacaoImpressao(e.target.value)}
+                className="bg-background"
+              />
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -869,7 +893,7 @@ export default function ListaFrequencia() {
               >
                 {/* Cabeçalho */}
                 <header className="mb-6 text-center">
-                  <h2 className="text-lg font-semibold">{item.cabecalho.nome_prova_ano}</h2>
+                  <h2 className="text-lg font-semibold">{(nomeAvaliacaoImpressao?.trim() || item.cabecalho.nome_prova_ano) || 'Nome da prova'}</h2>
                   <p className="text-sm mt-1">{item.cabecalho.lista_presenca_curso}</p>
                   <div className="mx-auto mt-4 max-w-4xl rounded border-2 border-pink-500/70 bg-zinc-800/80 p-4 text-left">
                     <div className="space-y-1 text-sm">
