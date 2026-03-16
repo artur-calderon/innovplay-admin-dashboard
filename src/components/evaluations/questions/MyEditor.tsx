@@ -15,10 +15,11 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
-  Heading1, Heading2, Heading3, List, Code, Type, AlignLeft, AlignCenter, AlignRight,
-  Image as ImageIcon, Bold, Italic, Underline as UnderlineIcon, Upload, Move, 
-  RotateCcw, Settings, Save, X, Expand, Shrink, MousePointer
+  Heading1, Heading2, Heading3, List, ListOrdered, Code, Type, AlignLeft, AlignCenter, AlignRight, AlignJustify,
+  Image as ImageIcon, Bold, Italic, Underline as UnderlineIcon, Strikethrough, Eraser, Replace,
+  Upload, Move, RotateCcw, Settings, Save, X, Expand, Shrink, MousePointer
 } from "lucide-react";
+import { normalizePdfLineBreaks } from "@/utils/normalizePdfLineBreaks";
 import { ResizableImage } from 'tiptap-extension-resizable-image';
 import 'tiptap-extension-resizable-image/styles.css';
 
@@ -31,7 +32,7 @@ interface ImageConfig {
   src: string;
   width?: number;
   height?: number;
-  align?: 'left' | 'center' | 'right';
+  align?: 'left' | 'center' | 'right' | 'justify';
   caption?: string;
   borderRadius?: number;
   shadow?: boolean;
@@ -62,7 +63,7 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
       Underline,
       TextAlign.configure({
         types: ['heading', 'paragraph', 'image'],
-        alignments: ['left', 'center', 'right'],
+        alignments: ['left', 'center', 'right', 'justify'],
         defaultAlignment: 'left',
       }),
       Placeholder.configure({
@@ -168,6 +169,12 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
       action: () => editor.chain().focus().toggleUnderline().run(),
       isActive: editor.isActive('underline'),
     },
+    {
+      icon: Strikethrough,
+      label: 'Riscado',
+      action: () => editor.chain().focus().toggleStrike().run(),
+      isActive: editor.isActive('strike'),
+    },
   ];
 
   const headingCommands = [
@@ -209,6 +216,12 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
       label: 'Alinhar à direita',
       action: () => editor.chain().focus().setTextAlign('right').run(),
       isActive: editor.isActive({ textAlign: 'right' }),
+    },
+    {
+      icon: AlignJustify,
+      label: 'Justificar',
+      action: () => editor.chain().focus().setTextAlign('justify').run(),
+      isActive: editor.isActive({ textAlign: 'justify' }),
     },
   ];
 
@@ -274,7 +287,7 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                   variant="ghost"
                   size="sm"
                   onClick={() => editor.chain().focus().toggleBulletList().run()}
-                  className={`h-9 w-9 p-0 ${editor.isActive('bulletList') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'}`}
+                  className={`h-9 w-9 p-0 ${editor.isActive('bulletList') ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-muted'}`}
                 >
                   <List className="h-4 w-4" />
                 </Button>
@@ -290,8 +303,25 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                   type="button"
                   variant="ghost"
                   size="sm"
+                  onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                  className={`h-9 w-9 p-0 ${editor.isActive('orderedList') ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-muted'}`}
+                >
+                  <ListOrdered className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Lista numerada</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => editor.chain().focus().toggleCode().run()}
-                  className={`h-9 w-9 p-0 ${editor.isActive('code') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'}`}
+                  className={`h-9 w-9 p-0 ${editor.isActive('code') ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-muted'}`}
                 >
                   <Type className="h-4 w-4" />
                 </Button>
@@ -308,13 +338,30 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                   variant="ghost"
                   size="sm"
                   onClick={() => editor.chain().focus().toggleSuperscript().run()}
-                  className={`h-9 w-9 p-0 ${editor.isActive('superscript') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'}`}
+                  className={`h-9 w-9 p-0 ${editor.isActive('superscript') ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-muted'}`}
                 >
                   <span className="text-xs font-bold">x²</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
                 <p>Sobrescrito</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => editor.chain().focus().unsetAllMarks().run()}
+                  className="h-9 w-9 p-0 hover:bg-gray-100 dark:hover:bg-muted"
+                >
+                  <Eraser className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Limpar formatação da seleção</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -342,6 +389,34 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
               </Tooltip>
             ))}
           </div>
+
+          <Separator orientation="vertical" className="h-6 mx-2" />
+
+          {/* Ajustar quebras de linha (transformar em espaço onde for continuação de frase) */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const html = editor.getHTML();
+                  const normalized = normalizePdfLineBreaks(html);
+                  if (normalized !== html) {
+                    editor.commands.setContent(normalized);
+                    onChange(normalized);
+                  }
+                }}
+                className="h-9 px-2 gap-1.5 font-medium text-muted-foreground hover:bg-gray-100 dark:hover:bg-muted hover:text-foreground"
+              >
+                <Replace className="h-4 w-4" />
+                <span className="hidden sm:inline text-xs">Ajustar quebras</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Ajustar quebras de linha automaticamente (transformar em espaço onde for continuação de frase)</p>
+            </TooltipContent>
+          </Tooltip>
 
           <Separator orientation="vertical" className="h-6 mx-2" />
 
@@ -495,11 +570,12 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
               {/* Alinhamento */}
               <div className="space-y-3">
                 <Label className="text-sm font-semibold">Alinhamento</Label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {[
                     { value: 'left', label: 'Esquerda', icon: AlignLeft },
                     { value: 'center', label: 'Centro', icon: AlignCenter },
                     { value: 'right', label: 'Direita', icon: AlignRight },
+                    { value: 'justify', label: 'Justificar', icon: AlignJustify },
                   ].map((align) => (
                     <Button
                       key={align.value}
@@ -508,7 +584,7 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                       size="sm"
                       onClick={() => setCurrentImageConfig(prev => ({ 
                         ...prev, 
-                        align: align.value as 'left' | 'center' | 'right' 
+                        align: align.value as 'left' | 'center' | 'right' | 'justify' 
                       }))}
                       className="flex-1"
                     >

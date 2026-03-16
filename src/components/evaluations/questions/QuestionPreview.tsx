@@ -8,47 +8,35 @@ import { Question } from "../types";
 import { useSkillsStore } from '@/stores/useSkillsStore';
 import { api, BASE_URL } from "@/lib/api";
 import { resolveQuestionImageSrc } from "@/utils/questionImages";
+import { normalizePdfLineBreaks } from "@/utils/normalizePdfLineBreaks";
 import './QuestionPreview.css';
 
 interface QuestionPreviewProps {
     question: Question;
     onClose?: () => void;
+    /** Quando true, oculta título e badges (útil quando o preview é embutido em outro layout, ex.: ViewEvaluation). */
+    hideHeader?: boolean;
 }
 
-// Componente simples para renderizar HTML sem TipTap
-const SimpleHtmlRenderer = ({ content }: { content: string | null | undefined }) => {
+// Bloco de enunciado no mesmo padrão do TakeEvaluation (avaliação)
+const questionStatementBlockClass = "question-text-block rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7";
+const questionProseClass = "prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100";
+
+// Componente para resolução (mantém HTML com imagens resolvidas)
+const SimpleHtmlRenderer = ({ content, className }: { content: string | null | undefined; className?: string }) => {
     if (!content || content.trim() === '') {
         return null;
     }
-
-    // Limpar e processar HTML (o conteúdo já pode vir com imagens resolvidas pelo pai)
     const cleanHtml = content
         .replace(/<img([^>]*?)class="([^"]*)"([^>]*)>/g, '<img$1class="$2 max-w-full h-auto"$3>')
         .replace(/<img(?![^>]*class=)([^>]*)>/g, '<img$1 class="max-w-full h-auto">')
-        .replace(/<img([^>]*?)(data:image\/[^;]+;base64,[A-Za-z0-9+/=]{50,500})([^>]*?)>/g, (match, before, dataUrl, after) => {
-            if (dataUrl.length < 800) {
-                return `<img${before}${dataUrl}${after} style="vertical-align: middle; display: inline-block; max-width: 4em; max-height: 2.5em; object-fit: contain;">`;
-            }
-            return match;
-        })
-        .replace(/<img([^>]*?)style="([^"]*?)"([^>]*?)>/g, (match, before, style, after) => {
-            if (!style.includes('object-fit')) {
-                const newStyle = `${style}; object-fit: contain;`;
-                return `<img${before}style="${newStyle}"${after}>`;
-            }
-            return match;
-        })
         .replace(/<img(?![^>]*style=)([^>]*?)>/g, '<img$1 style="object-fit: contain;">');
-    
     return (
-        <div 
-            className="prose prose-sm max-w-none question-content-html dark:prose-invert"
-            dangerouslySetInnerHTML={{ __html: cleanHtml }}
-        />
+        <div className={className ?? "text-base leading-relaxed text-foreground"} dangerouslySetInnerHTML={{ __html: cleanHtml }} />
     );
 };
 
-const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQuestion, onClose }) => {
+const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQuestion, onClose, hideHeader = false }) => {
     const { fetchSkills, getSkillsByIds, isLoading } = useSkillsStore();
     const [question, setQuestion] = useState<Question>(initialQuestion);
     const [isLoadingDetails, setIsLoadingDetails] = useState(false);
@@ -136,123 +124,159 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                 </div>
             )}
 
-            {/* Header com conteúdo e badges */}
-            <div className="space-y-4 mb-8 pb-6 border-b border-border">
-                <h3 className="text-xl font-bold leading-tight text-foreground">{question.title}</h3>
-                <div className="flex flex-wrap gap-2">
-                    {question.grade?.name && <Badge variant="outline">{question.grade.name}</Badge>}
-                    {question.subject?.name && <Badge variant="outline">{question.subject.name}</Badge>}
-                    {question.difficulty && <Badge variant="outline">{question.difficulty}</Badge>}
-                    {question.value && <Badge variant="outline">Valor: {question.value}</Badge>}
-                    {question.type && (
-                        <Badge variant="secondary">
-                            {question.type === 'multipleChoice' ? 'Múltipla Escolha' : 'Dissertativa'}
-                        </Badge>
-                    )}
-                    
-                    {/* Skills */}
-                    {isLoadingSkills ? (
-                        <Badge variant="outline" className="animate-pulse">Carregando skills...</Badge>
-                    ) : selectedSkills.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                            {selectedSkills.map((skill) => (
-                                <Tooltip key={skill.id}>
-                                    <TooltipTrigger asChild>
-                                        <Badge 
-                                            variant="outline" 
-                                            className="cursor-pointer hover:bg-muted/50 transition-colors"
-                                            title={`${skill.code} - ${skill.description}`}
+            {/* Header com conteúdo e badges (oculto se hideHeader) */}
+            {!hideHeader && (
+                <div className="space-y-4 mb-8 pb-6 border-b border-border">
+                    <h3 className="text-xl font-bold leading-tight text-foreground">{question.title}</h3>
+                    <div className="flex flex-wrap gap-2">
+                        {question.grade?.name && <Badge variant="outline">{question.grade.name}</Badge>}
+                        {question.subject?.name && <Badge variant="outline">{question.subject.name}</Badge>}
+                        {question.difficulty && <Badge variant="outline">{question.difficulty}</Badge>}
+                        {question.value && <Badge variant="outline">Valor: {question.value}</Badge>}
+                        {question.type && (
+                            <Badge variant="secondary">
+                                {question.type === 'multipleChoice' ? 'Múltipla Escolha' : 'Dissertativa'}
+                            </Badge>
+                        )}
+                        
+                        {/* Skills */}
+                        {isLoadingSkills ? (
+                            <Badge variant="outline" className="animate-pulse">Carregando skills...</Badge>
+                        ) : selectedSkills.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                                {selectedSkills.map((skill) => (
+                                    <Tooltip key={skill.id}>
+                                        <TooltipTrigger asChild>
+                                            <Badge 
+                                                variant="outline" 
+                                                className="cursor-pointer hover:bg-muted/50 transition-colors"
+                                                title={`${skill.code} - ${skill.description}`}
+                                            >
+                                                {skill.name.substring(0, 6)}
+                                            </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent 
+                                            side="top" 
+                                            className="z-50 max-w-sm p-3 bg-popover text-popover-foreground border border-border rounded-md shadow-lg"
                                         >
-                                            {skill.name.substring(0, 6)}
-                                        </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent 
-                                        side="top" 
-                                        className="z-50 max-w-sm p-3 bg-popover text-popover-foreground border border-border rounded-md shadow-lg"
-                                    >
-                                        <div className="space-y-1">
-                                            <div className="font-semibold text-sm">{skill.code}</div>
-                                            <div className="text-xs leading-relaxed">
-                                                {skill.description}
+                                            <div className="space-y-1">
+                                                <div className="font-semibold text-sm">{skill.code}</div>
+                                                <div className="text-xs leading-relaxed">
+                                                    {skill.description}
+                                                </div>
                                             </div>
-                                        </div>
-                                    </TooltipContent>
-                                </Tooltip>
-                            ))}
-                        </div>
-                    ) : question?.skills?.length > 0 ? (
-                        <Badge variant="outline">Skills não encontradas</Badge>
-                    ) : null}
+                                        </TooltipContent>
+                                    </Tooltip>
+                                ))}
+                            </div>
+                        ) : question?.skills?.length > 0 ? (
+                            <Badge variant="outline">Skills não encontradas</Badge>
+                        ) : null}
+                    </div>
                 </div>
-            </div>
+            )}
 
-            {/* Enunciado Principal */}
-            <div className="space-y-4 mb-8">
+            {/* Enunciado — mesmo layout do TakeEvaluation (avaliação) */}
+            <div className="evaluation-question-content space-y-8 sm:space-y-10 mb-8">
                 {isLoadingDetails ? (
                     <div className="space-y-3">
                         <Skeleton className="h-20 w-full" />
                     </div>
                 ) : (
-                    <div className="question-statement">
-                        <SimpleHtmlRenderer content={resolveQuestionImageSrc(question.formattedText || question.text || '', BASE_URL)} />
-                        
-                        {/* Segundo Enunciado - integrado naturalmente */}
-                        {question.secondStatement && question.secondStatement.trim() !== '' && (
-                            <div className="question-continuation">
-                                <SimpleHtmlRenderer content={resolveQuestionImageSrc(question.secondStatement || '', BASE_URL)} />
+                    <>
+                        {/* Texto 1 — Primeiro enunciado */}
+                        {(question.formattedText || question.text) && (
+                            <div className={questionStatementBlockClass}>
+                                <div className={questionProseClass}>
+                                    <div
+                                        dangerouslySetInnerHTML={{
+                                            __html: normalizePdfLineBreaks(resolveQuestionImageSrc(question.formattedText || question.text || '', BASE_URL)),
+                                        }}
+                                    />
+                                </div>
                             </div>
                         )}
-                    </div>
+                        {/* Texto 2 — Segundo enunciado (referência) */}
+                        {question.secondStatement?.trim() && (
+                            <div className={`${questionStatementBlockClass} question-second-statement`}>
+                                <div className={questionProseClass}>
+                                    <div
+                                        dangerouslySetInnerHTML={{
+                                            __html: normalizePdfLineBreaks(resolveQuestionImageSrc(question.secondStatement.trim(), BASE_URL)),
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
 
-            {/* Alternativas para questões de múltipla escolha */}
+            {/* Alternativas — mesmo layout do TakeEvaluation (avaliação) */}
             {(question.type === 'multipleChoice' || question.type === 'multiple_choice') && (
                 <div className="space-y-4 mb-8">
-                    <h4 className="font-semibold text-lg text-foreground mb-4">Alternativas</h4>
-                    {isLoadingDetails ? (
-                        <div className="space-y-3">
-                            {[...Array(4)].map((_, i) => (
-                                <div key={i} className="flex items-center space-x-3 p-4 rounded-lg border bg-muted/20">
-                                    <Skeleton className="w-7 h-7 rounded-full" />
-                                    <Skeleton className="h-5 flex-1" />
-                                </div>
-                            ))}
+                    <div className="rounded-xl sm:rounded-2xl border border-border bg-card shadow p-4 sm:p-5 md:p-6">
+                        <div className="text-base sm:text-lg md:text-xl font-bold text-foreground mb-4 sm:mb-6">
+                            Selecione a alternativa correta:
                         </div>
-                    ) : questionOptions && questionOptions.length > 0 ? (
-                        <div className="space-y-3">
-                            {questionOptions.map((option, index) => (
-                                <div key={option.id || index} className="alternative-item flex items-start space-x-4 p-5 rounded-xl border bg-card hover:shadow-md transition-all duration-200">
-                                    <div
-                                        className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-semibold shrink-0 transition-all duration-200 ${
-                                            option.isCorrect 
-                                                ? 'bg-green-500 text-white border-green-500 shadow-lg' 
-                                                : 'bg-muted border-border text-muted-foreground hover:border-border/80'
-                                        }`}
-                                    >
-                                        {String.fromCharCode(65 + index)}
+                        {isLoadingDetails ? (
+                            <div className="space-y-3">
+                                {[...Array(4)].map((_, i) => (
+                                    <div key={i} className="flex items-center space-x-3 p-4 rounded-lg border bg-muted/20">
+                                        <Skeleton className="w-5 h-5 rounded-full" />
+                                        <Skeleton className="h-5 flex-1" />
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className={`leading-relaxed text-base ${option.isCorrect ? 'font-medium text-green-800 dark:text-green-400' : 'text-foreground'}`}>
-                                            {option.text}
+                                ))}
+                            </div>
+                        ) : questionOptions && questionOptions.length > 0 ? (
+                            <div className="space-y-4 sm:space-y-6">
+                                {questionOptions.map((option, index) => {
+                                    const optionId = option.id ?? `option-${index}`;
+                                    const optionText = typeof option.text === 'string' ? option.text : '';
+                                    const isCorrect = option.isCorrect;
+                                    return (
+                                        <div
+                                            key={optionId}
+                                            className={`flex items-start space-x-3 sm:space-x-4 p-4 sm:p-5 md:p-6 rounded-lg sm:rounded-xl border-2 transition-all ${
+                                                isCorrect
+                                                    ? 'border-green-500 bg-green-50 dark:bg-green-950/30 ring-2 sm:ring-4 ring-green-200 dark:ring-green-800 shadow-lg'
+                                                    : 'border-border hover:border-border/80 hover:shadow-md bg-background'
+                                            }`}
+                                        >
+                                            <div
+                                                className={`w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 mt-0.5 sm:mt-1 rounded-full border-2 flex items-center justify-center text-xs font-bold ${
+                                                    isCorrect ? 'bg-green-500 text-white border-green-500' : 'border-border bg-muted'
+                                                }`}
+                                            />
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-start gap-2 sm:gap-3">
+                                                    <span className="font-bold text-foreground min-w-[24px] sm:min-w-[30px] text-base sm:text-lg md:text-xl flex-shrink-0">
+                                                        {String.fromCharCode(65 + index)})
+                                                    </span>
+                                                    <div
+                                                        className="text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100"
+                                                        dangerouslySetInnerHTML={{ __html: normalizePdfLineBreaks(resolveQuestionImageSrc(optionText, BASE_URL)) }}
+                                                    />
+                                                </div>
+                                                {isCorrect && (
+                                                    <Badge variant="outline" className="mt-2 text-xs bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-400 border-green-300 dark:border-green-800">
+                                                        ✓ Resposta Correta
+                                                    </Badge>
+                                                )}
+                                            </div>
                                         </div>
-                                        {option.isCorrect && (
-                                            <Badge variant="outline" className="mt-2 text-xs bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-950/50">
-                                                ✓ Resposta Correta
-                                            </Badge>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="text-center p-8 border-2 border-dashed border-yellow-300 dark:border-yellow-700 rounded-xl bg-yellow-50 dark:bg-yellow-950/20">
-                            <div className="text-yellow-800 dark:text-yellow-400 font-semibold text-lg mb-2">⚠️ Alternativas não disponíveis</div>
-                            <p className="text-yellow-700 dark:text-yellow-500 text-sm leading-relaxed">
-                                Esta questão está marcada como múltipla escolha mas não possui alternativas cadastradas.
-                            </p>
-                        </div>
-                    )}
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <div className="text-center p-8 border-2 border-dashed border-yellow-300 dark:border-yellow-700 rounded-xl bg-yellow-50 dark:bg-yellow-950/20">
+                                <div className="text-yellow-800 dark:text-yellow-400 font-semibold text-lg mb-2">⚠️ Alternativas não disponíveis</div>
+                                <p className="text-yellow-700 dark:text-yellow-500 text-sm leading-relaxed">
+                                    Esta questão está marcada como múltipla escolha mas não possui alternativas cadastradas.
+                                </p>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -277,17 +301,18 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                 </div>
             )}
 
-            {/* Resolução/Gabarito */}
+            {/* Resolução/Gabarito — alinhado ao padrão da avaliação */}
             {!isLoadingDetails && question.solution && question.solution.trim() !== '' && (
                 <div className="resolution-section space-y-4 border-t border-border pt-8">
                     <h4 className="font-semibold text-lg text-foreground flex items-center gap-2">
-                        <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm">💡</span>
+                        <span className="w-6 h-6 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center text-sm">💡</span>
                         Resolução
                     </h4>
-                    <div className="resolution-content bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
-                        <div className="text-base leading-relaxed text-foreground">
-                            <SimpleHtmlRenderer content={resolveQuestionImageSrc(question.formattedSolution || question.solution || '', BASE_URL)} />
-                        </div>
+                    <div className="resolution-content rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
+                        <SimpleHtmlRenderer
+                            className={questionProseClass}
+                            content={normalizePdfLineBreaks(resolveQuestionImageSrc(question.formattedSolution || question.solution || '', BASE_URL))}
+                        />
                     </div>
                 </div>
             )}

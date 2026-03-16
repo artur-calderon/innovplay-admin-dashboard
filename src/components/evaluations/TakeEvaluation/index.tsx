@@ -28,6 +28,7 @@ import { Question } from "@/types/evaluation-types";
 import { CompetitionSubmitSuccessModal } from "@/components/competitions/CompetitionSubmitSuccessModal";
 import { BASE_URL } from "@/lib/api";
 import { resolveQuestionImageSrc } from "@/utils/questionImages";
+import { normalizePdfLineBreaks } from "@/utils/normalizePdfLineBreaks";
 
 /** State passado quando a prova é feita no contexto de uma competição. */
 interface CompetitionLocationState {
@@ -726,8 +727,22 @@ export default function TakeEvaluation() {
             <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
 <style>
   {`
-    /* Padrão: todas as imagens do enunciado ficam no tamanho de fórmula/símbolo (raiz, fração, etc.) */
-    .evaluation-question-content img {
+    /* Respeitar tamanho definido pelo usuário ao criar/editar (atributos width/height ou style) */
+    .evaluation-question-content img[width],
+    .evaluation-question-content img[height],
+    .evaluation-question-content img[style*="width"],
+    .evaluation-question-content img[style*="height"] {
+        display: block !important;
+        margin: 1.2rem auto !important;
+        max-width: 100% !important;
+        max-height: none !important;
+        object-fit: contain !important;
+        border-radius: 8px !important;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
+    }
+
+    /* Padrão: imagens sem dimensão explícita ficam no tamanho de fórmula/símbolo */
+    .evaluation-question-content img:not([width]):not([height]) {
         display: inline-block !important;
         vertical-align: middle !important;
         max-height: 1.4em !important;
@@ -738,8 +753,8 @@ export default function TakeEvaluation() {
         margin: 0 0.2rem !important;
     }
 
-    /* Apenas imagens com classe .block-image podem ser grandes (diagramas, figuras) */
-    .evaluation-question-content img.block-image {
+    /* Apenas imagens com classe .block-image (sem width/height) podem ser grandes */
+    .evaluation-question-content img.block-image:not([width]):not([height]) {
         display: block !important;
         margin: 2rem auto !important;
         min-width: unset !important;
@@ -794,6 +809,14 @@ export default function TakeEvaluation() {
         overflow: hidden;
     }
 
+    /* Fluxo de texto como no editor: parágrafos contínuos, sem quebra por \\n */
+    .evaluation-question-content .question-text-block .prose,
+    .evaluation-question-content .question-text-block .prose p,
+    .evaluation-question-content .question-text-block .prose h1,
+    .evaluation-question-content .question-text-block .prose h2,
+    .evaluation-question-content .question-text-block .prose h3 {
+        white-space: normal;
+    }
     /* Espaçamento entre parágrafos dentro de cada bloco (Texto 1 e Texto 2) */
     .evaluation-question-content .question-text-block p {
         margin-top: 1rem;
@@ -806,26 +829,26 @@ export default function TakeEvaluation() {
         margin-top: 1.75rem;
     }
 
-    /* Media queries para responsividade */
+    /* Media queries para responsividade (não alterar imagens com tamanho do usuário) */
     @media (max-width: 768px) {
-      .evaluation-question-content img {
+      .evaluation-question-content img:not([width]):not([height]) {
         max-height: 1.35em !important;
         max-width: 1.85em !important;
       }
-      .evaluation-question-content img.block-image {
+      .evaluation-question-content img.block-image:not([width]):not([height]) {
         max-height: 280px !important;
         margin: 1rem auto !important;
       }
     }
 
     @media (min-width: 769px) and (max-width: 1024px) {
-      .evaluation-question-content img.block-image {
+      .evaluation-question-content img.block-image:not([width]):not([height]) {
         max-height: 320px !important;
       }
     }
 
     @media (min-width: 1536px) {
-      .evaluation-question-content img.block-image {
+      .evaluation-question-content img.block-image:not([width]):not([height]) {
         max-height: 450px !important;
       }
     }
@@ -1054,7 +1077,7 @@ export default function TakeEvaluation() {
                                                     <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
                                                         <div
                                                             dangerouslySetInnerHTML={{
-                                                                __html: resolveQuestionImageSrc(currentQuestion?.formattedText || currentQuestion?.text || '', BASE_URL),
+                                                                __html: normalizePdfLineBreaks(resolveQuestionImageSrc(currentQuestion?.formattedText || currentQuestion?.text || '', BASE_URL)),
                                                             }}
                                                         />
                                                     </div>
@@ -1067,7 +1090,7 @@ export default function TakeEvaluation() {
                                                     <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
                                                         <div
                                                             dangerouslySetInnerHTML={{
-                                                                __html: resolveQuestionImageSrc(currentQuestion.secondStatement.trim(), BASE_URL),
+                                                                __html: normalizePdfLineBreaks(resolveQuestionImageSrc(currentQuestion.secondStatement.trim(), BASE_URL)),
                                                             }}
                                                         />
                                                     </div>
@@ -1600,7 +1623,7 @@ export default function TakeEvaluation() {
                                                >
                                                    <div
                                                        dangerouslySetInnerHTML={{
-                                                           __html: resolveQuestionImageSrc(currentQuestion?.formattedText || currentQuestion?.text || '', BASE_URL),
+                                                           __html: normalizePdfLineBreaks(resolveQuestionImageSrc(currentQuestion?.formattedText || currentQuestion?.text || '', BASE_URL)),
                                                        }}
                                                    />
                                                </div>
@@ -1619,7 +1642,7 @@ export default function TakeEvaluation() {
                                                >
                                                    <div
                                                        dangerouslySetInnerHTML={{
-                                                           __html: resolveQuestionImageSrc(currentQuestion.secondStatement.trim(), BASE_URL),
+                                                           __html: normalizePdfLineBreaks(resolveQuestionImageSrc(currentQuestion.secondStatement.trim(), BASE_URL)),
                                                        }}
                                                    />
                                                </div>
@@ -1814,7 +1837,7 @@ function QuestionOptions({
                                         <span className="font-bold text-foreground min-w-[24px] sm:min-w-[30px] text-base sm:text-lg md:text-xl flex-shrink-0">
                                             {String.fromCharCode(65 + index)})
                                         </span>
-                                        <div className="text-sm sm:text-base md:text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: resolveQuestionImageSrc(typeof optionText === 'string' ? optionText : '', BASE_URL) }} />
+                                        <div className="text-sm sm:text-base md:text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: normalizePdfLineBreaks(resolveQuestionImageSrc(typeof optionText === 'string' ? optionText : '', BASE_URL)) }} />
                                     </div>
                                 </Label>
                             </div>
@@ -1917,7 +1940,7 @@ function QuestionOptions({
                                         <span className="font-medium text-muted-foreground min-w-[20px] flex-shrink-0">
                                             {String.fromCharCode(65 + index)})
                                         </span>
-                                        <div className="text-xs sm:text-sm" dangerouslySetInnerHTML={{ __html: resolveQuestionImageSrc(typeof optionText === 'string' ? optionText : '', BASE_URL) }} />
+                                        <div className="text-xs sm:text-sm" dangerouslySetInnerHTML={{ __html: normalizePdfLineBreaks(resolveQuestionImageSrc(typeof optionText === 'string' ? optionText : '', BASE_URL)) }} />
                                     </div>
                                 </Label>
                             </div>
