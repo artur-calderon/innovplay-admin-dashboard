@@ -36,11 +36,19 @@ export function normalizePdfLineBreaks(html: string): string {
 
   // 1) Juntar </p><p> quando: (a) quebra de PDF (anterior não termina em .!?: e próximo começa com minúscula),
   //    ou (b) ambos são "curtos" (estilo verso/linhas), mesmo com ponto + maiúscula. NUNCA juntar quando for título (curto + negrito).
+  //    Ao NÃO juntar, preservar atributos do <p> (ex.: style="text-align: center") para não perder alinhamento.
   const MAX_SHORT_LINE = 80;
-  const paragraphSplit = /<\/p>\s*<p(?:\s[^>]*)?>/gi;
-  const parts = out.split(paragraphSplit);
+  const paragraphBoundary = /<\/p>\s*<p(\s[^>]*)?>/gi;
+  const matches = [...out.matchAll(paragraphBoundary)];
 
-  if (parts.length > 1) {
+  if (matches.length > 0) {
+    const parts: string[] = [];
+    parts[0] = out.slice(0, matches[0].index);
+    for (let i = 0; i < matches.length; i++) {
+      const start = matches[i].index! + matches[i][0].length;
+      const end = matches[i + 1]?.index ?? out.length;
+      parts[i + 1] = out.slice(start, end);
+    }
     out = parts.reduce((acc, part, i) => {
       if (i === 0) return part;
       const prevPart = parts[i - 1];
@@ -57,7 +65,9 @@ export function normalizePdfLineBreaks(html: string): string {
       const mergeByShortLines =
         !prevIsTitle && bothShort;
       const shouldMerge = mergeByContinuation || mergeByShortLines;
-      return acc + (shouldMerge ? ' ' : '</p><p>') + part;
+      const attrs = (matches[i - 1][1] ?? '').trim();
+      const openTag = attrs ? `<p ${attrs}>` : '<p>';
+      return acc + (shouldMerge ? ' ' : `</p>${openTag}`) + part;
     });
   }
 

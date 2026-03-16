@@ -19,6 +19,7 @@ import {
   Image as ImageIcon, Bold, Italic, Underline as UnderlineIcon, Strikethrough, Eraser, Replace,
   Upload, Move, RotateCcw, Settings, Save, X, Expand, Shrink, MousePointer
 } from "lucide-react";
+import { normalizePdfLineBreaks } from "@/utils/normalizePdfLineBreaks";
 import { ResizableImage } from 'tiptap-extension-resizable-image';
 import 'tiptap-extension-resizable-image/styles.css';
 
@@ -431,8 +432,11 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                 size="sm"
                 onClick={() => {
                   const html = editor.getHTML();
-                  editor.commands.setContent(html);
-                  onChange(html);
+                  const normalized = normalizePdfLineBreaks(html);
+                  if (normalized !== html) {
+                    editor.commands.setContent(normalized);
+                    onChange(normalized);
+                  }
                 }}
                 className="h-9 px-2 gap-1.5 font-medium text-muted-foreground hover:bg-gray-100 dark:hover:bg-muted hover:text-foreground"
               >
