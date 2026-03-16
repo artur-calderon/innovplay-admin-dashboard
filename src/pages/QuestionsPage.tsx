@@ -1599,17 +1599,19 @@ const QuestionsPage = () => {
                             variant="ghost" 
                             size="sm" 
                             onClick={() => setViewQuestion(question)}
+                            className="h-8 w-8 p-0 hover:bg-blue-100 dark:hover:bg-blue-950/30"
                             title="Visualizar"
                           >
-                            <Eye className="h-3 w-3" />
+                            <Eye className="h-3.5 w-3.5" />
                           </Button>
                           <Button 
                             variant="ghost" 
                             size="sm" 
                             onClick={() => handleDuplicate(question)}
+                            className="h-8 w-8 p-0 hover:bg-green-100 dark:hover:bg-green-950/30"
                             title="Duplicar questão"
                           >
-                            <Copy className="h-3 w-3" />
+                            <Copy className="h-3.5 w-3.5" />
                           </Button>
                           {canEditDeleteDesktop && (
                             <>
@@ -1617,19 +1619,21 @@ const QuestionsPage = () => {
                                 variant="ghost" 
                                 size="sm" 
                                 asChild
+                                className="h-8 w-8 p-0 hover:bg-orange-100 dark:hover:bg-orange-950/30"
                                 title="Editar (clique com botão direito para abrir em nova guia)"
                               >
                                 <Link to={`/app/cadastros/questao/editar/${question.id}`}>
-                                  <Pencil className="h-3 w-3" />
+                                  <Pencil className="h-3.5 w-3.5" />
                                 </Link>
                               </Button>
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
                                 onClick={() => setDeleteQuestionId(question.id)}
+                                className="h-8 w-8 p-0 hover:bg-red-100 dark:hover:bg-red-950/30"
                                 title="Excluir"
                               >
-                                <Trash2 className="h-3 w-3 text-destructive" />
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
                               </Button>
                             </>
                           )}
@@ -1689,14 +1693,14 @@ const QuestionsPage = () => {
 
       {/* Modals */}
       <Dialog open={!!viewQuestion} onOpenChange={(isOpen) => !isOpen && setViewQuestion(null)}>
-        <DialogContent className="w-[95vw] max-w-4xl h-[90vh] max-h-[90vh] overflow-y-auto p-3 sm:p-6">
-          <DialogHeader className="pb-2">
+        <DialogContent className="w-[95vw] max-w-4xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden p-0 sm:p-0">
+          <DialogHeader className="shrink-0 px-4 pt-4 pb-2 sm:px-6 sm:pt-6 border-b border-border">
             <DialogTitle className="text-lg sm:text-xl">Visualizar Questão</DialogTitle>
             <DialogDescription className="sr-only">
               Visualização detalhada da questão selecionada, incluindo enunciado, alternativas e resolução quando disponível.
             </DialogDescription>
           </DialogHeader>
-          <div className="overflow-y-auto flex-1">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-4 sm:px-6 sm:pb-6 view-question-scroll">
             {viewQuestion && <QuestionPreview question={viewQuestion} />}
           </div>
         </DialogContent>

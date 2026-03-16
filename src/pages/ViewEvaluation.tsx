@@ -3,8 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pencil, Trash2, ArrowLeft, Eye, Users, BookOpen, FileText, Calendar, User, MapPin, School, Play } from "lucide-react";
-import { api, BASE_URL } from "@/lib/api";
-import { resolveQuestionImageSrc } from "@/utils/questionImages";
+import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -31,38 +30,10 @@ import {
 import StartEvaluationModal from "@/components/evaluations/StartEvaluationModal";
 import { convertDateTimeLocalToISO } from "@/utils/date";
 import { Evaluation, Subject, Grade, Municipality, SchoolInfo, AppliedClass, Author, Question, getEvaluationSubjects, getEvaluationSubjectsCount } from "@/types/evaluation-types";
+import QuestionPreview from "@/components/evaluations/questions/QuestionPreview";
+import type { Question as EvaluationQuestion } from "@/components/evaluations/types";
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/components/evaluations/results/constants";
 import { useEvaluations } from "@/hooks/use-cache";
-
-// Função para processar HTML e adicionar classes CSS para imagens
-const processHtmlWithImages = (html: string): string => {
-  if (!html) return '';
-  
-  // Adiciona classes CSS para imagens e elementos HTML com suporte a dark mode
-  return html
-    .replace(/<img([^>]*)>/gi, '<img$1 class="max-w-full h-auto rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">')
-    .replace(/<p([^>]*)>/gi, '<p$1 class="mb-4 dark:text-gray-100">')
-    .replace(/<h1([^>]*)>/gi, '<h1$1 class="text-2xl font-bold mb-4 dark:text-gray-100">')
-    .replace(/<h2([^>]*)>/gi, '<h2$1 class="text-xl font-bold mb-3 dark:text-gray-100">')
-    .replace(/<h3([^>]*)>/gi, '<h3$1 class="text-lg font-bold mb-2 dark:text-gray-100">')
-    .replace(/<h4([^>]*)>/gi, '<h4$1 class="text-base font-bold mb-2 dark:text-gray-100">')
-    .replace(/<h5([^>]*)>/gi, '<h5$1 class="text-sm font-bold mb-2 dark:text-gray-100">')
-    .replace(/<h6([^>]*)>/gi, '<h6$1 class="text-xs font-bold mb-2 dark:text-gray-100">')
-    .replace(/<ul([^>]*)>/gi, '<ul$1 class="list-disc list-inside mb-4 space-y-1 dark:text-gray-100">')
-    .replace(/<ol([^>]*)>/gi, '<ol$1 class="list-decimal list-inside mb-4 space-y-1 dark:text-gray-100">')
-    .replace(/<li([^>]*)>/gi, '<li$1 class="mb-1 dark:text-gray-100">')
-    .replace(/<blockquote([^>]*)>/gi, '<blockquote$1 class="border-l-4 border-blue-500 dark:border-blue-400 pl-4 italic text-gray-600 dark:text-gray-200 mb-4">')
-    .replace(/<code([^>]*)>/gi, '<code$1 class="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-sm font-mono dark:text-gray-100">')
-    .replace(/<pre([^>]*)>/gi, '<pre$1 class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto text-sm font-mono mb-4 dark:text-gray-100">')
-    .replace(/<table([^>]*)>/gi, '<table$1 class="w-full border-collapse border border-gray-300 dark:border-gray-700 mb-4">')
-    .replace(/<th([^>]*)>/gi, '<th$1 class="border border-gray-300 dark:border-gray-700 px-4 py-2 bg-gray-100 dark:bg-gray-800 font-bold dark:text-gray-100">')
-    .replace(/<td([^>]*)>/gi, '<td$1 class="border border-gray-300 dark:border-gray-700 px-4 py-2 dark:text-gray-100">')
-    .replace(/<strong([^>]*)>/gi, '<strong$1 class="font-bold dark:text-gray-100">')
-    .replace(/<em([^>]*)>/gi, '<em$1 class="italic dark:text-gray-100">')
-    .replace(/<u([^>]*)>/gi, '<u$1 class="underline dark:text-gray-100">')
-    .replace(/<span([^>]*)>/gi, '<span$1 class="dark:text-gray-100">')
-    .replace(/<div([^>]*)>/gi, '<div$1 class="dark:text-gray-100">');
-};
 
 // Interfaces locais para questões (estendem a interface base)
 interface QuestionOption {
@@ -1223,19 +1194,30 @@ export default function ViewEvaluation() {
               <CardContent className="p-6">
                 <div className="space-y-8">
                   {subjectData.questions.map((question, index) => {
-                    const q = question as Question & { value?: number; solution?: string; skills?: string[]; secondStatement?: string };
-                    const questionData = {
+                    const q = question as Question & { value?: number; solution?: string; skills?: string[]; secondStatement?: string; formattedSolution?: string; grade?: { id: string; name: string }; title?: string };
+                    const opts = q.options || q.alternatives || [];
+                    const previewQuestion: EvaluationQuestion = {
                       id: q.id,
-                      text: q.text,
-                      type: q.type,
-                      difficulty: q.difficulty,
-                      value: q.value,
-                      options: q.options || [],
-                      solution: q.solution || '',
-                      subject: q.subject,
-                      skills: q.skills || []
+                      title: q.title ?? `Questão ${index + 1}`,
+                      text: q.text ?? '',
+                      formattedText: q.formattedText ?? q.text ?? '',
+                      secondStatement: q.secondStatement ?? '',
+                      type: (q.type === 'multiple_choice' ? 'multipleChoice' : q.type === 'open' ? 'dissertativa' : q.type) as 'multipleChoice' | 'dissertativa' | 'trueFalse',
+                      subjectId: q.subject?.id ?? '',
+                      subject: q.subject ?? { id: '', name: '' },
+                      grade: q.grade ?? { id: '', name: '' },
+                      difficulty: String(q.difficulty ?? ''),
+                      value: Number(q.value ?? (q as { points?: number }).points ?? 0),
+                      solution: q.solution ?? '',
+                      formattedSolution: q.formattedSolution ?? q.solution ?? '',
+                      options: opts.map((opt: { id?: string; text: string; isCorrect?: boolean }, i: number) => ({
+                        id: opt.id ?? String.fromCharCode(65 + i),
+                        text: opt.text,
+                        isCorrect: opt.isCorrect ?? false
+                      })),
+                      created_by: ''
                     };
-                    
+
                     return (
                     <div key={q.id} className="question-preview-content bg-white dark:bg-card rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
                       {/* Header da questão */}
@@ -1278,112 +1260,9 @@ export default function ViewEvaluation() {
                         </div>
                       </div>
 
-                      {/* Conteúdo da questão */}
+                      {/* Conteúdo da questão — mesmo layout da aplicação da prova */}
                       <div className="p-6 space-y-6">
-                        {/* Enunciado */}
-                        <div className="prose prose-sm dark:prose-invert max-w-none question-statement">
-                          <div
-                            className="text-base leading-relaxed text-gray-700 dark:text-gray-100 p-4 bg-gray-50 dark:bg-muted/50 rounded-lg border border-gray-200 dark:border-gray-800 [&_*]:dark:text-gray-100 [&_p]:dark:text-gray-100 [&_h1]:dark:text-gray-100 [&_h2]:dark:text-gray-100 [&_h3]:dark:text-gray-100 [&_h4]:dark:text-gray-100 [&_h5]:dark:text-gray-100 [&_h6]:dark:text-gray-100 [&_li]:dark:text-gray-100 [&_span]:dark:text-gray-100 [&_strong]:dark:text-gray-100 [&_em]:dark:text-gray-100"
-                            dangerouslySetInnerHTML={{ __html: processHtmlWithImages(resolveQuestionImageSrc(q.formattedText || q.text, BASE_URL)) }}
-                          />
-                        </div>
-
-                        {/* Segundo Enunciado (se houver) */}
-                        {(q.secondStatement || (q.formattedText && q.formattedText !== q.text)) && (
-                          <div className="prose prose-sm dark:prose-invert max-w-none question-continuation">
-                            <div
-                              className="text-base leading-relaxed text-gray-700 dark:text-gray-100 p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800 [&_*]:dark:text-gray-100 [&_p]:dark:text-gray-100 [&_h1]:dark:text-gray-100 [&_h2]:dark:text-gray-100 [&_h3]:dark:text-gray-100 [&_h4]:dark:text-gray-100 [&_h5]:dark:text-gray-100 [&_h6]:dark:text-gray-100 [&_li]:dark:text-gray-100 [&_span]:dark:text-gray-100 [&_strong]:dark:text-gray-100 [&_em]:dark:text-gray-100"
-                              dangerouslySetInnerHTML={{ __html: processHtmlWithImages(resolveQuestionImageSrc(q.secondStatement || q.formattedText || '', BASE_URL)) }}
-                            />
-                          </div>
-                        )}
-
-
-                        {/* Alternativas para questões de múltipla escolha */}
-                        {(q.type === 'multipleChoice' || q.type === 'multiple_choice') && (q.options || q.alternatives) && (q.options?.length > 0 || q.alternatives?.length > 0) && (
-                          <div className="space-y-4">
-                            <h4 className="font-semibold text-lg text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                              <span className="w-6 h-6 bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center text-sm">🔢</span>
-                              Alternativas
-                            </h4>
-                            <div className="space-y-3">
-                              {(q.options || q.alternatives || []).map((option, optionIndex) => (
-                                <div
-                                  key={optionIndex}
-                                  className={`alternative-item flex items-start gap-4 p-5 rounded-xl border transition-all duration-200 ${
-                                    option.isCorrect
-                                      ? "bg-gradient-to-r from-green-50 dark:from-green-950/30 to-emerald-50 dark:to-emerald-950/30 border-green-200 dark:border-green-800 shadow-sm"
-                                      : "bg-white dark:bg-card border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-sm"
-                                  }`}
-                                >
-                                  <div
-                                    className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-bold shrink-0 transition-all duration-200 ${
-                                      option.isCorrect 
-                                        ? 'bg-green-500 dark:bg-green-600 text-white border-green-500 dark:border-green-600 shadow-lg' 
-                                        : 'bg-gray-50 dark:bg-muted border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400'
-                                    }`}
-                                  >
-                                    {option.id || String.fromCharCode(65 + optionIndex)}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className={`text-base leading-relaxed prose prose-sm dark:prose-invert ${
-                                      option.isCorrect ? 'font-medium text-green-800 dark:text-green-300' : 'text-gray-700 dark:text-gray-300'
-                                    }`}>
-                                      <div dangerouslySetInnerHTML={{ __html: processHtmlWithImages(resolveQuestionImageSrc(option.text, BASE_URL)) }} />
-                                    </div>
-                                    {option.isCorrect && (
-                                      <Badge variant="outline" className="mt-3 text-xs bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800">
-                                        ✓ Resposta Correta
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Área de resposta para questões dissertativas */}
-                        {q.type === 'open' && (
-                          <div className="space-y-4">
-                            <h4 className="font-semibold text-lg text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                              <span className="w-6 h-6 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center text-sm">✍️</span>
-                              Área de Resposta
-                            </h4>
-                            <div className="answer-area bg-gradient-to-br from-gray-50 dark:from-muted/50 to-gray-100 dark:to-muted/70 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-6 relative overflow-hidden">
-                              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-400 dark:from-purple-500 to-purple-600 dark:to-purple-700 opacity-60"></div>
-                              <div className="space-y-3">
-                                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                                  Espaço destinado para a resposta do estudante
-                                </p>
-                                <div className="bg-white/80 dark:bg-card/80 backdrop-blur-sm border border-gray-200 dark:border-gray-800 rounded-lg p-4 min-h-[120px] flex items-center justify-center">
-                                  <p className="text-gray-400 dark:text-gray-500 text-sm leading-relaxed text-center">
-                                    📝 O estudante desenvolverá sua resposta neste espaço durante a avaliação, demonstrando conhecimento e raciocínio sobre o tema abordado.
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Resolução/Gabarito (se houver) */}
-                        {q.solution && q.solution.trim() !== '' && (
-                          <div className="space-y-4 border-t border-gray-200 dark:border-gray-800 pt-6">
-                            <h4 className="font-semibold text-lg text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                              <span className="w-6 h-6 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center text-sm">💡</span>
-                              Resolução
-                            </h4>
-                            <div className="resolution-content bg-gradient-to-br from-blue-50 dark:from-blue-950/30 to-indigo-50 dark:to-indigo-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-6 relative overflow-hidden">
-                              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-400 dark:from-blue-500 to-indigo-600 dark:to-indigo-700"></div>
-                              <div className="prose prose-sm dark:prose-invert max-w-none">
-                                <div
-                                  className="text-base leading-relaxed text-gray-700 dark:text-gray-300"
-                                  dangerouslySetInnerHTML={{ __html: processHtmlWithImages(resolveQuestionImageSrc(q.formattedSolution || q.solution, BASE_URL)) }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        )}
+                        <QuestionPreview question={previewQuestion} hideHeader />
 
                         {/* Metadados da questão */}
                         <div className="bg-gray-50 dark:bg-muted/50 rounded-lg p-4 border-t border-gray-200 dark:border-gray-800">

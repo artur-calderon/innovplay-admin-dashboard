@@ -68,13 +68,20 @@ import {
   Upload,
   Images,
   X,
-  Loader2
+  Loader2,
+  AlertTriangle,
+  ChevronRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useBatchCorrection } from "@/hooks/useBatchCorrection";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
 import { MultiSelect } from "@/components/ui/multi-select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 /** Resposta GET /physical-tests/test/<test_id>/scope */
 interface TestScopeClass {
@@ -143,6 +150,295 @@ interface GeneratedForm {
   answer_sheet_sent_at?: string | null;
 }
 
+/** Resposta GET /physical-tests/task/<task_id>/status */
+interface TaskStatusProgress {
+  current: number;
+  total: number;
+  percentage: number;
+}
+interface TaskStatusSummary {
+  total_classes: number;
+  completed_classes: number;
+  successful_classes: number;
+  failed_classes: number;
+  total_students: number;
+  completed_students: number;
+  successful_students: number;
+  failed_students: number;
+  zip_minio_url?: string | null;
+  can_download: boolean;
+}
+interface TaskStatusClassError {
+  student_id?: string;
+  student_name?: string;
+  error: string;
+}
+interface TaskStatusClass {
+  class_id: string;
+  class_name: string;
+  school_name: string;
+  status: "pending" | "processing" | "completed" | "completed_with_errors";
+  total_students: number;
+  completed: number;
+  successful: number;
+  failed: number;
+  errors: TaskStatusClassError[];
+}
+interface TaskStatusErrorItem {
+  class_id?: string;
+  class_name?: string;
+  school_name?: string;
+  student_id?: string;
+  student_name?: string;
+  error: string;
+}
+interface TaskStatusResult {
+  success?: boolean;
+  test_id?: string;
+  test_title?: string;
+  total_questions?: number;
+  total_students?: number;
+  generated_forms?: number;
+  minio_url?: string;
+  download_size_bytes?: number;
+  forms?: Array<{
+    student_id?: string;
+    student_name?: string;
+    form_id?: string;
+    form_type?: string;
+    created_at?: string;
+  }>;
+  message?: string;
+}
+interface TaskStatusResponse {
+  task_id: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  message?: string;
+  error?: string;
+  progress?: TaskStatusProgress;
+  summary?: TaskStatusSummary | null;
+  classes?: TaskStatusClass[];
+  errors?: TaskStatusErrorItem[] | null;
+  result?: TaskStatusResult;
+}
+
+const getGenerationStorageKey = (testId: string) =>
+  `physical-test-generation:${testId}`;
+
+function classStatusLabel(status: TaskStatusClass["status"]) {
+  switch (status) {
+    case "pending":
+      return "Aguardando";
+    case "processing":
+      return "Processando";
+    case "completed":
+      return "Concluída";
+    case "completed_with_errors":
+      return "Concluída com erros";
+    default:
+      return status;
+  }
+}
+
+function classStatusVariant(status: TaskStatusClass["status"]) {
+  switch (status) {
+    case "pending":
+      return "secondary";
+    case "processing":
+      return "default";
+    case "completed":
+      return "default";
+    case "completed_with_errors":
+      return "destructive";
+    default:
+      return "secondary";
+  }
+}
+
+function GenerationProgressPanel({
+  taskStatusData,
+  isGenerating,
+  correctionProgress,
+  onDownloadAll,
+  canDownloadAll,
+  onDismiss,
+}: {
+  taskStatusData: TaskStatusResponse | null;
+  isGenerating: boolean;
+  correctionProgress: number;
+  onDownloadAll: () => void;
+  canDownloadAll: boolean;
+  onDismiss?: () => void;
+}) {
+  const [errorsOpen, setErrorsOpen] = useState(true);
+  const progressPct = taskStatusData?.progress?.percentage ?? correctionProgress;
+  const summary = taskStatusData?.summary;
+  const classesList = taskStatusData?.classes ?? [];
+  const errorsList = taskStatusData?.errors ?? [];
+  const status = taskStatusData?.status;
+  const isCompleted = status === "completed";
+  const isFailed = status === "failed";
+  const canDownload = !!(summary?.can_download && canDownloadAll);
+
+  return (
+    <div className="mb-6 rounded-xl border bg-muted/30 p-5 space-y-5">
+      {/* Mensagem e barra de progresso */}
+      <div className="space-y-3">
+        <p className="text-sm font-medium text-foreground">
+          {taskStatusData?.message ?? (isGenerating ? "Conectando ao servidor..." : "Status da geração")}
+        </p>
+        <Progress value={progressPct} className="h-2.5 w-full" />
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>{progressPct}%</span>
+          {taskStatusData?.progress && (
+            <span>
+              {taskStatusData.progress.current} / {taskStatusData.progress.total} alunos
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Resumo (turmas e alunos) */}
+      {summary && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="rounded-lg border bg-background p-3">
+            <p className="text-xs text-muted-foreground">Turmas</p>
+            <p className="text-lg font-semibold">
+              {summary.completed_classes}/{summary.total_classes}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-background p-3">
+            <p className="text-xs text-muted-foreground">Alunos processados</p>
+            <p className="text-lg font-semibold">
+              {summary.completed_students}/{summary.total_students}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-background p-3">
+            <p className="text-xs text-muted-foreground">Sucesso</p>
+            <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+              {summary.successful_students}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-background p-3">
+            <p className="text-xs text-muted-foreground">Falhas</p>
+            <p className="text-lg font-semibold text-red-600 dark:text-red-400">
+              {summary.failed_students}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Lista de turmas */}
+      {classesList.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-foreground">Turmas</p>
+          <ScrollArea className="h-[180px] rounded-lg border p-2">
+            <ul className="space-y-1.5">
+              {classesList.map((c) => (
+                <li
+                  key={c.class_id}
+                  className="flex items-center justify-between gap-2 rounded-md bg-background px-3 py-2 text-sm"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {c.status === "processing" && (
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+                    )}
+                    {c.status === "completed" && (
+                      <CheckCircle className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                    )}
+                    {c.status === "completed_with_errors" && (
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    )}
+                    {c.status === "pending" && (
+                      <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="font-medium truncate">{c.class_name}</span>
+                    <span className="text-muted-foreground truncate text-xs hidden sm:inline">
+                      {c.school_name}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-muted-foreground text-xs">
+                      {c.completed}/{c.total_students}
+                    </span>
+                    <Badge variant={classStatusVariant(c.status)} className="text-xs">
+                      {classStatusLabel(c.status)}
+                    </Badge>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </ScrollArea>
+        </div>
+      )}
+
+      {/* Erros (lista única turma + aluno) */}
+      {errorsList.length > 0 && (
+        <Collapsible open={errorsOpen} onOpenChange={setErrorsOpen}>
+          <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-destructive hover:underline">
+            <ChevronRight
+              className={`h-4 w-4 shrink-0 transition-transform duration-200 ${errorsOpen ? "rotate-90" : ""}`}
+            />
+            Erros na geração ({errorsList.length})
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ScrollArea className="h-[140px] mt-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2">
+              <ul className="space-y-2 text-sm">
+                {errorsList.map((err, i) => (
+                  <li key={i} className="rounded bg-background/80 px-2 py-1.5">
+                    <span className="font-medium">
+                      {err.class_name && `${err.class_name} · `}
+                      {err.student_name ?? "Aluno"}:{" "}
+                    </span>
+                    <span className="text-muted-foreground text-xs">{err.error}</span>
+                  </li>
+                ))}
+              </ul>
+            </ScrollArea>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
+      {/* Falha global */}
+      {isFailed && taskStatusData?.error && (
+        <Alert variant="destructive">
+          <XCircle className="h-4 w-4" />
+          <AlertDescription>{taskStatusData.error}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Concluído: mensagem + Baixar ZIP + Fechar */}
+      {isCompleted && (
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
+          <p className="text-sm text-green-600 dark:text-green-400 font-medium flex-1 min-w-0">
+            {taskStatusData?.message ?? "Geração concluída."}
+          </p>
+          <div className="flex items-center gap-2">
+            {canDownload && (
+              <Button onClick={onDownloadAll} size="sm" className="bg-green-600 hover:bg-green-700">
+                <Download className="h-4 w-4 mr-2" />
+                Baixar ZIP
+              </Button>
+            )}
+            {onDismiss && (
+              <Button variant="ghost" size="sm" onClick={onDismiss}>
+                Fechar
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isGenerating && !isCompleted && !isFailed && (
+        <p className="text-xs text-muted-foreground flex items-center gap-1">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Não feche esta página.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function PhysicalTestPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -159,6 +455,7 @@ export default function PhysicalTestPage() {
   const [correctionProgress, setCorrectionProgress] = useState(0);
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [taskId, setTaskId] = useState<string | null>(null);
+  const [taskStatusData, setTaskStatusData] = useState<TaskStatusResponse | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Estados para configuração de blocos
@@ -250,10 +547,48 @@ export default function PhysicalTestPage() {
     return list;
   }, [testScope]);
 
+  const checkPendingGeneration = async () => {
+    if (!id) return;
+    if (typeof window === "undefined") return;
+
+    try {
+      const storageKey = getGenerationStorageKey(id);
+      const stored = window.localStorage.getItem(storageKey);
+      if (!stored) return;
+
+      const parsed = JSON.parse(stored) as { taskId?: string | null };
+      if (!parsed?.taskId) {
+        window.localStorage.removeItem(storageKey);
+        return;
+      }
+
+      const response = await api.get(`/physical-tests/task/${parsed.taskId}/status`);
+      const data = response.data as TaskStatusResponse;
+
+      if (data.status === "processing" || data.status === "pending") {
+        setIsGenerating(true);
+        setTaskStatusData(data);
+        setCorrectionProgress(data.progress?.percentage ?? 20);
+        startPolling(parsed.taskId);
+        return;
+      }
+
+      window.localStorage.removeItem(storageKey);
+    } catch (error: any) {
+      const status = error?.response?.status;
+      if (status === 404 && id) {
+        window.localStorage.removeItem(getGenerationStorageKey(id));
+      } else {
+        console.error("Erro ao verificar geração pendente:", error);
+      }
+    }
+  };
+
   // Carregar dados iniciais
   useEffect(() => {
     if (id) {
       loadTestData();
+      checkPendingGeneration();
     }
   }, [id]);
 
@@ -379,17 +714,14 @@ export default function PhysicalTestPage() {
     pollingIntervalRef.current = setInterval(async () => {
       try {
         const response = await api.get(`/physical-tests/task/${taskId}/status`);
-        const data = response.data;
+        const data = response.data as TaskStatusResponse;
 
-        console.log("📊 Status do polling:", data.status);
-
-        // Atualizar progresso visual
-        if (data.status === 'processing') {
-          setCorrectionProgress(prev => Math.min(prev + 5, 80));
-        }
+        setTaskStatusData(data);
+        const pct = data.progress?.percentage ?? 0;
+        setCorrectionProgress(pct);
 
         // SUCESSO: parar polling e exibir resultado
-        if (data.status === 'completed') {
+        if (data.status === "completed") {
           if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
             pollingIntervalRef.current = null;
@@ -398,31 +730,32 @@ export default function PhysicalTestPage() {
           setCorrectionProgress(100);
           setIsGenerating(false);
 
-          // Processar resultado
-          const result = data.result;
+          if (typeof window !== "undefined" && id) {
+            window.localStorage.removeItem(getGenerationStorageKey(id));
+          }
 
-          // Mapear form_id para id para compatibilidade
-          const mappedForms = (result.forms || []).map((form: any) => ({
+          const result = data.result;
+          const mappedForms = (result?.forms || []).map((form: any) => ({
             ...form,
             id: form.form_id || form.id,
             created_at: form.created_at || new Date().toISOString(),
             updated_at: form.created_at || new Date().toISOString(),
-            status: 'gerado',
-            answer_sheet_sent_at: form.answer_sheet_sent_at || null
+            status: "gerado",
+            answer_sheet_sent_at: form.answer_sheet_sent_at || null,
           }));
-
           setGeneratedForms(mappedForms);
 
+          const total = result?.generated_forms ?? result?.forms?.length ?? mappedForms.length;
+          const totalStudents = result?.total_students ?? data.summary?.total_students;
           toast({
             title: "✅ Avaliações geradas com sucesso!",
-            description: `${result.generated_forms || result.forms?.length || 0} avaliações foram geradas para ${result.total_students} alunos.`,
+            description: data.message || `${total} avaliações foram geradas${totalStudents ? ` para ${totalStudents} alunos` : ""}.`,
           });
-
           setCorrectionProgress(0);
         }
 
         // ERRO: parar polling e exibir erro
-        if (data.status === 'failed') {
+        if (data.status === "failed") {
           if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
             pollingIntervalRef.current = null;
@@ -431,18 +764,21 @@ export default function PhysicalTestPage() {
           setIsGenerating(false);
           setCorrectionProgress(0);
 
+          if (typeof window !== "undefined" && id) {
+            window.localStorage.removeItem(getGenerationStorageKey(id));
+          }
+
           toast({
             title: "❌ Erro ao gerar formulários",
-            description: data.error || "Erro desconhecido ao gerar avaliações",
+            description: data.error || data.message || "Erro desconhecido ao gerar avaliações",
             variant: "destructive",
           });
         }
 
-        // RETRYING: mostrar mensagem
-        if (data.status === 'retrying') {
+        if (data.status === "retrying") {
           toast({
             title: "🔄 Tentando novamente...",
-            description: `Erro detectado. Tentativa ${data.retry_count || 1}/2...`,
+            description: data.message || "Erro detectado. Nova tentativa em andamento.",
           });
         }
 
@@ -456,6 +792,11 @@ export default function PhysicalTestPage() {
 
         setIsGenerating(false);
         setCorrectionProgress(0);
+        setTaskStatusData(null);
+
+        if (typeof window !== "undefined" && id) {
+          window.localStorage.removeItem(getGenerationStorageKey(id));
+        }
 
         toast({
           title: "Erro",
@@ -476,6 +817,10 @@ export default function PhysicalTestPage() {
         setIsGenerating(false);
         setCorrectionProgress(0);
 
+        if (typeof window !== "undefined" && id) {
+          window.localStorage.removeItem(getGenerationStorageKey(id));
+        }
+
         toast({
           title: "⚠️ Timeout",
           description: "A geração está demorando mais do que o esperado. Por favor, verifique o status manualmente ou tente novamente.",
@@ -490,6 +835,7 @@ export default function PhysicalTestPage() {
 
     try {
       setIsGenerating(true);
+      setTaskStatusData(null);
       setCorrectionProgress(10);
       setShowGenerateDialog(false); // Fechar dialog ao iniciar geração
 
@@ -539,6 +885,20 @@ export default function PhysicalTestPage() {
       if (response.status === 202) {
         const data = response.data;
         setTaskId(data.task_id);
+
+        if (typeof window !== "undefined" && id) {
+          try {
+            window.localStorage.setItem(
+              getGenerationStorageKey(id),
+              JSON.stringify({
+                taskId: data.task_id,
+                startedAt: new Date().toISOString(),
+              })
+            );
+          } catch (storageError) {
+            console.warn("Não foi possível salvar geração no localStorage:", storageError);
+          }
+        }
 
         toast({
           title: "⏳ Geração iniciada",
@@ -1500,16 +1860,15 @@ export default function PhysicalTestPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {isGenerating && (
-                <div className="mb-4 space-y-2">
-                  <Progress value={correctionProgress} className="w-full" />
-                  <p className="text-sm text-muted-foreground text-center">
-                    ⏳ Gerando formulários PDF em background... {correctionProgress}%
-                  </p>
-                  <p className="text-xs text-muted-foreground text-center">
-                    Isso pode levar alguns minutos. Não feche esta página.
-                  </p>
-                </div>
+              {(isGenerating || taskStatusData) && (
+                <GenerationProgressPanel
+                  taskStatusData={taskStatusData}
+                  isGenerating={isGenerating}
+                  correctionProgress={correctionProgress}
+                  onDownloadAll={handleDownloadAll}
+                  canDownloadAll={!!id}
+                  onDismiss={() => setTaskStatusData(null)}
+                />
               )}
 
               {generatedForms.length === 0 ? (

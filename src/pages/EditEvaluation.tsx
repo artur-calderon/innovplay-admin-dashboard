@@ -42,17 +42,19 @@ interface Evaluation {
     id: string;
     title: string;
     description: string | null;
-    course: {
+    course?: {
         id: string;
         name: string;
     } | null;
+    education_stage_id?: string;
+    education_stage?: { id: string; name?: string } | null;
     model: string;
-    subject: {
+    subject?: {
         id: string;
         name: string;
     };
-    subjects?: Array<{ id: string; name: string }>;
-    subjects_info?: Array<{ id: string; name: string }>;
+    subjects?: Array<{ id: string; name: string } | { subject: string; name?: string }>;
+    subjects_info?: Array<{ id: string; name: string } | { subject: string; name?: string }>;
     grade: {
         id: string;
         name: string;
@@ -207,6 +209,21 @@ const EditEvaluation = () => {
                     }
                 }
 
+                // Normalizar disciplinas: API pode retornar { id, name } ou { subject: id, name? }
+                const rawSubjects = evaluation.subjects || evaluation.subjects_info || (evaluation.subject ? [evaluation.subject] : []);
+                const subjectsNormalized = Array.isArray(rawSubjects)
+                    ? rawSubjects.map((s: { id?: string; name?: string; subject?: string }) => ({
+                        id: s.id ?? s.subject ?? "",
+                        name: s.name ?? "",
+                    })).filter((s: { id: string }) => s.id)
+                    : [];
+
+                // Curso: API pode retornar course ou education_stage_id / education_stage
+                const courseId = evaluation.course?.id
+                    || evaluation.education_stage_id
+                    || (evaluation.education_stage && (typeof evaluation.education_stage === "object" ? evaluation.education_stage.id : evaluation.education_stage))
+                    || "";
+
                 // Converter dados da avaliação para o formato do formulário
                 const formData: EvaluationFormData = {
                     title: evaluation.title || "",
@@ -214,15 +231,15 @@ const EditEvaluation = () => {
                     municipalities: evaluation.municipalities?.map((m: Municipality | string) =>
                         typeof m === 'string' ? m : m.id) || [],
                     schools: schoolsFormatted.map(s => s.id),
-                    course: evaluation.course?.id || "",
+                    course: courseId,
                     grade: evaluation.grade?.id || "",
                     classId: classesFormatted[0]?.id || "",
                     type: evaluation.type || "AVALIACAO",
                     model: (evaluation.model === "SAEB" || evaluation.model === "PROVA" || evaluation.model === "AVALIE")
                         ? evaluation.model
                         : "SAEB",
-                    subjects: evaluation.subjects || evaluation.subjects_info || (evaluation.subject ? [evaluation.subject] : []),
-                    subject: evaluation.subject?.id || "",
+                    subjects: subjectsNormalized.length > 0 ? subjectsNormalized : (evaluation.subject ? [{ id: evaluation.subject.id, name: evaluation.subject.name || "" }] : []),
+                    subject: evaluation.subject?.id || subjectsNormalized[0]?.id || "",
                     questions: questionsData,
                     startDateTime: evaluation.time_limit || "",
                     duration: evaluation.duration?.toString() || "",

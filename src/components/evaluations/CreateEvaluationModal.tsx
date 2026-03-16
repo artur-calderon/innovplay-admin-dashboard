@@ -124,15 +124,7 @@ export function CreateEvaluationModal({
     const loadInitialData = async () => {
       setLoadingData(true);
       try {
-        // PRIMEIRO: Se estiver editando, carregar dados da avaliação (incluindo questões) ANTES de qualquer outra coisa
-        if (evaluationId || initialData) {
-          await loadEvaluationData(evaluationId, initialData);
-        } else {
-          clearQuestions();
-          setQuestionsLoaded(false);
-        }
-        
-        // DEPOIS: Carregar dados básicos (cursos, disciplinas, estados)
+        // PRIMEIRO: Carregar opções (cursos, disciplinas, estados) para os Selects terem itens ao aplicar initialData
         const [coursesRes, subjectsRes, statesRes] = await Promise.all([
           api.get('/education_stages'),
           api.get('/subjects'),
@@ -142,6 +134,17 @@ export function CreateEvaluationModal({
         setCourses(coursesRes.data || []);
         setAllSubjects(subjectsRes.data || []);
         setStates(statesRes.data || []);
+        
+        // DEPOIS: Se estiver editando, aplicar dados da avaliação (curso e disciplina aparecem selecionados)
+        if (evaluationId || initialData) {
+          await loadEvaluationData(evaluationId, initialData, {
+            coursesOptions: coursesRes.data || [],
+            subjectsOptions: subjectsRes.data || [],
+          });
+        } else {
+          clearQuestions();
+          setQuestionsLoaded(false);
+        }
       } catch (error) {
         toast({
           title: 'Erro',
@@ -168,11 +171,21 @@ export function CreateEvaluationModal({
   }, [isOpen, evaluationId, initialData, toast, clearQuestions]);
 
   // Carregar dados da avaliação para edição
-  const loadEvaluationData = async (id?: string, data?: EvaluationFormData | null) => {
+  const loadEvaluationData = async (
+    id?: string,
+    data?: EvaluationFormData | null,
+    options?: { coursesOptions?: Course[]; subjectsOptions?: Subject[] }
+  ) => {
     try {
       if (!data && !id) return;
       if (data) {
-        // Usar initialData se fornecido
+        const subjectsOptions = options?.subjectsOptions || [];
+        // Enriquecer disciplinas com nome quando vier vazio (ex.: API retorna só id em subjects_info)
+        const subjectsWithNames = (data.subjects || []).map((s) => {
+          const found = subjectsOptions.find((a) => a.id === s.id);
+          return { id: s.id, name: (s.name && s.name.trim()) ? s.name : (found?.name || s.id) };
+        }).filter((s) => s.id);
+
         setTitle(data.title || '');
         setDescription(data.description || '');
         setDuration(data.duration || '60');
@@ -195,7 +208,7 @@ export function CreateEvaluationModal({
         setMunicipality(data.municipality || '');
         setSelectedSchools(data.selectedSchools || []);
         setSelectedClasses(data.selectedClasses || []);
-        setSelectedSubjects(data.subjects || []);
+        setSelectedSubjects(subjectsWithNames.length > 0 ? subjectsWithNames : (data.subjects || []));
         
         // Carregar questões se disponíveis - PRIORIDADE MÁXIMA
         if (data.questions && data.questions.length > 0) {
