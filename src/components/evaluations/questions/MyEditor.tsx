@@ -19,7 +19,6 @@ import {
   Image as ImageIcon, Bold, Italic, Underline as UnderlineIcon, Strikethrough, Eraser, Replace,
   Upload, Move, RotateCcw, Settings, Save, X, Expand, Shrink, MousePointer
 } from "lucide-react";
-import { normalizePdfLineBreaks } from "@/utils/normalizePdfLineBreaks";
 import { ResizableImage } from 'tiptap-extension-resizable-image';
 import 'tiptap-extension-resizable-image/styles.css';
 
@@ -98,16 +97,16 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
         if (!ed) return false;
         const html = event.clipboardData?.getData('text/html');
         const plain = event.clipboardData?.getData('text/plain');
-        let normalized: string;
+        let toInsert: string;
         if (html && html.trim()) {
-          normalized = normalizePdfLineBreaks(html);
+          toInsert = html;
         } else if (plain != null && plain !== '') {
-          normalized = normalizePlainTextPaste(plain);
-          if (!normalized) return false;
+          toInsert = normalizePlainTextPaste(plain);
+          if (!toInsert) return false;
         } else {
           return false;
         }
-        ed.commands.insertContent(normalized);
+        ed.commands.insertContent(toInsert);
         event.preventDefault();
         return true;
       },
@@ -432,11 +431,8 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                 size="sm"
                 onClick={() => {
                   const html = editor.getHTML();
-                  const normalized = normalizePdfLineBreaks(html);
-                  if (normalized !== html) {
-                    editor.commands.setContent(normalized);
-                    onChange(normalized);
-                  }
+                  editor.commands.setContent(html);
+                  onChange(html);
                 }}
                 className="h-9 px-2 gap-1.5 font-medium text-muted-foreground hover:bg-gray-100 dark:hover:bg-muted hover:text-foreground"
               >

@@ -97,20 +97,7 @@
     margin: 1.2rem 0;
 }
 
-/* Preservar elementos de imagem: dentro do enunciado herdar alinhamento do p para não perder posição */
-.question-preview-content .question-text-block .node-imageComponent,
-.question-preview-content .question-text-block .image-component {
-    display: block;
-    text-align: inherit;
-    margin: 1rem 0;
-}
-/* Imagens inseridas pelo editor (node-imageComponent): centralizar por padrão, igual ao editor */
-.question-preview-content .question-text-block .node-imageComponent img,
-.question-preview-content .question-text-block .image-component img {
-    display: block !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-}
+/* Preservar elementos de imagem com suas classes originais */
 .question-preview-content .node-imageComponent,
 .question-preview-content .image-component {
     display: contents;
@@ -134,32 +121,6 @@
     object-fit: contain;
     border-radius: 8px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-}
-
-/* Preservar posição da imagem: alinhamento igual ao da edição (p com text-align) */
-.question-preview-content .question-enunciado-html p[style*="text-align: center"] img,
-.question-preview-content .question-enunciado-html p[style*="text-align:center"] img,
-.question-preview-content .question-text-block p[style*="text-align: center"] img,
-.question-preview-content .question-text-block p[style*="text-align:center"] img {
-    display: block !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-}
-.question-preview-content .question-enunciado-html p[style*="text-align: right"] img,
-.question-preview-content .question-enunciado-html p[style*="text-align:right"] img,
-.question-preview-content .question-text-block p[style*="text-align: right"] img,
-.question-preview-content .question-text-block p[style*="text-align:right"] img {
-    display: block !important;
-    margin-left: auto !important;
-    margin-right: 0 !important;
-}
-.question-preview-content .question-enunciado-html p[style*="text-align: left"] img,
-.question-preview-content .question-enunciado-html p[style*="text-align:left"] img,
-.question-preview-content .question-text-block p[style*="text-align: left"] img,
-.question-preview-content .question-text-block p[style*="text-align:left"] img {
-    display: block !important;
-    margin-left: 0 !important;
-    margin-right: auto !important;
 }
 
 /* Imagens inline pequenas (matemáticas, frações) — só quando não têm tamanho definido pelo usuário */

@@ -8,7 +8,6 @@ import { Question } from "../types";
 import { useSkillsStore } from '@/stores/useSkillsStore';
 import { api, BASE_URL } from "@/lib/api";
 import { resolveQuestionImageSrc } from "@/utils/questionImages";
-import { normalizePdfLineBreaks } from "@/utils/normalizePdfLineBreaks";
 import './QuestionPreview.css';
 
 interface QuestionPreviewProps {
@@ -27,18 +26,10 @@ const SimpleHtmlRenderer = ({ content, className }: { content: string | null | u
     if (!content || content.trim() === '') {
         return null;
     }
-    const hasExplicitDimensions = (attrs: string) =>
-        /(\bwidth\s*=|\bheight\s*=|style\s*=[^>]*\b(width|height)\s*:)/i.test(attrs);
-    const cleanHtml = content.replace(/<img([^>]*)>/g, (match, attrs) => {
-        const withClass = /class\s*=/.test(attrs)
-            ? attrs.replace(/class="([^"]*)"/, (m: string, c: string) =>
-                hasExplicitDimensions(attrs) ? m : `class="${c} max-w-full h-auto"`)
-            : hasExplicitDimensions(attrs) ? attrs : `${attrs} class="max-w-full h-auto"`;
-        const withStyle = /style\s*=/.test(withClass)
-            ? withClass
-            : `${withClass} style="object-fit: contain;"`;
-        return `<img${withStyle}>`;
-    });
+    const cleanHtml = content
+        .replace(/<img([^>]*?)class="([^"]*)"([^>]*)>/g, '<img$1class="$2 max-w-full h-auto"$3>')
+        .replace(/<img(?![^>]*class=)([^>]*)>/g, '<img$1 class="max-w-full h-auto">')
+        .replace(/<img(?![^>]*style=)([^>]*?)>/g, '<img$1 style="object-fit: contain;">');
     return (
         <div className={className ?? "text-base leading-relaxed text-foreground"} dangerouslySetInnerHTML={{ __html: cleanHtml }} />
     );
@@ -199,7 +190,7 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                                     <div
                                         className="question-enunciado-html"
                                         dangerouslySetInnerHTML={{
-                                            __html: normalizePdfLineBreaks(resolveQuestionImageSrc(question.formattedText || question.text || '', BASE_URL)),
+                                            __html: resolveQuestionImageSrc(question.formattedText || question.text || '', BASE_URL),
                                         }}
                                     />
                                 </div>
@@ -212,7 +203,7 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                                     <div
                                         className="question-enunciado-html"
                                         dangerouslySetInnerHTML={{
-                                            __html: normalizePdfLineBreaks(resolveQuestionImageSrc(question.secondStatement.trim(), BASE_URL)),
+                                            __html: resolveQuestionImageSrc(question.secondStatement.trim(), BASE_URL),
                                         }}
                                     />
                                 </div>
@@ -265,7 +256,7 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                                                     </span>
                                                     <div
                                                         className="text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100"
-                                                        dangerouslySetInnerHTML={{ __html: normalizePdfLineBreaks(resolveQuestionImageSrc(optionText, BASE_URL)) }}
+                                                        dangerouslySetInnerHTML={{ __html: resolveQuestionImageSrc(optionText, BASE_URL) }}
                                                     />
                                                 </div>
                                                 {isCorrect && (
@@ -321,7 +312,7 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                     <div className="resolution-content rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
                         <SimpleHtmlRenderer
                             className={questionProseClass}
-                            content={normalizePdfLineBreaks(resolveQuestionImageSrc(question.formattedSolution || question.solution || '', BASE_URL))}
+                            content={resolveQuestionImageSrc(question.formattedSolution || question.solution || '', BASE_URL)}
                         />
                     </div>
                 </div>

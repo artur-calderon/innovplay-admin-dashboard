@@ -28,7 +28,6 @@ import { Question } from "@/types/evaluation-types";
 import { CompetitionSubmitSuccessModal } from "@/components/competitions/CompetitionSubmitSuccessModal";
 import { BASE_URL } from "@/lib/api";
 import { resolveQuestionImageSrc } from "@/utils/questionImages";
-import { normalizePdfLineBreaks } from "@/utils/normalizePdfLineBreaks";
 
 /** State passado quando a prova é feita no contexto de uma competição. */
 interface CompetitionLocationState {
@@ -762,20 +761,12 @@ export default function TakeEvaluation() {
         max-width: 90% !important;
     }
 
-    /* Imagens inline (reforço do padrão) — não encolher imagens com dimensão (editor) */
+    /* Imagens inline (reforço do padrão) */
     .evaluation-question-content img.inline-image {
         max-height: 1.4em !important;
         max-width: 2em !important;
         border-radius: 4px !important;
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08) !important;
-    }
-    .evaluation-question-content img[width].inline-image,
-    .evaluation-question-content img[height].inline-image {
-        max-width: 100% !important;
-        max-height: none !important;
-        display: block !important;
-        margin-left: auto !important;
-        margin-right: auto !important;
     }
 
     /* Ajustes por alinhamento só para block-image */
@@ -795,40 +786,6 @@ export default function TakeEvaluation() {
         max-width: 80%;
         margin-left: auto;
         margin-right: auto;
-    }
-
-    /* Imagens do editor (node-imageComponent): centralizar por padrão, igual ao editor */
-    .evaluation-question-content .question-text-block .node-imageComponent img,
-    .evaluation-question-content .question-text-block .image-component img {
-        display: block !important;
-        margin-left: auto !important;
-        margin-right: auto !important;
-    }
-
-    /* Preservar posição da imagem: alinhamento igual ao da edição (img com dimensões dentro de p com text-align) */
-    .evaluation-question-content .question-text-block p[style*="text-align: center"] img[width],
-    .evaluation-question-content .question-text-block p[style*="text-align:center"] img[width],
-    .evaluation-question-content .question-text-block p[style*="text-align: center"] img[height],
-    .evaluation-question-content .question-text-block p[style*="text-align:center"] img[height] {
-        display: block !important;
-        margin-left: auto !important;
-        margin-right: auto !important;
-    }
-    .evaluation-question-content .question-text-block p[style*="text-align: right"] img[width],
-    .evaluation-question-content .question-text-block p[style*="text-align:right"] img[width],
-    .evaluation-question-content .question-text-block p[style*="text-align: right"] img[height],
-    .evaluation-question-content .question-text-block p[style*="text-align:right"] img[height] {
-        display: block !important;
-        margin-left: auto !important;
-        margin-right: 0 !important;
-    }
-    .evaluation-question-content .question-text-block p[style*="text-align: left"] img[width],
-    .evaluation-question-content .question-text-block p[style*="text-align:left"] img[width],
-    .evaluation-question-content .question-text-block p[style*="text-align: left"] img[height],
-    .evaluation-question-content .question-text-block p[style*="text-align:left"] img[height] {
-        display: block !important;
-        margin-left: 0 !important;
-        margin-right: auto !important;
     }
 
     /* Modal fullscreen customizado */
@@ -1151,7 +1108,7 @@ export default function TakeEvaluation() {
                                                     <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
                                                         <div
                                                             dangerouslySetInnerHTML={{
-                                                                __html: normalizePdfLineBreaks(resolveQuestionImageSrc(currentQuestion?.formattedText || currentQuestion?.text || '', BASE_URL)),
+                                                                __html: resolveQuestionImageSrc(currentQuestion?.formattedText || currentQuestion?.text || '', BASE_URL),
                                                             }}
                                                         />
                                                     </div>
@@ -1164,7 +1121,7 @@ export default function TakeEvaluation() {
                                                     <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
                                                         <div
                                                             dangerouslySetInnerHTML={{
-                                                                __html: normalizePdfLineBreaks(resolveQuestionImageSrc(currentQuestion.secondStatement.trim(), BASE_URL)),
+                                                                __html: resolveQuestionImageSrc(currentQuestion.secondStatement.trim(), BASE_URL),
                                                             }}
                                                         />
                                                     </div>
@@ -1697,7 +1654,7 @@ export default function TakeEvaluation() {
                                                >
                                                    <div
                                                        dangerouslySetInnerHTML={{
-                                                           __html: normalizePdfLineBreaks(resolveQuestionImageSrc(currentQuestion?.formattedText || currentQuestion?.text || '', BASE_URL)),
+                                                           __html: resolveQuestionImageSrc(currentQuestion?.formattedText || currentQuestion?.text || '', BASE_URL),
                                                        }}
                                                    />
                                                </div>
@@ -1716,7 +1673,7 @@ export default function TakeEvaluation() {
                                                >
                                                    <div
                                                        dangerouslySetInnerHTML={{
-                                                           __html: normalizePdfLineBreaks(resolveQuestionImageSrc(currentQuestion.secondStatement.trim(), BASE_URL)),
+                                                           __html: resolveQuestionImageSrc(currentQuestion.secondStatement.trim(), BASE_URL),
                                                        }}
                                                    />
                                                </div>
@@ -1911,7 +1868,7 @@ function QuestionOptions({
                                         <span className="font-bold text-foreground min-w-[24px] sm:min-w-[30px] text-base sm:text-lg md:text-xl flex-shrink-0">
                                             {String.fromCharCode(65 + index)})
                                         </span>
-                                        <div className="text-sm sm:text-base md:text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: normalizePdfLineBreaks(resolveQuestionImageSrc(typeof optionText === 'string' ? optionText : '', BASE_URL)) }} />
+                                        <div className="text-sm sm:text-base md:text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: resolveQuestionImageSrc(typeof optionText === 'string' ? optionText : '', BASE_URL) }} />
                                     </div>
                                 </Label>
                             </div>
@@ -2014,7 +1971,7 @@ function QuestionOptions({
                                         <span className="font-medium text-muted-foreground min-w-[20px] flex-shrink-0">
                                             {String.fromCharCode(65 + index)})
                                         </span>
-                                        <div className="text-xs sm:text-sm" dangerouslySetInnerHTML={{ __html: normalizePdfLineBreaks(resolveQuestionImageSrc(typeof optionText === 'string' ? optionText : '', BASE_URL)) }} />
+                                        <div className="text-xs sm:text-sm" dangerouslySetInnerHTML={{ __html: resolveQuestionImageSrc(typeof optionText === 'string' ? optionText : '', BASE_URL) }} />
                                     </div>
                                 </Label>
                             </div>
