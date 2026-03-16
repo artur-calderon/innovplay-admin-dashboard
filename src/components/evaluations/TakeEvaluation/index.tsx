@@ -726,8 +726,22 @@ export default function TakeEvaluation() {
             <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
 <style>
   {`
-    /* Padrão: todas as imagens do enunciado ficam no tamanho de fórmula/símbolo (raiz, fração, etc.) */
-    .evaluation-question-content img {
+    /* Respeitar tamanho definido pelo usuário ao criar/editar (atributos width/height ou style) */
+    .evaluation-question-content img[width],
+    .evaluation-question-content img[height],
+    .evaluation-question-content img[style*="width"],
+    .evaluation-question-content img[style*="height"] {
+        display: block !important;
+        margin: 1.2rem auto !important;
+        max-width: 100% !important;
+        max-height: none !important;
+        object-fit: contain !important;
+        border-radius: 8px !important;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
+    }
+
+    /* Padrão: imagens sem dimensão explícita ficam no tamanho de fórmula/símbolo */
+    .evaluation-question-content img:not([width]):not([height]) {
         display: inline-block !important;
         vertical-align: middle !important;
         max-height: 1.4em !important;
@@ -738,8 +752,8 @@ export default function TakeEvaluation() {
         margin: 0 0.2rem !important;
     }
 
-    /* Apenas imagens com classe .block-image podem ser grandes (diagramas, figuras) */
-    .evaluation-question-content img.block-image {
+    /* Apenas imagens com classe .block-image (sem width/height) podem ser grandes */
+    .evaluation-question-content img.block-image:not([width]):not([height]) {
         display: block !important;
         margin: 2rem auto !important;
         min-width: unset !important;
@@ -766,6 +780,12 @@ export default function TakeEvaluation() {
     .evaluation-question-content p[style*="text-align: left"] img.block-image {
         margin: 2rem auto 2rem 0 !important;
         max-width: 60% !important;
+    }
+    .evaluation-question-content p[style*="text-align: justify"] img.block-image {
+        display: block;
+        max-width: 80%;
+        margin-left: auto;
+        margin-right: auto;
     }
 
     /* Modal fullscreen customizado */
@@ -794,9 +814,17 @@ export default function TakeEvaluation() {
         overflow: hidden;
     }
 
-    /* Espaçamento entre parágrafos dentro de cada bloco (Texto 1 e Texto 2) */
+    /* Fluxo de texto como no editor: parágrafos contínuos, sem quebra por \\n */
+    .evaluation-question-content .question-text-block .prose,
+    .evaluation-question-content .question-text-block .prose p,
+    .evaluation-question-content .question-text-block .prose h1,
+    .evaluation-question-content .question-text-block .prose h2,
+    .evaluation-question-content .question-text-block .prose h3 {
+        white-space: normal;
+    }
+    /* Pouco espaçamento entre quebras de linha (parágrafos) — igual ao editor */
     .evaluation-question-content .question-text-block p {
-        margin-top: 1rem;
+        margin-top: 0.35rem;
     }
     .evaluation-question-content .question-text-block p:first-of-type {
         margin-top: 0;
@@ -806,26 +834,52 @@ export default function TakeEvaluation() {
         margin-top: 1.75rem;
     }
 
-    /* Media queries para responsividade */
+    /* Forçar alinhamento da edição na prova (sobrepõe .prose e temas) */
+    .evaluation-question-content .question-text-block p[style*="text-align: center"],
+    .evaluation-question-content .question-text-block h1[style*="text-align: center"],
+    .evaluation-question-content .question-text-block h2[style*="text-align: center"],
+    .evaluation-question-content .question-text-block h3[style*="text-align: center"] {
+        text-align: center !important;
+    }
+    .evaluation-question-content .question-text-block p[style*="text-align: right"],
+    .evaluation-question-content .question-text-block h1[style*="text-align: right"],
+    .evaluation-question-content .question-text-block h2[style*="text-align: right"],
+    .evaluation-question-content .question-text-block h3[style*="text-align: right"] {
+        text-align: right !important;
+    }
+    .evaluation-question-content .question-text-block p[style*="text-align: left"],
+    .evaluation-question-content .question-text-block h1[style*="text-align: left"],
+    .evaluation-question-content .question-text-block h2[style*="text-align: left"],
+    .evaluation-question-content .question-text-block h3[style*="text-align: left"] {
+        text-align: left !important;
+    }
+    .evaluation-question-content .question-text-block p[style*="text-align: justify"],
+    .evaluation-question-content .question-text-block h1[style*="text-align: justify"],
+    .evaluation-question-content .question-text-block h2[style*="text-align: justify"],
+    .evaluation-question-content .question-text-block h3[style*="text-align: justify"] {
+        text-align: justify !important;
+    }
+
+    /* Media queries para responsividade (não alterar imagens com tamanho do usuário) */
     @media (max-width: 768px) {
-      .evaluation-question-content img {
+      .evaluation-question-content img:not([width]):not([height]) {
         max-height: 1.35em !important;
         max-width: 1.85em !important;
       }
-      .evaluation-question-content img.block-image {
+      .evaluation-question-content img.block-image:not([width]):not([height]) {
         max-height: 280px !important;
         margin: 1rem auto !important;
       }
     }
 
     @media (min-width: 769px) and (max-width: 1024px) {
-      .evaluation-question-content img.block-image {
+      .evaluation-question-content img.block-image:not([width]):not([height]) {
         max-height: 320px !important;
       }
     }
 
     @media (min-width: 1536px) {
-      .evaluation-question-content img.block-image {
+      .evaluation-question-content img.block-image:not([width]):not([height]) {
         max-height: 450px !important;
       }
     }

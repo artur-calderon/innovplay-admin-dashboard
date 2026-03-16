@@ -233,12 +233,15 @@ export default function Students() {
 
   const openEditDialog = (student: StudentType) => {
     setSelectedStudent(student);
+    const courseId = student.education_stage_id || "";
+    const courseName = courses.find((c) => c.id === courseId)?.name ?? "";
+    setSelectedCourse({ id: courseId, name: courseName });
     setIsEditDialogOpen(true);
     resetEdit({
       fullName: student.nome,
       birthDate: new Date(student.brith_date),
-      grade: student.grade_id,
-      course: student.education_stage_id,
+      grade: student.grade_id || "",
+      course: courseId,
       email: "",
       senha: "",
       matricula: student.matricula
