@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Superscript from '@tiptap/extension-superscript';
@@ -38,7 +38,16 @@ interface ImageConfig {
   shadow?: boolean;
 }
 
+/** Converte texto puro em HTML de parágrafos, quebrando em \\n\\n e juntando \\n em espaço. */
+function normalizePlainTextPaste(text: string): string {
+  const paragraphs = text.split(/\n\n+/).map((p) => p.replace(/\n\s*/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  if (paragraphs.length === 0) return '';
+  const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return paragraphs.map((p) => `<p>${escape(p)}</p>`).join('');
+}
+
 const MyEditor = ({ value, onChange }: MyEditorProps) => {
+  const editorRef = useRef<ReturnType<typeof useEditor>>(null);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [currentImageConfig, setCurrentImageConfig] = useState<ImageConfig>({
     src: '',
@@ -84,8 +93,30 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
       attributes: {
         class: 'prose prose-lg dark:prose-invert max-w-none focus:outline-none min-h-[300px] p-4 prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-em:text-foreground prose-code:text-foreground prose-pre:bg-muted dark:prose-pre:bg-muted/50 prose-pre:text-foreground',
       },
+      handlePaste: (_view, event, _slice) => {
+        const ed = editorRef.current;
+        if (!ed) return false;
+        const html = event.clipboardData?.getData('text/html');
+        const plain = event.clipboardData?.getData('text/plain');
+        let normalized: string;
+        if (html && html.trim()) {
+          normalized = normalizePdfLineBreaks(html);
+        } else if (plain != null && plain !== '') {
+          normalized = normalizePlainTextPaste(plain);
+          if (!normalized) return false;
+        } else {
+          return false;
+        }
+        ed.commands.insertContent(normalized);
+        event.preventDefault();
+        return true;
+      },
     },
   });
+
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
   useEffect(() => {
     if (editor && value !== editor.getHTML()) {

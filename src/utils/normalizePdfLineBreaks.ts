@@ -34,8 +34,9 @@ export function normalizePdfLineBreaks(html: string): string {
   // 0) Remover parágrafos vazios para não criar separação visual extra
   out = out.replace(EMPTY_P, '');
 
-  // 1) Juntar </p><p> quando for quebra de PDF (parágrafo não termina em .!?: e o próximo começa com minúscula),
-  //    mas NUNCA juntar quando o anterior for um título (curto + negrito)
+  // 1) Juntar </p><p> quando: (a) quebra de PDF (anterior não termina em .!?: e próximo começa com minúscula),
+  //    ou (b) ambos são "curtos" (estilo verso/linhas), mesmo com ponto + maiúscula. NUNCA juntar quando for título (curto + negrito).
+  const MAX_SHORT_LINE = 80;
   const paragraphSplit = /<\/p>\s*<p(?:\s[^>]*)?>/gi;
   const parts = out.split(paragraphSplit);
 
@@ -43,13 +44,19 @@ export function normalizePdfLineBreaks(html: string): string {
     out = parts.reduce((acc, part, i) => {
       if (i === 0) return part;
       const prevPart = parts[i - 1];
-      const prevText = stripHtml(prevPart).slice(-80);
-      const nextText = stripHtml(part).slice(0, 80);
+      const prevText = stripHtml(prevPart);
+      const nextText = stripHtml(part);
+      const prevTextTail = prevText.slice(-80);
+      const nextTextHead = nextText.slice(0, 80);
       const prevIsTitle = looksLikeTitle(prevPart);
-      const shouldMerge =
+      const bothShort = prevText.length <= MAX_SHORT_LINE && nextText.length <= MAX_SHORT_LINE;
+      const mergeByContinuation =
         !prevIsTitle &&
-        !SENTENCE_END.test(prevText) &&
-        STARTS_WITH_LOWER.test(nextText);
+        !SENTENCE_END.test(prevTextTail) &&
+        STARTS_WITH_LOWER.test(nextTextHead);
+      const mergeByShortLines =
+        !prevIsTitle && bothShort;
+      const shouldMerge = mergeByContinuation || mergeByShortLines;
       return acc + (shouldMerge ? ' ' : '</p><p>') + part;
     });
   }

@@ -931,17 +931,58 @@
   box-sizing: border-box;
 }
 
-/* Respeitar alinhamento de texto dos parágrafos */
-.question-preview-content p[style*="text-align: center"] {
-  text-align: center;
+/* Forçar alinhamento da edição na visualização (seletores específicos e variações do style) */
+.question-preview-content .question-enunciado-body p[style*="text-align: center"],
+.question-preview-content .question-enunciado-body p[style*="text-align:center"],
+.question-preview-content .question-enunciado-body h1[style*="text-align: center"],
+.question-preview-content .question-enunciado-body h1[style*="text-align:center"],
+.question-preview-content .question-enunciado-body h2[style*="text-align: center"],
+.question-preview-content .question-enunciado-body h3[style*="text-align: center"],
+.question-preview-content .question-enunciado-html p[style*="text-align: center"],
+.question-preview-content .question-enunciado-html p[style*="text-align:center"],
+.question-preview-content .question-enunciado-html h1[style*="text-align: center"],
+.question-preview-content .question-enunciado-html h2[style*="text-align: center"],
+.question-preview-content .question-enunciado-html h3[style*="text-align: center"] {
+  text-align: center !important;
 }
 
-.question-preview-content p[style*="text-align: right"] {
-  text-align: right;
+.question-preview-content .question-enunciado-body p[style*="text-align: right"],
+.question-preview-content .question-enunciado-body p[style*="text-align:right"],
+.question-preview-content .question-enunciado-body h1[style*="text-align: right"],
+.question-preview-content .question-enunciado-body h2[style*="text-align: right"],
+.question-preview-content .question-enunciado-body h3[style*="text-align: right"],
+.question-preview-content .question-enunciado-html p[style*="text-align: right"],
+.question-preview-content .question-enunciado-html p[style*="text-align:right"],
+.question-preview-content .question-enunciado-html h1[style*="text-align: right"],
+.question-preview-content .question-enunciado-html h2[style*="text-align: right"],
+.question-preview-content .question-enunciado-html h3[style*="text-align: right"] {
+  text-align: right !important;
 }
 
-.question-preview-content p[style*="text-align: left"] {
-  text-align: left;
+.question-preview-content .question-enunciado-body p[style*="text-align: left"],
+.question-preview-content .question-enunciado-body p[style*="text-align:left"],
+.question-preview-content .question-enunciado-body h1[style*="text-align: left"],
+.question-preview-content .question-enunciado-body h2[style*="text-align: left"],
+.question-preview-content .question-enunciado-body h3[style*="text-align: left"],
+.question-preview-content .question-enunciado-html p[style*="text-align: left"],
+.question-preview-content .question-enunciado-html p[style*="text-align:left"],
+.question-preview-content .question-enunciado-html h1[style*="text-align: left"],
+.question-preview-content .question-enunciado-html h2[style*="text-align: left"],
+.question-preview-content .question-enunciado-html h3[style*="text-align: left"] {
+  text-align: left !important;
+}
+
+.question-preview-content .question-enunciado-body p[style*="text-align: justify"],
+.question-preview-content .question-enunciado-body p[style*="text-align:justify"],
+.question-preview-content .question-enunciado-body h1[style*="text-align: justify"],
+.question-preview-content .question-enunciado-body h2[style*="text-align: justify"],
+.question-preview-content .question-enunciado-body h3[style*="text-align: justify"],
+.question-preview-content .question-enunciado-html p[style*="text-align: justify"],
+.question-preview-content .question-enunciado-html p[style*="text-align:justify"],
+.question-preview-content .question-enunciado-html h1[style*="text-align: justify"],
+.question-preview-content .question-enunciado-html h2[style*="text-align: justify"],
+.question-preview-content .question-enunciado-html h3[style*="text-align: justify"] {
+  text-align: justify !important;
 }
 
 /* Imagens em parágrafos centralizados */
@@ -964,6 +1005,14 @@
 .question-preview-content p[style*="text-align: left"] img:not([style*="vertical-align"]):not([style*="inline-block"]) {
   display: block !important;
   margin-left: 0 !important;
+  margin-right: auto !important;
+  margin-top: 1.5rem !important;
+  margin-bottom: 1.5rem !important;
+}
+
+.question-preview-content p[style*="text-align: justify"] img:not([style*="vertical-align"]):not([style*="inline-block"]) {
+  display: block !important;
+  margin-left: auto !important;
   margin-right: auto !important;
   margin-top: 1.5rem !important;
   margin-bottom: 1.5rem !important;

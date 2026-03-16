@@ -27,10 +27,18 @@ const SimpleHtmlRenderer = ({ content, className }: { content: string | null | u
     if (!content || content.trim() === '') {
         return null;
     }
-    const cleanHtml = content
-        .replace(/<img([^>]*?)class="([^"]*)"([^>]*)>/g, '<img$1class="$2 max-w-full h-auto"$3>')
-        .replace(/<img(?![^>]*class=)([^>]*)>/g, '<img$1 class="max-w-full h-auto">')
-        .replace(/<img(?![^>]*style=)([^>]*?)>/g, '<img$1 style="object-fit: contain;">');
+    const hasExplicitDimensions = (attrs: string) =>
+        /(\bwidth\s*=|\bheight\s*=|style\s*=[^>]*\b(width|height)\s*:)/i.test(attrs);
+    const cleanHtml = content.replace(/<img([^>]*)>/g, (match, attrs) => {
+        const withClass = /class\s*=/.test(attrs)
+            ? attrs.replace(/class="([^"]*)"/, (m: string, c: string) =>
+                hasExplicitDimensions(attrs) ? m : `class="${c} max-w-full h-auto"`)
+            : hasExplicitDimensions(attrs) ? attrs : `${attrs} class="max-w-full h-auto"`;
+        const withStyle = /style\s*=/.test(withClass)
+            ? withClass
+            : `${withClass} style="object-fit: contain;"`;
+        return `<img${withStyle}>`;
+    });
     return (
         <div className={className ?? "text-base leading-relaxed text-foreground"} dangerouslySetInnerHTML={{ __html: cleanHtml }} />
     );
@@ -187,8 +195,9 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                         {/* Texto 1 — Primeiro enunciado */}
                         {(question.formattedText || question.text) && (
                             <div className={questionStatementBlockClass}>
-                                <div className={questionProseClass}>
+                                <div className={`${questionProseClass} question-enunciado-body`}>
                                     <div
+                                        className="question-enunciado-html"
                                         dangerouslySetInnerHTML={{
                                             __html: normalizePdfLineBreaks(resolveQuestionImageSrc(question.formattedText || question.text || '', BASE_URL)),
                                         }}
@@ -199,8 +208,9 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                         {/* Texto 2 — Segundo enunciado (referência) */}
                         {question.secondStatement?.trim() && (
                             <div className={`${questionStatementBlockClass} question-second-statement`}>
-                                <div className={questionProseClass}>
+                                <div className={`${questionProseClass} question-enunciado-body`}>
                                     <div
+                                        className="question-enunciado-html"
                                         dangerouslySetInnerHTML={{
                                             __html: normalizePdfLineBreaks(resolveQuestionImageSrc(question.secondStatement.trim(), BASE_URL)),
                                         }}

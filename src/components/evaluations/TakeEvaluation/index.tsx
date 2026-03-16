@@ -762,12 +762,20 @@ export default function TakeEvaluation() {
         max-width: 90% !important;
     }
 
-    /* Imagens inline (reforço do padrão) */
+    /* Imagens inline (reforço do padrão) — não encolher imagens com dimensão (editor) */
     .evaluation-question-content img.inline-image {
         max-height: 1.4em !important;
         max-width: 2em !important;
         border-radius: 4px !important;
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08) !important;
+    }
+    .evaluation-question-content img[width].inline-image,
+    .evaluation-question-content img[height].inline-image {
+        max-width: 100% !important;
+        max-height: none !important;
+        display: block !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
     }
 
     /* Ajustes por alinhamento só para block-image */
@@ -781,6 +789,46 @@ export default function TakeEvaluation() {
     .evaluation-question-content p[style*="text-align: left"] img.block-image {
         margin: 2rem auto 2rem 0 !important;
         max-width: 60% !important;
+    }
+    .evaluation-question-content p[style*="text-align: justify"] img.block-image {
+        display: block;
+        max-width: 80%;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    /* Imagens do editor (node-imageComponent): centralizar por padrão, igual ao editor */
+    .evaluation-question-content .question-text-block .node-imageComponent img,
+    .evaluation-question-content .question-text-block .image-component img {
+        display: block !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+
+    /* Preservar posição da imagem: alinhamento igual ao da edição (img com dimensões dentro de p com text-align) */
+    .evaluation-question-content .question-text-block p[style*="text-align: center"] img[width],
+    .evaluation-question-content .question-text-block p[style*="text-align:center"] img[width],
+    .evaluation-question-content .question-text-block p[style*="text-align: center"] img[height],
+    .evaluation-question-content .question-text-block p[style*="text-align:center"] img[height] {
+        display: block !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+    .evaluation-question-content .question-text-block p[style*="text-align: right"] img[width],
+    .evaluation-question-content .question-text-block p[style*="text-align:right"] img[width],
+    .evaluation-question-content .question-text-block p[style*="text-align: right"] img[height],
+    .evaluation-question-content .question-text-block p[style*="text-align:right"] img[height] {
+        display: block !important;
+        margin-left: auto !important;
+        margin-right: 0 !important;
+    }
+    .evaluation-question-content .question-text-block p[style*="text-align: left"] img[width],
+    .evaluation-question-content .question-text-block p[style*="text-align:left"] img[width],
+    .evaluation-question-content .question-text-block p[style*="text-align: left"] img[height],
+    .evaluation-question-content .question-text-block p[style*="text-align:left"] img[height] {
+        display: block !important;
+        margin-left: 0 !important;
+        margin-right: auto !important;
     }
 
     /* Modal fullscreen customizado */
@@ -817,9 +865,9 @@ export default function TakeEvaluation() {
     .evaluation-question-content .question-text-block .prose h3 {
         white-space: normal;
     }
-    /* Espaçamento entre parágrafos dentro de cada bloco (Texto 1 e Texto 2) */
+    /* Pouco espaçamento entre quebras de linha (parágrafos) — igual ao editor */
     .evaluation-question-content .question-text-block p {
-        margin-top: 1rem;
+        margin-top: 0.35rem;
     }
     .evaluation-question-content .question-text-block p:first-of-type {
         margin-top: 0;
@@ -827,6 +875,32 @@ export default function TakeEvaluation() {
     /* Separação extra antes da referência bibliográfica (último parágrafo do Texto 2) */
     .evaluation-question-content .question-second-statement p:last-of-type {
         margin-top: 1.75rem;
+    }
+
+    /* Forçar alinhamento da edição na prova (sobrepõe .prose e temas) */
+    .evaluation-question-content .question-text-block p[style*="text-align: center"],
+    .evaluation-question-content .question-text-block h1[style*="text-align: center"],
+    .evaluation-question-content .question-text-block h2[style*="text-align: center"],
+    .evaluation-question-content .question-text-block h3[style*="text-align: center"] {
+        text-align: center !important;
+    }
+    .evaluation-question-content .question-text-block p[style*="text-align: right"],
+    .evaluation-question-content .question-text-block h1[style*="text-align: right"],
+    .evaluation-question-content .question-text-block h2[style*="text-align: right"],
+    .evaluation-question-content .question-text-block h3[style*="text-align: right"] {
+        text-align: right !important;
+    }
+    .evaluation-question-content .question-text-block p[style*="text-align: left"],
+    .evaluation-question-content .question-text-block h1[style*="text-align: left"],
+    .evaluation-question-content .question-text-block h2[style*="text-align: left"],
+    .evaluation-question-content .question-text-block h3[style*="text-align: left"] {
+        text-align: left !important;
+    }
+    .evaluation-question-content .question-text-block p[style*="text-align: justify"],
+    .evaluation-question-content .question-text-block h1[style*="text-align: justify"],
+    .evaluation-question-content .question-text-block h2[style*="text-align: justify"],
+    .evaluation-question-content .question-text-block h3[style*="text-align: justify"] {
+        text-align: justify !important;
     }
 
     /* Media queries para responsividade (não alterar imagens com tamanho do usuário) */

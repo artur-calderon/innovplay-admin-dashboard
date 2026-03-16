@@ -97,7 +97,20 @@
     margin: 1.2rem 0;
 }
 
-/* Preservar elementos de imagem com suas classes originais */
+/* Preservar elementos de imagem: dentro do enunciado herdar alinhamento do p para não perder posição */
+.question-preview-content .question-text-block .node-imageComponent,
+.question-preview-content .question-text-block .image-component {
+    display: block;
+    text-align: inherit;
+    margin: 1rem 0;
+}
+/* Imagens inseridas pelo editor (node-imageComponent): centralizar por padrão, igual ao editor */
+.question-preview-content .question-text-block .node-imageComponent img,
+.question-preview-content .question-text-block .image-component img {
+    display: block !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
 .question-preview-content .node-imageComponent,
 .question-preview-content .image-component {
     display: contents;
@@ -121,6 +134,32 @@
     object-fit: contain;
     border-radius: 8px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* Preservar posição da imagem: alinhamento igual ao da edição (p com text-align) */
+.question-preview-content .question-enunciado-html p[style*="text-align: center"] img,
+.question-preview-content .question-enunciado-html p[style*="text-align:center"] img,
+.question-preview-content .question-text-block p[style*="text-align: center"] img,
+.question-preview-content .question-text-block p[style*="text-align:center"] img {
+    display: block !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+.question-preview-content .question-enunciado-html p[style*="text-align: right"] img,
+.question-preview-content .question-enunciado-html p[style*="text-align:right"] img,
+.question-preview-content .question-text-block p[style*="text-align: right"] img,
+.question-preview-content .question-text-block p[style*="text-align:right"] img {
+    display: block !important;
+    margin-left: auto !important;
+    margin-right: 0 !important;
+}
+.question-preview-content .question-enunciado-html p[style*="text-align: left"] img,
+.question-preview-content .question-enunciado-html p[style*="text-align:left"] img,
+.question-preview-content .question-text-block p[style*="text-align: left"] img,
+.question-preview-content .question-text-block p[style*="text-align:left"] img {
+    display: block !important;
+    margin-left: 0 !important;
+    margin-right: auto !important;
 }
 
 /* Imagens inline pequenas (matemáticas, frações) — só quando não têm tamanho definido pelo usuário */
@@ -318,6 +357,15 @@
 .question-preview-content .question-text-block .prose h2,
 .question-preview-content .question-text-block .prose h3 {
     white-space: normal;
+}
+
+/* Pouco espaçamento entre quebras de linha (parágrafos) no enunciado — igual ao editor */
+.question-preview-content .question-text-block .prose p {
+    margin-top: 0;
+    margin-bottom: 0.35rem;
+}
+.question-preview-content .question-text-block .prose p:last-child {
+    margin-bottom: 0;
 }
 
 .question-preview-content .prose {
@@ -571,17 +619,65 @@
     padding-top: 1.5rem;
 }
 
-/* Respeitar alinhamento de texto dos parágrafos */
-.question-preview-content p[style*="text-align: center"] {
-    text-align: center;
+/* Respeitar alinhamento de texto dos parágrafos e títulos */
+/* Forçar alinhamento da edição (sobrepõe .prose e temas) - seletores específicos e variações do style */
+.question-preview-content .question-enunciado-body p[style*="text-align: center"],
+.question-preview-content .question-enunciado-body p[style*="text-align:center"],
+.question-preview-content .question-enunciado-body h1[style*="text-align: center"],
+.question-preview-content .question-enunciado-body h1[style*="text-align:center"],
+.question-preview-content .question-enunciado-body h2[style*="text-align: center"],
+.question-preview-content .question-enunciado-body h2[style*="text-align:center"],
+.question-preview-content .question-enunciado-body h3[style*="text-align: center"],
+.question-preview-content .question-enunciado-body h3[style*="text-align:center"],
+.question-preview-content .question-enunciado-html p[style*="text-align: center"],
+.question-preview-content .question-enunciado-html p[style*="text-align:center"],
+.question-preview-content .question-enunciado-html h1[style*="text-align: center"],
+.question-preview-content .question-enunciado-html h1[style*="text-align:center"],
+.question-preview-content .question-enunciado-html h2[style*="text-align: center"],
+.question-preview-content .question-enunciado-html h2[style*="text-align:center"],
+.question-preview-content .question-enunciado-html h3[style*="text-align: center"],
+.question-preview-content .question-enunciado-html h3[style*="text-align:center"] {
+    text-align: center !important;
 }
 
-.question-preview-content p[style*="text-align: right"] {
-    text-align: right;
+.question-preview-content .question-enunciado-body p[style*="text-align: right"],
+.question-preview-content .question-enunciado-body p[style*="text-align:right"],
+.question-preview-content .question-enunciado-body h1[style*="text-align: right"],
+.question-preview-content .question-enunciado-body h1[style*="text-align:right"],
+.question-preview-content .question-enunciado-body h2[style*="text-align: right"],
+.question-preview-content .question-enunciado-body h3[style*="text-align: right"],
+.question-preview-content .question-enunciado-html p[style*="text-align: right"],
+.question-preview-content .question-enunciado-html p[style*="text-align:right"],
+.question-preview-content .question-enunciado-html h1[style*="text-align: right"],
+.question-preview-content .question-enunciado-html h2[style*="text-align: right"],
+.question-preview-content .question-enunciado-html h3[style*="text-align: right"] {
+    text-align: right !important;
 }
 
-.question-preview-content p[style*="text-align: left"] {
-    text-align: left;
+.question-preview-content .question-enunciado-body p[style*="text-align: left"],
+.question-preview-content .question-enunciado-body p[style*="text-align:left"],
+.question-preview-content .question-enunciado-body h1[style*="text-align: left"],
+.question-preview-content .question-enunciado-body h2[style*="text-align: left"],
+.question-preview-content .question-enunciado-body h3[style*="text-align: left"],
+.question-preview-content .question-enunciado-html p[style*="text-align: left"],
+.question-preview-content .question-enunciado-html p[style*="text-align:left"],
+.question-preview-content .question-enunciado-html h1[style*="text-align: left"],
+.question-preview-content .question-enunciado-html h2[style*="text-align: left"],
+.question-preview-content .question-enunciado-html h3[style*="text-align: left"] {
+    text-align: left !important;
+}
+
+.question-preview-content .question-enunciado-body p[style*="text-align: justify"],
+.question-preview-content .question-enunciado-body p[style*="text-align:justify"],
+.question-preview-content .question-enunciado-body h1[style*="text-align: justify"],
+.question-preview-content .question-enunciado-body h2[style*="text-align: justify"],
+.question-preview-content .question-enunciado-body h3[style*="text-align: justify"],
+.question-preview-content .question-enunciado-html p[style*="text-align: justify"],
+.question-preview-content .question-enunciado-html p[style*="text-align:justify"],
+.question-preview-content .question-enunciado-html h1[style*="text-align: justify"],
+.question-preview-content .question-enunciado-html h2[style*="text-align: justify"],
+.question-preview-content .question-enunciado-html h3[style*="text-align: justify"] {
+    text-align: justify !important;
 }
 
 /* Imagens em parágrafos centralizados */
@@ -604,6 +700,14 @@
 .question-preview-content p[style*="text-align: left"] img:not([style*="vertical-align"]):not([style*="inline-block"]) {
     display: block !important;
     margin-left: 0 !important;
+    margin-right: auto !important;
+    margin-top: 1.5rem !important;
+    margin-bottom: 1.5rem !important;
+}
+
+.question-preview-content p[style*="text-align: justify"] img:not([style*="vertical-align"]):not([style*="inline-block"]) {
+    display: block !important;
+    margin-left: auto !important;
     margin-right: auto !important;
     margin-top: 1.5rem !important;
     margin-bottom: 1.5rem !important;
