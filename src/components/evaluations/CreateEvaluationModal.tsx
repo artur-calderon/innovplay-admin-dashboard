@@ -1089,9 +1089,21 @@ export function CreateEvaluationModal({
           
           // ✅ CORREÇÃO: Verificar se as questões e turmas foram salvas
           try {
-            // Verificar questões
+            // Verificar questões (a API pode devolver array direto ou objeto com .data / .results / .items / .total)
             const verifyQuestionsResponse = await api.get(`/questions?test_id=${evaluationId}`);
-            const questionsCount = Array.isArray(verifyQuestionsResponse.data) ? verifyQuestionsResponse.data.length : 0;
+            const raw = verifyQuestionsResponse.data;
+            const questionsList = Array.isArray(raw)
+              ? raw
+              : Array.isArray((raw as any)?.data)
+                ? (raw as any).data
+                : Array.isArray((raw as any)?.results)
+                  ? (raw as any).results
+                  : Array.isArray((raw as any)?.items)
+                    ? (raw as any).items
+                    : [];
+            const questionsCount = questionsList.length > 0
+              ? questionsList.length
+              : (typeof (raw as any)?.total === 'number' ? (raw as any).total : 0);
             const expectedQuestionsCount = backendEvaluationData.questions.length;
             
             // Verificar turmas através da avaliação
@@ -1104,7 +1116,8 @@ export function CreateEvaluationModal({
               questoes: {
                 count: questionsCount,
                 expected: expectedQuestionsCount,
-                isArray: Array.isArray(verifyQuestionsResponse.data)
+                rawIsArray: Array.isArray(raw),
+                listLength: questionsList.length
               },
               turmas: {
                 count: savedClassesCount,

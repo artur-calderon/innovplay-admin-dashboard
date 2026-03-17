@@ -48,6 +48,9 @@ function normalizePlainTextPaste(text: string): string {
 
 const MyEditor = ({ value, onChange }: MyEditorProps) => {
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
+  // Evita flushSync durante o ciclo de render do React (ex.: quando usado dentro de FormField/Controller).
+  // O TipTap chama flushSync ao montar EditorContent; ao montar só após o primeiro commit, o aviso some.
+  const [editorContentMounted, setEditorContentMounted] = useState(false);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [currentImageConfig, setCurrentImageConfig] = useState<ImageConfig>({
     src: '',
@@ -123,6 +126,11 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
       editor.commands.setContent(value);
     }
   }, [value, editor]);
+
+  // Monta o EditorContent após o primeiro commit para evitar "flushSync was called from inside a lifecycle method"
+  useEffect(() => {
+    queueMicrotask(() => setEditorContentMounted(true));
+  }, []);
 
   if (!editor) {
     return null;
@@ -472,9 +480,13 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
         </div>
       </div>
 
-      {/* Editor Content */}
+      {/* Editor Content — montado após o primeiro commit para evitar flushSync no ciclo de vida do React */}
       <div className="relative">
-        <EditorContent editor={editor} />
+        {editorContentMounted ? (
+          <EditorContent editor={editor} />
+        ) : (
+          <div className="prose prose-lg dark:prose-invert max-w-none min-h-[300px] p-4 border-0 rounded-b-lg bg-background" aria-hidden />
+        )}
       </div>
 
       {/* Image Configuration Dialog */}
