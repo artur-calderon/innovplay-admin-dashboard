@@ -568,7 +568,7 @@ export default function PhysicalTestPage() {
       if (data.status === "processing" || data.status === "pending") {
         setIsGenerating(true);
         setTaskStatusData(data);
-        setCorrectionProgress(data.progress?.percentage ?? 20);
+        setCorrectionProgress(data.progress?.percentage ?? 0);
         startPolling(parsed.taskId);
         return;
       }
@@ -703,8 +703,6 @@ export default function PhysicalTestPage() {
   const startPolling = (taskId: string) => {
     if (!id) return;
 
-    setCorrectionProgress(20);
-
     // Limpar intervalo anterior se existir
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
@@ -836,7 +834,7 @@ export default function PhysicalTestPage() {
     try {
       setIsGenerating(true);
       setTaskStatusData(null);
-      setCorrectionProgress(10);
+      setCorrectionProgress(0);
       setShowGenerateDialog(false); // Fechar dialog ao iniciar geração
 
       // Preparar payload com parâmetros de blocos no formato esperado pelo backend
