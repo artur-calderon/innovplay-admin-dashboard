@@ -393,6 +393,24 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                   type="button"
                   variant="ghost"
                   size="sm"
+                  onClick={() => editor.chain().focus().insertContent('√').run()}
+                  className="h-9 w-9 p-0 font-math hover:bg-gray-100 dark:hover:bg-muted"
+                  title="Inserir raiz quadrada"
+                >
+                  <span className="text-base font-medium" style={{ fontFamily: 'serif' }}>√</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Inserir raiz quadrada (√)</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => editor.chain().focus().unsetAllMarks().run()}
                   className="h-9 w-9 p-0 hover:bg-gray-100 dark:hover:bg-muted"
                 >
