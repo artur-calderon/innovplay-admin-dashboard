@@ -210,10 +210,12 @@ interface TaskStatusResult {
   }>;
   message?: string;
 }
+type TaskStatusPhase = "generating" | "saving" | "zipping" | "uploading" | "done";
 interface TaskStatusResponse {
   task_id: string;
   status: "pending" | "processing" | "completed" | "failed";
   message?: string;
+  phase?: TaskStatusPhase;
   error?: string;
   progress?: TaskStatusProgress;
   summary?: TaskStatusSummary | null;
@@ -255,6 +257,40 @@ function classStatusVariant(status: TaskStatusClass["status"]) {
   }
 }
 
+function phaseLabel(phase: TaskStatusPhase | undefined) {
+  switch (phase) {
+    case "generating":
+      return "Gerando PDFs";
+    case "saving":
+      return "Salvando no banco de dados";
+    case "zipping":
+      return "Criando ZIP para download";
+    case "uploading":
+      return "Enviando arquivos para o servidor";
+    case "done":
+      return "Concluído";
+    default:
+      return null;
+  }
+}
+
+function phaseTone(phase: TaskStatusPhase | undefined) {
+  switch (phase) {
+    case "generating":
+      return "text-primary";
+    case "saving":
+      return "text-primary";
+    case "zipping":
+      return "text-amber-700 dark:text-amber-300";
+    case "uploading":
+      return "text-amber-700 dark:text-amber-300";
+    case "done":
+      return "text-green-700 dark:text-green-300";
+    default:
+      return "text-muted-foreground";
+  }
+}
+
 function GenerationProgressPanel({
   taskStatusData,
   isGenerating,
@@ -279,14 +315,31 @@ function GenerationProgressPanel({
   const isCompleted = status === "completed";
   const isFailed = status === "failed";
   const canDownload = !!(summary?.can_download && canDownloadAll);
+  const phase = taskStatusData?.phase;
+  const phaseText = phaseLabel(phase);
+  const showPhasePill =
+    !!phaseText &&
+    (status === "processing" || status === "completed") &&
+    (progressPct >= 100 || phase !== "generating");
 
   return (
     <div className="mb-6 rounded-xl border bg-muted/30 p-5 space-y-5">
       {/* Mensagem e barra de progresso */}
       <div className="space-y-3">
-        <p className="text-sm font-medium text-foreground">
-          {taskStatusData?.message ?? (isGenerating ? "Conectando ao servidor..." : "Status da geração")}
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <p className="text-sm font-medium text-foreground">
+            {taskStatusData?.message ?? (isGenerating ? "Conectando ao servidor..." : "Status da geração")}
+          </p>
+          {showPhasePill && (
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border bg-background px-2 py-0.5 text-[11px] font-medium ${phaseTone(phase)}`}
+              title={phaseText ?? undefined}
+            >
+              {phaseText}
+              {status === "processing" && <Loader2 className="h-3 w-3 animate-spin" />}
+            </span>
+          )}
+        </div>
         <Progress value={progressPct} className="h-2.5 w-full" />
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>{progressPct}%</span>
@@ -499,6 +552,7 @@ export default function PhysicalTestPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isMarkingAsSent, setIsMarkingAsSent] = useState<string | null>(null);
+  const [formsSearchTerm, setFormsSearchTerm] = useState("");
 
   // Estados para alunos
   const [students, setStudents] = useState<any[]>([]);
@@ -546,6 +600,15 @@ export default function PhysicalTestPage() {
     }
     return list;
   }, [testScope]);
+
+  const filteredGeneratedForms = useMemo(() => {
+    if (!formsSearchTerm.trim()) return generatedForms;
+    const term = formsSearchTerm.trim().toLowerCase();
+    return generatedForms.filter(
+      (form) =>
+        (form.student_name ?? "").toLowerCase().includes(term)
+    );
+  }, [generatedForms, formsSearchTerm]);
 
   const checkPendingGeneration = async () => {
     if (!id) return;
@@ -1879,6 +1942,22 @@ export default function PhysicalTestPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  <div className="relative max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                    <Input
+                      type="search"
+                      placeholder="Pesquisar aluno para baixar..."
+                      value={formsSearchTerm}
+                      onChange={(e) => setFormsSearchTerm(e.target.value)}
+                      className="pl-9"
+                      aria-label="Pesquisar aluno"
+                    />
+                    {formsSearchTerm && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                        {filteredGeneratedForms.length} {filteredGeneratedForms.length === 1 ? "resultado" : "resultados"}
+                      </span>
+                    )}
+                  </div>
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1891,7 +1970,14 @@ export default function PhysicalTestPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {generatedForms.map((form) => (
+                      {filteredGeneratedForms.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                            Nenhum aluno encontrado para &quot;{formsSearchTerm}&quot;.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredGeneratedForms.map((form) => (
                         <TableRow key={form.id}>
                           <TableCell className="font-medium">
                             {form.student_name}
@@ -1964,7 +2050,8 @@ export default function PhysicalTestPage() {
                             </DropdownMenu>
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ))
+                    )}
                     </TableBody>
                   </Table>
                 </div>
