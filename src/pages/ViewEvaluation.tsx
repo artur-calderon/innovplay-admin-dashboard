@@ -914,15 +914,13 @@ export default function ViewEvaluation() {
                   Distribuída em {appliedClassesCount} turmas de {schoolsCount} escolas
                 </p>
                 
-                {/* Turmas aplicadas (GET /test/:id/classes) */}
+                {/* Turmas aplicadas (GET /test/:id/classes ou applied_classes; quando is_applied, todas as turmas retornadas são aplicadas) */}
                 <div>
                   <label className="text-sm font-medium text-green-700 dark:text-green-400 mb-2 block">
                     Turmas onde foi aplicada:
                   </label>
                   <div className="space-y-2 max-h-48 overflow-y-auto application-scroll pr-1">
-                    {displayClasses
-                      .filter((ac: AppliedClass) => ac.class_test_id !== null)
-                      .map((appliedClass, idx) => (
+                    {displayClasses.map((appliedClass, idx) => (
                         <div key={appliedClass.class.id || idx} className="bg-white/80 dark:bg-card/80 rounded-lg p-3 border border-green-200 dark:border-green-800">
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-medium text-green-800 dark:text-green-300">
