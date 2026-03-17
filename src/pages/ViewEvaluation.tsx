@@ -56,6 +56,8 @@ export default function ViewEvaluation() {
   const { toast } = useToast();
   const { invalidateAfterCRUD } = useEvaluations();
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
+  /** Turmas da avaliação via GET /test/:id/classes (fonte única; evita applied_classes com turmas erradas) */
+  const [testClasses, setTestClasses] = useState<AppliedClass[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -98,6 +100,35 @@ export default function ViewEvaluation() {
           }))
         );
         setEvaluation(data);
+
+        // Buscar turmas da avaliação via GET /test/:id/classes (fonte única; retorna test.classes ou aplicadas)
+        try {
+          const classesRes = await api.get(`/test/${id}/classes`);
+          const raw = classesRes.data;
+          const arr = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' && (raw as any).data ? (raw as any).data : Array.isArray((raw as any)?.results) ? (raw as any).results : []);
+          const normalized: AppliedClass[] = arr.map((item: any) => {
+            const cls = item?.class ?? item;
+            if (typeof cls === 'object' && cls !== null && (cls.id || (item?.class_id))) {
+              return {
+                class_test_id: item?.class_test_id ?? null,
+                class: {
+                  id: String(cls.id ?? item?.class_id ?? ''),
+                  name: String(cls.name ?? ''),
+                  students_count: typeof cls.students_count === 'number' ? cls.students_count : (typeof item?.students_count === 'number' ? item.students_count : 0),
+                  school: cls.school,
+                  grade: cls.grade,
+                },
+                application: item?.application ?? null,
+                expiration: item?.expiration ?? null,
+                status: item?.status,
+              } as AppliedClass;
+            }
+            return null;
+          }).filter((x: AppliedClass | null): x is AppliedClass => x != null);
+          setTestClasses(normalized);
+        } catch {
+          setTestClasses([]);
+        }
 
         // ✅ Se houver aplicação individual, buscar nomes dos alunos para exibir no detalhe
         if (isOlimpiadaFromBase && Array.isArray((data as any).selected_students) && (data as any).selected_students.length > 0) {
@@ -626,9 +657,12 @@ export default function ViewEvaluation() {
     (evaluation as any).selected_students.length > 0;
   const totalStudents = hasIndividualSelected
     ? (evaluation as any).selected_students.length
-    : (evaluation.total_students || 0);
-  const appliedClassesCount = evaluation.applied_classes_count || 0;
+    : (testClasses !== null && testClasses.length > 0
+        ? testClasses.reduce((sum, ac) => sum + (ac.class?.students_count ?? 0), 0)
+        : (evaluation.total_students || 0));
+  const appliedClassesCount = testClasses !== null ? testClasses.length : (evaluation.applied_classes_count ?? 0);
   const isAppliedForDisplay = Boolean((evaluation as any).is_applied) || hasIndividualSelected;
+  const displayClasses = testClasses ?? evaluation.applied_classes ?? [];
 
   return (
     <div className="container mx-auto px-2 md:px-4 py-4 md:py-6 space-y-6">
@@ -868,7 +902,7 @@ export default function ViewEvaluation() {
             </div>
 
             {/* Informações de aplicação */}
-            {evaluation.is_applied && !hasIndividualSelected && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
+            {evaluation.is_applied && !hasIndividualSelected && displayClasses.length > 0 && (
               <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -880,15 +914,13 @@ export default function ViewEvaluation() {
                   Distribuída em {appliedClassesCount} turmas de {schoolsCount} escolas
                 </p>
                 
-                {/* Turmas aplicadas */}
+                {/* Turmas aplicadas (GET /test/:id/classes ou applied_classes; quando is_applied, todas as turmas retornadas são aplicadas) */}
                 <div>
                   <label className="text-sm font-medium text-green-700 dark:text-green-400 mb-2 block">
                     Turmas onde foi aplicada:
                   </label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {evaluation.applied_classes
-                      .filter(appliedClass => appliedClass.class_test_id !== null)
-                      .map((appliedClass, idx) => (
+                  <div className="space-y-2 max-h-48 overflow-y-auto application-scroll pr-1">
+                    {displayClasses.map((appliedClass, idx) => (
                         <div key={appliedClass.class.id || idx} className="bg-white/80 dark:bg-card/80 rounded-lg p-3 border border-green-200 dark:border-green-800">
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-medium text-green-800 dark:text-green-300">
@@ -899,10 +931,12 @@ export default function ViewEvaluation() {
                             </Badge>
                           </div>
                           <div className="text-xs text-green-600 dark:text-green-400 space-y-1">
-                            <div className="flex items-center gap-1">
-                              <School className="h-3 w-3" />
-                              <span>{appliedClass.class.school.name}</span>
-                            </div>
+                            {appliedClass.class.school && (
+                              <div className="flex items-center gap-1">
+                                <School className="h-3 w-3" />
+                                <span>{appliedClass.class.school.name}</span>
+                              </div>
+                            )}
                             {appliedClass.application && appliedClass.expiration && (
                               <div className="flex items-center gap-1">
                                 <Calendar className="h-3 w-3" />
@@ -953,8 +987,8 @@ export default function ViewEvaluation() {
               </div>
             )}
 
-            {/* Turmas pendentes */}
-            {!evaluation.is_applied && !hasIndividualSelected && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
+            {/* Turmas pendentes (GET /test/:id/classes) */}
+            {!evaluation.is_applied && !hasIndividualSelected && displayClasses.length > 0 && (
               <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Users className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
@@ -970,8 +1004,8 @@ export default function ViewEvaluation() {
                   <label className="text-sm font-medium text-yellow-700 dark:text-yellow-400 mb-2 block">
                     Turmas agendadas:
                   </label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {evaluation.applied_classes.map((appliedClass, idx) => (
+                  <div className="space-y-2 max-h-48 overflow-y-auto application-scroll pr-1">
+                    {displayClasses.map((appliedClass: AppliedClass, idx: number) => (
                       <div key={appliedClass.class.id || idx} className="bg-white/80 dark:bg-card/80 rounded-lg p-3 border border-yellow-200 dark:border-yellow-800">
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-medium text-yellow-800 dark:text-yellow-300">
@@ -982,10 +1016,12 @@ export default function ViewEvaluation() {
                           </Badge>
                         </div>
                         <div className="text-xs text-yellow-600 dark:text-yellow-400">
-                          <div className="flex items-center gap-1">
-                            <School className="h-3 w-3" />
-                            <span>{appliedClass.class.school.name}</span>
-                          </div>
+                          {appliedClass.class.school && (
+                            <div className="flex items-center gap-1">
+                              <School className="h-3 w-3" />
+                              <span>{appliedClass.class.school.name}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -995,7 +1031,7 @@ export default function ViewEvaluation() {
             )}
 
             {/* Quando não há turmas aplicadas ou agendadas */}
-            {(!evaluation.applied_classes || evaluation.applied_classes.length === 0) && !hasIndividualSelected && (
+            {displayClasses.length === 0 && !hasIndividualSelected && (
               <div className="bg-gray-50 dark:bg-muted/50 border border-gray-200 dark:border-gray-800 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Users className="h-5 w-5 text-gray-500 dark:text-gray-400" />
@@ -1013,7 +1049,7 @@ export default function ViewEvaluation() {
               <label className="text-sm font-medium text-muted-foreground mb-2 block">
                 Municípios ({municipalitiesCount})
               </label>
-              <div className="max-h-32 overflow-y-auto">
+              <div className="max-h-32 overflow-y-auto application-scroll pr-1">
                 {(evaluation.municipalities && evaluation.municipalities.length > 0) ? (
                   <ul className="space-y-1">
                     {evaluation.municipalities.map((m: Municipality, idx: number) => (
@@ -1033,7 +1069,7 @@ export default function ViewEvaluation() {
               <label className="text-sm font-medium text-muted-foreground mb-2 block">
                 Escolas ({schoolsCount})
               </label>
-              <div className="max-h-32 overflow-y-auto">
+              <div className="max-h-32 overflow-y-auto application-scroll pr-1">
                 {(evaluation.schools && evaluation.schools.length > 0) ? (
                   <ul className="space-y-1">
                     {evaluation.schools.map((s: SchoolInfo, idx: number) => (
@@ -1048,96 +1084,6 @@ export default function ViewEvaluation() {
                 )}
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Turmas Selecionadas */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Turmas Selecionadas
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {(() => {
-              // Mapear e deduplicar turmas de applied_classes
-              const selectedClasses = (evaluation.applied_classes || [])
-                .map(appliedClass => appliedClass.class)
-                .filter((classItem, index, self) => 
-                  self.findIndex(c => c.id === classItem.id) === index
-                );
-
-              if (selectedClasses.length > 0) {
-                return (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-4">
-                      <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
-                        {selectedClasses.length} turma{selectedClasses.length > 1 ? 's' : ''} selecionada{selectedClasses.length > 1 ? 's' : ''}
-                      </Badge>
-                    </div>
-                    
-                    <div className="max-h-64 overflow-y-auto space-y-3">
-                      {selectedClasses.map((classItem, idx) => (
-                        <div key={classItem.id || idx} className="bg-gray-50 dark:bg-muted/50 rounded-lg p-4 border border-gray-200 dark:border-gray-800">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-medium text-gray-800 dark:text-gray-200">
-                              {classItem.name}
-                            </span>
-                            <Badge variant="outline" className="text-xs bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800">
-                              {classItem.students_count} alunos
-                            </Badge>
-                          </div>
-                          <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                            <div className="flex items-center gap-2">
-                              <School className="h-4 w-4" />
-                              <span>{classItem.school.name}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <BookOpen className="h-4 w-4" />
-                              <span>{classItem.grade.name}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              } else if (evaluation.classes && evaluation.classes.length > 0) {
-                // Fallback: mostrar contagem de turmas pelos IDs
-                return (
-                  <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Users className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                      <span className="font-semibold text-yellow-800 dark:text-yellow-300">
-                        {evaluation.classes.length} turma{evaluation.classes.length > 1 ? 's' : ''} selecionada{evaluation.classes.length > 1 ? 's' : ''}
-                      </span>
-                    </div>
-                    <p className="text-sm text-yellow-700 dark:text-yellow-400">
-                      IDs das turmas: {evaluation.classes.join(', ')}
-                    </p>
-                    <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-2">
-                      Detalhes completos das turmas serão exibidos após a aplicação da {entityName}.
-                    </p>
-                  </div>
-                );
-              } else {
-                // Nenhuma turma selecionada
-                return (
-                  <div className="bg-gray-50 dark:bg-muted/50 border border-gray-200 dark:border-gray-800 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Users className="h-5 w-5 text-gray-500 dark:text-gray-400" />
-                      <span className="font-semibold text-gray-700 dark:text-gray-300">
-                        Nenhuma turma selecionada
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Esta {entityName} ainda não foi associada a nenhuma turma.
-                    </p>
-                  </div>
-                );
-              }
-            })()}
           </CardContent>
         </Card>
       </div>

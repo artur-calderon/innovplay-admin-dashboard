@@ -7,7 +7,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Question } from "../types";
 import { useSkillsStore } from '@/stores/useSkillsStore';
 import { api, BASE_URL } from "@/lib/api";
-import { resolveQuestionImageSrc } from "@/utils/questionImages";
+import { resolveQuestionImageSrc, getQuestionHtmlForDisplay } from "@/utils/questionImages";
+import { cleanLegacyText, isLikelyPlainText } from "@/utils/textFormatter";
+import { QuestionRenderer } from "./QuestionRenderer";
 import './QuestionPreview.css';
 
 interface QuestionPreviewProps {
@@ -184,31 +186,45 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                 ) : (
                     <>
                         {/* Texto 1 — Primeiro enunciado */}
-                        {(question.formattedText || question.text) && (
-                            <div className={questionStatementBlockClass}>
-                                <div className={`${questionProseClass} question-enunciado-body`}>
-                                    <div
-                                        className="question-enunciado-html"
-                                        dangerouslySetInnerHTML={{
-                                            __html: resolveQuestionImageSrc(question.formattedText || question.text || '', BASE_URL),
-                                        }}
-                                    />
+                        {(question.formattedText || question.text) && (() => {
+                            const str = question.formattedText || question.text || '';
+                            return (
+                                <div className={questionStatementBlockClass}>
+                                    <div className={`${questionProseClass} question-enunciado-body`}>
+                                        {isLikelyPlainText(str) ? (
+                                            <QuestionRenderer rawText={cleanLegacyText(str)} />
+                                        ) : (
+                                            <div
+                                                className="question-enunciado-html"
+                                                dangerouslySetInnerHTML={{
+                                                    __html: getQuestionHtmlForDisplay(str, BASE_URL),
+                                                }}
+                                            />
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })()}
                         {/* Texto 2 — Segundo enunciado (referência) */}
-                        {question.secondStatement?.trim() && (
-                            <div className={`${questionStatementBlockClass} question-second-statement`}>
-                                <div className={`${questionProseClass} question-enunciado-body`}>
-                                    <div
-                                        className="question-enunciado-html"
-                                        dangerouslySetInnerHTML={{
-                                            __html: resolveQuestionImageSrc(question.secondStatement.trim(), BASE_URL),
-                                        }}
-                                    />
+                        {question.secondStatement?.trim() && (() => {
+                            const str = question.secondStatement.trim();
+                            return (
+                                <div className={`${questionStatementBlockClass} question-second-statement`}>
+                                    <div className={`${questionProseClass} question-enunciado-body`}>
+                                        {isLikelyPlainText(str) ? (
+                                            <QuestionRenderer rawText={cleanLegacyText(str)} />
+                                        ) : (
+                                            <div
+                                                className="question-enunciado-html"
+                                                dangerouslySetInnerHTML={{
+                                                    __html: getQuestionHtmlForDisplay(str, BASE_URL),
+                                                }}
+                                            />
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })()}
                     </>
                 )}
             </div>

@@ -1,0 +1,49 @@
+/* Container de leitura para enunciados legados (plain text) */
+.question-container {
+  max-width: 750px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  text-align: left;
+  line-height: 1.6;
+  color: hsl(var(--foreground));
+  background-color: hsl(var(--card));
+  border-radius: 8px;
+}
+
+/* Título (bloco todo em maiúsculas, curto) */
+.question-container .q-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  color: hsl(var(--foreground));
+}
+
+/* Parágrafo normal */
+.question-container .q-paragraph {
+  margin-bottom: 1rem;
+  font-size: 1rem;
+  text-align: justify;
+  hyphens: auto;
+  white-space: normal;
+  color: hsl(var(--foreground));
+}
+
+/* Poema / citação em verso — respeita quebras de linha */
+.question-container .q-poem {
+  margin: 1.5rem 0;
+  padding-left: 2rem;
+  border-left: 3px solid hsl(var(--border));
+  font-style: italic;
+  white-space: pre-wrap;
+  color: hsl(var(--foreground));
+}
+
+/* Fonte / autor no final */
+.question-container .q-source {
+  margin-top: 2rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: right;
+  color: hsl(var(--muted-foreground));
+}

@@ -320,13 +320,36 @@
     white-space: normal;
 }
 
-/* Pouco espaçamento entre quebras de linha (parágrafos) no enunciado — igual ao editor */
-.question-preview-content .question-text-block .prose p {
+/* Espaçamento entre parágrafos no enunciado — leitura clara, sem colar texto */
+.question-preview-content .question-text-block .prose p,
+.question-preview-content .question-enunciado-html p {
     margin-top: 0;
-    margin-bottom: 0.35rem;
+    margin-bottom: 0.75em;
+    text-align: left;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
 }
-.question-preview-content .question-text-block .prose p:last-child {
+.question-preview-content .question-text-block .prose p:last-child,
+.question-preview-content .question-enunciado-html p:last-child {
     margin-bottom: 0;
+}
+/* Conteúdo do enunciado: alinhamento e quebra de linha */
+.question-preview-content .question-enunciado-html {
+    text-align: left;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    line-height: 1.75;
+}
+
+/* Anula centralização legada (PDF/sistemas antigos) em parágrafos longos */
+.question-preview-content .question-enunciado-html p,
+.question-preview-content .question-enunciado-html div {
+    text-align: justify !important;
+    hyphens: auto;
+}
+.question-preview-content .question-enunciado-html p:first-child:last-child,
+.question-preview-content .question-enunciado-html div:first-child:last-child {
+    text-align: justify !important;
 }
 
 .question-preview-content .prose {

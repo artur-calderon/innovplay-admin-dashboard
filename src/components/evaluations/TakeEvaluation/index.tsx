@@ -27,7 +27,9 @@ import { useEvaluation } from "@/hooks/useEvaluation";
 import { Question } from "@/types/evaluation-types";
 import { CompetitionSubmitSuccessModal } from "@/components/competitions/CompetitionSubmitSuccessModal";
 import { BASE_URL } from "@/lib/api";
-import { resolveQuestionImageSrc } from "@/utils/questionImages";
+import { resolveQuestionImageSrc, getQuestionHtmlForDisplay } from "@/utils/questionImages";
+import { cleanLegacyText, isLikelyPlainText } from "@/utils/textFormatter";
+import { QuestionRenderer } from "@/components/evaluations/questions/QuestionRenderer";
 
 /** State passado quando a prova é feita no contexto de uma competição. */
 interface CompetitionLocationState {
@@ -1027,7 +1029,7 @@ export default function TakeEvaluation() {
                                 </div>
                             </div>
                             {/* Grid de questões */}
-                            <div className="flex-1 overflow-y-auto p-3 lg:p-4 min-h-0">
+                            <div className="flex-1 overflow-y-auto p-3 lg:p-4 min-h-0 take-evaluation-questions-scroll pr-1">
                                 <div className="grid grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
                                     {shuffledQuestions.map((question, index) => {
                                         const hasAnswer = answers[question.id]?.answer && answers[question.id]?.answer !== "";
@@ -1074,8 +1076,8 @@ export default function TakeEvaluation() {
                                             <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
                                                 <div className="flex items-center gap-1 sm:gap-2">
                                                     <Badge variant="outline" className="bg-white dark:bg-purple-950/30 border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300 text-xs sm:text-sm">
-                                                        <span className="hidden sm:inline">Questão </span>
-                                                        {currentQuestionIndex + 1}
+                                                        <span className="hidden sm:inline">{`Questão ${currentQuestionIndex + 1}`}</span>
+                                                        <span className="sm:hidden">{currentQuestionIndex + 1}</span>
                                                     </Badge>
                                                     {currentQuestion?.subject?.name && (
                                                         <Badge variant="outline" className="bg-white dark:bg-blue-950/30 border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs sm:text-sm truncate max-w-[120px] sm:max-w-none">
@@ -1103,30 +1105,46 @@ export default function TakeEvaluation() {
                                         {/* Conteúdo da Questão — Texto 1, Texto 2 e referência com espaço entre cada um */}
                                         <div className="evaluation-question-content space-y-8 sm:space-y-10">
                                             {/* Texto 1 — Primeiro enunciado */}
-                                            {(currentQuestion?.formattedText || currentQuestion?.text) && (
-                                                <div className="question-text-block rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
-                                                    <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
-                                                        <div
-                                                            dangerouslySetInnerHTML={{
-                                                                __html: resolveQuestionImageSrc(currentQuestion?.formattedText || currentQuestion?.text || '', BASE_URL),
-                                                            }}
-                                                        />
+                                            {(currentQuestion?.formattedText || currentQuestion?.text) && (() => {
+                                                const str = currentQuestion?.formattedText || currentQuestion?.text || '';
+                                                return (
+                                                    <div className="question-text-block rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
+                                                        <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
+                                                            {isLikelyPlainText(str) ? (
+                                                                <QuestionRenderer rawText={cleanLegacyText(str)} />
+                                                            ) : (
+                                                                <div
+                                                                    className="question-enunciado-html"
+                                                                    dangerouslySetInnerHTML={{
+                                                                        __html: getQuestionHtmlForDisplay(str, BASE_URL),
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
+                                                );
+                                            })()}
 
                                             {/* Texto 2 — Segundo enunciado (referência bibliográfica ganha espaço no final) */}
-                                            {currentQuestion?.secondStatement?.trim() && (
-                                                <div className="question-text-block question-second-statement rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
-                                                    <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
-                                                        <div
-                                                            dangerouslySetInnerHTML={{
-                                                                __html: resolveQuestionImageSrc(currentQuestion.secondStatement.trim(), BASE_URL),
-                                                            }}
-                                                        />
+                                            {currentQuestion?.secondStatement?.trim() && (() => {
+                                                const str = currentQuestion.secondStatement.trim();
+                                                return (
+                                                    <div className="question-text-block question-second-statement rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
+                                                        <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
+                                                            {isLikelyPlainText(str) ? (
+                                                                <QuestionRenderer rawText={cleanLegacyText(str)} />
+                                                            ) : (
+                                                                <div
+                                                                    className="question-enunciado-html"
+                                                                    dangerouslySetInnerHTML={{
+                                                                        __html: getQuestionHtmlForDisplay(str, BASE_URL),
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
+                                                );
+                                            })()}
                                         </div>
 
                                         {/* Opções de Resposta */}
@@ -1304,7 +1322,7 @@ export default function TakeEvaluation() {
                                 </div>
                              </div>
                              {/* Grid de questões */}
-                             <div className="flex-1 overflow-y-auto px-4 pb-4 min-h-0">
+                             <div className="flex-1 overflow-y-auto px-4 pb-4 min-h-0 take-evaluation-questions-scroll pr-1">
                                 <div className="grid grid-cols-5 sm:grid-cols-6 gap-2.5">
                                     {shuffledQuestions.map((question, index) => {
                                         const hasAnswer = answers[question.id]?.answer && answers[question.id]?.answer !== "";
@@ -1643,42 +1661,58 @@ export default function TakeEvaluation() {
                                <div className="p-4 sm:p-5 md:p-6 lg:p-8 xl:p-10 max-w-4xl mx-auto">
                                    <div className="evaluation-question-content space-y-8 sm:space-y-10">
                                        {/* Texto 1 — Primeiro enunciado */}
-                                       {(currentQuestion?.formattedText || currentQuestion?.text) && (
-                                           <div className="question-text-block rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
-                                               <div 
-                                                   className="prose dark:prose-invert prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground dark:text-gray-100 [&_*]:dark:text-gray-100"
-                                                   style={{ 
-                                                       fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
-                                                       lineHeight: '1.75' 
-                                                   }}
-                                               >
-                                                   <div
-                                                       dangerouslySetInnerHTML={{
-                                                           __html: resolveQuestionImageSrc(currentQuestion?.formattedText || currentQuestion?.text || '', BASE_URL),
+                                       {(currentQuestion?.formattedText || currentQuestion?.text) && (() => {
+                                           const str = currentQuestion?.formattedText || currentQuestion?.text || '';
+                                           return (
+                                               <div className="question-text-block rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
+                                                   <div 
+                                                       className="prose dark:prose-invert prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground dark:text-gray-100 [&_*]:dark:text-gray-100"
+                                                       style={{ 
+                                                           fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
+                                                           lineHeight: '1.75' 
                                                        }}
-                                                   />
+                                                   >
+                                                       {isLikelyPlainText(str) ? (
+                                                           <QuestionRenderer rawText={cleanLegacyText(str)} />
+                                                       ) : (
+                                                           <div
+                                                               className="question-enunciado-html"
+                                                               dangerouslySetInnerHTML={{
+                                                                   __html: getQuestionHtmlForDisplay(str, BASE_URL),
+                                                               }}
+                                                           />
+                                                       )}
+                                                   </div>
                                                </div>
-                                           </div>
-                                       )}
+                                           );
+                                       })()}
 
                                        {/* Texto 2 — Segundo enunciado (referência bibliográfica com espaço abaixo) */}
-                                       {currentQuestion?.secondStatement?.trim() && (
-                                           <div className="question-text-block question-second-statement rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
-                                               <div 
-                                                   className="prose dark:prose-invert prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground dark:text-gray-100 [&_*]:dark:text-gray-100"
-                                                   style={{ 
-                                                       fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
-                                                       lineHeight: '1.75' 
-                                                   }}
-                                               >
-                                                   <div
-                                                       dangerouslySetInnerHTML={{
-                                                           __html: resolveQuestionImageSrc(currentQuestion.secondStatement.trim(), BASE_URL),
+                                       {currentQuestion?.secondStatement?.trim() && (() => {
+                                           const str = currentQuestion.secondStatement.trim();
+                                           return (
+                                               <div className="question-text-block question-second-statement rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
+                                                   <div 
+                                                       className="prose dark:prose-invert prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground dark:text-gray-100 [&_*]:dark:text-gray-100"
+                                                       style={{ 
+                                                           fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
+                                                           lineHeight: '1.75' 
                                                        }}
-                                                   />
+                                                   >
+                                                       {isLikelyPlainText(str) ? (
+                                                           <QuestionRenderer rawText={cleanLegacyText(str)} />
+                                                       ) : (
+                                                           <div
+                                                               className="question-enunciado-html"
+                                                               dangerouslySetInnerHTML={{
+                                                                   __html: getQuestionHtmlForDisplay(str, BASE_URL),
+                                                               }}
+                                                           />
+                                                       )}
+                                                   </div>
                                                </div>
-                                           </div>
-                                       )}
+                                           );
+                                       })()}
                                    </div>
                                </div>
                            </div>
