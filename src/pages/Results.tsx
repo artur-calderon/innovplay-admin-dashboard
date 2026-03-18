@@ -953,14 +953,15 @@ export default function Results() {
         turma: selectedClass !== 'all' ? selectedClass : undefined,
       };
 
-      // 🚀 CARREGAMENTO UNIFICADO: Uma única chamada para a nova API
-      const evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(currentPage, perPage, filters);
+      // 🚀 CARREGAMENTO UNIFICADO: tenta buscar já filtrado (inclui escola/série/turma quando selecionados)
+      let evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(currentPage, perPage, filters);
       
    
       if (evaluationsResponse) {
         let dataToSet = evaluationsResponse;
 
-        // ✅ Quando escola/série/turma estão selecionados e a API não retornou tabela_detalhada, buscar dados completos e filtrar no front
+        // ✅ Fallback: se a rota filtrada não trouxe tabela_detalhada, buscar tabela completa (estado+municipio+avaliacao)
+        // e filtrar no front. Isso mantém "filtro por escola inteira" mesmo quando o backend não retorna tabela no recorte.
         const hasFilter = selectedSchool !== 'all' || selectedGrade !== 'all' || selectedClass !== 'all';
         if (
           selectedEvaluation !== 'all' &&
@@ -1535,6 +1536,29 @@ export default function Results() {
         }
       });
     });
+
+    // ✅ Alinhar nota/proficiência/nível com a tabela geral (mesmos valores exibidos na tabela do aluno)
+    // Quando existir tabela_detalhada.geral, ela é a fonte correta para nota_geral/proficiencia_geral/nivel_proficiencia_geral.
+    const geralAlunos = apiData.tabela_detalhada.geral?.alunos ?? [];
+    if (geralAlunos.length > 0) {
+      const geralById = new Map(geralAlunos.map((a) => [a.id, a]));
+      studentsMap.forEach((student, studentId) => {
+        const geral = geralById.get(studentId);
+        if (!geral) return;
+        student.nota = Number(geral.nota_geral ?? student.nota ?? 0);
+        student.proficiencia = Number(geral.proficiencia_geral ?? student.proficiencia ?? 0);
+        student.classificacao = (geral.nivel_proficiencia_geral ?? student.classificacao) as
+          | 'Abaixo do Básico'
+          | 'Básico'
+          | 'Adequado'
+          | 'Avançado';
+        student.questoes_respondidas = Number(geral.total_respondidas_geral ?? student.questoes_respondidas ?? 0);
+        student.acertos = Number(geral.total_acertos_geral ?? student.acertos ?? 0);
+        const totalQuestoesGeral = Number(geral.total_questoes_geral ?? 0);
+        student.erros = totalQuestoesGeral > 0 ? Math.max(0, totalQuestoesGeral - student.acertos) : student.erros;
+        student.em_branco = Number(geral.total_em_branco_geral ?? student.em_branco ?? 0);
+      });
+    }
 
     // ✅ Usar questões exatamente como vêm do backend
     const allQuestions = apiData.tabela_detalhada.disciplinas.flatMap(disciplina => 
@@ -2111,16 +2135,6 @@ export default function Results() {
           <p className="text-muted-foreground text-sm sm:text-base">
             Acompanhe o desempenho das avaliações e gere relatórios
           </p>
-          {apiData && (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="text-xs">
-                Nível: {apiData.estatisticas_gerais?.tipo ? apiData.estatisticas_gerais.tipo.charAt(0).toUpperCase() + apiData.estatisticas_gerais.tipo.slice(1) : 'Município'}
-              </Badge>
-              <span className="text-xs text-muted-foreground">
-                {apiData.estatisticas_gerais?.nome || 'Dados gerais'}
-              </span>
-            </div>
-          )}
         </div>
         <div className="flex flex-wrap justify-center gap-2 w-full sm:w-auto sm:justify-end">
           <Button variant="outline" onClick={() => loadAllData()} disabled={isLoadingData}>

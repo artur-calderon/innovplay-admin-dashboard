@@ -29,6 +29,7 @@ import './MyEditor.css';
 import { Option } from "@/components/ui/multi-select";
 import { useAuth } from "@/context/authContext";
 import SkillsSelector from "./SkillsSelector";
+import { AlternativeInputWithMathButtons } from "./AlternativeInputWithMathButtons";
 
 // Form schema
 const questionSchema = z.object({
@@ -900,10 +901,13 @@ const QuestionFormReadOnly = ({
                                                 control={form.control}
                                                 name={`options.${index}.text`}
                                                 render={({ field }) => (
-                                                    <FormItem className="flex-1">
+                                                    <FormItem className="flex-1 min-w-0">
                                                         <FormControl>
-                                                            <Input
-                                                                {...field}
+                                                            <AlternativeInputWithMathButtons
+                                                                value={field.value}
+                                                                onChange={field.onChange}
+                                                                onBlur={field.onBlur}
+                                                                ref={field.ref}
                                                                 placeholder={`Digite a alternativa ${String.fromCharCode(65 + index)}`}
                                                                 className="h-11 text-base"
                                                             />
