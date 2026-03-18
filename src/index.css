@@ -335,6 +335,91 @@
     border-color: hsl(var(--muted) / 0.4);
   }
 
+  /* Barra de rolagem moderna - Aplicação da avaliação (turmas, municípios, escolas) */
+  .application-scroll {
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) hsl(var(--muted) / 0.15);
+  }
+  .application-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .application-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.12);
+    border-radius: 8px;
+    margin: 4px 0;
+  }
+  .application-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 8px;
+    border: 2px solid hsl(var(--muted) / 0.12);
+  }
+  .application-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+  .application-scroll::-webkit-scrollbar-thumb:active {
+    background: hsl(var(--primary) / 0.6);
+  }
+  .dark .application-scroll {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.4) hsl(var(--muted) / 0.3);
+  }
+  .dark .application-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.25);
+  }
+  .dark .application-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.35);
+    border-color: hsl(var(--muted) / 0.25);
+  }
+  .dark .application-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+  .dark .application-scroll::-webkit-scrollbar-thumb:active {
+    background: hsl(var(--primary) / 0.5);
+  }
+
+  /* Barra de rolagem moderna - TakeEvaluation painel Questões (tema violeta/roxo) */
+  .take-evaluation-questions-scroll {
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(263 70% 50% / 0.5) hsl(var(--muted) / 0.2);
+  }
+  .take-evaluation-questions-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .take-evaluation-questions-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.2);
+    border-radius: 8px;
+    margin: 4px 0;
+  }
+  .take-evaluation-questions-scroll::-webkit-scrollbar-thumb {
+    background: hsl(263 70% 50% / 0.45);
+    border-radius: 8px;
+    border: 2px solid hsl(var(--muted) / 0.2);
+  }
+  .take-evaluation-questions-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(263 70% 55% / 0.65);
+  }
+  .take-evaluation-questions-scroll::-webkit-scrollbar-thumb:active {
+    background: hsl(263 70% 55% / 0.85);
+  }
+  .dark .take-evaluation-questions-scroll {
+    scrollbar-color: hsl(263 60% 45% / 0.6) hsl(var(--muted) / 0.35);
+  }
+  .dark .take-evaluation-questions-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.3);
+  }
+  .dark .take-evaluation-questions-scroll::-webkit-scrollbar-thumb {
+    background: hsl(263 55% 45% / 0.6);
+    border-color: hsl(var(--muted) / 0.3);
+  }
+  .dark .take-evaluation-questions-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(263 55% 50% / 0.75);
+  }
+  .dark .take-evaluation-questions-scroll::-webkit-scrollbar-thumb:active {
+    background: hsl(263 55% 55% / 0.9);
+  }
+
   /* Enhanced Sidebar Gradient - Afirme Play (modo claro: azul/lilás suaves) */
   .sidebar-gradient {
     background: linear-gradient(
@@ -807,6 +892,52 @@
 .question-preview-content .question-text-block .prose h2,
 .question-preview-content .question-text-block .prose h3 {
   white-space: normal;
+}
+
+/* Formatação de enunciados na própria avaliação (TakeEvaluation) */
+.evaluation-question-content .question-text-block .prose p {
+  margin-top: 0;
+  margin-bottom: 0.75em;
+  text-align: left;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  line-height: 1.75;
+}
+.evaluation-question-content .question-text-block .prose p:last-child {
+  margin-bottom: 0;
+}
+.evaluation-question-content .question-text-block .prose {
+  text-align: left;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+/* Anula centralização legada (PDF) em enunciados na avaliação */
+.evaluation-question-content .question-text-block .prose p,
+.evaluation-question-content .question-text-block .prose div {
+  text-align: justify !important;
+  hyphens: auto;
+}
+
+/* Mesmo padrão do Visualizar Questão: enunciado na prova do aluno */
+.evaluation-question-content .question-text-block .question-enunciado-html {
+  text-align: left;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  line-height: 1.75;
+}
+.evaluation-question-content .question-text-block .question-enunciado-html p,
+.evaluation-question-content .question-text-block .question-enunciado-html div {
+  margin-top: 0;
+  margin-bottom: 0.75em;
+  text-align: justify !important;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  hyphens: auto;
+}
+.evaluation-question-content .question-text-block .question-enunciado-html p:last-child,
+.evaluation-question-content .question-text-block .question-enunciado-html div:last-child {
+  margin-bottom: 0;
 }
 
 /* Estilos para o editor de texto */

@@ -335,12 +335,24 @@ const QuestionsPage = () => {
   const filteredAndSortedQuestions = useMemo(() => {
     if (questions.length === 0) return [];
 
+    const term = debouncedSearchTerm.trim().toLowerCase();
+    const getSearchableContent = (q: Question): string => {
+      const raw = [
+        q.title,
+        (q as any).text ?? '',
+        (q as any).formattedText ?? '',
+        (q as any).secondStatement ?? (q as any).second_statement ?? '',
+      ].join(' ');
+      return raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    };
+
     const filtered = questions.filter(question => {
-      // Early returns para melhor performance
-      if (debouncedSearchTerm !== '' && 
-          !question.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) &&
-          !question.id.includes(debouncedSearchTerm)) {
-        return false;
+      // Busca por título, id ou conteúdo do enunciado (texto, formattedText, secondStatement)
+      if (term !== '') {
+        const matchTitle = question.title.toLowerCase().includes(term);
+        const matchId = question.id.includes(debouncedSearchTerm);
+        const matchContent = getSearchableContent(question).includes(term);
+        if (!matchTitle && !matchId && !matchContent) return false;
       }
 
       if (filters.subject !== 'all' && question.subject?.id !== filters.subject) {
