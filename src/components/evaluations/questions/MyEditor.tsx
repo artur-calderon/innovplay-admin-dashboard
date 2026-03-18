@@ -376,14 +376,15 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => editor.chain().focus().toggleSuperscript().run()}
-                  className={`h-9 w-9 p-0 ${editor.isActive('superscript') ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-muted'}`}
+                  onClick={() => editor.chain().focus().insertContent('²').run()}
+                  className="h-9 w-9 p-0 hover:bg-gray-100 dark:hover:bg-muted"
+                  title="Inserir elevado (²)"
                 >
                   <span className="text-xs font-bold">x²</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Sobrescrito</p>
+                <p>Inserir elevado (²)</p>
               </TooltipContent>
             </Tooltip>
 
