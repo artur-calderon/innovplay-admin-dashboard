@@ -2733,7 +2733,7 @@ export default function Results() {
                             )
                           ) : (
                             /* Visão em Cards Melhorada */
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5">
                               {filteredStudents.map((student, index) => (
                                 <StudentCard
                                   key={`${student.id}-${index}`}
@@ -2831,7 +2831,7 @@ export default function Results() {
             </DialogTitle>
           </DialogHeader>
           
-          <div className="overflow-y-auto max-h-[60vh]">
+          <div className="overflow-y-auto max-h-[60vh] application-scroll pr-1">
             {isLoadingAbsentStudents ? (
               <div className="flex items-center justify-center py-8">
                 <div className="flex items-center gap-3">

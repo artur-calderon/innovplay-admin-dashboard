@@ -9,6 +9,35 @@ export interface NivelDescricao {
   description: string;
 }
 
+function formatSerieLabel(raw?: string): string | undefined {
+  const value = (raw ?? '').trim();
+  if (!value) return undefined;
+  // Se já inclui "ano"/"anos", manter como está.
+  if (/\bano(s)?\b/i.test(value)) return value;
+  return `${value} ano`;
+}
+
+/**
+ * Troca trechos como "Os estudantes do 9º ano" pelo valor da série atual da avaliação.
+ * Útil quando o texto foi copiado de descrições fixas (ex.: Saeb 5º/9º ano), mas o relatório
+ * precisa refletir a série selecionada no filtro.
+ */
+export function aplicarSerieNaDescricao(
+  descricoes: NivelDescricao[],
+  serieDaAvaliacao?: string
+): NivelDescricao[] {
+  const serie = formatSerieLabel(serieDaAvaliacao);
+  if (!serie) return descricoes;
+
+  return descricoes.map((d) => ({
+    ...d,
+    description: d.description.replace(
+      /Os estudantes do\s+\d+º\s+ano/gi,
+      `Os estudantes do ${serie}`
+    ),
+  }));
+}
+
 export const descricoesNiveisEscolares: Record<string, NivelDescricao[]> = {
   ANOS_FINAIS_GERAL: [
     { level: 0, min: 0, max: 199, description: "O Saeb não utilizou itens que avaliam as habilidades deste nível. Os estudantes do 9º ano com desempenho menor que 200 requerem atenção especial, pois ainda não demonstram habilidades muito elementares que deveriam apresentar nessa etapa escolar." },
