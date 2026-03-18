@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Download, FileText, RefreshCw, Filter, BookOpen, Calculator, LineChart, Trophy } from "lucide-react";
+import { Download, FileText, RefreshCw, Filter, BookOpen, Calculator, LineChart, Trophy, GraduationCap } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -13,7 +13,7 @@ import { FilterComponentAnalise } from "@/components/filters";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext } from "@/utils/userHierarchy";
 import { cn } from "@/lib/utils";
 import { getProficiencyLevel, getProficiencyLevelColor, getProficiencyLevelLabel, getProficiencyTableInfo, ProficiencyLevel } from "@/components/evaluations/results/utils/proficiency";
-import { descricoesNiveisEscolares, type NivelDescricao } from "./relatorioEscolarDescricoesNiveis";
+import { descricoesNiveisEscolares, aplicarSerieNaDescricao, type NivelDescricao } from "./relatorioEscolarDescricoesNiveis";
 
 const normalizeText = (value: string) =>
   value
@@ -317,14 +317,45 @@ const obterIntervalosNiveis = (curso: string | undefined, disciplina: string): A
 };
 
 // Função para obter descrições dos níveis (mesma lógica de obterIntervalosNiveis)
-const obterDescricoesNiveis = (curso: string | undefined, disciplina: string): NivelDescricao[] => {
+const obterDescricoesNiveis = (
+  curso: string | undefined,
+  disciplina: string,
+  serieDaAvaliacao?: string
+): NivelDescricao[] => {
   const disciplinaNormalizada = normalizeText(disciplina);
   const isMatematica = disciplinaNormalizada.includes('matematica') || disciplinaNormalizada.includes('matemática');
   const isAnosFinais = curso?.toLowerCase().includes('anos finais') || curso?.toLowerCase().includes('ensino médio') || curso?.toLowerCase().includes('medio');
   const key = isAnosFinais
     ? (isMatematica ? 'ANOS_FINAIS_MAT' : 'ANOS_FINAIS_GERAL')
     : (isMatematica ? 'ANOS_INICIAIS_MAT' : 'ANOS_INICIAIS_GERAL');
-  return descricoesNiveisEscolares[key] ?? [];
+  return aplicarSerieNaDescricao(descricoesNiveisEscolares[key] ?? [], serieDaAvaliacao);
+};
+
+const inferirSerieParaDescricao = (apiData: NovaRespostaAPI | null): string | undefined => {
+  if (!apiData) return undefined;
+  const serieFromStats = apiData.estatisticas_gerais?.serie;
+  if (serieFromStats && String(serieFromStats).trim()) return String(serieFromStats).trim();
+
+  const geralFirst = apiData.tabela_detalhada?.geral?.alunos?.find((a) => a?.serie && String(a.serie).trim());
+  if (geralFirst?.serie) return String(geralFirst.serie).trim();
+
+  const discFirst = apiData.tabela_detalhada?.disciplinas?.flatMap((d) => d.alunos || [])
+    ?.find((a) => a?.serie && String(a.serie).trim());
+  if ((discFirst as any)?.serie) return String((discFirst as any).serie).trim();
+
+  return undefined;
+};
+
+const getProficiencyLevelColorRelatorio = (level: ProficiencyLevel): string => {
+  // Paleta usada no sistema (ex.: `AcertoNiveis.tsx`) — aqui "Adequado" é verde.
+  const colors: Record<ProficiencyLevel, string> = {
+    abaixo_do_basico: 'bg-red-100 text-red-800 border-red-300 dark:bg-red-950/30 dark:text-red-300 dark:border-red-800',
+    basico: 'bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-950/30 dark:text-yellow-300 dark:border-yellow-800',
+    adequado: 'bg-green-100 text-green-800 border-green-300 dark:bg-green-950/30 dark:text-green-300 dark:border-green-800',
+    avancado: 'bg-green-200 text-green-900 border-green-400 dark:bg-green-950/50 dark:text-green-200 dark:border-green-700',
+  };
+
+  return colors[level] || colors.abaixo_do_basico;
 };
 
 // Função para obter cor da disciplina
@@ -980,7 +1011,7 @@ export default function RelatorioEscolar() {
           const level = getProficiencyLevelForAggregatedData(row.proficienciaMedia, row.serie, curso);
           row.proficiencyLevel = level;
           row.proficiencyLabel = getProficiencyLevelLabel(level);
-          row.proficiencyColor = getProficiencyLevelColor(level);
+          row.proficiencyColor = getProficiencyLevelColorRelatorio(level);
         }
       });
       
@@ -1115,7 +1146,7 @@ export default function RelatorioEscolar() {
           const level = getProficiencyLevelForAggregatedData(row.proficienciaMedia, row.serie, curso);
           row.proficiencyLevel = level;
           row.proficiencyLabel = getProficiencyLevelLabel(level);
-          row.proficiencyColor = getProficiencyLevelColor(level);
+          row.proficiencyColor = getProficiencyLevelColorRelatorio(level);
         }
 
         return row;
@@ -1240,7 +1271,7 @@ export default function RelatorioEscolar() {
         const level = getProficiencyLevelForAggregatedData(row.proficienciaMedia, row.serie, curso);
         row.proficiencyLevel = level;
         row.proficiencyLabel = getProficiencyLevelLabel(level);
-        row.proficiencyColor = getProficiencyLevelColor(level);
+        row.proficiencyColor = getProficiencyLevelColorRelatorio(level);
       }
 
       return row;
@@ -1269,11 +1300,12 @@ export default function RelatorioEscolar() {
 
         if (total === 0) return null;
 
+        // Cores padronizadas do sistema (mesma paleta usada em `AcertoNiveis.tsx`)
         const segments = [
-          { key: 'abaixo', label: 'Abaixo do Básico', value: abaixo_do_basico, color: '#DC2626' },
-          { key: 'basico', label: 'Básico', value: basico, color: '#F59E0B' },
-          { key: 'adequado', label: 'Adequado', value: adequado, color: '#22C55E' },
-          { key: 'avancado', label: 'Avançado', value: avancado, color: '#16A34A' }
+          { key: 'abaixo', label: 'Abaixo do Básico', value: abaixo_do_basico, color: '#EF4444' }, // [239, 68, 68]
+          { key: 'basico', label: 'Básico', value: basico, color: '#FACC15' }, // [250, 204, 21]
+          { key: 'adequado', label: 'Adequado', value: adequado, color: '#22C55E' }, // [34, 197, 94]
+          { key: 'avancado', label: 'Avançado', value: avancado, color: '#16A34A' } // [22, 163, 74]
         ].map(segment => ({
           ...segment,
           percentage: total > 0 ? Number(((segment.value / total) * 100).toFixed(1)) : 0
@@ -1343,7 +1375,7 @@ export default function RelatorioEscolar() {
         proficienciaMedia,
         proficiencyLevel,
         proficiencyLabel: proficiencyLevel ? getProficiencyLevelLabel(proficiencyLevel) : null,
-        proficiencyColor: proficiencyLevel ? getProficiencyLevelColor(proficiencyLevel) : null,
+        proficiencyColor: proficiencyLevel ? getProficiencyLevelColorRelatorio(proficiencyLevel) : null,
         totalMatriculados,
         totalAvaliados,
         comparecimentoGeral
@@ -1409,12 +1441,14 @@ export default function RelatorioEscolar() {
       proficienciaMedia,
       proficiencyLevel,
       proficiencyLabel: proficiencyLevel ? getProficiencyLevelLabel(proficiencyLevel) : null,
-      proficiencyColor: proficiencyLevel ? getProficiencyLevelColor(proficiencyLevel) : null,
+      proficiencyColor: proficiencyLevel ? getProficiencyLevelColorRelatorio(proficiencyLevel) : null,
       totalMatriculados,
       totalAvaliados,
       comparecimentoGeral
     };
   }, [apiData, classSummaryRows, relatorioCompleto]);
+
+  const serieDaAvaliacao = useMemo(() => inferirSerieParaDescricao(apiData), [apiData]);
 
 
 
@@ -1517,10 +1551,12 @@ export default function RelatorioEscolar() {
       // Função auxiliar: Obter cor para badges de proficiência
       const generateClassificationColor = (label: string): [number, number, number] => {
         const labelLower = label.toLowerCase();
-        if (labelLower.includes('avançado')) return [22, 163, 74]; // Verde escuro
-        if (labelLower.includes('adequado')) return [132, 204, 22]; // Verde lima
-        if (labelLower.includes('básico')) return [251, 191, 36]; // Amarelo
-        if (labelLower.includes('abaixo')) return [239, 68, 68]; // Vermelho
+        // Paleta oficial usada no sistema (ex.: `AcertoNiveis.tsx`)
+        if (labelLower.includes('avançado')) return [22, 163, 74]; // #16A34A
+        if (labelLower.includes('adequado')) return [34, 197, 94]; // #22C55E
+        // Atenção: "abaixo do básico" contém "básico" - checar "abaixo" antes do "básico"
+        if (labelLower.includes('abaixo')) return [239, 68, 68]; // #EF4444
+        if (labelLower.includes('básico')) return [250, 204, 21]; // #FACC15
         return [156, 163, 175]; // Cinza padrão
       };
 
@@ -2222,8 +2258,9 @@ export default function RelatorioEscolar() {
                   -1
                 )
               : -1;
+          const serieParaDescricaoPdf = inferirSerieParaDescricao(apiData);
           const descricoesPdf = distribution.disciplinaNome && maxLevelWithStudentsPdf >= 0
-            ? obterDescricoesNiveis(cursoPdf, distribution.disciplinaNome).filter(
+            ? obterDescricoesNiveis(cursoPdf, distribution.disciplinaNome, serieParaDescricaoPdf).filter(
                 (d) => d.level <= maxLevelWithStudentsPdf
               )
             : [];
@@ -2263,37 +2300,35 @@ export default function RelatorioEscolar() {
             drawDescSectionHeader(yDesc);
             yDesc += headerDescHeight + 3;
 
-            for (let i = 0; i < descricoesPdf.length; i++) {
-              const item = descricoesPdf[i];
-              let lines = doc.splitTextToSize(item.description, descWidth - 2 * textPadding);
+            const combinedDescription = descricoesPdf.map((d) => d.description).join(' ');
+            let lines = doc.splitTextToSize(combinedDescription, descWidth - 2 * textPadding);
 
-              while (lines.length > 0) {
-                const spaceLeft = pageHeight - 22 - yDesc;
-                const linesThatFit = Math.floor(spaceLeft / lineHeight);
-                if (linesThatFit <= 0) {
-                  addFooter(pageCount);
-                  doc.addPage();
-                  pageCount++;
-                  yDesc = addHeader() + 6;
-                  drawDescSectionHeader(yDesc);
-                  yDesc += headerDescHeight + 3;
-                  continue;
-                }
-                const chunk = lines.slice(0, Math.min(lines.length, linesThatFit));
-                lines = lines.slice(chunk.length);
-                const chunkHeight = chunk.length * lineHeight + paddingVertical * 2;
-
-                doc.setDrawColor(220, 220, 220);
-                doc.setLineWidth(0.2);
-                const isEvenItem = i % 2 === 0;
-                doc.setFillColor(isEvenItem ? 229 : 255, isEvenItem ? 231 : 255, isEvenItem ? 235 : 255);
-                doc.rect(margin, yDesc, descWidth, chunkHeight, 'FD');
-                doc.text(chunk, margin + textPadding, yDesc + textPadding + 2, {
-                  maxWidth: descWidth - 2 * textPadding,
-                  lineHeightFactor: 1.35
-                });
-                yDesc += chunkHeight + gapBetweenBlocks;
+            while (lines.length > 0) {
+              const spaceLeft = pageHeight - 22 - yDesc;
+              const linesThatFit = Math.floor(spaceLeft / lineHeight);
+              if (linesThatFit <= 0) {
+                addFooter(pageCount);
+                doc.addPage();
+                pageCount++;
+                yDesc = addHeader() + 6;
+                drawDescSectionHeader(yDesc);
+                yDesc += headerDescHeight + 3;
+                continue;
               }
+
+              const chunk = lines.slice(0, Math.min(lines.length, linesThatFit));
+              lines = lines.slice(chunk.length);
+              const chunkHeight = chunk.length * lineHeight + paddingVertical * 2;
+
+              doc.setFillColor(255, 255, 255);
+              // Apenas preenchimento para manter o texto contínuo (sem "blocos" separados).
+              doc.rect(margin, yDesc, descWidth, chunkHeight, 'F');
+              doc.text(chunk, margin + textPadding, yDesc + textPadding + 2, {
+                maxWidth: descWidth - 2 * textPadding,
+                lineHeightFactor: 1.35
+              });
+
+              yDesc += chunkHeight + gapBetweenBlocks;
             }
           }
 
@@ -2589,7 +2624,7 @@ export default function RelatorioEscolar() {
       {allRequiredFiltersSelected && !isLoadingData && apiData && (
         <div className="space-y-6">
           {summaryStats && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
               <Card className="shadow-sm border border-border">
                 <CardContent className="p-5">
                   <div className="flex items-center justify-between text-sm font-semibold text-purple-600 dark:text-purple-400">
@@ -2652,7 +2687,10 @@ export default function RelatorioEscolar() {
                       <span
                         className={cn(
                           'inline-flex rounded-md border px-3 py-1 text-xs font-semibold uppercase tracking-wide',
-                          summaryStats.proficiencyColor ?? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-800'
+                          summaryStats.proficiencyLabel === 'Adequado'
+                            ? 'bg-green-100 text-green-800 border-green-300 dark:bg-green-950/30 dark:text-green-300 dark:border-green-800'
+                            : summaryStats.proficiencyColor ??
+                              'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-800'
                         )}
                       >
                         {summaryStats.proficiencyLabel}
@@ -2660,6 +2698,22 @@ export default function RelatorioEscolar() {
                     ) : (
                       <span className="text-xs text-muted-foreground">Sem classificação</span>
                     )}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="shadow-sm border border-border">
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between text-sm font-semibold text-purple-600 dark:text-purple-400">
+                    <span className="uppercase tracking-wide text-muted-foreground">Série da Avaliação</span>
+                    <GraduationCap className="h-5 w-5" />
+                  </div>
+                  <div className="mt-2 text-3xl font-bold text-foreground">
+                    {serieDaAvaliacao || '-'}
+                  </div>
+                  <div className="mt-4">
+                    <span className="inline-flex rounded-md bg-purple-100 dark:bg-purple-900/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-300">
+                      Série
+                    </span>
                   </div>
                 </CardContent>
               </Card>
@@ -3007,7 +3061,8 @@ export default function RelatorioEscolar() {
                       {/* Descrição do Nível - O estudante provavelmente é capaz de: (do nível 0 até o maior nível com alunos) */}
                       {distribution.disciplinaNome && (() => {
                         const curso = inferirCursoFromApiData(apiData);
-                        const descricoes = obterDescricoesNiveis(curso, distribution.disciplinaNome!);
+                        const serieParaDescricao = inferirSerieParaDescricao(apiData);
+                        const descricoes = obterDescricoesNiveis(curso, distribution.disciplinaNome!, serieParaDescricao);
                         const maxLevelWithStudents = distribution.bars.length > 0
                           ? distribution.bars.reduce(
                               (max, bar, idx) => ((bar.quantidade ?? 0) > 0 ? Math.max(max, idx) : max),
@@ -3028,18 +3083,8 @@ export default function RelatorioEscolar() {
                                 Descrição do Nível - O estudante provavelmente é capaz de:
                               </h4>
                             </div>
-                            <div className="space-y-0 p-4 bg-background">
-                              {descricoesAteMax.map((d, idx) => (
-                                    <div
-                                      key={d.level}
-                                      className={cn(
-                                        'rounded-md px-4 py-3 text-sm text-foreground border border-border',
-                                        idx % 2 === 0 ? 'bg-gray-200 dark:bg-gray-700/50' : 'bg-background'
-                                      )}
-                                    >
-                                      <p className="leading-relaxed">{d.description}</p>
-                                    </div>
-                              ))}
+                            <div className="p-4 bg-background">
+                              <p className="leading-relaxed m-0 text-sm text-foreground">{descricoesAteMax.map((d) => d.description).join(' ')}</p>
                             </div>
                           </div>
                         );

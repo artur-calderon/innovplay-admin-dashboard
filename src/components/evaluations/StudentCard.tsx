@@ -1,7 +1,6 @@
 import React from 'react';
 import { Card, CardContent, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Users, Eye } from 'lucide-react';
 
@@ -25,7 +24,19 @@ interface StudentCardProps {
   onViewDetails: (studentId: string) => void;
 }
 
-export function StudentCard({ student, totalQuestions, subjects, onViewDetails }: StudentCardProps) {
+function MiniBar({ value }: { value: number }) {
+  const safe = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
+  return (
+    <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+      <div
+        className="h-full rounded-full bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500"
+        style={{ width: `${safe}%` }}
+      />
+    </div>
+  );
+}
+
+export const StudentCard = React.memo(function StudentCard({ student, totalQuestions, subjects, onViewDetails }: StudentCardProps) {
   const accuracyRate = (student.questoes_respondidas || 0) > 0
     ? ((student.acertos || 0) / (student.questoes_respondidas || 0)) * 100
     : 0;
@@ -34,26 +45,33 @@ export function StudentCard({ student, totalQuestions, subjects, onViewDetails }
   const emBranco = student.em_branco || 0;
   const tempoGasto = student.tempo_gasto || 0;
 
+  const shortSubjects = subjects.slice(0, 2);
+
   return (
-    <Card className="group hover:shadow-lg transition-all duration-300 border border-gray-200 bg-white overflow-hidden">
+    <Card className="group overflow-hidden border border-border bg-card shadow-sm transition-colors duration-200 hover:border-border/80">
       {/* Header minimalista */}
-      <div className="relative bg-purple-600 p-4 text-white">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+      <div className="relative bg-gradient-to-r from-purple-700 to-purple-600 px-3 py-3 text-white">
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div className="flex items-start gap-3 min-w-0 flex-1">
+            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center shrink-0">
               <Users className="h-4 w-4" />
             </div>
-            <CardTitle className="text-lg font-semibold text-white truncate">
-              {student.nome}
-            </CardTitle>
+            <div className="min-w-0 flex-1">
+              <CardTitle className="text-sm sm:text-base font-semibold text-white leading-snug break-words whitespace-normal">
+                {student.nome}
+              </CardTitle>
+            </div>
           </div>
-          <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
+          <Badge
+            variant="secondary"
+            className="bg-white/20 text-white border-white/30 shrink-0 whitespace-nowrap"
+          >
             {student.turma}
           </Badge>
         </div>
         
         {/* Status badges minimalistas */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Badge className={student.status === 'concluida' 
             ? 'bg-green-500/90 text-white border-green-400' 
             : 'bg-yellow-500/90 text-white border-yellow-400'}>
@@ -68,98 +86,92 @@ export function StudentCard({ student, totalQuestions, subjects, onViewDetails }
         </div>
       </div>
 
-      <CardContent className="p-4 space-y-4">
-        {/* Métricas principais */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="text-center p-3 bg-gray-50 rounded-lg border border-gray-200">
-            <div className="text-3xl font-bold text-gray-900 mb-1">
+      <CardContent className="p-3 space-y-3 overflow-hidden">
+        {/* Linha de métricas compacta */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-lg border border-border bg-muted/40 px-2.5 py-2 min-w-0">
+            <div className="text-[clamp(0.95rem,2.2vw,1.15rem)] font-bold text-foreground tabular-nums whitespace-nowrap leading-none">
               {Number(student.nota || 0).toFixed(1)}
             </div>
-            <div className="text-xs font-medium text-gray-600">Nota</div>
+            <div className="text-[11px] text-muted-foreground">Nota</div>
           </div>
-          <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
-            <div className="text-3xl font-bold text-purple-600 mb-1">
-              {student.proficiencia || 0}
+          <div className="rounded-lg border border-purple-200/60 dark:border-purple-900/40 bg-purple-50/70 dark:bg-purple-950/20 px-2.5 py-2 min-w-0">
+            <div className="text-[clamp(0.95rem,2.2vw,1.15rem)] font-bold text-purple-700 dark:text-purple-300 tabular-nums whitespace-nowrap leading-none">
+              {Number(student.proficiencia || 0).toFixed(1)}
             </div>
-            <div className="text-xs font-medium text-purple-700">Proficiência</div>
-          </div>
-        </div>
-        
-        {/* Barra de progresso minimalista */}
-        <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-medium text-gray-600">Taxa de Acerto</span>
-            <span className="text-sm font-bold text-gray-900">{accuracyRate.toFixed(1)}%</span>
-          </div>
-          <div className="space-y-2">
-            <Progress 
-              value={accuracyRate} 
-              className="h-2 bg-gray-200"
-            />
-            <div className="text-center">
-              <span className="text-xs font-medium text-black">
-                {student.acertos || 0}/{totalQuestions}
-              </span>
-            </div>
+            <div className="text-[11px] text-purple-800/80 dark:text-purple-200/80">Proficiência</div>
           </div>
         </div>
 
-        {/* Estatísticas detalhadas */}
-        <div className="grid grid-cols-2 gap-3 text-center">
-          <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-            <div className="text-lg font-bold text-gray-900">{student.acertos || 0}</div>
-            <div className="text-xs text-gray-600">Acertos</div>
+        {/* Taxa de acerto compacta */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Acerto</span>
+            <span className="font-semibold text-foreground tabular-nums">{accuracyRate.toFixed(1)}%</span>
           </div>
-          <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-            <div className="text-lg font-bold text-gray-900">{erros}</div>
-            <div className="text-xs text-gray-600">Erros</div>
+          <MiniBar value={accuracyRate} />
+          <div className="text-[11px] text-muted-foreground text-center tabular-nums">
+            {student.acertos || 0}/{totalQuestions}
           </div>
         </div>
 
-        {/* Informações adicionais */}
-        <div className="space-y-2 pt-3 border-t border-gray-200">
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-600">Total de Questões:</span>
-            <span className="font-medium text-gray-900">{totalQuestions}</span>
+        {/* Acertos/Erros + Total */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-lg border border-border bg-muted/40 px-2 py-2 text-center">
+            <div className="text-sm font-bold text-foreground tabular-nums">{student.acertos || 0}</div>
+            <div className="text-[11px] text-muted-foreground">Acertos</div>
+          </div>
+          <div className="rounded-lg border border-border bg-muted/40 px-2 py-2 text-center">
+            <div className="text-sm font-bold text-foreground tabular-nums">{erros}</div>
+            <div className="text-[11px] text-muted-foreground">Erros</div>
+          </div>
+          <div className="rounded-lg border border-border bg-muted/40 px-2 py-2 text-center">
+            <div className="text-sm font-bold text-foreground tabular-nums">{totalQuestions}</div>
+            <div className="text-[11px] text-muted-foreground">Questões</div>
+          </div>
+        </div>
+
+        {/* Disciplinas + tempo */}
+        <div className="flex items-start justify-between gap-3 pt-2 border-t border-border text-xs">
+          <div className="min-w-0">
+            <div className="text-muted-foreground mb-1">Disciplinas</div>
+            <div className="flex flex-wrap gap-1">
+              {shortSubjects.map((subject, idx) => (
+                <Badge
+                  key={idx}
+                  variant="outline"
+                  className="text-[11px] bg-muted/40 text-foreground border-border truncate max-w-[140px]"
+                  title={subject}
+                >
+                  {subject}
+                </Badge>
+              ))}
+              {subjects.length > 2 && (
+                <Badge variant="outline" className="text-[11px] bg-muted/40 text-foreground border-border">
+                  +{subjects.length - 2}
+                </Badge>
+              )}
+            </div>
           </div>
           {tempoGasto > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Tempo Gasto:</span>
-              <span className="font-medium text-gray-900">{Math.round(tempoGasto / 60)}min</span>
-            </div>
-          )}
-          {subjects.length > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Disciplinas:</span>
-              <div className="flex gap-1">
-                {subjects.slice(0, 2).map((subject, idx) => (
-                  <Badge key={idx} variant="outline" className="text-xs bg-gray-50 text-gray-700 border-gray-300">
-                    {subject}
-                  </Badge>
-                ))}
-                {subjects.length > 2 && (
-                  <Badge variant="outline" className="text-xs bg-gray-50 text-gray-700 border-gray-300">
-                    +{subjects.length - 2}
-                  </Badge>
-                )}
-              </div>
+            <div className="shrink-0 text-right">
+              <div className="text-muted-foreground">Tempo</div>
+              <div className="font-semibold text-foreground tabular-nums">{Math.round(tempoGasto / 60)}min</div>
             </div>
           )}
         </div>
 
-        {/* Botão de ação */}
-        <div className="pt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onViewDetails(student.id)}
-            className="w-full bg-card text-foreground border-border hover:bg-muted hover:border-border transition-colors"
-          >
-            <Eye className="h-4 w-4 mr-2" />
-            Ver Detalhes Completos
-          </Button>
-        </div>
+        {/* Botão */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onViewDetails(student.id)}
+          className="w-full bg-card text-foreground border-border hover:bg-muted hover:border-border transition-colors"
+        >
+          <Eye className="h-4 w-4 mr-2" />
+          Ver detalhes
+        </Button>
       </CardContent>
     </Card>
   );
-}
+});
