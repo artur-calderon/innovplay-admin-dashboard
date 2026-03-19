@@ -702,75 +702,57 @@ export default function AnswerSheetGenerateCards() {
 
                 {selectedFilters.city && (
                   <div className="space-y-2 border-l-2 border-primary/30 pl-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <Label>Escola(s) (opcional)</Label>
-                      {schoolOptions.length > 0 && (
-                        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleSchoolIdsChange(schoolOptions.map((o) => o.id))}>
-                          Todas
-                        </Button>
-                      )}
-                    </div>
+                    <Label>Escola(s) (opcional)</Label>
                     {isLoadingOptions && !schoolOptions.length ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <MultiSelect
-                        options={schoolOptions.map((o) => ({ id: o.id, name: o.name }))}
-                        selected={selectedFilters.school_ids ?? []}
-                        onChange={handleSchoolIdsChange}
-                        placeholder="Escolas (vazio = todas)"
-                        mode="popover"
-                        className="w-full"
-                      />
+                  <MultiSelect
+                    options={schoolOptions.map((o) => ({ id: o.id, name: o.name }))}
+                    selected={selectedFilters.school_ids ?? []}
+                    onChange={handleSchoolIdsChange}
+                    placeholder="Escolas (vazio = todas)"
+                    allLabel="Todas"
+                    mode="popover"
+                    className="w-full"
+                  />
                     )}
                   </div>
                 )}
 
                 {(selectedFilters.school_ids?.length ?? 0) > 0 && (
                   <div className="space-y-2 border-l-2 border-primary/30 pl-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <Label>Série(s) (opcional)</Label>
-                      {gradeOptions.length > 0 && (
-                        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleGradeIdsChange(gradeOptions.map((o) => o.id))}>
-                          Todas
-                        </Button>
-                      )}
-                    </div>
+                    <Label>Série(s) (opcional)</Label>
                     {isLoadingOptions && !gradeOptions.length ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <MultiSelect
-                        options={gradeOptions.map((o) => ({ id: o.id, name: o.name }))}
-                        selected={selectedFilters.grade_ids ?? []}
-                        onChange={handleGradeIdsChange}
-                        placeholder="Séries (vazio = todas)"
-                        mode="popover"
-                        className="w-full"
-                      />
+                  <MultiSelect
+                    options={gradeOptions.map((o) => ({ id: o.id, name: o.name }))}
+                    selected={selectedFilters.grade_ids ?? []}
+                    onChange={handleGradeIdsChange}
+                    placeholder="Séries (vazio = todas)"
+                    allLabel="Todas"
+                    mode="popover"
+                    className="w-full"
+                  />
                     )}
                   </div>
                 )}
 
                 {(selectedFilters.grade_ids?.length ?? 0) > 0 && (
                   <div className="space-y-2 border-l-2 border-primary/30 pl-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <Label>Turma(s) (opcional)</Label>
-                      {classOptions.length > 0 && (
-                        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleClassIdsChange(classOptions.map((o) => o.id))}>
-                          Todas
-                        </Button>
-                      )}
-                    </div>
+                    <Label>Turma(s) (opcional)</Label>
                     {isLoadingOptions && !classOptions.length ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <MultiSelect
-                        options={classOptions.map((o) => ({ id: o.id, name: o.name }))}
-                        selected={selectedFilters.class_ids ?? []}
-                        onChange={handleClassIdsChange}
-                        placeholder="Turmas (vazio = todas)"
-                        mode="popover"
-                        className="w-full"
-                      />
+                  <MultiSelect
+                    options={classOptions.map((o) => ({ id: o.id, name: o.name }))}
+                    selected={selectedFilters.class_ids ?? []}
+                    onChange={handleClassIdsChange}
+                    placeholder="Turmas (vazio = todas)"
+                    allLabel="Todas"
+                    mode="popover"
+                    className="w-full"
+                  />
                     )}
                   </div>
                 )}
