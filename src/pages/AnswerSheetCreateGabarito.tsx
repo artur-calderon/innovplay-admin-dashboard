@@ -83,6 +83,25 @@ export default function AnswerSheetCreateGabarito() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdGabarito, setCreatedGabarito] = useState<{ gabarito_id: string; title: string; num_questions: number } | null>(null);
 
+  const handleResetForm = () => {
+    setCreatedGabarito(null);
+    setStep(0);
+    setTitle('');
+    setInstitution('');
+    setNumQuestions(0);
+    setCorrectAnswers({});
+    setUseGlobalAlternatives(true);
+    setGlobalAlternatives(['A', 'B', 'C', 'D']);
+    setQuestionsOptions({});
+    setEditingQuestionAlternatives(null);
+    setBlocksByDiscipline([]);
+    setSkillSubjectId('');
+    setSkillGradeId('');
+    setQuestionSkills({});
+    setEditingQuestionSkills(null);
+    setSkillCodeCache({});
+  };
+
   // Carregar disciplinas (para blocos)
   useEffect(() => {
     const fetchDisciplines = async () => {
@@ -385,10 +404,8 @@ export default function AnswerSheetCreateGabarito() {
           subject_id: b.subject_id,
           subject_name: b.subject_name,
           questions_count: b.questions_count,
-          // Backend trata start/end como índices 0-based e end inclusive.
-          // A UI deste form é 1-based (Q1..Qn), então subtraímos 1 aqui.
-          start_question: b.start_question - 1,
-          end_question: b.end_question - 1,
+          start_question: b.start_question,
+          end_question: b.end_question,
         })),
       };
     } else {
@@ -432,8 +449,8 @@ export default function AnswerSheetCreateGabarito() {
             <Button asChild variant="default">
               <Link to="/app/cartao-resposta/gerar">Gerar cartões</Link>
             </Button>
-            <Button asChild variant="outline">
-              <Link to="/app/cartao-resposta/cadastrar">Cadastrar outro</Link>
+            <Button variant="outline" onClick={handleResetForm}>
+              Cadastrar outro
             </Button>
           </CardContent>
         </Card>
@@ -715,7 +732,7 @@ export default function AnswerSheetCreateGabarito() {
                               <SelectValue placeholder={isLoadingDisciplines ? 'Carregando...' : '+ Adicionar outra disciplina'} />
                             </SelectTrigger>
                             <SelectContent>
-                              {disciplines.filter((d) => !blocksByDiscipline.some((b) => b.subject_id === d.id)).map((d) => (
+                              {disciplines.map((d) => (
                                 <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                               ))}
                             </SelectContent>

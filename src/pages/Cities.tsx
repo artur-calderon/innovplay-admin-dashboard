@@ -103,7 +103,8 @@ export default function Cities() {
       .then((response) => {
         let citiesData = response.data;
         if (user.role !== "admin") {
-          citiesData = citiesData.filter((city: City) => city.id === user.tenant_id);
+          const userCityId = user.tenant_id || user.city_id;
+          citiesData = citiesData.filter((city: City) => city.id === userCityId);
         }
         setCities(citiesData);
       })
@@ -120,7 +121,7 @@ export default function Cities() {
 
   useEffect(() => {
     fetchCities();
-  }, [user.role, user.tenant_id]);
+  }, [user.role, user.tenant_id, user.city_id]);
 
   useEffect(() => {
     if (!usersModalOpen || !usersModalCity) return;

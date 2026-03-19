@@ -56,6 +56,7 @@ export interface User {
     email: string,
     role: string,
     tenant_id: string,
+    city_id?: string,
     registration: string,
     created_at: string,
     updated_at: string,
