@@ -12,7 +12,7 @@ import { useAuth } from "@/context/authContext";
 import { FilterComponentAnalise } from "@/components/filters";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext } from "@/utils/userHierarchy";
 import { cn } from "@/lib/utils";
-import { getProficiencyLevel, getProficiencyLevelColor, getProficiencyLevelLabel, getProficiencyTableInfo, ProficiencyLevel } from "@/components/evaluations/results/utils/proficiency";
+import { getProficiencyLevelLabel, getProficiencyTableInfo, ProficiencyLevel } from "@/components/evaluations/results/utils/proficiency";
 import { descricoesNiveisEscolares, aplicarSerieNaDescricao, type NivelDescricao } from "./relatorioEscolarDescricoesNiveis";
 
 const normalizeText = (value: string) =>
@@ -356,6 +356,83 @@ const getProficiencyLevelColorRelatorio = (level: ProficiencyLevel): string => {
   };
 
   return colors[level] || colors.abaixo_do_basico;
+};
+
+type BackendDistribuicaoClassificacaoGeral = {
+  abaixo_do_basico: number;
+  basico: number;
+  adequado: number;
+  avancado: number;
+};
+
+const backendNivelProficienciaToLevel = (label?: string): ProficiencyLevel | null => {
+  if (!label || typeof label !== 'string') return null;
+  const normalized = normalizeText(label);
+  if (!normalized) return null;
+
+  if (normalized.includes('abaixo')) return 'abaixo_do_basico';
+  // "abaixo do básico" também contém "basico", então checar "abaixo" primeiro.
+  if (normalized.includes('basico')) return 'basico';
+  if (normalized.includes('adequado')) return 'adequado';
+  if (normalized.includes('avancado')) return 'avancado';
+
+  return null;
+};
+
+const getBestProficiencyLevelFromBackendDistribution = (
+  dist?: BackendDistribuicaoClassificacaoGeral | null
+): ProficiencyLevel | null => {
+  if (!dist) return null;
+
+  const candidates: Array<{ level: ProficiencyLevel; value: number }> = [
+    { level: 'abaixo_do_basico', value: Number(dist.abaixo_do_basico ?? 0) },
+    { level: 'basico', value: Number(dist.basico ?? 0) },
+    { level: 'adequado', value: Number(dist.adequado ?? 0) },
+    { level: 'avancado', value: Number(dist.avancado ?? 0) },
+  ];
+
+  const max = Math.max(...candidates.map((c) => c.value));
+  if (max <= 0) return null;
+
+  // Empate: favorecer o nível mais alto
+  const ordered: ProficiencyLevel[] = ['abaixo_do_basico', 'basico', 'adequado', 'avancado'];
+  let best: ProficiencyLevel | null = null;
+  for (const level of ordered) {
+    const found = candidates.find((c) => c.level === level);
+    if (!found) continue;
+    if (found.value === max) best = level;
+  }
+
+  return best;
+};
+
+const getBestProficiencyLevelFromBackendLabels = (labels: string[]): ProficiencyLevel | null => {
+  if (!labels?.length) return null;
+
+  const counts: Record<ProficiencyLevel, number> = {
+    abaixo_do_basico: 0,
+    basico: 0,
+    adequado: 0,
+    avancado: 0,
+  };
+
+  for (const l of labels) {
+    const level = backendNivelProficienciaToLevel(l);
+    if (!level) continue;
+    counts[level] += 1;
+  }
+
+  const max = Math.max(...Object.values(counts));
+  if (max <= 0) return null;
+
+  // Empate: favorecer o nível mais alto
+  const ordered: ProficiencyLevel[] = ['abaixo_do_basico', 'basico', 'adequado', 'avancado'];
+  let best: ProficiencyLevel | null = null;
+  for (const level of ordered) {
+    if (counts[level] === max) best = level;
+  }
+
+  return best;
 };
 
 // Função para obter cor da disciplina
@@ -1018,7 +1095,36 @@ export default function RelatorioEscolar() {
       const sortedRows = Array.from(turmasMap.values()).sort((a, b) => 
         a.turma.localeCompare(b.turma, 'pt-BR', { sensitivity: 'base' })
       );
-      
+
+      // ✅ Coerência com a página de Resultados:
+      // A classificação (Básico/Adequado/etc) vem do backend em `nivel_proficiencia_geral`.
+      // Aqui a gente escolhe o nível mais frequente por item (escola/turma).
+      if (apiData?.tabela_detalhada?.geral?.alunos?.length) {
+        const labelsByKey = new Map<string, string[]>();
+        apiData.tabela_detalhada.geral.alunos.forEach((aluno) => {
+          if (!aluno.id) return;
+          const key = isMunicipalView
+            ? aluno.escola?.trim()
+            : aluno.turma?.trim();
+          if (!key) return;
+
+          const list = labelsByKey.get(key) ?? [];
+          if (aluno.nivel_proficiencia_geral) {
+            list.push(aluno.nivel_proficiencia_geral);
+            labelsByKey.set(key, list);
+          }
+        });
+
+        sortedRows.forEach((row) => {
+          const backendLabels = labelsByKey.get(row.turma) ?? [];
+          const level = getBestProficiencyLevelFromBackendLabels(backendLabels);
+          if (!level) return;
+          row.proficiencyLevel = level;
+          row.proficiencyLabel = getProficiencyLevelLabel(level);
+          row.proficiencyColor = getProficiencyLevelColorRelatorio(level);
+        });
+      }
+
       return sortedRows;
     }
     
@@ -1153,6 +1259,29 @@ export default function RelatorioEscolar() {
       });
 
       const sortedRows = rows.sort((a, b) => a.turma.localeCompare(b.turma, 'pt-BR', { sensitivity: 'base' }));
+      if (apiData?.tabela_detalhada?.geral?.alunos?.length) {
+        const labelsByKey = new Map<string, string[]>();
+        apiData.tabela_detalhada.geral.alunos.forEach((aluno) => {
+          if (!aluno.id) return;
+          const key = isMunicipalView ? aluno.escola?.trim() : aluno.turma?.trim();
+          if (!key) return;
+          const list = labelsByKey.get(key) ?? [];
+          if (aluno.nivel_proficiencia_geral) {
+            list.push(aluno.nivel_proficiencia_geral);
+            labelsByKey.set(key, list);
+          }
+        });
+
+        sortedRows.forEach((row) => {
+          const backendLabels = labelsByKey.get(row.turma) ?? [];
+          const level = getBestProficiencyLevelFromBackendLabels(backendLabels);
+          if (!level) return;
+          row.proficiencyLevel = level;
+          row.proficiencyLabel = getProficiencyLevelLabel(level);
+          row.proficiencyColor = getProficiencyLevelColorRelatorio(level);
+        });
+      }
+
       return sortedRows;
     }
 
@@ -1278,6 +1407,29 @@ export default function RelatorioEscolar() {
     });
 
     const sortedRows = rows.sort((a, b) => a.turma.localeCompare(b.turma, 'pt-BR', { sensitivity: 'base' }));
+    if (apiData?.tabela_detalhada?.geral?.alunos?.length) {
+      const labelsByKey = new Map<string, string[]>();
+      apiData.tabela_detalhada.geral.alunos.forEach((aluno) => {
+        if (!aluno.id) return;
+        const key = isMunicipalView ? aluno.escola?.trim() : aluno.turma?.trim();
+        if (!key) return;
+        const list = labelsByKey.get(key) ?? [];
+        if (aluno.nivel_proficiencia_geral) {
+          list.push(aluno.nivel_proficiencia_geral);
+          labelsByKey.set(key, list);
+        }
+      });
+
+      sortedRows.forEach((row) => {
+        const backendLabels = labelsByKey.get(row.turma) ?? [];
+        const level = getBestProficiencyLevelFromBackendLabels(backendLabels);
+        if (!level) return;
+        row.proficiencyLevel = level;
+        row.proficiencyLabel = getProficiencyLevelLabel(level);
+        row.proficiencyColor = getProficiencyLevelColorRelatorio(level);
+      });
+    }
+
     return sortedRows;
   }, [apiData, isMunicipalView, relatorioCompleto]);
 
@@ -1363,10 +1515,9 @@ export default function RelatorioEscolar() {
       const totalAvaliados = totalGeral?.avaliados ?? null;
       const comparecimentoGeral = totalGeral?.percentual ?? null;
       
-      const serieRef = classSummaryRows[0]?.serie;
-      const proficiencyLevel = proficienciaMedia !== null && proficienciaMedia !== undefined
-        ? getProficiencyLevelForAggregatedData(proficienciaMedia, serieRef, curso)
-        : null;
+      const proficiencyLevel = getBestProficiencyLevelFromBackendDistribution(
+        apiData.estatisticas_gerais?.distribuicao_classificacao_geral
+      );
       
       return {
         mediaLP: portuguesNota ?? null,
@@ -1420,12 +1571,9 @@ export default function RelatorioEscolar() {
       return null;
     }
 
-    const serieRef = classSummaryRows[0]?.serie;
-
-    const proficiencyLevel =
-      proficienciaMedia !== null && proficienciaMedia !== undefined
-        ? getProficiencyLevelForAggregatedData(proficienciaMedia, serieRef, curso)
-        : null;
+    const proficiencyLevel = getBestProficiencyLevelFromBackendDistribution(
+      apiData.estatisticas_gerais?.distribuicao_classificacao_geral
+    );
 
     // Usar dados de estatisticas_gerais
     const totalMatriculados = apiData.estatisticas_gerais?.total_alunos ?? null;
@@ -1461,6 +1609,11 @@ export default function RelatorioEscolar() {
       });
       return;
     }
+
+    const evaluationTitle =
+      apiData?.opcoes_proximos_filtros?.avaliacoes?.find((a) => a.id === selectedEvaluation)?.titulo ||
+      apiData?.estatisticas_gerais?.nome ||
+      "AVALIAÇÃO";
     
     if (userHierarchyContext && user?.role) {
       const validation = validateReportAccess(
@@ -1691,7 +1844,7 @@ export default function RelatorioEscolar() {
         doc.text('AVALIAÇÃO:', leftColX, cardY);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...COLORS.textDark); // Valores em preto
-        const avaliacaoText = apiData.estatisticas_gerais?.nome || 'N/A';
+        const avaliacaoText = evaluationTitle || 'N/A';
         const avaliacaoLines = doc.splitTextToSize(avaliacaoText, cardWidth - labelWidth - 24);
         doc.text(avaliacaoLines, leftColX + labelWidth, cardY);
         cardY += Math.max(5, avaliacaoLines.length * 4);
@@ -1778,8 +1931,7 @@ export default function RelatorioEscolar() {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
         doc.setTextColor(107, 114, 128);
-        const evaluationName = apiData.estatisticas_gerais?.nome || 'AVALIAÇÃO';
-        doc.text(evaluationName.toUpperCase(), centerX, y, { align: 'center', maxWidth: pageWidth - 2 * margin });
+        doc.text(evaluationTitle.toUpperCase(), centerX, y, { align: 'center', maxWidth: pageWidth - 2 * margin });
         y += 10;
 
         return y;
@@ -2337,7 +2489,7 @@ export default function RelatorioEscolar() {
       }
 
       // Salvar PDF
-      const evaluationName = apiData.estatisticas_gerais?.nome || "relatorio_escolar";
+      const evaluationName = evaluationTitle || "relatorio_escolar";
       const scopeLabel = isMunicipalView
         ? `municipio_${selectedMunicipality !== "all" ? selectedMunicipality : "todos"}`
         : `escola_${selectedSchoolInfo?.name || selectedSchool || "selecionada"}`;

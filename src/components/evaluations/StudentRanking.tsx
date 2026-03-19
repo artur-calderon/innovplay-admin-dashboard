@@ -175,7 +175,7 @@ export function StudentRanking({
                         <div className="flex items-center gap-2">
                           <Star className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                           <span className="font-medium">Proficiência:</span>
-                          <span className="font-semibold text-foreground">{student.proficiencia || 0}</span>
+                          <span className="font-semibold text-foreground">{Number(student.proficiencia || 0).toFixed(1)}</span>
                         </div>
                         {showCoins && student.moedas_ganhas !== undefined && (
                           <div className="flex items-center gap-2">
