@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
@@ -231,11 +232,9 @@ export default function ProfessorEvaluations() {
                     <h4 className="font-medium text-sm truncate text-foreground">
                       {evaluation.title}
                     </h4>
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
                       {evaluation.subject && (
-                        <span className="text-xs text-muted-foreground">
-                          {evaluation.subject}
-                        </span>
+                        <DisciplineTag name={evaluation.subject} className="text-xs font-normal" />
                       )}
                       {evaluation.class_name && (
                         <>

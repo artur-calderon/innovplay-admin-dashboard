@@ -15,6 +15,7 @@ interface PerformanceCardProps {
   };
   isLoading?: boolean;
   className?: string;
+  delay?: number; // ms: usado para "stagger" de animações de entrada
 }
 
 export default function PerformanceCard({ 
@@ -25,7 +26,8 @@ export default function PerformanceCard({
   performance = 'average',
   trend,
   isLoading = false,
-  className 
+  className,
+  delay = 0
 }: PerformanceCardProps) {
   
   // Cores roxas habituais do sistema (sem mistura de amarelo/azul)
@@ -42,7 +44,10 @@ export default function PerformanceCard({
 
   if (isLoading) {
     return (
-      <div className={cn("p-4 rounded-lg border", className)}>
+      <div
+        className={cn("p-4 rounded-lg border animate-fade-in-up", className)}
+        style={delay > 0 ? { animationDelay: `${delay}ms` } : undefined}
+      >
         <div className="flex items-center gap-3">
           <Skeleton className="h-10 w-10 rounded-lg" />
           <div className="flex-1 space-y-2">
@@ -57,11 +62,11 @@ export default function PerformanceCard({
 
   return (
     <div className={cn(
-      "p-4 rounded-lg border transition-all duration-200 hover:shadow-md",
+      "p-4 rounded-lg border transition-all duration-200 hover:shadow-md animate-fade-in-up",
       colors.bg,
       colors.border,
       className
-    )}>
+    )} style={delay > 0 ? { animationDelay: `${delay}ms` } : undefined}>
       <div className="flex items-center gap-3">
         {/* Ícone */}
         <div className={cn("p-2 rounded-lg", colors.bg)}>

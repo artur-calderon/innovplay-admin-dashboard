@@ -917,6 +917,13 @@ export default function RelatorioEscolar() {
     // ✅ PRIORIDADE: Usar dados do relatório completo se disponível (dados agregados corretos)
     if (relatorioCompleto) {
       const curso = inferirCursoFromApiData(apiData);
+      // Normaliza chaves de turma/escola para evitar divergências por espaços/capitalização.
+      // Isso garante que a classificação vinda de `tabela_detalhada.geral.alunos` sobrescreva corretamente.
+      const turmaKey = (value?: string | null) =>
+        (value ?? '')
+          .trim()
+          .replace(/\s+/g, ' ')
+          .toLowerCase();
       const turmasMap = new Map<string, ClassSummaryRow>();
       
       // ✅ MELHORADO: Verificar se temos dados por_escola ou por_turma
@@ -933,7 +940,8 @@ export default function RelatorioEscolar() {
         // Processar por_turma se disponível
         if (dadosDisciplina.por_turma && dadosDisciplina.por_turma.length > 0) {
           dadosDisciplina.por_turma.forEach(turmaData => {
-            const turmaNome = turmaData.turma;
+            const turmaNome = (turmaData.turma ?? '').trim();
+            if (!turmaNome) return;
             if (!turmasMap.has(turmaNome)) {
               turmasMap.set(turmaNome, {
                 turma: turmaNome,
@@ -965,7 +973,8 @@ export default function RelatorioEscolar() {
         // ✅ NOVO: Processar por_escola se disponível (quando escola está selecionada mas API retorna por escola)
         if (dadosDisciplina.por_escola && dadosDisciplina.por_escola.length > 0 && !hasPorTurma) {
           dadosDisciplina.por_escola.forEach(escolaData => {
-            const escolaNome = escolaData.escola;
+            const escolaNome = (escolaData.escola ?? '').trim();
+            if (!escolaNome) return;
             if (!turmasMap.has(escolaNome)) {
               turmasMap.set(escolaNome, {
                 turma: escolaNome,
@@ -1001,7 +1010,8 @@ export default function RelatorioEscolar() {
         // Processar por_turma se disponível
         if (dadosDisciplina.por_turma && dadosDisciplina.por_turma.length > 0) {
           dadosDisciplina.por_turma.forEach(turmaData => {
-            const turmaNome = turmaData.turma;
+            const turmaNome = (turmaData.turma ?? '').trim();
+            if (!turmaNome) return;
             if (!proficienciasPorItem.has(turmaNome)) {
               proficienciasPorItem.set(turmaNome, []);
             }
@@ -1012,7 +1022,8 @@ export default function RelatorioEscolar() {
         // ✅ NOVO: Processar por_escola se disponível (quando escola está selecionada mas API retorna por escola)
         if (dadosDisciplina.por_escola && dadosDisciplina.por_escola.length > 0 && !hasPorTurma) {
           dadosDisciplina.por_escola.forEach(escolaData => {
-            const escolaNome = escolaData.escola;
+            const escolaNome = (escolaData.escola ?? '').trim();
+            if (!escolaNome) return;
             if (!proficienciasPorItem.has(escolaNome)) {
               proficienciasPorItem.set(escolaNome, []);
             }
@@ -1034,7 +1045,7 @@ export default function RelatorioEscolar() {
         // Tentar por_turma primeiro
         if (relatorioCompleto.proficiencia.por_disciplina['GERAL'].por_turma) {
           relatorioCompleto.proficiencia.por_disciplina['GERAL'].por_turma.forEach(turmaData => {
-            const row = turmasMap.get(turmaData.turma);
+            const row = turmasMap.get((turmaData.turma ?? '').trim());
             if (row && row.proficienciaMedia === undefined) {
               row.proficienciaMedia = turmaData.proficiencia;
             }
@@ -1043,7 +1054,7 @@ export default function RelatorioEscolar() {
         // ✅ NOVO: Tentar por_escola se por_turma não estiver disponível
         if (relatorioCompleto.proficiencia.por_disciplina['GERAL'].por_escola && !hasPorTurma) {
           relatorioCompleto.proficiencia.por_disciplina['GERAL'].por_escola.forEach(escolaData => {
-            const row = turmasMap.get(escolaData.escola);
+            const row = turmasMap.get((escolaData.escola ?? '').trim());
             if (row && row.proficienciaMedia === undefined) {
               row.proficienciaMedia = escolaData.proficiencia ?? escolaData.media;
             }
@@ -1055,7 +1066,7 @@ export default function RelatorioEscolar() {
       // ✅ MELHORADO: Verificar tanto por_turma quanto por_escola
       if (relatorioCompleto.total_alunos.por_turma && relatorioCompleto.total_alunos.por_turma.length > 0) {
         relatorioCompleto.total_alunos.por_turma.forEach(turmaAlunos => {
-          const row = turmasMap.get(turmaAlunos.turma);
+          const row = turmasMap.get((turmaAlunos.turma ?? '').trim());
           if (row) {
             row.matriculados = turmaAlunos.matriculados;
             row.avaliados = turmaAlunos.avaliados;
@@ -1065,7 +1076,7 @@ export default function RelatorioEscolar() {
       } else if (relatorioCompleto.total_alunos.por_escola && relatorioCompleto.total_alunos.por_escola.length > 0) {
         // ✅ NOVO: Processar por_escola se por_turma não estiver disponível
         relatorioCompleto.total_alunos.por_escola.forEach(escolaAlunos => {
-          const row = turmasMap.get(escolaAlunos.escola);
+          const row = turmasMap.get((escolaAlunos.escola ?? '').trim());
           if (row) {
             row.matriculados = escolaAlunos.matriculados;
             row.avaliados = escolaAlunos.avaliados;
@@ -1103,9 +1114,7 @@ export default function RelatorioEscolar() {
         const labelsByKey = new Map<string, string[]>();
         apiData.tabela_detalhada.geral.alunos.forEach((aluno) => {
           if (!aluno.id) return;
-          const key = isMunicipalView
-            ? aluno.escola?.trim()
-            : aluno.turma?.trim();
+          const key = turmaKey(isMunicipalView ? aluno.escola : aluno.turma);
           if (!key) return;
 
           const list = labelsByKey.get(key) ?? [];
@@ -1116,7 +1125,7 @@ export default function RelatorioEscolar() {
         });
 
         sortedRows.forEach((row) => {
-          const backendLabels = labelsByKey.get(row.turma) ?? [];
+          const backendLabels = labelsByKey.get(turmaKey(row.turma)) ?? [];
           const level = getBestProficiencyLevelFromBackendLabels(backendLabels);
           if (!level) return;
           row.proficiencyLevel = level;
@@ -1516,7 +1525,7 @@ export default function RelatorioEscolar() {
       const comparecimentoGeral = totalGeral?.percentual ?? null;
       
       const proficiencyLevel = getBestProficiencyLevelFromBackendDistribution(
-        apiData.estatisticas_gerais?.distribuicao_classificacao_geral
+        apiData?.estatisticas_gerais?.distribuicao_classificacao_geral
       );
       
       return {

@@ -8,6 +8,7 @@ import {
   getPositionTextColor,
   formatCoins 
 } from "@/utils/coins";
+import { getReportProficiencyTagClass } from "@/utils/reportTagStyles";
 
 interface Student {
   id: string;
@@ -88,23 +89,14 @@ export function StudentRanking({
     }
   };
 
-  // Função para obter cor do badge do nível
-  const getLevelBadgeColor = (classificacao: string) => {
-    switch (classificacao) {
-      case 'Avançado': return 'bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400 border-green-200 dark:border-green-800';
-      case 'Adequado': return 'bg-blue-100 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400 border-blue-200 dark:border-blue-800';
-      case 'Básico': return 'bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800';
-      case 'Abaixo do Básico': return 'bg-red-100 dark:bg-red-950/30 text-red-800 dark:text-red-400 border-red-200 dark:border-red-800';
-      default: return 'bg-muted text-foreground border-border';
-    }
-  };
+  // A cor/estilo do badge de proficiência segue o padrão do Relatório Escolar.
 
   return (
     <div className="space-y-6">
       {/* Ranking dos Melhores Alunos */}
       <Card className="border border-border shadow-lg">
         <CardHeader className="bg-gradient-to-r from-purple-700 to-purple-600 text-white">
-          <CardTitle className="flex items-center justify-between">
+          <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-4">
               <div className="flex items-center justify-center w-12 h-12 bg-white/10 rounded-lg">
                 <Trophy className="h-6 w-6 text-purple-200" />
@@ -136,12 +128,14 @@ export function StudentRanking({
                 return (
                   <div
                     key={`${student.id ?? 'r'}-${index}`}
-                    className={`flex items-center gap-4 p-4 rounded-lg border transition-all duration-200 hover:shadow-md ${getRankingBackground(position)}`}
+                    className={`flex flex-col sm:flex-row sm:items-center items-start gap-4 p-4 rounded-lg border transition-all duration-200 hover:shadow-md ${getRankingBackground(position)}`}
                   >
                     {/* Posição no ranking */}
-                    <div className={`flex items-center justify-center w-12 h-12 rounded-lg bg-card border-2 ${
-                      position <= 3 ? 'border-yellow-400 dark:border-yellow-600' : 'border-border'
-                    } shadow-sm`}>
+                    <div
+                      className={`flex items-center justify-center w-12 h-12 rounded-lg bg-card border-2 ${
+                        position <= 3 ? 'border-yellow-400 dark:border-yellow-600' : 'border-border'
+                      } shadow-sm self-center sm:self-auto`}
+                    >
                       {getRankingIcon(position)}
                     </div>
 
@@ -190,10 +184,10 @@ export function StudentRanking({
                     </div>
 
                     {/* Nível de proficiência e moedas */}
-                    <div className="flex flex-col items-end gap-2">
+                    <div className="flex flex-col items-start sm:items-end gap-2">
                       <div className="flex flex-col items-end gap-1">
                         <div className="text-xs text-muted-foreground font-medium">Nível</div>
-                        <Badge className={`${getLevelBadgeColor(student.classificacao)} text-xs font-medium border`}>
+                        <Badge className={getReportProficiencyTagClass(student.classificacao)}>
                           {student.classificacao}
                         </Badge>
                       </div>

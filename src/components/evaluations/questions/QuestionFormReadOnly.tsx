@@ -8,6 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -185,7 +186,10 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
                 <h3 className="text-lg font-semibold">{data.title}</h3>
                 <div className="flex flex-wrap gap-2">
                     <Badge variant="outline">{selectedGrade?.name || data.grade}</Badge>
-                    <Badge variant="outline">{selectedSubject?.name || data.subjectId}</Badge>
+                    <DisciplineTag
+                      subjectId={selectedSubject?.id || data.subjectId}
+                      name={selectedSubject?.name || data.subjectId}
+                    />
                     <Badge variant="outline">{data.difficulty}</Badge>
                     <Badge variant="outline">Valor: {data.value}</Badge>
                     {selectedSkills.map(skill => (

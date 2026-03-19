@@ -473,7 +473,7 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
           {!isCollapsed && (
             <span
               className={cn(
-                "truncate text-xs md:text-sm font-medium transition-all duration-300 ease-out",
+                "line-clamp-2 whitespace-normal break-words text-xs md:text-sm font-medium transition-all duration-300 ease-out",
                 isActive ? "text-[var(--sidebar-link-active-text)]" : "text-[var(--sidebar-text)] group-hover:text-[var(--sidebar-link-active-text)]"
               )}
             >
@@ -548,11 +548,9 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
                   {linkContent}
                 </button>
               </TooltipTrigger>
-              {isCollapsed && (
-                <TooltipContent side="right">
-                  <p>{link.label}</p>
-                </TooltipContent>
-              )}
+              <TooltipContent side="right">
+                <p>{link.label}</p>
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : link.children && link.children.length > 0 ? (
@@ -563,11 +561,9 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
                   {linkContent}
                 </button>
               </TooltipTrigger>
-              {isCollapsed && (
-                <TooltipContent side="right">
-                  <p>{link.label}</p>
-                </TooltipContent>
-              )}
+              <TooltipContent side="right">
+                <p>{link.label}</p>
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : (
@@ -578,11 +574,9 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
                   {linkContent}
                 </Link>
               </TooltipTrigger>
-              {isCollapsed && (
-                <TooltipContent side="right">
-                  <p>{link.label}</p>
-                </TooltipContent>
-              )}
+              <TooltipContent side="right">
+                <p>{link.label}</p>
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
@@ -627,7 +621,7 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
           ? "w-screen" 
           : isCollapsed 
             ? "w-16 md:w-16 lg:w-16" 
-            : "w-64 md:w-72 lg:w-64"
+            : "w-64 md:w-72 lg:w-72"
       )}
       style={{
         ...themeStyles,
@@ -657,11 +651,11 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
                 aria-label="Expandir menu"
               >
                 <img
-                  width="90px"
-                  height="90px"
+                  width="40px"
+                  height="40px"
                   src="/AFIRME-PLAY-ico.png"
                   alt="Afirme Play"
-                  className="object-contain transition-transform duration-300"
+                  className="object-contain transition-transform duration-300 w-10 h-10"
                 />
               </button>
             ) : (
@@ -673,11 +667,9 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
                   )}
                 >
                   <img
-                    width={isMobile ? "40px" : "48px"}
-                    height={isMobile ? "40px" : "48px"}
                     src="/AFIRME-PLAY-ico.png"
                     alt="Afirme Play"
-                    className="object-contain transition-transform duration-300 ease-out hover:scale-110"
+                    className="object-contain transition-transform duration-300 ease-out hover:scale-110 w-8 h-8 md:w-9 md:h-9"
                   />
                 </div>
 

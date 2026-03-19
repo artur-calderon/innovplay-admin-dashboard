@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { Progress } from "@/components/ui/progress";
 import {
   Download,
@@ -755,9 +756,7 @@ export default function AnaliseAvaliacoes() {
                              <th className="border border-border px-4 py-2 text-left font-medium">
                                {renderMode === 'escola' ? 'Escola' : 'Turma'}
                              </th>
-                             <th className="border border-border px-4 py-2 text-center font-medium bg-red-100 dark:bg-red-950/30">Abaixo do Básico</th>
-                             <th className="border border-border px-4 py-2 text-center font-medium bg-yellow-100 dark:bg-yellow-950/30">Básico</th>
-                             <th className="border border-border px-4 py-2 text-center font-medium bg-blue-100 dark:bg-blue-950/30">Adequado</th>
+                             <th className="border border-border px-4 py-2 text-center font-medium bg-green-100 dark:bg-green-950/30">Adequado</th>
                              <th className="border border-border px-4 py-2 text-center font-medium bg-green-100 dark:bg-green-950/30">Avançado</th>
                              <th className="border border-border px-4 py-2 text-center font-medium">Total</th>
                            </tr>
@@ -769,7 +768,7 @@ export default function AnaliseAvaliacoes() {
                                    <td className="border border-border px-4 py-2 font-medium">{escola.escola}</td>
                                    <td className="border border-border px-4 py-2 text-center bg-red-50 dark:bg-red-950/20">{escola.abaixo_do_basico}</td>
                                    <td className="border border-border px-4 py-2 text-center bg-yellow-50 dark:bg-yellow-950/20">{escola.basico}</td>
-                                   <td className="border border-border px-4 py-2 text-center bg-blue-50 dark:bg-blue-950/20">{escola.adequado}</td>
+                                   <td className="border border-border px-4 py-2 text-center bg-green-50 dark:bg-green-950/20">{escola.adequado}</td>
                                    <td className="border border-border px-4 py-2 text-center bg-green-50 dark:bg-green-950/20">{escola.avancado}</td>
                                    <td className="border border-border px-4 py-2 text-center font-medium">{escola.total}</td>
                                  </tr>
@@ -779,12 +778,12 @@ export default function AnaliseAvaliacoes() {
                                    <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
                                    <td className="border border-border px-4 py-2 text-center bg-red-50 dark:bg-red-950/20">{turma.abaixo_do_basico}</td>
                                    <td className="border border-border px-4 py-2 text-center bg-yellow-50 dark:bg-yellow-950/20">{turma.basico}</td>
-                                   <td className="border border-border px-4 py-2 text-center bg-blue-50 dark:bg-blue-950/20">{turma.adequado}</td>
+                                   <td className="border border-border px-4 py-2 text-center bg-green-50 dark:bg-green-950/20">{turma.adequado}</td>
                                    <td className="border border-border px-4 py-2 text-center bg-green-50 dark:bg-green-950/20">{turma.avancado}</td>
                                    <td className="border border-border px-4 py-2 text-center font-medium">{turma.total}</td>
                                  </tr>
                                ))}
-                           <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">
+                           <tr className="bg-muted dark:bg-muted/50 font-semibold">
                              <td className="border border-border px-4 py-2">TOTAL GERAL</td>
                              <td className="border border-border px-4 py-2 text-center bg-red-100 dark:bg-red-950/30">
                                {dadosDisciplina.total_geral?.abaixo_do_basico ?? dadosDisciplina.geral?.abaixo_do_basico ?? 
@@ -797,6 +796,8 @@ export default function AnaliseAvaliacoes() {
                                 (renderMode === 'escola' 
                                   ? dadosDisciplina.por_escola?.reduce((sum, e) => sum + (e.basico || 0), 0) ?? 0
                                   : dadosDisciplina.por_turma?.reduce((sum, t) => sum + (t.basico || 0), 0) ?? 0)}
+                             </td>
+                             <td className="border border-border px-4 py-2 text-center bg-green-100 dark:bg-green-950/30">
                              </td>
                              <td className="border border-border px-4 py-2 text-center bg-blue-100 dark:bg-blue-950/30">
                                {dadosDisciplina.total_geral?.adequado ?? dadosDisciplina.geral?.adequado ?? 

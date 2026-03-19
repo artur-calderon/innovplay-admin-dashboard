@@ -17,6 +17,7 @@ interface ModernStatCardProps {
   isLoading?: boolean;
   className?: string;
   onClick?: () => void;
+  delay?: number; // ms: usado para "stagger" de animações de entrada
 }
 
 export default function ModernStatCard({ 
@@ -28,7 +29,8 @@ export default function ModernStatCard({
   performance = 'average',
   isLoading = false,
   className,
-  onClick
+  onClick,
+  delay = 0
 }: ModernStatCardProps) {
   
   // Cores roxas habituais do sistema (sem mistura de amarelo/azul)
@@ -46,7 +48,10 @@ export default function ModernStatCard({
 
   if (isLoading) {
     return (
-      <AnimatedCard className={cn("p-4 rounded-lg border bg-card", className)}>
+      <AnimatedCard
+        className={cn("p-4 rounded-lg border bg-card animate-fade-in-up", className)}
+        delay={delay}
+      >
         <div className="flex items-center gap-3">
           <Skeleton className="h-10 w-10 rounded-lg" />
           <div className="flex-1 space-y-2">
@@ -62,13 +67,14 @@ export default function ModernStatCard({
   return (
     <AnimatedCard 
       className={cn(
-        "p-4 rounded-lg border bg-card cursor-pointer transition-all duration-200",
+        "p-4 rounded-lg border bg-card cursor-pointer transition-all duration-200 animate-fade-in-up",
         colors.borderColor,
         colors.hoverBg,
         onClick && "hover:shadow-md",
         className
       )}
       onClick={onClick}
+      delay={delay}
     >
       <div className="flex items-center gap-3">
         {/* Ícone */}

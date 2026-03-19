@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Copy, HelpCircle, BookOpen } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, Copy, HelpCircle, BookOpen } from "lucide-react";
 import { Question } from "@/components/evaluations/types";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
@@ -13,7 +13,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import QuestionPreview from "@/components/evaluations/questions/QuestionPreview";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -382,6 +381,113 @@ const QuestionsPage = () => {
     const startIndex = (currentPage - 1) * pageSize;
     return filteredAndSortedQuestions.slice(startIndex, startIndex + pageSize);
   }, [filteredAndSortedQuestions, currentPage, pageSize]);
+
+  // --- Filtros com opções somente do que existe ---
+  // Objetivo: evitar mostrar disciplinas/séries/tipos que não aparecem em nenhuma questão carregada.
+  const availableSubjectIds = useMemo(() => {
+    return new Set(
+      questions
+        .map((q) => q.subject?.id)
+        .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+    );
+  }, [questions]);
+
+  const availableGradeIds = useMemo(() => {
+    return new Set(
+      questions
+        .map((q) => q.grade?.id)
+        .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+    );
+  }, [questions]);
+
+  const availableTypes = useMemo(() => {
+    return new Set(
+      questions
+        .map((q) => q.type)
+        .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+    );
+  }, [questions]);
+
+  const availableDifficulties = useMemo(() => {
+    return new Set(
+      questions
+        .map((q) => q.difficulty)
+        .filter((d): d is string => typeof d === "string" && d.trim().length > 0)
+    );
+  }, [questions]);
+
+  const restrictFilterOptions = questions.length > 0;
+
+  const questionSubjectOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const q of questions) {
+      const sid = q.subject?.id;
+      const sname = q.subject?.name;
+      if (typeof sid === "string" && sid.trim() && typeof sname === "string" && sname.trim()) {
+        map.set(sid, sname);
+      }
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [questions]);
+
+  const questionGradeOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const q of questions) {
+      const gid = q.grade?.id;
+      const gname = q.grade?.name;
+      if (typeof gid === "string" && gid.trim() && typeof gname === "string" && gname.trim()) {
+        map.set(gid, gname);
+      }
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [questions]);
+
+  const subjectOptions = useMemo(() => {
+    if (!restrictFilterOptions) return subjects;
+    // Se a API `/subjects` ainda não carregou, deriva das próprias questões para não “sumir” com opções.
+    if (subjects.length === 0) return questionSubjectOptions;
+    return subjects.filter((s) => availableSubjectIds.has(s.id));
+  }, [restrictFilterOptions, subjects, availableSubjectIds]);
+
+  const gradeOptions = useMemo(() => {
+    if (!restrictFilterOptions) return grades;
+    // Se a API `/grades/` ainda não carregou, deriva das próprias questões para não “sumir” com opções.
+    if (grades.length === 0) return questionGradeOptions;
+    return grades.filter((g) => availableGradeIds.has(g.id));
+  }, [restrictFilterOptions, grades, availableGradeIds]);
+
+  const typeOptions = useMemo(() => {
+    if (!restrictFilterOptions) return QUESTION_TYPES;
+    return QUESTION_TYPES.filter((t) => availableTypes.has(t.value));
+  }, [restrictFilterOptions, availableTypes]);
+
+  const difficultyOptions = useMemo(() => {
+    if (!restrictFilterOptions) return DIFFICULTIES;
+    return DIFFICULTIES.filter((d) => availableDifficulties.has(d));
+  }, [restrictFilterOptions, availableDifficulties]);
+
+  // Se o usuário tinha um filtro, mas ele deixa de existir no dataset carregado, volta para "all".
+  useEffect(() => {
+    if (!restrictFilterOptions) return;
+    setFilters((prev) => {
+      const next = { ...prev };
+      if (next.subject !== "all" && !availableSubjectIds.has(next.subject)) next.subject = "all";
+      if (next.grade !== "all" && !availableGradeIds.has(next.grade)) next.grade = "all";
+      if (next.type !== "all" && !availableTypes.has(next.type)) next.type = "all";
+      if (next.difficulty !== "all" && !availableDifficulties.has(next.difficulty)) next.difficulty = "all";
+      return next;
+    });
+  }, [
+    restrictFilterOptions,
+    availableSubjectIds,
+    availableGradeIds,
+    availableTypes,
+    availableDifficulties,
+  ]);
 
   // Definir filtro inicial para professores (removido - permite que professores escolham entre Minhas e Todas)
   // useEffect(() => {
@@ -854,6 +960,17 @@ const QuestionsPage = () => {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
+  const hasActiveQuestionFilters = Object.values(filters).some((v) => v !== "all");
+
+  const clearQuestionFilters = () => {
+    setFilters({
+      subject: "all",
+      difficulty: "all",
+      grade: "all",
+      type: "all",
+    });
+  };
+
   const handleDelete = async () => {
     if (!deleteQuestionId) return;
 
@@ -1152,62 +1269,92 @@ const QuestionsPage = () => {
   };
 
   const FiltersContent = () => (
-    <div className="space-y-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       <div>
-        <label className="text-sm font-medium mb-1 block">Disciplina</label>
-        <Select onValueChange={(value) => handleFilterChange('subject', value)} value={filters.subject}>
+        <label className="text-sm font-medium mb-1 block text-muted-foreground">
+          Disciplina
+        </label>
+        <Select
+          onValueChange={(value) => handleFilterChange("subject", value)}
+          value={filters.subject}
+        >
           <SelectTrigger className="h-9">
             <SelectValue placeholder="Todas as Disciplinas" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as Disciplinas</SelectItem>
-            {subjects.map((subject) => (
-              <SelectItem key={subject.id} value={subject.id}>{subject.name}</SelectItem>
+            {subjectOptions.map((subject) => (
+              <SelectItem key={subject.id} value={subject.id}>
+                {subject.name}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
 
       <div>
-        <label className="text-sm font-medium mb-1 block">Série</label>
-        <Select onValueChange={(value) => handleFilterChange('grade', value)} value={filters.grade}>
+        <label className="text-sm font-medium mb-1 block text-muted-foreground">
+          Série
+        </label>
+        <Select
+          onValueChange={(value) => handleFilterChange("grade", value)}
+          value={filters.grade}
+        >
           <SelectTrigger className="h-9">
             <SelectValue placeholder="Todas as Séries" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as Séries</SelectItem>
-            {grades.map((grade) => (
-              <SelectItem key={grade.id} value={grade.id}>{grade.name}</SelectItem>
+            {gradeOptions.map((grade) => (
+              <SelectItem key={grade.id} value={grade.id}>
+                {grade.name}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
 
       <div>
-        <label className="text-sm font-medium mb-1 block">Dificuldade</label>
-        <Select onValueChange={(value) => handleFilterChange('difficulty', value)} value={filters.difficulty}>
+        <label className="text-sm font-medium mb-1 block text-muted-foreground">
+          Dificuldade
+        </label>
+        <Select
+          onValueChange={(value) =>
+            handleFilterChange("difficulty", value)
+          }
+          value={filters.difficulty}
+        >
           <SelectTrigger className="h-9">
             <SelectValue placeholder="Todas as Dificuldades" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as Dificuldades</SelectItem>
-            {DIFFICULTIES.map((difficulty) => (
-              <SelectItem key={difficulty} value={difficulty}>{difficulty}</SelectItem>
+            {difficultyOptions.map((difficulty) => (
+              <SelectItem key={difficulty} value={difficulty}>
+                {difficulty}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
 
       <div>
-        <label className="text-sm font-medium mb-1 block">Tipo</label>
-        <Select onValueChange={(value) => handleFilterChange('type', value)} value={filters.type}>
+        <label className="text-sm font-medium mb-1 block text-muted-foreground">
+          Tipo
+        </label>
+        <Select
+          onValueChange={(value) => handleFilterChange("type", value)}
+          value={filters.type}
+        >
           <SelectTrigger className="h-9">
             <SelectValue placeholder="Todos os Tipos" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os Tipos</SelectItem>
-            {QUESTION_TYPES.map((type) => (
-              <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
+            {typeOptions.map((type) => (
+              <SelectItem key={type.value} value={type.value}>
+                {type.label}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -1465,23 +1612,23 @@ const QuestionsPage = () => {
               </Select>
             </div>
           </div>
+        </div>
 
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="outline" size="sm" className="w-full xs:w-auto">
-                <Filter className="h-4 w-4 mr-2" />
-                Filtros
+        {/* Filters inline (sem abrir aba lateral) */}
+        <div className="mt-2">
+          <FiltersContent />
+          {hasActiveQuestionFilters && (
+            <div className="flex justify-end mt-3">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
+                onClick={clearQuestionFilters}
+              >
+                Limpar filtros
               </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-full sm:w-80">
-              <SheetHeader>
-                <SheetTitle>Filtros</SheetTitle>
-              </SheetHeader>
-              <div className="mt-6">
-                <FiltersContent />
-              </div>
-            </SheetContent>
-          </Sheet>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1712,7 +1859,14 @@ const QuestionsPage = () => {
               Visualização detalhada da questão selecionada, incluindo enunciado, alternativas e resolução quando disponível.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-4 sm:px-6 sm:pb-6 view-question-scroll">
+          <div
+            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-4 sm:px-6 sm:pb-6 view-question-scroll
+              [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent
+              [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full
+              dark:[&::-webkit-scrollbar-thumb]:bg-gray-700
+              hover:[&::-webkit-scrollbar-thumb]:bg-gray-400 dark:hover:[&::-webkit-scrollbar-thumb]:bg-gray-600
+              scroll-smooth"
+          >
             {viewQuestion && <QuestionPreview question={viewQuestion} />}
           </div>
         </DialogContent>

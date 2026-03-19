@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -776,9 +777,11 @@ export function QuestionBank({
                               
                               <div className="flex flex-wrap gap-1 md:gap-2">
                                 {question.subject && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    {question.subject.name}
-                                  </Badge>
+                                  <DisciplineTag
+                                    subjectId={question.subject.id}
+                                    name={question.subject.name}
+                                    className="text-xs"
+                                  />
                                 )}
                                 {question.grade && (
                                   <Badge variant="outline" className="text-xs">

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -562,7 +563,12 @@ export default function TakeEvaluation() {
                             </CardTitle>
                             <div className="text-center space-y-2">
                                 <h2 className="text-xl font-semibold">{competitionState?.competitionName ?? testData?.title}</h2>
-                                {testData?.subject && <Badge variant="outline">{testData.subject.name}</Badge>}
+                                {testData?.subject && (
+                                  <DisciplineTag
+                                    subjectId={testData.subject.id ?? ''}
+                                    name={testData.subject.name}
+                                  />
+                                )}
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-6">

@@ -705,18 +705,22 @@ export default function Turmas({ embedded = false }: TurmasProps) {
         </div>
       )}
       {embedded && (
-        <div className="flex justify-between items-center flex-wrap gap-2">
-          <CreateClassForm
-            showSchoolSelector={true}
-            availableSchools={schools}
-            onSuccess={() => {
-              fetchTurmas();
-            }}
-          />
-        </div>
+        <></>
       )}
 
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center space-x-2 flex-wrap gap-2">
+        {embedded && (
+          <div className="flex-shrink-0">
+            <CreateClassForm
+              showSchoolSelector={false}
+              schoolId={activeSchoolTab || schools[0]?.id}
+              availableSchools={schools}
+              onSuccess={() => {
+                fetchTurmas();
+              }}
+            />
+          </div>
+        )}
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -737,10 +741,12 @@ export default function Turmas({ embedded = false }: TurmasProps) {
                 <TabsTrigger
                   key={school.id}
                   value={school.id}
-                  className="flex items-center gap-2 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-border rounded-md transition-all"
+                  className="flex items-start gap-2 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-border rounded-md transition-all"
                 >
                   <Building className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate max-w-[140px] sm:max-w-[200px]">{school.name}</span>
+                  <span className="whitespace-normal break-words max-w-[140px] sm:max-w-[200px] leading-tight">
+                    {school.name}
+                  </span>
                   <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
                     {count}
                   </Badge>

@@ -5,6 +5,7 @@ import { api } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { DisciplineTag } from "@/components/ui/discipline-tag"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -549,9 +550,9 @@ export default function StudentResultsPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <BookOpen className="h-4 w-4 text-muted-foreground" />
-                      <span className="line-clamp-1">{item.disciplina}</span>
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      <BookOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <DisciplineTag name={item.disciplina} className="max-w-full truncate text-xs" />
                     </div>
                     <div className="flex items-center gap-2">
                       <Calendar className="h-4 w-4 text-muted-foreground" />
