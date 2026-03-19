@@ -61,7 +61,8 @@ export default function AnswerSheetCreateGabarito() {
   const MAX_BLOCKS = 4;
   const MIN_QUESTIONS_PER_BLOCK = 1;
   const MAX_QUESTIONS_PER_BLOCK = 22;
-  const MAX_QUESTIONS_TOTAL = 22;
+  // Máximo permitido: 22 questões por bloco, até 4 blocos => 88 questões no total
+  const MAX_QUESTIONS_TOTAL = MAX_QUESTIONS_PER_BLOCK * MAX_BLOCKS;
   const [disciplines, setDisciplines] = useState<{ id: string; name: string }[]>([]);
   const [isLoadingDisciplines, setIsLoadingDisciplines] = useState(false);
   const [blocksByDiscipline, setBlocksByDiscipline] = useState<BlockByDiscipline[]>([]);
@@ -349,9 +350,21 @@ export default function AnswerSheetCreateGabarito() {
       return ans && opts.includes(ans);
     });
   const hasDisciplineBlocks = blocksByDiscipline.length >= MIN_BLOCKS;
-  const canProceedStep2 = blocksByDiscipline.length === 0 || validateDisciplineBlocks().isValid;
+  const canSkipBlocks = numQuestions <= MAX_QUESTIONS_PER_BLOCK;
+  const canProceedStep2 =
+    blocksByDiscipline.length === 0 ? canSkipBlocks : validateDisciplineBlocks().isValid;
 
   const handleSubmit = async () => {
+    // Se passar de 22 questões, é obrigatório distribuir em blocos (até 4 blocos / 22 por bloco).
+    if (!hasDisciplineBlocks && numQuestions > MAX_QUESTIONS_PER_BLOCK) {
+      toast({
+        title: 'Limite',
+        description: `Para ${numQuestions} questões, configure blocos (máx. ${MAX_BLOCKS} blocos x ${MAX_QUESTIONS_PER_BLOCK} questões).`,
+        variant: 'destructive'
+      });
+      return;
+    }
+
     const question_skills: Record<string, string[]> = {};
     for (let n = 1; n <= numQuestions; n++) question_skills[String(n)] = questionSkills[n] ?? [];
 
@@ -372,8 +385,10 @@ export default function AnswerSheetCreateGabarito() {
           subject_id: b.subject_id,
           subject_name: b.subject_name,
           questions_count: b.questions_count,
-          start_question: b.start_question,
-          end_question: b.end_question,
+          // Backend trata start/end como índices 0-based e end inclusive.
+          // A UI deste form é 1-based (Q1..Qn), então subtraímos 1 aqui.
+          start_question: b.start_question - 1,
+          end_question: b.end_question - 1,
         })),
       };
     } else {
