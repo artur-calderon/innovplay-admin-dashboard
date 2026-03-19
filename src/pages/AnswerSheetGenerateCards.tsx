@@ -24,9 +24,20 @@ import {
   School,
   Users,
   Trash2,
+  ChevronRight,
+  AlertTriangle,
 } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { api } from '@/lib/api';
-import { Gabarito } from '@/types/answer-sheet';
+import {
+  formatGenerationScopeSummary,
+  generationCanDownload,
+  generationClassLabelsFromSnapshot,
+  gabaritoDownloadLoadingKey,
+  resolveGenerationDownloadUrl,
+} from '@/lib/gabarito-list-helpers';
+import { Gabarito, GabaritosResponse } from '@/types/answer-sheet';
 
 type FilterLevel = 'state' | 'city' | 'school' | 'grade' | 'class';
 
@@ -44,20 +55,155 @@ interface SelectedFilters {
   class_ids?: string[];
 }
 
+/** GET /answer-sheets/jobs/{job_id}/status — alinhado à prova física */
+interface JobStatusClassError {
+  student_id?: string;
+  student_name?: string;
+  error: string;
+}
+interface JobStatusClass {
+  class_id: string;
+  class_name: string;
+  school_name: string;
+  status: string;
+  total_students: number;
+  completed: number;
+  successful: number;
+  failed: number;
+  errors: JobStatusClassError[];
+}
+interface JobStatusSummary {
+  total_classes: number;
+  completed_classes: number;
+  successful_classes: number;
+  failed_classes: number;
+  total_students: number;
+  completed_students: number;
+  successful_students: number;
+  failed_students: number;
+  zip_minio_url?: string | null;
+  can_download: boolean;
+}
+interface JobStatusResult {
+  classes_generated?: number;
+  total_students?: number;
+  successful_classes?: number;
+  failed_classes?: number;
+  scope_type?: string;
+  minio_url?: string;
+  can_download?: boolean;
+  download_url?: string;
+}
+interface JobStatusErrorItem {
+  class_id?: string;
+  class_name?: string;
+  school_name?: string;
+  student_id?: string;
+  student_name?: string;
+  error: string;
+}
 interface JobStatusResponse {
   job_id: string;
   gabarito_id: string;
+  task_id?: string;
   status: 'processing' | 'completed' | 'failed';
+  message?: string;
   progress?: { current: number; total: number; percentage: number };
-  result?: {
-    classes_generated?: number;
-    total_students?: number;
-    minio_url?: string;
-    download_url?: string;
-    scope_type?: string;
-  };
+  result?: JobStatusResult;
+  summary?: JobStatusSummary | null;
+  classes?: JobStatusClass[];
+  errors?: JobStatusErrorItem[] | null;
   tasks?: Array<{ class_id: string; class_name: string; status: string }>;
   error?: string;
+}
+
+/** GET /answer-sheets/gabaritos/<id>/generation-jobs */
+interface GenerationJobSummary {
+  job_id: string;
+  gabarito_id: string;
+  status: string;
+  scope_type?: string;
+  total?: number;
+  completed?: number;
+  successful?: number;
+  failed?: number;
+  progress_current?: number;
+  progress_percentage?: number;
+  created_at?: string;
+  completed_at?: string | null;
+  total_students_generated?: number | null;
+  classes_generated?: number | null;
+  polling_url?: string;
+}
+interface GenerationJobsResponse {
+  gabarito_id: string;
+  last_generation_job_id: string | null;
+  jobs: GenerationJobSummary[];
+}
+
+function statusPathForJob(job: GenerationJobSummary, jobIdFallback: string): string {
+  const p = job.polling_url;
+  if (p && p.length > 0) {
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+  return `/answer-sheets/jobs/${jobIdFallback}/status`;
+}
+
+function mapPostTasksToClasses(
+  tasks?: Array<{ class_id: string; class_name: string; status: string }>
+): JobStatusClass[] {
+  if (!tasks?.length) return [];
+  return tasks.map((t) => ({
+    class_id: t.class_id,
+    class_name: t.class_name,
+    school_name: '',
+    status: t.status,
+    total_students: 0,
+    completed: 0,
+    successful: 0,
+    failed: 0,
+    errors: [],
+  }));
+}
+
+function classStatusLabel(status: string) {
+  switch (status) {
+    case 'pending':
+      return 'Aguardando';
+    case 'processing':
+      return 'Processando';
+    case 'completed':
+      return 'Concluída';
+    case 'completed_with_errors':
+      return 'Concluída com erros';
+    case 'failed':
+      return 'Falhou';
+    default:
+      return status;
+  }
+}
+
+function classStatusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+  switch (status) {
+    case 'processing':
+      return 'default';
+    case 'completed':
+      return 'default';
+    case 'completed_with_errors':
+    case 'failed':
+      return 'destructive';
+    case 'pending':
+    default:
+      return 'secondary';
+  }
+}
+
+function formatJobFailureMessage(d: JobStatusResponse): string {
+  const fromErrors =
+    Array.isArray(d.errors) && d.errors.length > 0
+      ? d.errors.map((e) => e.error).filter(Boolean).join(' · ')
+      : '';
+  return fromErrors || d.message || d.error || 'Erro ao gerar cartões.';
 }
 
 function normalizeOptions(raw: unknown): FilterOption[] {
@@ -89,6 +235,12 @@ function normalizeOptions(raw: unknown): FilterOption[] {
 export default function AnswerSheetGenerateCards() {
   const { toast } = useToast();
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  type ProcessJobStatusFn = (
+    d: JobStatusResponse,
+    options?: { silentToast?: boolean }
+  ) => Promise<'processing' | 'completed' | 'failed'>;
+  const processJobStatusDataRef = useRef<ProcessJobStatusFn | null>(null);
+  const startJobPollingRef = useRef<((statusPath: string, options?: { silentToast?: boolean }) => void) | null>(null);
 
   // Abas
   const [activeTab, setActiveTab] = useState<'generate' | 'generated'>('generate');
@@ -124,14 +276,15 @@ export default function AnswerSheetGenerateCards() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobProgress, setJobProgress] = useState({ current: 0, total: 0, percentage: 0 });
-  const [jobTasks, setJobTasks] = useState<Array<{ class_id: string; class_name: string; status: string }>>([]);
+  const [lastJobStatus, setLastJobStatus] = useState<JobStatusResponse | null>(null);
+  const [jobErrorsOpen, setJobErrorsOpen] = useState(true);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [jobError, setJobError] = useState<string | null>(null);
 
   const fetchGabaritos = useCallback(async () => {
     try {
       setIsLoadingGabaritos(true);
-      const res = await api.get('/answer-sheets/gabaritos');
+      const res = await api.get<GabaritosResponse>('/answer-sheets/gabaritos');
       setGabaritos(res.data?.gabaritos ?? []);
     } catch {
       toast({ title: 'Erro', description: 'Não foi possível carregar os gabaritos.', variant: 'destructive' });
@@ -149,10 +302,247 @@ export default function AnswerSheetGenerateCards() {
     if (activeTab === 'generated') fetchGabaritos();
   }, [activeTab, fetchGabaritos]);
 
-  const handleDownloadGabarito = async (gabaritoId: string) => {
+  const processJobStatusData = useCallback(
+    async (d: JobStatusResponse, options?: { silentToast?: boolean }): Promise<'processing' | 'completed' | 'failed'> => {
+      setLastJobStatus(d);
+      if (d.progress) {
+        setJobProgress({
+          current: d.progress.current ?? 0,
+          total: d.progress.total || 1,
+          percentage: d.progress.percentage ?? 0,
+        });
+      }
+
+      if (d.status === 'completed') {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+        setIsGenerating(false);
+        const gabaritoId = d.gabarito_id;
+        const summaryZip = d.summary?.zip_minio_url;
+        const summaryOk = d.summary?.can_download === true;
+        const resultUrl = d.result?.minio_url ?? d.result?.download_url;
+        const resultOk = d.result?.can_download !== false;
+
+        let presignedUrl: string | null = null;
+        if (summaryZip && summaryOk) {
+          presignedUrl = summaryZip;
+        } else if (resultUrl && resultOk) {
+          presignedUrl = resultUrl;
+        } else if (gabaritoId) {
+          try {
+            const downloadRes = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`);
+            presignedUrl = downloadRes.data?.download_url ?? null;
+          } catch {
+            presignedUrl = null;
+          }
+        }
+        setDownloadUrl(presignedUrl);
+        setJobError(null);
+        await fetchGabaritos();
+        if (!options?.silentToast) {
+          toast({
+            title: 'Geração concluída',
+            description: d.message || 'Cartões gerados com sucesso.',
+          });
+        }
+        return 'completed';
+      }
+
+      if (d.status === 'failed') {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+        setIsGenerating(false);
+        const failMsg = formatJobFailureMessage(d);
+        setJobError(failMsg);
+        setDownloadUrl(null);
+        if (!options?.silentToast) {
+          toast({ title: 'Erro na geração', description: failMsg, variant: 'destructive' });
+        }
+        return 'failed';
+      }
+
+      return 'processing';
+    },
+    [fetchGabaritos, toast]
+  );
+
+  const startJobPolling = useCallback(
+    (statusPath: string, options?: { silentToast?: boolean }) => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      pollingRef.current = setInterval(async () => {
+        try {
+          const statusRes = await api.get<JobStatusResponse>(statusPath);
+          await processJobStatusData(statusRes.data, { silentToast: options?.silentToast });
+        } catch (err: unknown) {
+          const status =
+            err && typeof err === 'object' && 'response' in err
+              ? (err as { response?: { status?: number } }).response?.status
+              : undefined;
+          if (status === 404) {
+            if (pollingRef.current) {
+              clearInterval(pollingRef.current);
+              pollingRef.current = null;
+            }
+            setIsGenerating(false);
+            setJobError('Job não encontrado. A geração pode ter expirado. Verifique a lista de cartões.');
+            if (!options?.silentToast) {
+              toast({
+                title: 'Job não encontrado',
+                description: 'Verifique a lista de cartões gerados.',
+                variant: 'destructive',
+              });
+            }
+          }
+        }
+      }, 2000);
+    },
+    [processJobStatusData, toast]
+  );
+
+  processJobStatusDataRef.current = processJobStatusData;
+  startJobPollingRef.current = startJobPolling;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+
+    if (!selectedGabaritoId) {
+      setJobId(null);
+      setLastJobStatus(null);
+      setDownloadUrl(null);
+      setJobError(null);
+      setIsGenerating(false);
+      setJobProgress({ current: 0, total: 0, percentage: 0 });
+      return;
+    }
+
+    (async () => {
+      try {
+        const res = await api.get<GenerationJobsResponse>(
+          `/answer-sheets/gabaritos/${selectedGabaritoId}/generation-jobs`
+        );
+        if (cancelled) return;
+
+        const jobs = res.data?.jobs ?? [];
+        const lastId = res.data?.last_generation_job_id ?? null;
+
+        let targetJob: GenerationJobSummary | null =
+          (lastId ? jobs.find((j) => j.job_id === lastId) ?? null : null) ??
+          jobs.find((j) => j.status === 'processing') ??
+          jobs[0] ??
+          null;
+
+        if (!targetJob && lastId) {
+          targetJob = {
+            job_id: lastId,
+            gabarito_id: selectedGabaritoId,
+            status: 'processing',
+            polling_url: `/answer-sheets/jobs/${lastId}/status`,
+            total: 1,
+            progress_current: 0,
+            progress_percentage: 0,
+          };
+        }
+
+        if (!targetJob) {
+          setJobId(null);
+          setLastJobStatus(null);
+          setDownloadUrl(null);
+          setJobError(null);
+          setIsGenerating(false);
+          setJobProgress({ current: 0, total: 0, percentage: 0 });
+          return;
+        }
+
+        const statusPath = statusPathForJob(targetJob, targetJob.job_id);
+        setJobId(targetJob.job_id);
+        setJobErrorsOpen(true);
+
+        const total = targetJob.total ?? 1;
+        const pct = targetJob.progress_percentage ?? 0;
+        const cur = targetJob.progress_current ?? 0;
+        const listStatus = targetJob.status.toLowerCase();
+        const mappedStatus: JobStatusResponse['status'] =
+          listStatus === 'completed' ? 'completed' : listStatus === 'failed' ? 'failed' : 'processing';
+
+        setJobProgress({
+          current: cur,
+          total: total || 1,
+          percentage: pct,
+        });
+        setLastJobStatus({
+          job_id: targetJob.job_id,
+          gabarito_id: targetJob.gabarito_id ?? selectedGabaritoId,
+          status: mappedStatus,
+          progress: { current: cur, total: total || 1, percentage: pct },
+        });
+        setJobError(null);
+        setDownloadUrl(null);
+
+        const statusRes = await api.get<JobStatusResponse>(statusPath);
+        if (cancelled) return;
+
+        const outcome = await processJobStatusDataRef.current?.(statusRes.data, { silentToast: true });
+        if (cancelled) return;
+
+        if (outcome === 'processing') {
+          setIsGenerating(true);
+          startJobPollingRef.current?.(statusPath, { silentToast: true });
+        }
+      } catch {
+        if (!cancelled) {
+          setJobId(null);
+          setLastJobStatus(null);
+          setDownloadUrl(null);
+          setJobError(null);
+          setIsGenerating(false);
+          setJobProgress({ current: 0, total: 0, percentage: 0 });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [selectedGabaritoId]);
+
+  const handleDownloadGabarito = async (
+    gabaritoId: string,
+    opts?: { generationId?: string; jobId?: string; presignedUrl?: string | null }
+  ) => {
+    const key = gabaritoDownloadLoadingKey(gabaritoId, opts?.generationId);
     try {
-      setDownloadingGabaritoId(gabaritoId);
-      const res = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`);
+      setDownloadingGabaritoId(key);
+      const direct = opts?.presignedUrl?.trim();
+      if (direct) {
+        window.open(direct, '_blank');
+        toast({
+          title: 'Download iniciado',
+          description: 'Abrindo o arquivo em uma nova aba.',
+        });
+        return;
+      }
+      const params: Record<string, string> = {};
+      if (opts?.jobId) params.job_id = opts.jobId;
+      else if (opts?.generationId) params.generation_id = opts.generationId;
+      const res = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`, {
+        params: Object.keys(params).length > 0 ? params : undefined,
+      });
       const data = res.data;
       if (data.download_url) {
         window.open(data.download_url, '_blank');
@@ -176,6 +566,13 @@ export default function AnswerSheetGenerateCards() {
       setDownloadingGabaritoId(null);
     }
   };
+
+  const isDownloadingGabarito = (gabaritoId: string, generationId?: string) =>
+    downloadingGabaritoId === gabaritoDownloadLoadingKey(gabaritoId, generationId);
+
+  const isBusyDownloadingForGabarito = (gabaritoId: string) =>
+    downloadingGabaritoId === gabaritoId ||
+    (downloadingGabaritoId?.startsWith(`${gabaritoId}__`) ?? false);
 
   const handleToggleSelectGabarito = (gabaritoId: string) => {
     setSelectedGabaritos((prev) => {
@@ -418,12 +815,17 @@ export default function AnswerSheetGenerateCards() {
       return;
     }
     try {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
       setIsGenerating(true);
       setJobId(null);
       setDownloadUrl(null);
       setJobError(null);
       setJobProgress({ current: 0, total: 0, percentage: 0 });
-      setJobTasks([]);
+      setLastJobStatus(null);
+      setJobErrorsOpen(true);
 
       const payload: { gabarito_id: string; school_ids?: string[]; grade_ids?: string[]; class_ids?: string[] } = {
         gabarito_id: selectedGabaritoId,
@@ -442,10 +844,18 @@ export default function AnswerSheetGenerateCards() {
 
       const data = res.data;
       setJobId(data.job_id);
-      setJobTasks(data.tasks ?? []);
+      const initialTotal = data.total_classes ?? data.tasks?.length ?? 1;
+      setLastJobStatus({
+        job_id: data.job_id,
+        gabarito_id: selectedGabaritoId,
+        status: 'processing',
+        message: data.note,
+        progress: { current: 0, total: initialTotal, percentage: 0 },
+        classes: mapPostTasksToClasses(data.tasks),
+      });
       setJobProgress({
         current: 0,
-        total: data.total_classes ?? data.tasks?.length ?? 1,
+        total: initialTotal,
         percentage: 0,
       });
 
@@ -454,68 +864,16 @@ export default function AnswerSheetGenerateCards() {
         description: data.note || `Gerando cartões para ${data.total_students ?? 0} alunos.`,
       });
 
-      pollingRef.current = setInterval(async () => {
-        try {
-          const statusRes = await api.get<JobStatusResponse>(`/answer-sheets/jobs/${data.job_id}/status`);
-          const d = statusRes.data;
-
-          if (d.progress) {
-            setJobProgress({
-              current: d.progress.current ?? 0,
-              total: d.progress.total || 1,
-              percentage: d.progress.percentage ?? 0,
-            });
-          }
-          if (d.tasks?.length) setJobTasks(d.tasks);
-
-          if (d.status === 'completed') {
-            if (pollingRef.current) {
-              clearInterval(pollingRef.current);
-              pollingRef.current = null;
-            }
-            setIsGenerating(false);
-            const gabaritoId = d.gabarito_id;
-            if (gabaritoId) {
-              try {
-                const downloadRes = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`);
-                const presignedUrl = downloadRes.data?.download_url ?? null;
-                setDownloadUrl(presignedUrl);
-              } catch {
-                setDownloadUrl(null);
-              }
-            } else {
-              setDownloadUrl(null);
-            }
-            await fetchGabaritos();
-            toast({ title: 'Geração concluída', description: 'Cartões gerados com sucesso.' });
-          }
-
-          if (d.status === 'failed') {
-            if (pollingRef.current) {
-              clearInterval(pollingRef.current);
-              pollingRef.current = null;
-            }
-            setIsGenerating(false);
-            setJobError(d.error || 'Erro ao gerar cartões.');
-            toast({ title: 'Erro na geração', description: d.error, variant: 'destructive' });
-          }
-        } catch (err: unknown) {
-          const status = err && typeof err === 'object' && 'response' in err && (err as { response?: { status?: number } }).response?.status;
-          if (status === 404) {
-            if (pollingRef.current) {
-              clearInterval(pollingRef.current);
-              pollingRef.current = null;
-            }
-            setIsGenerating(false);
-            setJobError('Job não encontrado. A geração pode ter expirado. Verifique a lista de cartões.');
-            toast({
-              title: 'Job não encontrado',
-              description: 'Verifique a lista de cartões gerados.',
-              variant: 'destructive',
-            });
-          }
+      const statusPath = `/answer-sheets/jobs/${data.job_id}/status`;
+      try {
+        const statusRes = await api.get<JobStatusResponse>(statusPath);
+        const outcome = await processJobStatusData(statusRes.data, { silentToast: false });
+        if (outcome === 'processing') {
+          startJobPolling(statusPath, { silentToast: false });
         }
-      }, 2000);
+      } catch {
+        startJobPolling(statusPath, { silentToast: false });
+      }
     } catch (err: unknown) {
       setIsGenerating(false);
       const msg =
@@ -526,14 +884,18 @@ export default function AnswerSheetGenerateCards() {
     }
   };
 
-  useEffect(() => {
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, []);
-
   const selectedGabarito = gabaritos.find((g) => g.id === selectedGabaritoId);
   const canGenerate = selectedGabaritoId && selectedFilters.state && selectedFilters.city && !isGenerating;
+
+  const classesForUi =
+    lastJobStatus?.classes?.length
+      ? lastJobStatus.classes
+      : mapPostTasksToClasses(lastJobStatus?.tasks);
+  const summary = lastJobStatus?.summary;
+  const topErrors = lastJobStatus?.errors ?? [];
+  const jobStatusMessage =
+    lastJobStatus?.message ??
+    (isGenerating ? 'Gerando cartões resposta PDF...' : null);
 
   return (
     <div className="space-y-8 pb-12">
@@ -589,6 +951,9 @@ export default function AnswerSheetGenerateCards() {
                           <span className="font-medium">{g.title}</span>
                           <span className="text-xs text-muted-foreground">
                             {g.num_questions ?? 0} questões · {g.generation_status === 'completed' ? 'Pronto' : 'Pendente'}
+                            {(g.generations_count ?? g.generations?.length ?? 0) > 0
+                              ? ` · ${g.generations_count ?? g.generations?.length} geração(ões)`
+                              : ''}
                           </span>
                         </div>
                       </SelectItem>
@@ -779,7 +1144,7 @@ export default function AnswerSheetGenerateCards() {
             </Button>
           </div>
 
-          {(jobId || downloadUrl || jobError) && (
+          {(jobId || downloadUrl || jobError || lastJobStatus) && (
             <Card className={jobError ? 'border-destructive/50' : 'border-primary/30'}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -792,33 +1157,159 @@ export default function AnswerSheetGenerateCards() {
                   )}
                   {downloadUrl ? 'Geração concluída' : jobError ? 'Erro' : 'Progresso'}
                 </CardTitle>
+                {jobStatusMessage && !jobError && (
+                  <CardDescription className="text-foreground/90 pt-1">{jobStatusMessage}</CardDescription>
+                )}
               </CardHeader>
               <CardContent className="space-y-4">
                 {jobError && (
-                  <p className="text-sm text-destructive">{jobError}</p>
-                )}
-                {isGenerating && (
                   <>
-                    <Progress value={jobProgress.percentage} className="h-2" />
-                    <p className="text-sm text-muted-foreground">
-                      {jobProgress.current} / {jobProgress.total} turmas
-                    </p>
-                    {jobTasks.length > 0 && (
-                      <ul className="text-xs text-muted-foreground space-y-1 max-h-32 overflow-auto">
-                        {jobTasks.map((t) => (
-                          <li key={t.class_id}>{t.class_name} — {t.status}</li>
-                        ))}
-                      </ul>
+                    <p className="text-sm text-destructive">{jobError}</p>
+                    {topErrors.length > 0 && (
+                      <ScrollArea className="h-[120px] rounded-lg border border-destructive/30 bg-destructive/5 p-2">
+                        <ul className="space-y-2 text-sm">
+                          {topErrors.map((err, i) => (
+                            <li key={i} className="rounded bg-background/80 px-2 py-1.5">
+                              <span className="font-medium">
+                                {err.class_name && `${err.class_name} · `}
+                                {err.student_name ? `${err.student_name}: ` : ''}
+                              </span>
+                              <span className="text-muted-foreground text-xs">{err.error}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </ScrollArea>
                     )}
                   </>
+                )}
+                {(isGenerating ||
+                  lastJobStatus?.status === 'completed' ||
+                  lastJobStatus?.status === 'failed') && (
+                  <>
+                    <Progress value={jobProgress.percentage} className="h-2.5" />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{jobProgress.percentage}%</span>
+                      <span>
+                        {jobProgress.current} / {jobProgress.total} turmas
+                      </span>
+                    </div>
+                  </>
+                )}
+                {summary && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">Turmas</p>
+                      <p className="text-lg font-semibold">
+                        {summary.completed_classes}/{summary.total_classes}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">Alunos processados</p>
+                      <p className="text-lg font-semibold">
+                        {summary.completed_students}/{summary.total_students}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">Sucesso</p>
+                      <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+                        {summary.successful_students}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">Falhas</p>
+                      <p className="text-lg font-semibold text-red-600 dark:text-red-400">
+                        {summary.failed_students}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {classesForUi.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">Turmas</p>
+                    <ScrollArea className="h-[180px] rounded-lg border p-2">
+                      <ul className="space-y-1.5">
+                        {classesForUi.map((c) => (
+                          <li
+                            key={c.class_id}
+                            className="flex items-center justify-between gap-2 rounded-md bg-muted/20 px-3 py-2 text-sm"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              {c.status === 'processing' && (
+                                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+                              )}
+                              {c.status === 'completed' && (
+                                <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                              )}
+                              {(c.status === 'completed_with_errors' || c.status === 'failed') && (
+                                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                              )}
+                              {c.status === 'pending' && (
+                                <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                              )}
+                              <span className="font-medium truncate">{c.class_name}</span>
+                              {c.school_name ? (
+                                <span className="text-muted-foreground truncate text-xs hidden sm:inline">
+                                  {c.school_name}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-muted-foreground text-xs">
+                                {c.total_students > 0 ? `${c.completed}/${c.total_students}` : null}
+                              </span>
+                              <Badge variant={classStatusVariant(c.status)} className="text-xs">
+                                {classStatusLabel(c.status)}
+                              </Badge>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </ScrollArea>
+                  </div>
+                )}
+                {topErrors.length > 0 && !jobError && lastJobStatus?.status !== 'failed' && (
+                  <Collapsible open={jobErrorsOpen} onOpenChange={setJobErrorsOpen}>
+                    <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-amber-800 dark:text-amber-200 hover:underline">
+                      <ChevronRight
+                        className={`h-4 w-4 shrink-0 transition-transform duration-200 ${jobErrorsOpen ? 'rotate-90' : ''}`}
+                      />
+                      Avisos / erros parciais ({topErrors.length})
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <ScrollArea className="h-[120px] mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2">
+                        <ul className="space-y-2 text-sm">
+                          {topErrors.map((err, i) => (
+                            <li key={i} className="rounded bg-background/80 px-2 py-1.5">
+                              <span className="font-medium">
+                                {err.class_name && `${err.class_name} · `}
+                                {err.student_name ? `${err.student_name}: ` : ''}
+                              </span>
+                              <span className="text-muted-foreground text-xs">{err.error}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </ScrollArea>
+                    </CollapsibleContent>
+                  </Collapsible>
                 )}
                 {downloadUrl && (
                   <Button asChild>
                     <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
                       <Download className="mr-2 h-4 w-4" />
-                      Baixar cartões
+                      Baixar ZIP
                     </a>
                   </Button>
+                )}
+                {lastJobStatus?.status === 'completed' && !downloadUrl && !jobError && (
+                  <p className="text-sm text-muted-foreground">
+                    O arquivo ainda não está disponível para download direto. Abra a aba &quot;Cartões gerados&quot; e use &quot;Baixar ZIP&quot; quando o gabarito estiver pronto.
+                  </p>
+                )}
+                {isGenerating && lastJobStatus?.status !== 'failed' && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Não feche esta página.
+                  </p>
                 )}
               </CardContent>
             </Card>
@@ -911,7 +1402,15 @@ export default function AnswerSheetGenerateCards() {
                       </div>
                     )}
                   </div>
-                  {gabaritos.map((gabarito) => (
+                  {gabaritos.map((gabarito) => {
+                    const generationsSorted = [...(gabarito.generations ?? [])].sort((a, b) => {
+                      const ta = new Date(a.zip_generated_at ?? a.created_at ?? 0).getTime();
+                      const tb = new Date(b.zip_generated_at ?? b.created_at ?? 0).getTime();
+                      return tb - ta;
+                    });
+                    const hasGenerationsList = generationsSorted.length > 0;
+
+                    return (
                     <Card
                       key={gabarito.id}
                       className={`overflow-hidden transition-shadow ${selectedGabaritos.has(gabarito.id) ? 'ring-2 ring-primary' : ''}`}
@@ -926,7 +1425,14 @@ export default function AnswerSheetGenerateCards() {
                               className="mt-1 shrink-0"
                             />
                             <div className="space-y-3 flex-1 min-w-0">
-                            <h3 className="text-lg font-semibold truncate">{gabarito.title}</h3>
+                            <div className="flex flex-wrap items-baseline gap-2">
+                              <h3 className="text-lg font-semibold truncate">{gabarito.title}</h3>
+                              {hasGenerationsList && (
+                                <Badge variant="outline" className="text-xs font-normal shrink-0">
+                                  {gabarito.generations_count ?? generationsSorted.length} geração(ões)
+                                </Badge>
+                              )}
+                            </div>
                             <div className="flex flex-wrap gap-2 text-sm">
                               {gabarito.generation_status === 'completed' ? (
                                 <Badge variant="default" className="bg-green-600 dark:bg-green-700">
@@ -970,7 +1476,7 @@ export default function AnswerSheetGenerateCards() {
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm text-muted-foreground">
                               <div>
-                                <p className="text-xs text-muted-foreground">Criado em</p>
+                                <p className="text-xs text-muted-foreground">Cartão criado em</p>
                                 <p className="font-medium text-foreground">
                                   {new Date(gabarito.created_at).toLocaleDateString('pt-BR', {
                                     day: '2-digit',
@@ -988,23 +1494,121 @@ export default function AnswerSheetGenerateCards() {
                                 </div>
                               )}
                               <div>
-                                <p className="text-xs text-muted-foreground">Escopo</p>
+                                <p className="text-xs text-muted-foreground">Escopo (cadastro)</p>
                                 <p className="font-medium text-foreground capitalize">
                                   {gabarito.scope_type === 'class' && 'Turma'}
                                   {gabarito.scope_type === 'grade' && 'Série'}
                                   {gabarito.scope_type === 'school' && 'Escola'}
                                   {gabarito.scope_type === 'city' && 'Município'}
+                                  {!gabarito.scope_type && '—'}
                                 </p>
                               </div>
                             </div>
+
+                            {hasGenerationsList && (
+                              <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+                                <p className="text-sm font-medium text-foreground">Gerações de PDF (por escopo)</p>
+                                <ul className="space-y-3">
+                                  {generationsSorted.map((gen) => {
+                                    const canDl = generationCanDownload(gen);
+                                    const genStatus = (gen.status ?? '').toLowerCase();
+                                    const classLabels = generationClassLabelsFromSnapshot(gen);
+                                    return (
+                                      <li
+                                        key={gen.id}
+                                        className="flex flex-col gap-2 rounded-md border bg-background/80 p-3 sm:flex-row sm:items-center sm:justify-between"
+                                      >
+                                        <div className="min-w-0 flex-1 space-y-1">
+                                          <p
+                                            className="text-sm font-medium leading-snug"
+                                            title={classLabels.length > 0 ? classLabels.join(', ') : undefined}
+                                          >
+                                            {formatGenerationScopeSummary(gen)}
+                                          </p>
+                                          {classLabels.length > 4 && (
+                                            <p className="text-xs text-muted-foreground break-words">
+                                              {classLabels.join(' · ')}
+                                            </p>
+                                          )}
+                                          <p className="text-xs text-muted-foreground">
+                                            {(gen.total_students ?? 0)} aluno(s) · {(gen.total_classes ?? 0)} turma(s)
+                                            {(gen.zip_generated_at || gen.created_at) && (
+                                              <>
+                                                {' · '}
+                                                {new Date(gen.zip_generated_at ?? gen.created_at ?? '').toLocaleString('pt-BR', {
+                                                  day: '2-digit',
+                                                  month: '2-digit',
+                                                  year: 'numeric',
+                                                  hour: '2-digit',
+                                                  minute: '2-digit',
+                                                })}
+                                              </>
+                                            )}
+                                          </p>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                                          {genStatus === 'completed' ? (
+                                            <Badge variant="default" className="bg-green-600 dark:bg-green-700 text-xs">
+                                              Concluída
+                                            </Badge>
+                                          ) : genStatus === 'failed' ? (
+                                            <Badge variant="destructive" className="text-xs">
+                                              Falhou
+                                            </Badge>
+                                          ) : (
+                                            <Badge variant="secondary" className="text-xs">
+                                              {gen.status ?? '—'}
+                                            </Badge>
+                                          )}
+                                          <Button
+                                            size="sm"
+                                            onClick={() =>
+                                              handleDownloadGabarito(gabarito.id, {
+                                                generationId: gen.id,
+                                                jobId: gen.job_id,
+                                                presignedUrl: resolveGenerationDownloadUrl(gen),
+                                              })
+                                            }
+                                            disabled={!canDl || isDownloadingGabarito(gabarito.id, gen.id)}
+                                          >
+                                            {isDownloadingGabarito(gabarito.id, gen.id) ? (
+                                              <>
+                                                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                                                Baixando...
+                                              </>
+                                            ) : !canDl ? (
+                                              <>
+                                                <Clock className="h-4 w-4 mr-1" />
+                                                Indisponível
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Download className="h-4 w-4 mr-1" />
+                                                Baixar ZIP
+                                              </>
+                                            )}
+                                          </Button>
+                                        </div>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </div>
+                            )}
                             </div>
                           </div>
                           <div className="flex flex-col gap-2 shrink-0">
+                            {!hasGenerationsList && (
                             <Button
-                              onClick={() => handleDownloadGabarito(gabarito.id)}
-                              disabled={downloadingGabaritoId === gabarito.id || !gabarito.can_download}
+                              onClick={() =>
+                                handleDownloadGabarito(gabarito.id, {
+                                  jobId: gabarito.latest_generation_job_id ?? undefined,
+                                  presignedUrl: gabarito.download_url ?? gabarito.minio_url,
+                                })
+                              }
+                              disabled={!gabarito.can_download || isDownloadingGabarito(gabarito.id)}
                             >
-                              {downloadingGabaritoId === gabarito.id ? (
+                              {isDownloadingGabarito(gabarito.id) ? (
                                 <>
                                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                                   Baixando...
@@ -1021,10 +1625,11 @@ export default function AnswerSheetGenerateCards() {
                                 </>
                               )}
                             </Button>
+                            )}
                             <Button
                               variant="destructive"
                               onClick={() => handleOpenDeleteDialog(gabarito.id)}
-                              disabled={isDeleting || downloadingGabaritoId === gabarito.id}
+                              disabled={isDeleting || isBusyDownloadingForGabarito(gabarito.id)}
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
                               Excluir
@@ -1033,7 +1638,8 @@ export default function AnswerSheetGenerateCards() {
                         </div>
                       </CardContent>
                     </Card>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

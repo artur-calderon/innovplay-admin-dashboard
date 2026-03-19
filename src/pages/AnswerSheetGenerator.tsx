@@ -31,6 +31,13 @@ import {
   MapPin,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import {
+  formatGenerationScopeSummary,
+  generationCanDownload,
+  generationClassLabelsFromSnapshot,
+  gabaritoDownloadLoadingKey,
+  resolveGenerationDownloadUrl,
+} from '@/lib/gabarito-list-helpers';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { AnswerSheetConfig, StudentAnswerSheet, School as SchoolType, Serie, Turma, Estado, Municipio, Gabarito, GabaritosResponse } from '@/types/answer-sheet';
 import SkillsSelector from '@/components/evaluations/questions/SkillsSelector';
@@ -1030,7 +1037,7 @@ export default function AnswerSheetGenerator() {
   const fetchGabaritos = useCallback(async () => {
     try {
       setIsLoadingGabaritos(true);
-      const response = await api.get('/answer-sheets/gabaritos');
+      const response = await api.get<GabaritosResponse>('/answer-sheets/gabaritos');
       setGabaritos(response.data.gabaritos || []);
     } catch (error) {
       toast({
@@ -1072,22 +1079,45 @@ export default function AnswerSheetGenerator() {
     }
   };
 
-  // Download de gabarito - Nova rota que retorna URL pré-assinada
-  const handleDownloadGabarito = async (gabaritoId: string) => {
+  const isDownloadingGabaritoRow = (gabaritoId: string, generationId?: string) =>
+    downloadingGabaritoId === gabaritoDownloadLoadingKey(gabaritoId, generationId);
+
+  const isBusyDownloadingForGabaritoRow = (gabaritoId: string) =>
+    downloadingGabaritoId === gabaritoId ||
+    (downloadingGabaritoId?.startsWith(`${gabaritoId}__`) ?? false);
+
+  // Download de gabarito - Nova rota que retorna URL pré-assinada (opcionalmente por geração)
+  const handleDownloadGabarito = async (
+    gabaritoId: string,
+    opts?: { generationId?: string; jobId?: string; presignedUrl?: string | null }
+  ) => {
     try {
-      setDownloadingGabaritoId(gabaritoId);
+      setDownloadingGabaritoId(gabaritoDownloadLoadingKey(gabaritoId, opts?.generationId));
       setDownloadProgress(0);
-      
-      // Chamar novo endpoint que retorna URL pré-assinada
-      const response = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`);
+
+      const direct = opts?.presignedUrl?.trim();
+      if (direct) {
+        window.open(direct, '_blank');
+        toast({
+          title: '✅ Download iniciado',
+          description: 'Abrindo o arquivo em uma nova aba.',
+        });
+        return;
+      }
+
+      const params: Record<string, string> = {};
+      if (opts?.jobId) params.job_id = opts.jobId;
+      else if (opts?.generationId) params.generation_id = opts.generationId;
+      const response = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`, {
+        params: Object.keys(params).length > 0 ? params : undefined,
+      });
       const data = response.data;
-      
-      // Se retornou uma URL, usar para download direto
+
       if (data.download_url) {
         window.open(data.download_url, '_blank');
-        
+
         toast({
-          title: "✅ Download iniciado",
+          title: '✅ Download iniciado',
           description: `O arquivo está sendo baixado. Link expira em ${data.expires_in || '1 hora'}.`,
         });
       } else {
@@ -2667,7 +2697,15 @@ export default function AnswerSheetGenerator() {
                     </div>
                   )}
                   
-                  {gabaritos.map((gabarito) => (
+                  {gabaritos.map((gabarito) => {
+                    const generationsSorted = [...(gabarito.generations ?? [])].sort((a, b) => {
+                      const ta = new Date(a.zip_generated_at ?? a.created_at ?? 0).getTime();
+                      const tb = new Date(b.zip_generated_at ?? b.created_at ?? 0).getTime();
+                      return tb - ta;
+                    });
+                    const hasGenerationsList = generationsSorted.length > 0;
+
+                    return (
                     <Card 
                       key={gabarito.id} 
                       className={`hover:shadow-md transition-shadow ${
@@ -2685,7 +2723,14 @@ export default function AnswerSheetGenerator() {
                             />
                             <div className="flex-1 space-y-3">
                             <div>
-                              <h3 className="text-lg font-semibold mb-1">{gabarito.title}</h3>
+                              <div className="flex flex-wrap items-baseline gap-2 mb-1">
+                                <h3 className="text-lg font-semibold">{gabarito.title}</h3>
+                                {hasGenerationsList && (
+                                  <Badge variant="outline" className="text-xs font-normal">
+                                    {gabarito.generations_count ?? generationsSorted.length} geração(ões)
+                                  </Badge>
+                                )}
+                              </div>
                               <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
                                 {/* Badge de status */}
                                 {gabarito.generation_status === 'completed' ? (
@@ -2781,16 +2826,113 @@ export default function AnswerSheetGenerator() {
                                 </ul>
                               </div>
                             )}
+
+                            {hasGenerationsList && (
+                              <div className="rounded-lg border bg-muted/30 p-3 space-y-3 mt-3">
+                                <p className="text-sm font-medium text-foreground">Gerações de PDF (por escopo)</p>
+                                <ul className="space-y-3">
+                                  {generationsSorted.map((gen) => {
+                                    const canDl = generationCanDownload(gen);
+                                    const genStatus = (gen.status ?? '').toLowerCase();
+                                    const classLabels = generationClassLabelsFromSnapshot(gen);
+                                    return (
+                                      <li
+                                        key={gen.id}
+                                        className="flex flex-col gap-2 rounded-md border bg-background p-3 sm:flex-row sm:items-center sm:justify-between"
+                                      >
+                                        <div className="min-w-0 flex-1 space-y-1">
+                                          <p
+                                            className="text-sm font-medium leading-snug"
+                                            title={classLabels.length > 0 ? classLabels.join(', ') : undefined}
+                                          >
+                                            {formatGenerationScopeSummary(gen)}
+                                          </p>
+                                          {classLabels.length > 4 && (
+                                            <p className="text-xs text-muted-foreground break-words">
+                                              {classLabels.join(' · ')}
+                                            </p>
+                                          )}
+                                          <p className="text-xs text-muted-foreground">
+                                            {(gen.total_students ?? 0)} aluno(s) · {(gen.total_classes ?? 0)} turma(s)
+                                            {(gen.zip_generated_at || gen.created_at) && (
+                                              <>
+                                                {' · '}
+                                                {new Date(gen.zip_generated_at ?? gen.created_at ?? '').toLocaleString('pt-BR', {
+                                                  day: '2-digit',
+                                                  month: '2-digit',
+                                                  year: 'numeric',
+                                                  hour: '2-digit',
+                                                  minute: '2-digit',
+                                                })}
+                                              </>
+                                            )}
+                                          </p>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                                          {genStatus === 'completed' ? (
+                                            <Badge variant="default" className="bg-green-600 text-xs">
+                                              Concluída
+                                            </Badge>
+                                          ) : genStatus === 'failed' ? (
+                                            <Badge variant="destructive" className="text-xs">
+                                              Falhou
+                                            </Badge>
+                                          ) : (
+                                            <Badge variant="secondary" className="text-xs">
+                                              {gen.status ?? '—'}
+                                            </Badge>
+                                          )}
+                                          <Button
+                                            size="sm"
+                                            onClick={() =>
+                                              handleDownloadGabarito(gabarito.id, {
+                                                generationId: gen.id,
+                                                jobId: gen.job_id,
+                                                presignedUrl: resolveGenerationDownloadUrl(gen),
+                                              })
+                                            }
+                                            disabled={!canDl || isDeleting || isDownloadingGabaritoRow(gabarito.id, gen.id)}
+                                          >
+                                            {isDownloadingGabaritoRow(gabarito.id, gen.id) ? (
+                                              <>
+                                                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                                                Baixando...
+                                              </>
+                                            ) : !canDl ? (
+                                              <>
+                                                <Clock className="h-4 w-4 mr-1" />
+                                                Indisponível
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Download className="h-4 w-4 mr-1" />
+                                                Baixar ZIP
+                                              </>
+                                            )}
+                                          </Button>
+                                        </div>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </div>
+                            )}
                             </div>
                           </div>
                           
                           <div className="flex flex-col gap-2 min-w-[140px]">
+                            {!hasGenerationsList && (
                             <Button
-                              onClick={() => handleDownloadGabarito(gabarito.id)}
-                              disabled={downloadingGabaritoId === gabarito.id || isDeleting || !gabarito.can_download}
+                              onClick={() =>
+                                handleDownloadGabarito(gabarito.id, {
+                                  jobId: gabarito.latest_generation_job_id ?? undefined,
+                                  presignedUrl: gabarito.download_url ?? gabarito.minio_url,
+                                })
+                              }
+                              disabled={!gabarito.can_download || isDeleting || isDownloadingGabaritoRow(gabarito.id)}
                               className="w-full"
                             >
-                              {downloadingGabaritoId === gabarito.id ? (
+                              {isDownloadingGabaritoRow(gabarito.id) ? (
                                 <>
                                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                                   Baixando... {downloadProgress > 0 && `${downloadProgress}%`}
@@ -2807,7 +2949,8 @@ export default function AnswerSheetGenerator() {
                                 </>
                               )}
                             </Button>
-                            {downloadingGabaritoId === gabarito.id && downloadProgress > 0 && (
+                            )}
+                            {isDownloadingGabaritoRow(gabarito.id) && downloadProgress > 0 && (
                               <div className="space-y-1">
                                 <Progress value={downloadProgress} className="h-2" />
                                 <p className="text-xs text-center text-muted-foreground">
@@ -2818,7 +2961,7 @@ export default function AnswerSheetGenerator() {
                             <Button
                               variant="destructive"
                               onClick={() => handleOpenDeleteDialog(gabarito.id)}
-                              disabled={isDeleting || downloadingGabaritoId === gabarito.id}
+                              disabled={isDeleting || isBusyDownloadingForGabaritoRow(gabarito.id)}
                               className="w-full"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
@@ -2828,7 +2971,8 @@ export default function AnswerSheetGenerator() {
                         </div>
                       </CardContent>
                     </Card>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
