@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTagWithChildren } from "@/components/ui/discipline-tag";
 import { Check, X, Loader2, BookOpen, CheckCheck } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -739,10 +740,16 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
                 {selectedSubjects.length > 0 ? (
                   selectedSubjects.map((subjectId) => {
                     const subjectObj = subjects.find((s) => s.id === subjectId);
+                    const subjectLabel = subjectObj?.name || subjectId;
                     return (
-                      <Badge key={subjectId} variant="secondary" className="hover:bg-secondary/80">
+                      <DisciplineTagWithChildren
+                        key={subjectId}
+                        subjectId={subjectId}
+                        subjectName={subjectLabel}
+                        className="hover:opacity-90"
+                      >
                         <BookOpen className="h-3 w-3 mr-1" />
-                        {subjectObj?.name || subjectId}
+                        {subjectLabel}
                         <X 
                           className="ml-1 h-3 w-3 cursor-pointer hover:text-destructive" 
                           onClick={(e) => {
@@ -750,7 +757,7 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
                             handleToggleSubject(subjectId);
                           }} 
                         />
-                      </Badge>
+                      </DisciplineTagWithChildren>
                     );
                   })
                 ) : (

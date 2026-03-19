@@ -201,6 +201,7 @@ const Index = () => {
               : "average"
           }
           isLoading={isLoadingDashboard}
+          delay={0}
         />
         <ModernStatCard
           icon={
@@ -241,6 +242,7 @@ const Index = () => {
               : "average"
           }
           isLoading={isLoadingDashboard}
+          delay={80}
         />
         <ModernStatCard
           icon={<List size={20} className="sm:w-6 sm:h-6" />}
@@ -261,6 +263,7 @@ const Index = () => {
               : "average"
           }
           isLoading={isLoadingDashboard}
+          delay={160}
         />
         <ModernStatCard
           icon={<Gamepad size={20} className="sm:w-6 sm:h-6" />}
@@ -281,6 +284,7 @@ const Index = () => {
               : "average"
           }
           isLoading={isLoadingDashboard}
+          delay={240}
         />
       </div>
 
@@ -304,6 +308,8 @@ const Index = () => {
               ? "good"
               : "average"
           }
+          isLoading={isLoadingDashboard}
+          delay={0}
         />
         <PerformanceCard
           icon={<Headset size={20} className="sm:w-6 sm:h-6" />}
@@ -323,6 +329,8 @@ const Index = () => {
               ? "good"
               : "average"
           }
+          isLoading={isLoadingDashboard}
+          delay={80}
         />
         <PerformanceCard
           icon={<Bell size={20} className="sm:w-6 sm:h-6" />}
@@ -336,6 +344,8 @@ const Index = () => {
           }
           subtitle="Avisos"
           performance="average"
+          isLoading={isLoadingDashboard}
+          delay={160}
         />
         <PerformanceCard
           icon={<Award size={20} className="sm:w-6 sm:h-6" />}
@@ -349,6 +359,8 @@ const Index = () => {
           }
           subtitle="Certificados"
           performance="average"
+          isLoading={isLoadingDashboard}
+          delay={240}
         />
       </div>
 

@@ -6,7 +6,9 @@ import { Pencil, Trash2, ArrowLeft, Eye, Users, BookOpen, FileText, Calendar, Us
 import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { useToast } from "@/hooks/use-toast";
+import { getSubjectColors } from "@/utils/competitionSubjectColors";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { OlimpiadasApiService } from "@/services/olimpiadasApi";
 import {
@@ -50,8 +52,19 @@ interface QuestionsBySubject {
   };
 }
 
-export default function ViewEvaluation() {
-  const { id } = useParams<{ id: string }>();
+interface ViewEvaluationProps {
+  /** Usado quando a avaliação é exibida dentro de um modal (sem rota). */
+  evaluationId?: string;
+  /** Fecha o modal quando definido; caso contrário, usa navegação normal. */
+  onClose?: () => void;
+}
+
+export default function ViewEvaluation({
+  evaluationId,
+  onClose,
+}: ViewEvaluationProps = {}) {
+  const { id: routeId } = useParams<{ id: string }>();
+  const id = evaluationId ?? routeId;
   const navigate = useNavigate();
   const { toast } = useToast();
   const { invalidateAfterCRUD } = useEvaluations();
@@ -266,6 +279,10 @@ export default function ViewEvaluation() {
 
   // Função auxiliar para navegar de volta baseado no tipo
   const navigateBack = () => {
+    if (onClose) {
+      onClose();
+      return;
+    }
     if (isOlimpiada()) {
       navigate("/app/olimpiadas");
     } else {
@@ -361,6 +378,10 @@ export default function ViewEvaluation() {
   };
 
   const handleBack = () => {
+    if (onClose) {
+      onClose();
+      return;
+    }
     navigateBack();
   };
 
@@ -631,6 +652,7 @@ export default function ViewEvaluation() {
   const entityName = isOlimpiadaType ? 'olimpíada' : 'avaliação';
   const entityNameCapitalized = isOlimpiadaType ? 'Olimpíada' : 'Avaliação';
   const entityNamePlural = isOlimpiadaType ? 'Olimpíadas' : 'Avaliações';
+  const isModalView = Boolean(onClose);
 
   if (!evaluation) {
     return (
@@ -666,73 +688,75 @@ export default function ViewEvaluation() {
 
   return (
     <div className="container mx-auto px-2 md:px-4 py-4 md:py-6 space-y-6">
-      {/* Breadcrumb */}
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink onClick={handleBack} className="cursor-pointer">
-              {entityNamePlural}
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{evaluation.title}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/60 pt-4 pb-4">
+        {/* Breadcrumb */}
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink onClick={handleBack} className="cursor-pointer">
+                {entityNamePlural}
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>{evaluation.title}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleBack}
-              className="hidden sm:flex"
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mt-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleBack}
+                className={isModalView ? "flex" : "hidden sm:flex"}
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                {isModalView ? "Sair" : "Voltar"}
+              </Button>
+            </div>
+            <h1 className="text-xl md:text-2xl font-bold dark:text-gray-100">{evaluation.title}</h1>
+            <p className="text-muted-foreground">
+              Visualize os detalhes e questões da {entityName}
+            </p>
+          </div>
+          
+          <div className="flex flex-wrap gap-2">
+            <Button 
+              variant="default" 
+              size="sm" 
+              onClick={handleStartEvaluation}
+              className={isOlimpiadaType 
+                ? "bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white" 
+                : "bg-green-600 hover:bg-green-700 text-white"
+              }
             >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Voltar
+              <Play className="h-4 w-4 mr-2" />
+              {isOlimpiadaType ? 'Aplicar Olimpíada' : 'Aplicar Avaliação'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleEdit}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Editar
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleDelete} 
+              disabled={isDeleting}
+              className="text-red-600 hover:text-red-700"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              {isDeleting ? "Excluindo..." : "Excluir"}
             </Button>
           </div>
-          <h1 className="text-xl md:text-2xl font-bold dark:text-gray-100">{evaluation.title}</h1>
-          <p className="text-muted-foreground">
-            Visualize os detalhes e questões da {entityName}
-          </p>
-        </div>
-        
-        <div className="flex flex-wrap gap-2">
-          <Button 
-            variant="default" 
-            size="sm" 
-            onClick={handleStartEvaluation}
-            className={isOlimpiadaType 
-              ? "bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white" 
-              : "bg-green-600 hover:bg-green-700 text-white"
-            }
-          >
-            <Play className="h-4 w-4 mr-2" />
-            {isOlimpiadaType ? 'Aplicar Olimpíada' : 'Aplicar Avaliação'}
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleEdit}>
-            <Pencil className="h-4 w-4 mr-2" />
-            Editar
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleDelete} 
-            disabled={isDeleting}
-            className="text-red-600 hover:text-red-700"
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            {isDeleting ? "Excluindo..." : "Excluir"}
-          </Button>
         </div>
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
@@ -760,51 +784,6 @@ export default function ViewEvaluation() {
             <p className="text-xs text-muted-foreground">Total de alunos</p>
           </CardContent>
         </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Disciplinas
-            </CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold dark:text-gray-100">{subjectsCount}</div>
-            <p className="text-xs text-muted-foreground">
-              Disciplinas envolvidas
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Municípios
-            </CardTitle>
-            <MapPin className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold dark:text-gray-100">{municipalitiesCount}</div>
-            <p className="text-xs text-muted-foreground">
-              {municipalitiesCount === 1 ? 'Município selecionado' : 'Municípios selecionados'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Escolas
-            </CardTitle>
-            <School className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold dark:text-gray-100">{schoolsCount}</div>
-            <p className="text-xs text-muted-foreground">
-              {schoolsCount === 1 ? 'Escola participante' : 'Escolas participantes'}
-            </p>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Information Cards */}
@@ -830,9 +809,12 @@ export default function ViewEvaluation() {
                     return (
                       <>
                         {subjects.map((subject) => (
-                          <Badge key={subject.id} variant="outline" className="text-xs bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
-                            {subject.name}
-                          </Badge>
+                          <DisciplineTag
+                            key={subject.id}
+                            subjectId={subject.id}
+                            name={subject.name}
+                            className="text-xs"
+                          />
                         ))}
                         {evaluation.subjects_count && evaluation.subjects_count > subjects.length && (
                           <Badge variant="outline" className="text-xs bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-700">
@@ -1047,7 +1029,7 @@ export default function ViewEvaluation() {
             
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">
-                Municípios ({municipalitiesCount})
+                Municípios
               </label>
               <div className="max-h-32 overflow-y-auto application-scroll pr-1">
                 {(evaluation.municipalities && evaluation.municipalities.length > 0) ? (
@@ -1067,7 +1049,7 @@ export default function ViewEvaluation() {
             
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">
-                Escolas ({schoolsCount})
+                Escolas
               </label>
               <div className="max-h-32 overflow-y-auto application-scroll pr-1">
                 {(evaluation.schools && evaluation.schools.length > 0) ? (
@@ -1121,9 +1103,16 @@ export default function ViewEvaluation() {
         ) : (
           Object.entries(questionsBySubject).map(([subjectId, subjectData]) => (
             <Card key={subjectId} className="overflow-hidden">
-              <CardHeader className="bg-gradient-to-r from-blue-50 dark:from-blue-950/30 to-indigo-50 dark:to-indigo-950/30 border-b dark:border-gray-800">
+              <CardHeader
+                className={`border-b dark:border-gray-800 bg-muted/30 dark:bg-muted/20 ${getSubjectColors(subjectData.subject.id, subjectData.subject.name).border} border-l-4 pl-3`}
+              >
                 <CardTitle className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-500 dark:bg-blue-600 text-white rounded-lg flex items-center justify-center">
+                  <div
+                    className={`w-10 h-10 rounded-lg flex items-center justify-center ${getSubjectColors(
+                      subjectData.subject.id,
+                      subjectData.subject.name
+                    ).badge}`}
+                  >
                     <BookOpen className="h-5 w-5" />
                   </div>
                   <div className="flex-1">
@@ -1132,7 +1121,13 @@ export default function ViewEvaluation() {
                       {subjectData.questions.length} questões cadastradas
                     </p>
                   </div>
-                  <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
+                  <Badge
+                    variant="outline"
+                    className={`border-transparent ${getSubjectColors(
+                      subjectData.subject.id,
+                      subjectData.subject.name
+                    ).badge}`}
+                  >
                     {subjectData.questions.length} questões
                   </Badge>
                 </CardTitle>
@@ -1182,17 +1177,34 @@ export default function ViewEvaluation() {
                                     <div key={skillIndex} className="group relative">
                                       <Badge 
                                         variant="outline" 
-                                        className="text-xs bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 font-medium cursor-help hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                                          className={`text-xs border-transparent font-medium cursor-help ${getSubjectColors(
+                                            subjectData.subject.id,
+                                            subjectData.subject.name
+                                          ).badge} transition-colors`}
                                         title={skillDescription || skillCode}
                                       >
                                         {skillCode}
                                         {skillDescription && (
-                                          <span className="ml-1 text-blue-400 dark:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">ℹ️</span>
+                                            <span
+                                              className={`ml-1 ${getSubjectColors(
+                                                subjectData.subject.id,
+                                                subjectData.subject.name
+                                              ).accent} opacity-0 group-hover:opacity-100 transition-opacity`}
+                                            >
+                                              ℹ️
+                                            </span>
                                         )}
                                       </Badge>
                                       {skillDescription && (
                                         <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-10 bg-gray-900 dark:bg-gray-800 text-white dark:text-gray-100 text-xs rounded-lg p-3 max-w-xs shadow-lg border dark:border-gray-700">
-                                          <div className="font-bold text-blue-200 dark:text-blue-300 mb-1">{skillCode}</div>
+                                            <div
+                                              className={`font-bold ${getSubjectColors(
+                                                subjectData.subject.id,
+                                                subjectData.subject.name
+                                              ).accent} mb-1`}
+                                            >
+                                              {skillCode}
+                                            </div>
                                           <div className="leading-relaxed">{skillDescription}</div>
                                           <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900 dark:border-t-gray-800"></div>
                                         </div>
@@ -1214,7 +1226,12 @@ export default function ViewEvaluation() {
                         <div className="bg-gray-50 dark:bg-muted/50 rounded-lg p-4 border-t border-gray-200 dark:border-gray-800">
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                             <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 bg-blue-400 dark:bg-blue-500 rounded-full"></span>
+                              <span
+                                className={`w-2 h-2 rounded-full ${getSubjectColors(
+                                  subjectData.subject.id,
+                                  subjectData.subject.name
+                                ).badge}`}
+                              ></span>
                               <span className="font-medium text-gray-600 dark:text-gray-400">Dificuldade:</span> 
                               <span className="text-gray-700 dark:text-gray-300">{q.difficulty}</span>
                             </div>

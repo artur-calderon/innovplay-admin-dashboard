@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -2379,17 +2380,14 @@ export default function Results() {
                     <div className="text-sm font-medium text-muted-foreground">Disciplinas</div>
                     <div className="font-semibold">
                       {derivedSubjects.length > 0 ? (
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary" className="text-xs">{derivedSubjects[0]}</Badge>
-                          {derivedSubjects.length > 1 && (
-                            <Badge
-                              variant="outline"
+                        <div className="flex flex-wrap items-center gap-2">
+                          {derivedSubjects.map((subject) => (
+                            <DisciplineTag
+                              key={subject}
+                              name={subject}
                               className="text-xs"
-                              title={derivedSubjects.slice(1).join(', ')}
-                            >
-                              +{derivedSubjects.length - 1}
-                            </Badge>
-                          )}
+                            />
+                          ))}
                         </div>
                       ) : (
                         <span className="text-foreground">{evaluationInfo?.disciplina || 'Disciplina não informada'}</span>
@@ -2487,7 +2485,13 @@ export default function Results() {
             <>
               {/* Abas com diferentes visualizações */}
               <Tabs defaultValue="charts" className="w-full">
-                <TabsList className={`grid w-full ${selectedEvaluation !== 'all' ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                <TabsList
+                  className={`grid w-full ${
+                    selectedEvaluation !== 'all'
+                      ? 'grid-cols-2 sm:grid-cols-4'
+                      : 'grid-cols-2 sm:grid-cols-3'
+                  }`}
+                >
                   <TabsTrigger value="charts">Gráficos</TabsTrigger>
                   <TabsTrigger value="tables">Tabelas</TabsTrigger>
                   <TabsTrigger value="statistics">Estatísticas</TabsTrigger>

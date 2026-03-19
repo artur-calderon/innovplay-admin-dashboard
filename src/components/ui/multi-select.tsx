@@ -33,6 +33,12 @@ interface MultiSelectProps {
   onChange: (values: string[]) => void;
   placeholder: string;
   label?: string;
+  /**
+   * Quando definido, adiciona uma opção "allLabel" no topo da lista.
+   * No contexto do projeto, "vazio = todas" também costuma fazer sentido,
+   * mas aqui mantemos o comportamento histórico do botão: selecionar todos os IDs.
+   */
+  allLabel?: string;
   className?: string;
   mode?: 'popover' | 'dialog'; // Novo modo para listas grandes
   maxDisplayItems?: number;
@@ -44,6 +50,7 @@ export function MultiSelect({
   onChange,
   placeholder,
   label,
+  allLabel,
   className,
   mode = 'dialog', // Padrão como dialog para melhor UX
   maxDisplayItems = 3,
@@ -328,6 +335,23 @@ export function MultiSelect({
         <CommandInput placeholder="Buscar..." />
         <CommandList>
           <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
+          {allLabel && options.length > 0 && (
+            <CommandItem
+              value={allLabel}
+              onSelect={() => {
+                // Mantém o comportamento do botão "Todas" no uso atual: selecionar todos os IDs.
+                onChange(options.map((o) => o.id));
+              }}
+            >
+              <Check
+                className={cn(
+                  "mr-2 h-4 w-4",
+                  selected.length === 0 || selected.length === options.length ? "opacity-100" : "opacity-0",
+                )}
+              />
+              <div className="text-sm">{allLabel}</div>
+            </CommandItem>
+          )}
           <CommandGroup className="max-h-64 overflow-auto">
             {filteredOptions.map((option) => (
               <CommandItem

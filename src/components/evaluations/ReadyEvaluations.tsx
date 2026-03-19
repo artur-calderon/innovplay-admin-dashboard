@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, Filter, RefreshCw, Play, MoreVertical, FileText, Download } from "lucide-react";
+import { Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw, Play, MoreVertical, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
@@ -9,13 +9,15 @@ import { convertDateTimeLocalToISO } from "@/utils/date";
 import StartEvaluationModal from "./StartEvaluationModal";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
+import { getSubjectColors } from "@/utils/competitionSubjectColors";
+import { REPORT_TAG_BASE } from "@/utils/reportTagStyles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
-  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -34,9 +36,9 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { useEvaluations, useCache, useEvaluationsManager } from "@/hooks/use-cache";
 import { useAuth } from "@/context/authContext";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ErrorBoundary from "./ErrorBoundary";
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,10 +46,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Evaluation, Subject, Grade, getEvaluationSubjects, getEvaluationSubjectsCount } from "@/types/evaluation-types";
+import { EvaluationsCardGrid } from "./EvaluationsCardGrid";
+import { formatEvaluationQuestionCount } from "./evaluationListUtils";
+import { cn } from "@/lib/utils";
+import ViewEvaluation from "@/pages/ViewEvaluation";
 
 interface ReadyEvaluationsProps {
   onUseEvaluation?: (evaluation: Evaluation) => void;
   showMyEvaluations?: boolean; // true = mostrar apenas minhas avaliações, false = mostrar todas
+  /** default: lista em cards com opção de tabela; transformTab/correctionTab: só cards, foco na ação */
+  variant?: "default" | "transformTab" | "correctionTab";
+  /** Se definido, substitui a navegação para `/app/avaliacao/:id/fisica` (ex.: fluxo embutido na Central). */
+  onNavigateToPhysicalOverride?: (evaluationId: string) => void;
 }
 
 interface PaginationData {
@@ -87,9 +97,11 @@ const SubjectsList = ({ evaluation }: { evaluation: Evaluation }) => {
   if (subjects.length === 1) {
     return (
       <div className="flex flex-wrap gap-1">
-        <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-800">
-          {subjects[0].name}
-        </Badge>
+        <DisciplineTag
+          subjectId={subjects[0].id}
+          name={subjects[0].name}
+          className="text-xs"
+        />
       </div>
     );
   }
@@ -99,13 +111,12 @@ const SubjectsList = ({ evaluation }: { evaluation: Evaluation }) => {
     <div className="flex flex-wrap gap-1 max-w-[150px] sm:max-w-[200px]">
       {/* Mostrar as duas primeiras disciplinas */}
       {subjects.slice(0, 2).map((subject, index) => (
-        <Badge
+        <DisciplineTag
           key={subject.id || index}
-          variant="secondary"
-          className="text-xs bg-blue-100 text-blue-800 font-medium"
-        >
-          {subject.name}
-        </Badge>
+          subjectId={subject.id}
+          name={subject.name}
+          className="text-xs"
+        />
       ))}
 
       {/* Mostrar +n se houver mais de 2 disciplinas */}
@@ -114,7 +125,7 @@ const SubjectsList = ({ evaluation }: { evaluation: Evaluation }) => {
           <TooltipTrigger asChild>
             <Badge
               variant="outline"
-              className="text-xs cursor-help hover:bg-blue-50 border-blue-300 text-blue-700 font-semibold"
+              className="text-xs cursor-help border-blue-300 font-semibold text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950/50"
             >
               +{subjectsCount - 2}
             </Badge>
@@ -123,12 +134,18 @@ const SubjectsList = ({ evaluation }: { evaluation: Evaluation }) => {
             <div className="space-y-2">
               <p className="font-semibold text-sm text-foreground">Outras disciplinas:</p>
               <div className="space-y-1">
-                {subjects.slice(2).map((subject, index) => (
-                  <div key={subject.id || index} className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-blue-500 dark:bg-blue-400 rounded-full"></div>
-                    <span className="text-sm text-foreground">{subject.name}</span>
-                  </div>
-                ))}
+                {subjects.slice(2).map((subject, index) => {
+                  const dotBg = getSubjectColors(subject.id || '', subject.name).border.replace(
+                    /^border-l-/,
+                    'bg-'
+                  );
+                  return (
+                    <div key={subject.id || index} className="flex items-center gap-2">
+                      <div className={cn('h-1.5 w-1.5 shrink-0 rounded-full', dotBg)} />
+                      <span className="text-sm text-foreground">{subject.name}</span>
+                    </div>
+                  );
+                })}
                 {subjectsCount > subjects.length && (
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full"></div>
@@ -173,7 +190,9 @@ const EvaluationsTable = ({
   hasActiveFilters,
   onNavigateToPhysical,
   onExport,
-  isExporting
+  isExporting,
+  layout,
+  variant,
 }: {
   evaluations: Evaluation[];
   pagination: PaginationData | null | undefined;
@@ -201,25 +220,35 @@ const EvaluationsTable = ({
   onNavigateToPhysical: (evaluationId: string) => void;
   onExport: () => void;
   isExporting: boolean;
+  layout: "table" | "cards";
+  variant: "default" | "transformTab" | "correctionTab";
 }) => {
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
+    if (!dateString) return "—";
+    return new Date(dateString).toLocaleDateString("pt-BR");
   };
 
   const getTypeColor = (type: string) => {
     switch (type?.toUpperCase()) {
-      case 'AVALIACAO': return 'bg-blue-100 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400';
-      case 'SIMULADO': return 'bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400';
-      default: return 'bg-muted text-foreground';
+      case "AVALIACAO":
+        return `${REPORT_TAG_BASE} border-transparent border-l-4 border-l-blue-500 bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-900/55 dark:text-blue-200 dark:hover:bg-blue-900/70`;
+      case "SIMULADO":
+        return `${REPORT_TAG_BASE} border-transparent border-l-4 border-l-emerald-500 bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/55 dark:text-green-200 dark:hover:bg-green-900/70`;
+      default:
+        return `${REPORT_TAG_BASE} border-transparent border-l-4 border-l-border bg-muted text-foreground hover:bg-muted/80 dark:bg-muted/60 dark:hover:bg-muted/80`;
     }
   };
 
   const getModelColor = (model: string) => {
     switch (model?.toUpperCase()) {
-      case 'SAEB': return 'bg-purple-100 dark:bg-purple-950/30 text-purple-800 dark:text-purple-400';
-      case 'PROVA': return 'bg-orange-100 dark:bg-orange-950/30 text-orange-800 dark:text-orange-400';
-      case 'AVALIE': return 'bg-cyan-100 dark:bg-cyan-950/30 text-cyan-800 dark:text-cyan-400';
-      default: return 'bg-muted text-foreground';
+      case "SAEB":
+        return `${REPORT_TAG_BASE} border-transparent border-l-4 border-l-violet-500 bg-purple-100 text-purple-800 hover:bg-purple-200 dark:bg-purple-900/55 dark:text-purple-200 dark:hover:bg-purple-900/70`;
+      case "PROVA":
+        return `${REPORT_TAG_BASE} border-transparent border-l-4 border-l-orange-500 bg-orange-100 text-orange-800 hover:bg-orange-200 dark:bg-orange-900/55 dark:text-orange-200 dark:hover:bg-orange-900/70`;
+      case "AVALIE":
+        return `${REPORT_TAG_BASE} border-transparent border-l-4 border-l-cyan-500 bg-cyan-100 text-cyan-800 hover:bg-cyan-200 dark:bg-cyan-900/55 dark:text-cyan-200 dark:hover:bg-cyan-900/70`;
+      default:
+        return `${REPORT_TAG_BASE} border-transparent border-l-4 border-l-border bg-muted text-foreground hover:bg-muted/80 dark:bg-muted/60 dark:hover:bg-muted/80`;
     }
   };
 
@@ -331,11 +360,13 @@ const EvaluationsTable = ({
               Limpar Filtros
             </Button>
           )}
+
+          {/* Sempre renderizar cards (sem toggle de tabela) */}
         </div>
       </div>
 
       {/* Ações em lote */}
-      {selectedIds.length > 0 && (
+      {variant === "default" && selectedIds.length > 0 && (
         <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-950/30 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
           <span className="text-sm text-blue-800 dark:text-blue-400">
             {selectedIds.length}{' '}
@@ -344,15 +375,6 @@ const EvaluationsTable = ({
               : 'avaliações selecionadas'}
           </span>
           <div className="flex gap-2">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={onExport}
-              disabled={isExporting}
-            >
-              <Download className={`h-4 w-4 mr-2 ${isExporting ? 'animate-spin' : ''}`} />
-              {isExporting ? 'Exportando...' : `Exportar Excel (${selectedIds.length})`}
-            </Button>
             <Button
               variant="destructive"
               size="sm"
@@ -365,30 +387,51 @@ const EvaluationsTable = ({
         </div>
       )}
 
-      {/* Tabela de avaliações */}
+      {/* Lista: cards ou tabela */}
       <Card>
-        <CardContent className="p-0">
+        <CardContent className={cn(layout === "cards" ? "p-4 sm:p-6" : "p-0")}>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 px-0">
+            <span className="text-sm font-medium text-foreground">
+              {layout === "cards" ? "Avaliações" : "Lista de avaliações disponíveis"}
+            </span>
+            {!isLoading && (() => {
+              const total = searchTerm
+                ? filteredEvaluations.length
+                : showMyEvaluations
+                  ? evaluations.length
+                  : pagination?.total || 0;
+              return (
+                <span className="text-sm text-muted-foreground">
+                  {new Intl.NumberFormat("pt-BR").format(total)}{" "}
+                  {total === 1 ? "avaliação encontrada" : "avaliações encontradas"}
+                </span>
+              );
+            })()}
+          </div>
+
+          {layout === "cards" ? (
+            <EvaluationsCardGrid
+              evaluations={(currentItems || []) as Evaluation[]}
+              isLoading={isLoading}
+              selectedIds={selectedIds}
+              onSelectOne={onSelectOne}
+              onView={onView}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onStartEvaluation={onStartEvaluation}
+              onNavigateToPhysical={onNavigateToPhysical}
+              variant={variant}
+              getTypeColor={getTypeColor}
+              getModelColor={getModelColor}
+              formatDate={formatDate}
+              SubjectsList={SubjectsList}
+            />
+          ) : (
           <div className="overflow-x-auto">
             <Table>
-              <TableCaption className="caption-top text-left p-6 pb-0">
-                <div className="flex items-center justify-between">
-                  <span>Lista de avaliações disponíveis</span>
-                  {!isLoading && (() => {
-                    const total = searchTerm 
-                      ? filteredEvaluations.length 
-                      : showMyEvaluations 
-                        ? evaluations.length 
-                        : pagination?.total || 0;
-                    return (
-                      <span className="text-sm text-muted-foreground">
-                        {total} {total === 1 ? 'avaliação encontrada' : 'avaliações encontradas'}
-                      </span>
-                    );
-                  })()}
-                </div>
-              </TableCaption>
               <TableHeader>
                 <TableRow>
+                  {variant !== "transformTab" && variant !== "correctionTab" && (
                   <TableHead className="w-[50px]">
                     <Checkbox
                       checked={
@@ -399,6 +442,7 @@ const EvaluationsTable = ({
                       aria-label="Selecionar todos"
                     />
                   </TableHead>
+                  )}
                   <TableHead className="min-w-[200px]">Título</TableHead>
                   <TableHead className="table-cell min-w-[120px]">Disciplina(s)</TableHead>
                   <TableHead className="hidden md:table-cell">Tipo/Modelo</TableHead>
@@ -413,7 +457,9 @@ const EvaluationsTable = ({
                 {isLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
+                      {variant !== "transformTab" && variant !== "correctionTab" && (
                       <TableCell><Skeleton className="h-4 w-4" /></TableCell>
+                      )}
                       <TableCell><Skeleton className="h-4 w-48" /></TableCell>
                       <TableCell className="table-cell"><Skeleton className="h-4 w-24" /></TableCell>
                       <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
@@ -435,6 +481,7 @@ const EvaluationsTable = ({
                     .filter(evaluation => evaluation && evaluation.id)
                     .map((evaluation) => (
                       <TableRow key={evaluation.id} data-state={selectedIds.includes(evaluation.id) && "selected"}>
+                        {variant !== "transformTab" && variant !== "correctionTab" && (
                         <TableCell>
                           <Checkbox
                             checked={selectedIds.includes(evaluation.id)}
@@ -442,6 +489,7 @@ const EvaluationsTable = ({
                             aria-label={`Selecionar ${evaluation.title}`}
                           />
                         </TableCell>
+                        )}
                         <TableCell className="font-medium">
                           <div>
                             <div className="line-clamp-1">{evaluation.title}</div>
@@ -458,27 +506,37 @@ const EvaluationsTable = ({
                         <TableCell className="hidden md:table-cell">
                           <div className="flex flex-col gap-1">
                             {evaluation.type && (
-                              <Badge className={`text-xs ${getTypeColor(evaluation.type)} w-fit`}>
+                              <Badge
+                                variant="outline"
+                                className={cn("text-xs w-fit", getTypeColor(evaluation.type))}
+                              >
                                 {evaluation.type}
                               </Badge>
                             )}
                             {evaluation.model && (
-                              <Badge className={`text-xs ${getModelColor(evaluation.model)} w-fit`}>
+                              <Badge
+                                variant="outline"
+                                className={cn("text-xs w-fit", getModelColor(evaluation.model))}
+                              >
                                 {evaluation.model}
                               </Badge>
                             )}
                           </div>
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
-                          <Badge variant="outline" className="text-xs">
-                            {typeof evaluation?.total_questions === 'number'
-                              ? evaluation.total_questions
-                              : (evaluation?.totalQuestions ?? (Array.isArray(evaluation?.questions) ? evaluation.questions.length : 0) ?? (evaluation as { questions_count?: number })?.questions_count ?? 0)}
+                          <Badge
+                            variant="outline"
+                            className="text-xs tabular-nums border-border bg-muted/20 dark:bg-muted/40"
+                          >
+                            {formatEvaluationQuestionCount(evaluation)}
                           </Badge>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">
                           {evaluation.grade && (
-                            <Badge variant="outline" className="text-xs">
+                            <Badge
+                              variant="outline"
+                              className="text-xs border-border bg-muted/20 dark:bg-muted/40"
+                            >
                               {evaluation.grade.name}
                             </Badge>
                           )}
@@ -494,32 +552,62 @@ const EvaluationsTable = ({
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end">
+                          <div className="flex flex-wrap items-center justify-end gap-1.5">
+                            {variant === "transformTab" && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-8 gap-1 bg-blue-600 px-2 text-xs text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                                onClick={() => onNavigateToPhysical(evaluation.id)}
+                              >
+                                <FileText className="h-3.5 w-3.5 shrink-0" />
+                                <span className="hidden min-[480px]:inline">Transformar</span>
+                              </Button>
+                            )}
+
+                            {variant === "correctionTab" && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-8 gap-1 bg-purple-600 px-2 text-xs text-white hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
+                                onClick={() => onNavigateToPhysical(evaluation.id)}
+                              >
+                                <FileText className="h-3.5 w-3.5 shrink-0" />
+                                <span className="hidden min-[480px]:inline">Correção</span>
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 shrink-0 p-0"
+                              onClick={() => onView(evaluation.id)}
+                              aria-label={`Ver avaliação: ${evaluation.title ?? evaluation.id}`}
+                              title="Ver"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   className="h-8 w-8 p-0"
+                                  aria-label={`Mais ações: ${evaluation.title ?? evaluation.id}`}
                                 >
                                   <MoreVertical className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={() => onStartEvaluation(evaluation)}
-                                  className="text-green-600 focus:text-green-700 cursor-pointer"
-                                >
-                                  <Play className="h-4 w-4 mr-2" />
-                                  Aplicar
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => onView(evaluation.id)}
-                                  className="cursor-pointer"
-                                >
-                                  <Eye className="h-4 w-4 mr-2" />
-                                  Ver
-                                </DropdownMenuItem>
+                                {variant !== "transformTab" && variant !== "correctionTab" && (
+                                  <DropdownMenuItem
+                                    onClick={() => onStartEvaluation(evaluation)}
+                                    className="cursor-pointer text-green-600 focus:text-green-700 dark:text-green-400 dark:focus:text-green-300"
+                                  >
+                                    <Play className="h-4 w-4 mr-2" />
+                                    Aplicar
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem
                                   onClick={() => onEdit(evaluation.id)}
                                   className="cursor-pointer"
@@ -529,17 +617,10 @@ const EvaluationsTable = ({
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => onDelete(evaluation.id)}
-                                  className="text-red-600 focus:text-red-700 cursor-pointer"
+                                  className="cursor-pointer text-red-600 focus:text-red-700 dark:text-red-400 dark:focus:text-red-300"
                                 >
                                   <Trash2 className="h-4 w-4 mr-2" />
                                   Excluir
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => onNavigateToPhysical(evaluation.id)}
-                                  className="text-blue-600 focus:text-blue-700 cursor-pointer"
-                                >
-                                  <FileText className="h-4 w-4 mr-2" />
-                                  Transformar em Física
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -549,7 +630,7 @@ const EvaluationsTable = ({
                     ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
+                    <TableCell colSpan={variant === "transformTab" || variant === "correctionTab" ? 8 : 9} className="text-center py-8">
                       <div className="flex flex-col items-center gap-2">
                         <p className="text-muted-foreground">
                           {searchTerm || hasActiveFilters
@@ -571,6 +652,7 @@ const EvaluationsTable = ({
               </TableBody>
             </Table>
           </div>
+          )}
         </CardContent>
       </Card>
 
@@ -617,10 +699,19 @@ const EvaluationsTable = ({
   );
 };
 
-export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }: ReadyEvaluationsProps) {
+export function ReadyEvaluations({
+  onUseEvaluation,
+  showMyEvaluations = false,
+  variant = "default",
+  onNavigateToPhysicalOverride,
+}: ReadyEvaluationsProps) {
+  const layout: "cards" = "cards";
+
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [evaluationToDelete, setEvaluationToDelete] = useState<string | null>(null);
+  const [viewEvaluationDialogOpen, setViewEvaluationDialogOpen] = useState(false);
+  const [viewEvaluationId, setViewEvaluationId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState({
@@ -813,7 +904,13 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   }, []);
 
   const handleView = (evaluationId: string) => {
-    navigate(`/app/avaliacao/${evaluationId}`);
+    setViewEvaluationId(evaluationId);
+    setViewEvaluationDialogOpen(true);
+  };
+
+  const closeViewDialog = () => {
+    setViewEvaluationDialogOpen(false);
+    setViewEvaluationId(null);
   };
 
   const handleEdit = (evaluationId: string) => {
@@ -1049,6 +1146,10 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   };
 
   const handleNavigateToPhysical = (evaluationId: string) => {
+    if (onNavigateToPhysicalOverride) {
+      onNavigateToPhysicalOverride(evaluationId);
+      return;
+    }
     navigate(`/app/avaliacao/${evaluationId}/fisica`);
   };
 
@@ -1185,6 +1286,8 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
             onNavigateToPhysical={handleNavigateToPhysical}
             onExport={handleExportToExcel}
             isExporting={isExporting}
+            layout={layout}
+            variant={variant}
           />
 
           {/* Dialog de confirmação de exclusão */}
@@ -1218,6 +1321,37 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
             onConfirm={handleConfirmStartEvaluation}
             evaluation={selectedEvaluationToStart}
           />
+
+          {/* Modal de Visualização da Avaliação */}
+          <Dialog
+            open={viewEvaluationDialogOpen}
+            onOpenChange={(open) => {
+              if (!open) closeViewDialog();
+            }}
+          >
+            <DialogContent
+              className="
+                p-0 w-[95vw] max-w-6xl h-[90vh] max-h-[90vh] overflow-hidden flex flex-col
+                sm:w-[calc(100vw-18rem)] sm:left-[18rem] sm:translate-x-0
+              "
+            >
+              {viewEvaluationId ? (
+                <div
+                  className="flex-1 min-h-0 overflow-y-auto
+                    [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent
+                    [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full
+                    dark:[&::-webkit-scrollbar-thumb]:bg-gray-700
+                    hover:[&::-webkit-scrollbar-thumb]:bg-gray-400 dark:hover:[&::-webkit-scrollbar-thumb]:bg-gray-600
+                    scroll-smooth"
+                >
+                  <ViewEvaluation
+                    evaluationId={viewEvaluationId}
+                    onClose={closeViewDialog}
+                  />
+                </div>
+              ) : null}
+            </DialogContent>
+          </Dialog>
         </div>
       </TooltipProvider>
     </ErrorBoundary>

@@ -100,7 +100,7 @@ const RankingCard: React.FC<RankingCardProps> = ({
   const hasMyPosition = ranking.posicaoAtual > 0;
 
   return (
-    <Card className="h-full flex flex-col hover:shadow-lg transition-shadow duration-300 relative overflow-hidden">
+    <Card className="h-full flex flex-col hover:shadow-lg transition-shadow duration-300 relative overflow-hidden animate-fade-in-up motion-reduce:animate-none">
       <CardHeader className="pb-3 flex-shrink-0">
         <CardTitle className="flex items-center gap-2 sm:gap-3">
           <div className="p-2 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg flex-shrink-0">
@@ -117,7 +117,8 @@ const RankingCard: React.FC<RankingCardProps> = ({
           <Button 
             size="sm" 
             variant={rankingFilter === 'turma' ? 'default' : 'ghost'} 
-            className="text-xs px-1 sm:px-2 py-1"
+            className="text-xs px-1 sm:px-2 py-1 animate-fade-in-up motion-reduce:animate-none"
+            style={{ animationDelay: isLoading ? "0ms" : "0ms" }}
             onClick={() => onRankingFilterChange('turma')}
             disabled={isLoading}
           >
@@ -127,7 +128,8 @@ const RankingCard: React.FC<RankingCardProps> = ({
           <Button 
             size="sm" 
             variant={rankingFilter === 'escola' ? 'default' : 'ghost'} 
-            className="text-xs px-1 sm:px-2 py-1"
+            className="text-xs px-1 sm:px-2 py-1 animate-fade-in-up motion-reduce:animate-none"
+            style={{ animationDelay: isLoading ? "0ms" : "80ms" }}
             onClick={() => onRankingFilterChange('escola')}
             disabled={isLoading}
           >
@@ -225,7 +227,10 @@ const RankingCard: React.FC<RankingCardProps> = ({
                     key={item.id}
                     className={`flex items-center gap-2 sm:gap-3 py-2 px-2 rounded-lg border transition-all duration-200 ${
                       c ? `${c.bg} ${c.border} border` : "border-border hover:bg-muted/50"
-                    }`}
+                    } animate-fade-in-up motion-reduce:animate-none`}
+                    style={{
+                      animationDelay: isLoading ? "0ms" : `${Math.min(index * 60, 240)}ms`,
+                    }}
                   >
                     <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
                       {medalha ? (

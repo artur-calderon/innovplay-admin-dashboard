@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
+import { getSubjectColors } from "@/utils/competitionSubjectColors";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -131,7 +133,12 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                     <h3 className="text-xl font-bold leading-tight text-foreground">{question.title}</h3>
                     <div className="flex flex-wrap gap-2">
                         {question.grade?.name && <Badge variant="outline">{question.grade.name}</Badge>}
-                        {question.subject?.name && <Badge variant="outline">{question.subject.name}</Badge>}
+                        {question.subject?.name && (
+                          <DisciplineTag
+                            subjectId={question.subject.id}
+                            name={question.subject.name}
+                          />
+                        )}
                         {question.difficulty && <Badge variant="outline">{question.difficulty}</Badge>}
                         {question.value && <Badge variant="outline">Valor: {question.value}</Badge>}
                         {question.type && (
@@ -322,7 +329,14 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
             {!isLoadingDetails && question.solution && question.solution.trim() !== '' && (
                 <div className="resolution-section space-y-4 border-t border-border pt-8">
                     <h4 className="font-semibold text-lg text-foreground flex items-center gap-2">
-                        <span className="w-6 h-6 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center text-sm">💡</span>
+                        <span
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-sm ${getSubjectColors(
+                            question.subject?.id ?? '',
+                            question.subject?.name ?? ''
+                          ).badge}`}
+                        >
+                          💡
+                        </span>
                         Resolução
                     </h4>
                     <div className="resolution-content rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">

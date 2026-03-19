@@ -1,6 +1,6 @@
 "use client"
 
-import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, PieChart, Pie, Cell, Tooltip, Legend, LabelList } from "recharts"
+import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, PieChart, Pie, Cell, Tooltip, Legend, LabelList, Sector } from "recharts"
 
 interface BarChartProps {
     data: Array<{
@@ -74,7 +74,10 @@ export function BarChartComponent({
     showValues = true // Valor padrão true
 }: BarChartProps) {
     // Detectar modo escuro para ajustar cores
-    const isDarkMode = document.documentElement.classList.contains('dark');
+    const isDarkMode =
+        (typeof document !== "undefined" &&
+          (document.documentElement.classList.contains("dark") ||
+            document.body.classList.contains("dark")));
     const axisColor = isDarkMode ? 'hsl(var(--muted-foreground))' : '#888888';
     const gridColor = isDarkMode ? 'hsl(var(--border))' : '#e5e7eb';
     
@@ -84,7 +87,8 @@ export function BarChartComponent({
                 <h3 className="text-lg font-semibold text-foreground">{title}</h3>
                 {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
             </div>
-            <ResponsiveContainer width="100%" height={300}>
+            <div className="h-[260px] sm:h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                     <defs>
                         <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
@@ -118,14 +122,16 @@ export function BarChartComponent({
                     <Tooltip
                         contentStyle={{
                             backgroundColor: isDarkMode ? 'hsl(var(--card))' : 'hsl(var(--card))',
-                            border: `1px solid ${isDarkMode ? 'hsl(var(--border))' : 'hsl(var(--border))'}`,
+                            border: isDarkMode
+                                ? `1px solid hsl(var(--border) / 0.15)`
+                                : `1px solid hsl(var(--border) / 0.8)`,
                             borderRadius: '0.5rem',
                             boxShadow: isDarkMode ? '0 4px 6px -1px rgba(0, 0, 0, 0.3)' : '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
                         }}
                         content={({ active, payload, label }) => {
                             if (active && payload && payload.length) {
                                 return (
-                                    <div className="rounded-lg border bg-card p-3 shadow-lg border-border">
+                                    <div className="rounded-lg border bg-card p-3 shadow-lg border-border dark:border-border/30">
                                         <div className="flex flex-col gap-1">
                                             <span className="text-xs font-medium uppercase text-muted-foreground">
                                                 {label}
@@ -143,6 +149,11 @@ export function BarChartComponent({
                     <Bar
                         dataKey="value"
                         fill={color}
+                        stroke={
+                            // No dark, deixar o contorno bem sutil (evita borda/hover branco).
+                            isDarkMode ? "hsl(var(--border) / 0.10)" : "hsl(var(--border) / 0.65)"
+                        }
+                        strokeWidth={isDarkMode ? 0.5 : 1}
                         radius={[4, 4, 0, 0]}
                         style={{
                             cursor: 'pointer',
@@ -162,7 +173,8 @@ export function BarChartComponent({
                         {showValues && <LabelList content={renderCustomBarLabel} />}
                     </Bar>
                 </BarChart>
-            </ResponsiveContainer>
+                </ResponsiveContainer>
+            </div>
         </div>
     )
 }
@@ -184,7 +196,28 @@ export function PieChartComponent({
     const total = data.reduce((sum: number, item: { value: number }) => sum + item.value, 0)
     
     // Detectar modo escuro
-    const isDarkMode = document.documentElement.classList.contains('dark');
+    const isDarkMode =
+        (typeof document !== "undefined" &&
+          (document.documentElement.classList.contains("dark") ||
+            document.body.classList.contains("dark")));
+
+    // Controle do destaque ao passar o mouse nos setores (evita borda branca forte no modo escuro)
+    const renderActiveShape = (props: any) => {
+        const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
+        return (
+            <Sector
+                cx={cx}
+                cy={cy}
+                innerRadius={innerRadius}
+                outerRadius={outerRadius}
+                startAngle={startAngle}
+                endAngle={endAngle}
+                fill={fill}
+                stroke={isDarkMode ? "hsl(var(--border) / 0.10)" : "#ffffff"}
+                strokeWidth={isDarkMode ? 0.6 : 2}
+            />
+        );
+    };
 
     return (
         <div className="space-y-4">
@@ -192,7 +225,8 @@ export function PieChartComponent({
                 <h3 className="text-lg font-semibold text-foreground">{title}</h3>
                 {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
             </div>
-            <ResponsiveContainer width="100%" height={300}>
+            <div className="h-[260px] sm:h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                     <Pie
                         data={data}
@@ -204,6 +238,7 @@ export function PieChartComponent({
                         dataKey="value"
                         label={showValues ? renderCustomPieLabel : false}
                         labelLine={false}
+                        activeShape={renderActiveShape}
                     >
                         {data.map((entry, index) => (
                             <Cell 
@@ -226,7 +261,9 @@ export function PieChartComponent({
                     <Tooltip
                         contentStyle={{
                             backgroundColor: isDarkMode ? 'hsl(var(--card))' : 'hsl(var(--card))',
-                            border: `1px solid ${isDarkMode ? 'hsl(var(--border))' : 'hsl(var(--border))'}`,
+                            border: isDarkMode
+                                ? `1px solid hsl(var(--border) / 0.15)`
+                                : `1px solid hsl(var(--border) / 0.8)`,
                             borderRadius: '0.5rem',
                             boxShadow: isDarkMode ? '0 4px 6px -1px rgba(0, 0, 0, 0.3)' : '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
                         }}
@@ -236,7 +273,7 @@ export function PieChartComponent({
                                 const percentage = total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0'
 
                                 return (
-                                    <div className="rounded-lg border bg-card p-3 shadow-lg border-border">
+                                    <div className="rounded-lg border bg-card p-3 shadow-lg border-border dark:border-border/30">
                                         <div className="flex flex-col gap-1">
                                             <span className="text-xs font-medium uppercase text-muted-foreground">
                                                 {item.name}
@@ -265,7 +302,8 @@ export function PieChartComponent({
                         />
                     )}
                 </PieChart>
-            </ResponsiveContainer>
+                </ResponsiveContainer>
+            </div>
         </div>
     )
 }
@@ -281,7 +319,28 @@ export function DonutChartComponent({
     const total = data.reduce((sum: number, item: { value: number }) => sum + item.value, 0)
     
     // Detectar modo escuro
-    const isDarkMode = document.documentElement.classList.contains('dark');
+    const isDarkMode =
+        (typeof document !== "undefined" &&
+          (document.documentElement.classList.contains("dark") ||
+            document.body.classList.contains("dark")));
+
+    // Controle do destaque ao passar o mouse nos setores (evita borda branca forte no modo escuro)
+    const renderActiveShape = (props: any) => {
+        const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
+        return (
+            <Sector
+                cx={cx}
+                cy={cy}
+                innerRadius={innerRadius}
+                outerRadius={outerRadius}
+                startAngle={startAngle}
+                endAngle={endAngle}
+                fill={fill}
+                stroke={isDarkMode ? "hsl(var(--border) / 0.10)" : "#ffffff"}
+                strokeWidth={isDarkMode ? 0.6 : 2}
+            />
+        );
+    };
 
     return (
         <div className="space-y-4">
@@ -289,7 +348,8 @@ export function DonutChartComponent({
                 <h3 className="text-lg font-semibold text-foreground">{title}</h3>
                 {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
             </div>
-            <ResponsiveContainer width="100%" height={300}>
+            <div className="h-[260px] sm:h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                     <Pie
                         data={data}
@@ -301,6 +361,7 @@ export function DonutChartComponent({
                         dataKey="value"
                         label={showValues ? renderCustomPieLabel : false}
                         labelLine={false}
+                        activeShape={renderActiveShape}
                     >
                         {data.map((entry, index) => (
                             <Cell 
@@ -323,7 +384,9 @@ export function DonutChartComponent({
                     <Tooltip
                         contentStyle={{
                             backgroundColor: isDarkMode ? 'hsl(var(--card))' : 'hsl(var(--card))',
-                            border: `1px solid ${isDarkMode ? 'hsl(var(--border))' : 'hsl(var(--border))'}`,
+                            border: isDarkMode
+                                ? `1px solid hsl(var(--border) / 0.35)`
+                                : `1px solid hsl(var(--border) / 0.8)`,
                             borderRadius: '0.5rem',
                             boxShadow: isDarkMode ? '0 4px 6px -1px rgba(0, 0, 0, 0.3)' : '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
                         }}
@@ -333,7 +396,7 @@ export function DonutChartComponent({
                                 const percentage = total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0'
 
                                 return (
-                                    <div className="rounded-lg border bg-card p-3 shadow-lg border-border">
+                                    <div className="rounded-lg border bg-card p-3 shadow-lg border-border dark:border-border/30">
                                         <div className="flex flex-col gap-1">
                                             <span className="text-xs font-medium uppercase text-muted-foreground">
                                                 {item.name}
@@ -362,7 +425,8 @@ export function DonutChartComponent({
                         />
                     )}
                 </PieChart>
-            </ResponsiveContainer>
+                </ResponsiveContainer>
+            </div>
             <div className="flex justify-center mt-2">
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-x-3 gap-y-2 text-sm w-full max-w-2xl">
                     {data.map((item, index) => (

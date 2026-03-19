@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { DisciplineTagWithChildren } from '@/components/ui/discipline-tag';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar, BookOpen, Users, TrendingUp } from 'lucide-react';
@@ -248,10 +249,13 @@ export function EvaluationSelector({
                             {evaluation.titulo || 'Sem título'}
                           </h4>
                           <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="outline" className="text-xs">
-                              <BookOpen className="h-3 w-3 mr-1" />
+                            <DisciplineTagWithChildren
+                              subjectName={evaluation.disciplina || 'Disciplina não informada'}
+                              className="text-xs"
+                            >
+                              <BookOpen className="mr-1 h-3 w-3" />
                               {evaluation.disciplina || 'Disciplina não informada'}
-                            </Badge>
+                            </DisciplineTagWithChildren>
                             <Badge 
                               variant="outline" 
                               className={`text-xs ${getStatusColor(evaluation.status)}`}

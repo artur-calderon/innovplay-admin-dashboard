@@ -427,7 +427,7 @@ const StudentDashboard = () => {
 
   // Ranking independente da avaliação (GET /dashboard/ranking-alunos)
   const [dashboardRanking, setDashboardRanking] = useState<RankingCardData | null>(null);
-  const [isLoadingRanking, setIsLoadingRanking] = useState(false);
+  const [isLoadingRanking, setIsLoadingRanking] = useState(true);
   // ID do aluno (tabela Student) para bater com student_id do ranking
   const [currentStudentId, setCurrentStudentId] = useState<string | null>(null);
   // IDs para ranking por escopo (turma, escola, município)
@@ -813,7 +813,7 @@ const StudentDashboard = () => {
           variant: "destructive",
         });
         setHasLoadedData(false);
-        setStats(mockStats);
+        setStats(null);
       } finally {
         setIsLoading(false);
         setIsLoadingEvaluations(false);
@@ -1063,7 +1063,7 @@ const StudentDashboard = () => {
           <ConquistasCard onRedeem={() => setRefreshCoinsTrigger((n) => n + 1)} />
         </div>
         <div className="h-full min-h-[320px] lg:min-h-[420px] flex flex-col transition-all duration-300 hover:scale-[1.02] hover:-translate-y-0.5 hover:shadow-xl hover:shadow-yellow-500/15 rounded-2xl animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
-          <InnovCoinsCard moedas={(stats ?? mockStats).moedas} refreshTrigger={refreshCoinsTrigger} />
+          <InnovCoinsCard refreshTrigger={refreshCoinsTrigger} />
         </div>
         <div className="h-full min-h-[320px] lg:min-h-[420px] flex flex-col transition-all duration-300 hover:scale-[1.02] hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/15 rounded-2xl animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
             <RankingCard

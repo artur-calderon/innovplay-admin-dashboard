@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { DisciplineTag } from '@/components/ui/discipline-tag';
 import { Tv, RefreshCw, BookOpen, Loader2, Play } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
@@ -295,9 +296,11 @@ export default function PlayTvStudent() {
                         <CardHeader className="pb-3">
                           <div className="flex justify-between items-start">
                             <CardTitle className="text-lg line-clamp-2">{video.title || 'Vídeo sem título'}</CardTitle>
-                            <Badge variant="secondary" className="ml-2">
-                              {video.subject?.name || 'Sem disciplina'}
-                            </Badge>
+                            <DisciplineTag
+                              subjectId={video.subject?.id}
+                              name={video.subject?.name || 'Sem disciplina'}
+                              className="ml-2 shrink-0"
+                            />
                           </div>
                         </CardHeader>
                         <CardContent className="space-y-4">

@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import QuestionPreview from "./QuestionPreview";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -882,9 +883,11 @@ export default function QuestionBank({
                       
                       <div className="flex flex-wrap gap-1 md:gap-2">
                         {question.subject && (
-                            <Badge variant="secondary" className="text-xs transition-colors hover:bg-blue-100">
-                            {question.subject.name}
-                          </Badge>
+                          <DisciplineTag
+                            subjectId={question.subject.id}
+                            name={question.subject.name}
+                            className="text-xs transition-opacity hover:opacity-90"
+                          />
                         )}
                         {question.grade && (
                           <Badge variant="outline" className="text-xs">
@@ -1046,7 +1049,14 @@ export default function QuestionBank({
   {/* Preview de questão */}
   {viewQuestion && (
     <Dialog open={!!viewQuestion} onOpenChange={() => setViewQuestion(null)}>
-      <DialogContent className="max-w-4xl max-h-[90vh] w-[95vw] overflow-y-auto">
+      <DialogContent
+        className="max-w-4xl max-h-[90vh] w-[95vw] overflow-y-auto
+          [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent
+          [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full
+          dark:[&::-webkit-scrollbar-thumb]:bg-gray-700
+          hover:[&::-webkit-scrollbar-thumb]:bg-gray-400 dark:hover:[&::-webkit-scrollbar-thumb]:bg-gray-600
+          scroll-smooth"
+      >
         <DialogHeader>
           <DialogTitle>Visualizar Questão</DialogTitle>
         </DialogHeader>

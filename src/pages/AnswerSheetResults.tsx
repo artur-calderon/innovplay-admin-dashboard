@@ -34,6 +34,7 @@ import { ClassStatistics } from '@/components/evaluations/ClassStatistics';
 import { StudentCard } from '@/components/evaluations/StudentCard';
 import { DisciplineTables } from '@/components/evaluations/DisciplineTables';
 import { cn } from '@/lib/utils';
+import { getReportProficiencyTagClass } from '@/utils/reportTagStyles';
 
 // Opções dos filtros (resposta de GET /answer-sheets/opcoes-filtros-results)
 interface FilterOption {
@@ -956,7 +957,15 @@ export default function AnswerSheetResults() {
                                     <td className="py-3 px-4">{(a.nota_geral ?? 0).toFixed(1)}</td>
                                     <td className="py-3 px-4">{(a.proficiencia_geral ?? 0).toFixed(1)}</td>
                                     <td className="py-3 px-4">
-                                      <Badge variant="outline" className={a.nivel_proficiencia_geral ? '' : 'opacity-60'}>{a.nivel_proficiencia_geral || 'Pendente'}</Badge>
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          getReportProficiencyTagClass(a.nivel_proficiencia_geral),
+                                          !a.nivel_proficiencia_geral && 'opacity-60'
+                                        )}
+                                      >
+                                        {a.nivel_proficiencia_geral || 'Pendente'}
+                                      </Badge>
                                     </td>
                                     <td className="py-3 px-4">
                                       {a.total_questoes_geral != null ? `${a.total_acertos_geral ?? 0} / ${erros} (${(a.percentual_acertos_geral ?? 0).toFixed(0)}%)` : '—'}

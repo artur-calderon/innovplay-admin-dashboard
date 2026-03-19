@@ -3,6 +3,7 @@ import { DonutChartComponent } from "@/components/ui/charts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
@@ -2740,9 +2741,10 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                 </Badge>
                             )}
                             {subjectFilter !== 'all' && (
-                                <Badge variant="secondary" className="text-xs">
-                                    Disciplina: {subjectFilter}
-                                </Badge>
+                                <span className="inline-flex items-center gap-1 text-xs">
+                                  <span className="text-muted-foreground">Disciplina:</span>
+                                  <DisciplineTag name={subjectFilter} className="text-xs" />
+                                </span>
                             )}
                             {showOnlyCompleted && (
                                 <Badge variant="secondary" className="text-xs bg-green-100 text-green-800">

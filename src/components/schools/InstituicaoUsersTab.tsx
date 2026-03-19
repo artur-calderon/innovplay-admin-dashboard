@@ -614,7 +614,9 @@ export function InstituicaoUsersTab({
                                   {ROLES_WITH_SCHOOL.includes(toCanonicalRole(u.role)) && getSchoolDisplay(u) && (
                                     <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                                       <School className="h-3 w-3 flex-shrink-0" />
-                                      <span className="truncate">{getSchoolDisplay(u)}</span>
+                                      <span className="whitespace-normal break-words leading-tight">
+                                        {getSchoolDisplay(u)}
+                                      </span>
                                     </p>
                                   )}
                                   {ROLES_WITH_CITY.includes(toCanonicalRole(u.role)) && getCityDisplay(u) && (

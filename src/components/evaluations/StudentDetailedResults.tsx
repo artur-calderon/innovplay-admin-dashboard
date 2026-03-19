@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { getReportProficiencyTagClass } from "@/utils/reportTagStyles";
 import {
     ArrowLeft,
     CheckCircle2,
@@ -517,12 +518,7 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                     <CardHeader>
                         <CardTitle className="flex items-center justify-between">
                             <span>Classificação de Proficiência</span>
-                            <Badge className={`${
-                                classificacao === 'Avançado' ? 'bg-green-100 text-green-800 border-green-300' :
-                                classificacao === 'Adequado' ? 'bg-blue-100 text-blue-800 border-blue-300' :
-                                classificacao === 'Básico' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
-                                'bg-red-100 text-red-800 border-red-300'
-                            }`}>
+                            <Badge className={getReportProficiencyTagClass(classificacao)}>
                                 {classificacao}
                             </Badge>
                         </CardTitle>

@@ -614,13 +614,13 @@ export function FilterComponentAnalise({
         </div>
 
         {/* Informação sobre filtros */}
-        <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-          <p className="text-sm text-blue-700">
+        <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+          <p className="text-sm text-blue-700 dark:text-blue-400">
             💡 <strong>Hierarquia dos Filtros:</strong> {loadSchoolsAfterEvaluation 
               ? 'Estado → Município → Avaliação → Escola'
               : 'Estado → Município → Escola → Avaliação'}
           </p>
-          <p className="text-sm text-blue-700 mt-1">
+          <p className="text-sm text-blue-700 mt-1 dark:text-blue-400">
             <strong>Estado</strong> e <strong>Município</strong> são obrigatórios. 
             {loadSchoolsAfterEvaluation 
               ? <> Selecione uma <strong>Avaliação</strong> para visualizar as escolas disponíveis.</>

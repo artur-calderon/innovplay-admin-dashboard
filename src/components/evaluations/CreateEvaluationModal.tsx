@@ -6,11 +6,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { DisciplineTag } from '@/components/ui/discipline-tag';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, FileCheck, Book, Eye, Trash2, Plus, School, Search, X, AlertCircle, Users, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/authContext';
 import { EvaluationFormData, Question, Subject } from './types';
 import { ClassInfo } from '@/types/evaluation-types';
@@ -2004,14 +2006,26 @@ export function CreateEvaluationModal({
                     {allSubjects.map((subject) => {
                       const isSelected = selectedSubjects.some(s => s.id === subject.id);
                       return (
-                        <Badge
+                        <DisciplineTag
                           key={subject.id}
-                          variant={isSelected ? 'default' : 'outline'}
-                          className="cursor-pointer"
+                          subjectId={subject.id}
+                          name={subject.name}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => handleSubjectToggle(subject)}
-                        >
-                          {subject.name}
-                        </Badge>
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleSubjectToggle(subject);
+                            }
+                          }}
+                          className={cn(
+                            'cursor-pointer transition-opacity',
+                            isSelected
+                              ? 'ring-2 ring-primary ring-offset-2 ring-offset-background opacity-100'
+                              : 'opacity-60 hover:opacity-90'
+                          )}
+                        />
                       );
                     })}
                   </div>

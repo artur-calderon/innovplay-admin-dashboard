@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { DisciplineTag } from '@/components/ui/discipline-tag';
 import { Headset, RefreshCw, BookOpen, Loader2, ExternalLink, Copy, Calendar, Link as LinkIcon, GraduationCap, School } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
@@ -311,9 +312,11 @@ export default function PlantaoOnlineStudent() {
                               {plantao.title}
                             </CardTitle>
                             <div className="flex items-center gap-2">
-                              <Badge variant="secondary" className="text-xs font-medium">
-                                {plantao.subject?.name || 'Sem disciplina'}
-                              </Badge>
+                              <DisciplineTag
+                                subjectId={plantao.subject?.id}
+                                name={plantao.subject?.name || 'Sem disciplina'}
+                                className="text-xs font-medium"
+                              />
                             </div>
                           </div>
                         </div>
