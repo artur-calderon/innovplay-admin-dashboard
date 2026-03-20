@@ -1,4 +1,5 @@
 import { api } from '@/lib/api';
+import { normalizeDownloadUrlForApi } from '@/lib/normalize-api-download-url';
 
 /**
  * Baixa um arquivo usando o cliente axios (Bearer + headers), necessário quando a URL
@@ -8,7 +9,11 @@ export async function fetchAuthenticatedDownload(
   url: string,
   fallbackFilename = 'cartoes.zip'
 ): Promise<void> {
-  const res = await api.get(url.trim(), { responseType: 'blob' });
+  const pathOrUrl = normalizeDownloadUrlForApi(url);
+  if (!pathOrUrl) {
+    throw new Error('URL de download inválida.');
+  }
+  const res = await api.get(pathOrUrl, { responseType: 'blob' });
   const blob = res.data as Blob;
 
   if (blob.type?.includes('application/json')) {
