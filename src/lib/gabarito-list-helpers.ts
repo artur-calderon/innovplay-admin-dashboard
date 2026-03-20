@@ -1,4 +1,6 @@
-import type { GabaritoGeneration, GabaritoScopeClassEntry } from '@/types/answer-sheet';
+import type { Gabarito, GabaritoGeneration, GabaritoScopeClassEntry } from '@/types/answer-sheet';
+
+export type GabaritoDownloadTarget = { url: string; needsAuth: boolean };
 
 export function scopeTypeLabel(t?: string) {
   switch (t) {
@@ -68,12 +70,27 @@ export function formatGenerationScopeSummary(gen: GabaritoGeneration): string {
   return scopeTypeLabel(gen.scope_type);
 }
 
-/** `download_url` preferencial; senão `minio_url` (conforme contrato da API). */
-export function resolveGenerationDownloadUrl(gen: GabaritoGeneration): string | null {
-  const d = gen.download_url?.trim();
-  if (d) return d;
+/** MinIO / URL pública primeiro; `download_url` da API exige token (needsAuth: true). */
+export function resolveGenerationDownloadTarget(gen: GabaritoGeneration): GabaritoDownloadTarget | null {
   const m = gen.minio_url?.trim();
-  if (m) return m;
+  if (m) return { url: m, needsAuth: false };
+  const d = gen.download_url?.trim();
+  if (d) return { url: d, needsAuth: true };
+  return null;
+}
+
+export function resolveGenerationDownloadUrl(gen: GabaritoGeneration): string | null {
+  return resolveGenerationDownloadTarget(gen)?.url ?? null;
+}
+
+/** Cartão na listagem: minio sem auth; download_url com auth. */
+export function resolveGabaritoRootDownload(
+  g: Pick<Gabarito, 'minio_url' | 'download_url'>
+): GabaritoDownloadTarget | null {
+  const m = g.minio_url?.trim();
+  if (m) return { url: m, needsAuth: false };
+  const d = g.download_url?.trim();
+  if (d) return { url: d, needsAuth: true };
   return null;
 }
 
@@ -81,7 +98,7 @@ export function generationCanDownload(gen: GabaritoGeneration): boolean {
   if (gen.can_download === false) return false;
   if (gen.can_download === true) return true;
   if (gen.status === 'completed') {
-    return !!resolveGenerationDownloadUrl(gen) || !!gen.job_id;
+    return !!resolveGenerationDownloadTarget(gen) || !!gen.job_id;
   }
   return false;
 }

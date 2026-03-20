@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { isAxiosError } from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,12 +32,14 @@ import {
   MapPin,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { fetchAuthenticatedDownload } from '@/lib/fetch-authenticated-download';
 import {
   formatGenerationScopeSummary,
   generationCanDownload,
   generationClassLabelsFromSnapshot,
   gabaritoDownloadLoadingKey,
-  resolveGenerationDownloadUrl,
+  resolveGabaritoRootDownload,
+  resolveGenerationDownloadTarget,
 } from '@/lib/gabarito-list-helpers';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { AnswerSheetConfig, StudentAnswerSheet, School as SchoolType, Serie, Turma, Estado, Municipio, Gabarito, GabaritosResponse } from '@/types/answer-sheet';
@@ -150,7 +153,8 @@ export default function AnswerSheetGenerator() {
   const [jobProgress, setJobProgress] = useState<JobProgress>({ completed_tasks: 0, total_tasks: 0, percentage: 0 });
   const [jobScopeType, setJobScopeType] = useState<string>('');
   const [jobWarnings, setJobWarnings] = useState<string[]>([]);
-  const [jobDownloadUrl, setJobDownloadUrl] = useState<string | null>(null);
+  const [jobDownload, setJobDownload] = useState<{ url: string; needsAuth: boolean } | null>(null);
+  const [isSavingJobZip, setIsSavingJobZip] = useState(false);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Estados para cartões gerados
@@ -1017,7 +1021,7 @@ export default function AnswerSheetGenerator() {
         setJobId(null);
         setJobTasks([]);
         setJobProgress({ completed_tasks: 0, total_tasks: 0, percentage: 0 });
-        setJobDownloadUrl(null);
+        setJobDownload(null);
         setJobWarnings([]);
         setJobScopeType('');
       }
@@ -1089,7 +1093,12 @@ export default function AnswerSheetGenerator() {
   // Download de gabarito - Nova rota que retorna URL pré-assinada (opcionalmente por geração)
   const handleDownloadGabarito = async (
     gabaritoId: string,
-    opts?: { generationId?: string; jobId?: string; presignedUrl?: string | null }
+    opts?: {
+      generationId?: string;
+      jobId?: string;
+      presignedUrl?: string | null;
+      presignedNeedsAuth?: boolean;
+    }
   ) => {
     try {
       setDownloadingGabaritoId(gabaritoDownloadLoadingKey(gabaritoId, opts?.generationId));
@@ -1097,11 +1106,19 @@ export default function AnswerSheetGenerator() {
 
       const direct = opts?.presignedUrl?.trim();
       if (direct) {
-        window.open(direct, '_blank');
-        toast({
-          title: '✅ Download iniciado',
-          description: 'Abrindo o arquivo em uma nova aba.',
-        });
+        if (opts?.presignedNeedsAuth) {
+          await fetchAuthenticatedDownload(direct, 'cartoes.zip');
+          toast({
+            title: '✅ Download iniciado',
+            description: 'O arquivo será salvo pelo navegador.',
+          });
+        } else {
+          window.open(direct, '_blank');
+          toast({
+            title: '✅ Download iniciado',
+            description: 'Abrindo o arquivo em uma nova aba.',
+          });
+        }
         return;
       }
 
@@ -1114,8 +1131,7 @@ export default function AnswerSheetGenerator() {
       const data = response.data;
 
       if (data.download_url) {
-        window.open(data.download_url, '_blank');
-
+        await fetchAuthenticatedDownload(data.download_url, 'cartoes.zip');
         toast({
           title: '✅ Download iniciado',
           description: `O arquivo está sendo baixado. Link expira em ${data.expires_in || '1 hora'}.`,
@@ -1123,15 +1139,23 @@ export default function AnswerSheetGenerator() {
       } else {
         throw new Error('URL de download não fornecida');
       }
-    } catch (error: any) {
-      
+    } catch (error: unknown) {
+      if (error instanceof Error && !isAxiosError(error)) {
+        toast({
+          title: 'Erro',
+          description: error.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+      const err = error as { response?: { status?: number; data?: { status?: string; error?: string } } };
       let errorMessage = 'Não foi possível baixar o arquivo. Tente novamente.';
-      const status = error.response?.status;
-      const backendError = error.response?.data?.error;
+      const status = err.response?.status;
+      const backendError = err.response?.data?.error;
 
       if (status === 404) {
         errorMessage = 'Os cartões solicitados não foram encontrados.';
-      } else if (status === 400 && error.response?.data?.status === 'not_generated') {
+      } else if (status === 400 && err.response?.data?.status === 'not_generated') {
         errorMessage = 'Os cartões ainda não foram gerados. Complete a geração primeiro.';
       } else if (status === 403) {
         errorMessage = 'Você não tem permissão para acessar este arquivo.';
@@ -1237,11 +1261,19 @@ export default function AnswerSheetGenerator() {
           }
 
           setIsGenerating(false);
-          
-          // Salvar URL de download se disponível
-          if (data.result?.download_url) {
-            setJobDownloadUrl(data.result.download_url);
-          }
+
+          const resultMinio =
+            typeof data.result?.minio_url === 'string' ? data.result.minio_url.trim() : '';
+          const summaryMinio =
+            typeof data.summary?.zip_minio_url === 'string' ? data.summary.zip_minio_url.trim() : '';
+          const resultDownload =
+            typeof data.result?.download_url === 'string' ? data.result.download_url.trim() : '';
+          const resultOk = data.result?.can_download !== false;
+          let next: { url: string; needsAuth: boolean } | null = null;
+          if (resultMinio) next = { url: resultMinio, needsAuth: false };
+          else if (summaryMinio) next = { url: summaryMinio, needsAuth: false };
+          else if (resultDownload && resultOk) next = { url: resultDownload, needsAuth: true };
+          setJobDownload(next);
 
           // Atualizar a lista de gabaritos independente da aba ativa
           await fetchGabaritos();
@@ -1319,7 +1351,7 @@ export default function AnswerSheetGenerator() {
       setIsGenerating(true);
       setJobTasks([]);
       setJobProgress({ completed_tasks: 0, total_tasks: 0, percentage: 0 });
-      setJobDownloadUrl(null);
+      setJobDownload(null);
 
       const question_skills: Record<string, string[]> = {};
       for (let n = 1; n <= totalQuestoes; n++) {
@@ -1419,7 +1451,7 @@ export default function AnswerSheetGenerator() {
 
   // NOVO: Download do ZIP usando URL direta
   const handleDownloadZip = async () => {
-    if (!jobDownloadUrl) {
+    if (!jobDownload) {
       toast({
         title: 'Erro',
         description: 'URL de download não disponível. Aguarde a conclusão da geração.',
@@ -1429,20 +1461,24 @@ export default function AnswerSheetGenerator() {
     }
 
     try {
-      // Abrir URL direta para download
-      window.open(jobDownloadUrl, '_blank');
-
+      setIsSavingJobZip(true);
+      if (jobDownload.needsAuth) {
+        await fetchAuthenticatedDownload(jobDownload.url, 'cartoes.zip');
+      } else {
+        window.open(jobDownload.url, '_blank');
+      }
       toast({
-        title: "✅ Download iniciado",
-        description: "O arquivo ZIP está sendo baixado.",
+        title: '✅ Download iniciado',
+        description: jobDownload.needsAuth ? 'O arquivo será salvo pelo navegador.' : 'Abrindo em uma nova aba.',
       });
-    } catch (error: any) {
-      
+    } catch (e: unknown) {
       toast({
         title: 'Erro',
-        description: 'Não foi possível iniciar o download. Tente novamente.',
+        description: e instanceof Error ? e.message : 'Não foi possível iniciar o download. Tente novamente.',
         variant: 'destructive',
       });
+    } finally {
+      setIsSavingJobZip(false);
     }
   };
 
@@ -2576,11 +2612,16 @@ export default function AnswerSheetGenerator() {
                     {jobProgress.percentage === 100 && (
                       <Button
                         onClick={handleDownloadZip}
+                        disabled={isSavingJobZip}
                         size="lg"
                         className="w-full bg-green-600 hover:bg-green-700"
                       >
-                        <Download className="h-5 w-5 mr-2" />
-                        Baixar ZIP com Cartões
+                        {isSavingJobZip ? (
+                          <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                        ) : (
+                          <Download className="h-5 w-5 mr-2" />
+                        )}
+                        {isSavingJobZip ? 'Baixando...' : 'Baixar ZIP com Cartões'}
                       </Button>
                     )}
 
@@ -2884,13 +2925,15 @@ export default function AnswerSheetGenerator() {
                                           )}
                                           <Button
                                             size="sm"
-                                            onClick={() =>
-                                              handleDownloadGabarito(gabarito.id, {
+                                            onClick={() => {
+                                              const t = resolveGenerationDownloadTarget(gen);
+                                              return handleDownloadGabarito(gabarito.id, {
                                                 generationId: gen.id,
                                                 jobId: gen.job_id,
-                                                presignedUrl: resolveGenerationDownloadUrl(gen),
-                                              })
-                                            }
+                                                presignedUrl: t?.url,
+                                                presignedNeedsAuth: t?.needsAuth,
+                                              });
+                                            }}
                                             disabled={!canDl || isDeleting || isDownloadingGabaritoRow(gabarito.id, gen.id)}
                                           >
                                             {isDownloadingGabaritoRow(gabarito.id, gen.id) ? (
@@ -2923,12 +2966,14 @@ export default function AnswerSheetGenerator() {
                           <div className="flex flex-col gap-2 min-w-[140px]">
                             {!hasGenerationsList && (
                             <Button
-                              onClick={() =>
-                                handleDownloadGabarito(gabarito.id, {
+                              onClick={() => {
+                                const t = resolveGabaritoRootDownload(gabarito);
+                                return handleDownloadGabarito(gabarito.id, {
                                   jobId: gabarito.latest_generation_job_id ?? undefined,
-                                  presignedUrl: gabarito.download_url ?? gabarito.minio_url,
-                                })
-                              }
+                                  presignedUrl: t?.url,
+                                  presignedNeedsAuth: t?.needsAuth,
+                                });
+                              }}
                               disabled={!gabarito.can_download || isDeleting || isDownloadingGabaritoRow(gabarito.id)}
                               className="w-full"
                             >
