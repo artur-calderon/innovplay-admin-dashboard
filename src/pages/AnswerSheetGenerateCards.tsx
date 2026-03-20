@@ -120,38 +120,6 @@ interface JobStatusResponse {
   error?: string;
 }
 
-/** GET /answer-sheets/gabaritos/<id>/generation-jobs */
-interface GenerationJobSummary {
-  job_id: string;
-  gabarito_id: string;
-  status: string;
-  scope_type?: string;
-  total?: number;
-  completed?: number;
-  successful?: number;
-  failed?: number;
-  progress_current?: number;
-  progress_percentage?: number;
-  created_at?: string;
-  completed_at?: string | null;
-  total_students_generated?: number | null;
-  classes_generated?: number | null;
-  polling_url?: string;
-}
-interface GenerationJobsResponse {
-  gabarito_id: string;
-  last_generation_job_id: string | null;
-  jobs: GenerationJobSummary[];
-}
-
-function statusPathForJob(job: GenerationJobSummary, jobIdFallback: string): string {
-  const p = job.polling_url;
-  if (p && p.length > 0) {
-    return p.startsWith('/') ? p : `/${p}`;
-  }
-  return `/answer-sheets/jobs/${jobIdFallback}/status`;
-}
-
 function mapPostTasksToClasses(
   tasks?: Array<{ class_id: string; class_name: string; status: string }>
 ): JobStatusClass[] {
@@ -238,12 +206,6 @@ function normalizeOptions(raw: unknown): FilterOption[] {
 export default function AnswerSheetGenerateCards() {
   const { toast } = useToast();
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  type ProcessJobStatusFn = (
-    d: JobStatusResponse,
-    options?: { silentToast?: boolean }
-  ) => Promise<'processing' | 'completed' | 'failed'>;
-  const processJobStatusDataRef = useRef<ProcessJobStatusFn | null>(null);
-  const startJobPollingRef = useRef<((statusPath: string, options?: { silentToast?: boolean }) => void) | null>(null);
 
   // Abas
   const [activeTab, setActiveTab] = useState<'generate' | 'generated'>('generate');
@@ -412,119 +374,19 @@ export default function AnswerSheetGenerateCards() {
     [processJobStatusData, toast]
   );
 
-  processJobStatusDataRef.current = processJobStatusData;
-  startJobPollingRef.current = startJobPolling;
-
+  /** Ao trocar o gabarito no select: só limpa estado local. Não chama generation-jobs nem /status. */
   useEffect(() => {
-    let cancelled = false;
-
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
-
-    if (!selectedGabaritoId) {
-      setJobId(null);
-      setLastJobStatus(null);
-      setJobDownload(null);
-      setJobError(null);
-      setIsGenerating(false);
-      setJobProgress({ current: 0, total: 0, percentage: 0 });
-      return;
-    }
-
-    (async () => {
-      try {
-        const res = await api.get<GenerationJobsResponse>(
-          `/answer-sheets/gabaritos/${selectedGabaritoId}/generation-jobs`
-        );
-        if (cancelled) return;
-
-        const jobs = res.data?.jobs ?? [];
-        const lastId = res.data?.last_generation_job_id ?? null;
-
-        let targetJob: GenerationJobSummary | null =
-          (lastId ? jobs.find((j) => j.job_id === lastId) ?? null : null) ??
-          jobs.find((j) => j.status === 'processing') ??
-          jobs[0] ??
-          null;
-
-        if (!targetJob && lastId) {
-          targetJob = {
-            job_id: lastId,
-            gabarito_id: selectedGabaritoId,
-            status: 'processing',
-            polling_url: `/answer-sheets/jobs/${lastId}/status`,
-            total: 1,
-            progress_current: 0,
-            progress_percentage: 0,
-          };
-        }
-
-        if (!targetJob) {
-          setJobId(null);
-          setLastJobStatus(null);
-          setJobDownload(null);
-          setJobError(null);
-          setIsGenerating(false);
-          setJobProgress({ current: 0, total: 0, percentage: 0 });
-          return;
-        }
-
-        const statusPath = statusPathForJob(targetJob, targetJob.job_id);
-        setJobId(targetJob.job_id);
-        setJobErrorsOpen(true);
-
-        const total = targetJob.total ?? 1;
-        const pct = targetJob.progress_percentage ?? 0;
-        const cur = targetJob.progress_current ?? 0;
-        const listStatus = targetJob.status.toLowerCase();
-        const mappedStatus: JobStatusResponse['status'] =
-          listStatus === 'completed' ? 'completed' : listStatus === 'failed' ? 'failed' : 'processing';
-
-        setJobProgress({
-          current: cur,
-          total: total || 1,
-          percentage: pct,
-        });
-        setLastJobStatus({
-          job_id: targetJob.job_id,
-          gabarito_id: targetJob.gabarito_id ?? selectedGabaritoId,
-          status: mappedStatus,
-          progress: { current: cur, total: total || 1, percentage: pct },
-        });
-        setJobError(null);
-        setJobDownload(null);
-
-        const statusRes = await api.get<JobStatusResponse>(statusPath);
-        if (cancelled) return;
-
-        const outcome = await processJobStatusDataRef.current?.(statusRes.data, { silentToast: true });
-        if (cancelled) return;
-
-        if (outcome === 'processing') {
-          setIsGenerating(true);
-          startJobPollingRef.current?.(statusPath, { silentToast: true });
-        }
-      } catch {
-        if (!cancelled) {
-          setJobId(null);
-          setLastJobStatus(null);
-          setJobDownload(null);
-          setJobError(null);
-          setIsGenerating(false);
-          setJobProgress({ current: 0, total: 0, percentage: 0 });
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    };
+    setJobId(null);
+    setLastJobStatus(null);
+    setJobDownload(null);
+    setJobError(null);
+    setIsGenerating(false);
+    setJobProgress({ current: 0, total: 0, percentage: 0 });
+    setJobErrorsOpen(true);
   }, [selectedGabaritoId]);
 
   const handleDownloadGabarito = async (
