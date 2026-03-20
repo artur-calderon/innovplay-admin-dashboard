@@ -107,6 +107,18 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
 
   const navigate = useNavigate();
   const { logout, user } = useAuth();
+  const isCorretor = Boolean(user?.email?.toLowerCase().includes('corretor'));
+  // Contas "corretor(n)@afirmeplay.com.br" devem ver apenas Agenda e Cartão Resposta.
+  const corretorAllowedHrefs = new Set([
+    '/app',
+    '/app/avaliacoes',
+    '/logout',
+    '/app/agenda',
+    '/app/configuracoes',
+    '/app/cartao-resposta/cadastrar',
+    '/app/cartao-resposta/gerar',
+    '/app/cartao-resposta/corrigir',
+  ]);
   const studentPrefs = useStudentPreferences();
   const [nonStudentThemeId, setNonStudentThemeId] = useState<SidebarThemeId>(() =>
     user?.role !== 'aluno' ? getNonStudentSidebarThemeFromStorage() : null
@@ -188,7 +200,7 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
           icon: ClipboardList,
           label: "Avaliações",
           href: `${user.role === 'aluno' ? "/aluno/avaliacoes" : "/app/avaliacoes"}`,
-          role: ["aluno"]
+          role: ["aluno", "tecadm"]
         },
         {
           icon: BarChart3,
@@ -353,6 +365,73 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
       ]
     }
   ];
+
+  // Para contas "corretor(n)@afirmeplay.com.br": sidebar simplificada.
+  // Objetivo: mostrar apenas "Principal" e evitar duplicidades em "Cadastros"
+  // e o dropdown de "Cartão Resposta" (funções como links separados).
+  const corretorRole = user.role ?? 'tecadm';
+  const corretorSidebarCategories: SidebarCategory[] = [
+    {
+      name: "Principal",
+      role: [corretorRole],
+      links: [
+        {
+          icon: LayoutDashboard,
+          label: "Painel",
+          href: "/app",
+          role: [corretorRole],
+        },
+        {
+          icon: CalendarDays,
+          label: "Agenda",
+          href: "/app/agenda",
+          role: [corretorRole],
+        },
+        {
+          icon: ClipboardList,
+          label: "Avaliações",
+          href: "/app/avaliacoes",
+          role: [corretorRole],
+        },
+        // Funções de cartão resposta fora do dropdown "Cartão Resposta"
+        {
+          icon: FilePlus,
+          label: "Cadastrar Cartão Resposta",
+          href: "/app/cartao-resposta/cadastrar",
+          role: [corretorRole],
+        },
+        {
+          icon: Ticket,
+          label: "Gerar cartões",
+          href: "/app/cartao-resposta/gerar",
+          role: [corretorRole],
+        },
+        {
+          icon: ScanLine,
+          label: "Corrigir cartões",
+          href: "/app/cartao-resposta/corrigir",
+          role: [corretorRole],
+        },
+        {
+          icon: Settings,
+          label: "Configurações",
+          href: "/app/configuracoes",
+          role: [corretorRole],
+        },
+        {
+          icon: LogOut,
+          label: "Sair",
+          href: "/logout",
+          role: [corretorRole],
+          divider: true,
+        },
+      ],
+    },
+  ];
+
+  const sidebarCategoriesToRender = isCorretor
+    ? corretorSidebarCategories
+    : sidebarCategories;
 
   const UserInfo = () => {
     const handleProfileClick = () => {
@@ -735,14 +814,37 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
             "px-1.5 pb-2 md:px-2 md:pb-3 lg:px-2 lg:pb-2", 
             isMobile && "pb-4"
           )}>
-            {sidebarCategories.map(category => {
+            {sidebarCategoriesToRender.map(category => {
               if (!category.role.includes(user.role)) return null;
+
+              const filterLink = (link: SidebarLink): SidebarLink | null => {
+                // Mantém compatibilidade com o role-based do RenderMenuItem.
+                if (!link.role.includes(user.role)) return null;
+
+                if (link.children && link.children.length > 0) {
+                  const filteredChildren = link.children
+                    .map(filterLink)
+                    .filter((c): c is SidebarLink => Boolean(c));
+
+                  if (filteredChildren.length === 0) return null;
+                  return { ...link, children: filteredChildren };
+                }
+
+                if (link.href && corretorAllowedHrefs.has(link.href)) return link;
+                return null;
+              };
+
+              const visibleLinks = isCorretor
+                ? category.links.map(filterLink).filter((l): l is SidebarLink => Boolean(l))
+                : category.links;
+
+              if (isCorretor && visibleLinks.length === 0) return null;
 
               return (
                 <div key={category.name}>
                   <CategorySeparator name={category.name} />
                   <ul className="space-y-1 md:space-y-1.5">
-                    {category.links.map((link, index) => (
+                    {visibleLinks.map((link, index) => (
                       <RenderMenuItem
                         key={`${link.label}-${link.href || link.role.join('-')}-${index}`}
                         link={link}

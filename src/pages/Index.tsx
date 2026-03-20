@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
+import { Link, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 // Componentes antigos removidos - substituídos pelos novos componentes da Fase 1
 
 // Novos componentes da Fase 1
@@ -27,6 +29,10 @@ import {
   Clock,
   Target,
   LayoutDashboard,
+  CalendarDays,
+  ClipboardList,
+  Settings,
+  Ticket,
 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 import { useToast } from "@/hooks/use-toast";
@@ -38,7 +44,9 @@ import { CertificatesApiService } from "@/services/certificatesApi";
 import type { AdminDashboard, DiretorDashboard } from "@/types/dashboard";
 
 const Index = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const isCorretor = Boolean(user?.email?.toLowerCase().includes("corretor"));
   const { toast } = useToast();
   const [counts, setCounts] = useState<DashboardCounts | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -56,6 +64,7 @@ const Index = () => {
     }
 
     const normalisedRole = String(user.role).toLowerCase();
+    if (isCorretor) return;
     if (normalisedRole === "aluno" || normalisedRole === "professor") {
       return;
     }
@@ -98,7 +107,7 @@ const Index = () => {
     return () => {
       isMounted = false;
     };
-  }, [toast, user?.role, user?.id]);
+  }, [toast, user?.role, user?.id, isCorretor]);
 
   // Quantidade de avisos (admin e tecadm)
   useEffect(() => {
@@ -145,6 +154,87 @@ const Index = () => {
   // Check user role and render appropriate dashboard
   if (user?.role === "professor") {
     return <ProfessorDashboard />;
+  }
+
+  // Painel inicial simples para contas corretor(n)@afirmeplay.com.br
+  if (isCorretor) {
+    const handleLogout = () => {
+      logout().then(() => navigate("/"));
+    };
+
+    return (
+      <div className="mx-auto w-full max-w-2xl px-3 sm:px-4 py-10">
+        <div className="rounded-2xl border border-border/60 bg-card/50 backdrop-blur-sm shadow-sm p-6 sm:p-8">
+          <div className="flex flex-col items-center text-center gap-6">
+            <div className="space-y-2">
+              <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-purple-500 drop-shadow">
+                Seja bem-vindo(a)!
+              </h1>
+              <p className="text-purple-300/90 text-sm sm:text-base">
+                Atalhos para sua rotina.
+              </p>
+              {user?.name && (
+                <p className="text-muted-foreground text-sm sm:text-base">
+                  {user.name}
+                </p>
+              )}
+            </div>
+
+            <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <Link
+                to="/app/cartao-resposta/corrigir"
+                className="rounded-xl border border-border/60 bg-background/40 hover:bg-accent/40 transition-colors px-2.5 py-4 flex flex-col items-center justify-center gap-2"
+              >
+                <Ticket className="h-11 w-11 text-purple-500" />
+                <span className="text-xs font-medium text-muted-foreground">
+                  Cartão Resposta
+                </span>
+              </Link>
+
+              <Link
+                to="/app/agenda"
+                className="rounded-xl border border-border/60 bg-background/40 hover:bg-accent/40 transition-colors px-3 py-4 flex flex-col items-center justify-center gap-2"
+              >
+                <CalendarDays className="h-11 w-11 text-purple-500" />
+                <span className="text-xs font-medium text-muted-foreground">
+                  Agenda
+                </span>
+              </Link>
+
+              <Link
+                to="/app/avaliacoes"
+                className="rounded-xl border border-border/60 bg-background/40 hover:bg-accent/40 transition-colors px-3 py-4 flex flex-col items-center justify-center gap-2"
+              >
+                <ClipboardList className="h-11 w-11 text-purple-500" />
+                <span className="text-xs font-medium text-muted-foreground">
+                  Avaliações
+                </span>
+              </Link>
+
+              <Link
+                to="/app/configuracoes"
+                className="rounded-xl border border-border/60 bg-background/40 hover:bg-accent/40 transition-colors px-3 py-4 flex flex-col items-center justify-center gap-2"
+              >
+                <Settings className="h-11 w-11 text-purple-500" />
+                <span className="text-xs font-medium text-muted-foreground">
+                  Configurações
+                </span>
+              </Link>
+            </div>
+
+            <div className="w-full pt-1">
+              <Button
+                variant="outline"
+                className="w-full rounded-xl"
+                onClick={handleLogout}
+              >
+                Sair da conta
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Default dashboard for admin and other roles

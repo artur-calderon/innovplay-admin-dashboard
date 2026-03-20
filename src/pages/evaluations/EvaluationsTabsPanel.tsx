@@ -21,6 +21,7 @@ interface EvaluationsTabsPanelProps {
   onTabChange: (value: string) => void;
   navigate: NavigateFunction;
   isProfessor: boolean;
+  isCorretor: boolean;
 }
 
 export function EvaluationsTabsPanel({
@@ -28,8 +29,15 @@ export function EvaluationsTabsPanel({
   onTabChange,
   navigate,
   isProfessor,
+  isCorretor,
 }: EvaluationsTabsPanelProps) {
   const handleValueChange = (value: string) => {
+    if (isCorretor && value !== "correction") {
+      // Mantém o corretor apenas na aba de correção.
+      onTabChange("correction");
+      return;
+    }
+
     if (value === CREATE_EVALUATION_TAB) {
       navigate("/app/criar-avaliacao?mode=virtual", { replace: true });
       return;
@@ -59,21 +67,23 @@ export function EvaluationsTabsPanel({
               "sm:flex-row sm:divide-x sm:divide-y-0 sm:rounded-none"
             )}
           >
-            <TabsTrigger
-              value="ready"
-              className={evaluationsTabTriggerClass}
-              title="Ver avaliações que você criou ou gerencia"
-            >
-              <FileText
-                className="h-4 w-4 shrink-0 opacity-70 group-data-[state=active]:opacity-100"
-                aria-hidden
-              />
-              <span className="min-w-0 break-words sm:truncate">
-                Minhas Avaliações
-              </span>
-            </TabsTrigger>
+            {!isCorretor && (
+              <TabsTrigger
+                value="ready"
+                className={evaluationsTabTriggerClass}
+                title="Ver avaliações que você criou ou gerencia"
+              >
+                <FileText
+                  className="h-4 w-4 shrink-0 opacity-70 group-data-[state=active]:opacity-100"
+                  aria-hidden
+                />
+                <span className="min-w-0 break-words sm:truncate">
+                  Minhas Avaliações
+                </span>
+              </TabsTrigger>
+            )}
 
-            {!isProfessor && (
+            {!isCorretor && !isProfessor && (
               <TabsTrigger
                 value="all"
                 className={evaluationsTabTriggerClass}
@@ -89,19 +99,21 @@ export function EvaluationsTabsPanel({
               </TabsTrigger>
             )}
 
-            <TabsTrigger
-              value="digital-to-physical"
-              className={evaluationsTabTriggerClass}
-              title="Converter avaliação digital em prova física"
-            >
-              <ArrowRightLeft
-                className="h-4 w-4 shrink-0 opacity-70 group-data-[state=active]:opacity-100"
-                aria-hidden
-              />
-              <span className="min-w-0 break-words sm:truncate">
-                Transformar Digital em Física
-              </span>
-            </TabsTrigger>
+            {!isCorretor && (
+              <TabsTrigger
+                value="digital-to-physical"
+                className={evaluationsTabTriggerClass}
+                title="Converter avaliação digital em prova física"
+              >
+                <ArrowRightLeft
+                  className="h-4 w-4 shrink-0 opacity-70 group-data-[state=active]:opacity-100"
+                  aria-hidden
+                />
+                <span className="min-w-0 break-words sm:truncate">
+                  Transformar Digital em Física
+                </span>
+              </TabsTrigger>
+            )}
 
             <TabsTrigger
               value="correction"
@@ -117,29 +129,33 @@ export function EvaluationsTabsPanel({
               </span>
             </TabsTrigger>
 
-            <TabsTrigger
-              value={CREATE_EVALUATION_TAB}
-              className={evaluationsTabTriggerClass}
-              title="Abre o assistente para criar uma nova avaliação digital"
-            >
-              <Plus
-                className="h-4 w-4 shrink-0 opacity-70 group-data-[state=active]:opacity-100"
-                aria-hidden
-              />
-              <span className="min-w-0 break-words sm:truncate">
-                Criar Nova
-              </span>
-            </TabsTrigger>
+            {!isCorretor && (
+              <TabsTrigger
+                value={CREATE_EVALUATION_TAB}
+                className={evaluationsTabTriggerClass}
+                title="Abre o assistente para criar uma nova avaliação digital"
+              >
+                <Plus
+                  className="h-4 w-4 shrink-0 opacity-70 group-data-[state=active]:opacity-100"
+                  aria-hidden
+                />
+                <span className="min-w-0 break-words sm:truncate">
+                  Criar Nova
+                </span>
+              </TabsTrigger>
+            )}
           </TabsList>
         </div>
 
-        <TabsContent value="ready" className="mt-0 space-y-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-          <ErrorBoundary>
-            <ReadyEvaluations showMyEvaluations={true} />
-          </ErrorBoundary>
-        </TabsContent>
+        {!isCorretor && (
+          <TabsContent value="ready" className="mt-0 space-y-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+            <ErrorBoundary>
+              <ReadyEvaluations showMyEvaluations={true} />
+            </ErrorBoundary>
+          </TabsContent>
+        )}
 
-        {!isProfessor && (
+        {!isCorretor && !isProfessor && (
           <TabsContent value="all" className="mt-0 space-y-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
             <ErrorBoundary>
               <ReadyEvaluations showMyEvaluations={false} />
@@ -147,17 +163,19 @@ export function EvaluationsTabsPanel({
           </TabsContent>
         )}
 
-        <TabsContent
-          value="digital-to-physical"
-          className="mt-0 space-y-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        >
-          <ErrorBoundary>
-            <DigitalToPhysicalTabContent
-              isProfessor={isProfessor}
-              tabActive={activeTab === "digital-to-physical"}
-            />
-          </ErrorBoundary>
-        </TabsContent>
+        {!isCorretor && (
+          <TabsContent
+            value="digital-to-physical"
+            className="mt-0 space-y-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <ErrorBoundary>
+              <DigitalToPhysicalTabContent
+                isProfessor={isProfessor}
+                tabActive={activeTab === "digital-to-physical"}
+              />
+            </ErrorBoundary>
+          </TabsContent>
+        )}
 
         <TabsContent
           value="correction"
