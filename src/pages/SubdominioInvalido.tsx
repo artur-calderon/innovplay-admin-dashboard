@@ -1,7 +1,48 @@
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 import LOGO_WHITE from "/AFIRME PLAY LOGO branco.png";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { api } from "@/lib/api";
 
 export default function SubdominioInvalido() {
+  const navigate = useNavigate();
+  const [status, setStatus] = useState<"checking" | "invalid" | "valid">("checking");
+
+  useEffect(() => {
+    const hostname = window.location.hostname;
+    const subdomain = hostname.split(".")[0] || hostname;
+
+    const check = async () => {
+      try {
+        const { data } = await api.get<{ exists: boolean }>(
+          `/subdomain/check?subdomain=${encodeURIComponent(subdomain)}`
+        );
+        if (data?.exists) {
+          setStatus("valid");
+          // Volta para a rota raiz para o fluxo normal (SubdomainCheck/Login/BaseRoute).
+          navigate("/", { replace: true });
+        } else {
+          setStatus("invalid");
+        }
+      } catch {
+        setStatus("invalid");
+      }
+    };
+
+    check();
+  }, [navigate]);
+
+  if (status === "checking") {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-[#240046]">
+        <div className="flex items-center gap-3 text-white/90">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span className="text-sm">Verificando subdomínio...</span>
+        </div>
+      </div>
+    );
+  }
+
   const hostname = typeof window !== "undefined" ? window.location.hostname : "";
   const subdomain = hostname.split(".")[0] || hostname;
 

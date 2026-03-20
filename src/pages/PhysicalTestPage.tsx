@@ -497,6 +497,7 @@ export default function PhysicalTestPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+  const isCorretor = Boolean(user?.email?.toLowerCase().includes('corretor'));
 
   // Estados principais
   const [isLoading, setIsLoading] = useState(true);
@@ -1587,11 +1588,11 @@ export default function PhysicalTestPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="forms" className="space-y-6">
+      <Tabs defaultValue={isCorretor ? "correction" : "forms"} className="space-y-6">
         <TabsList>
-          <TabsTrigger value="forms">Avaliações Geradas</TabsTrigger>
+          {!isCorretor && <TabsTrigger value="forms">Avaliações Geradas</TabsTrigger>}
           <TabsTrigger value="correction">Correção</TabsTrigger>
-          <TabsTrigger value="students">Alunos</TabsTrigger>
+          {!isCorretor && <TabsTrigger value="students">Alunos</TabsTrigger>}
         </TabsList>
 
         {/* Tab: Avaliações Geradas */}
