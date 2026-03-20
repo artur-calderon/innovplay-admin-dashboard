@@ -45,7 +45,8 @@ const EMPTY_STATS: EvaluationDashboardStats = {
  */
 export function EvaluationsStaffView() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState("ready");
+  const isCorretor = Boolean(user?.email?.toLowerCase().includes("corretor"));
+  const [activeTab, setActiveTab] = useState(isCorretor ? "correction" : "ready");
   const navigate = useNavigate();
   const { data: statsData, isLoading: isLoadingStats } = useEvaluationStats();
 
@@ -99,6 +100,7 @@ export function EvaluationsStaffView() {
             onTabChange={setActiveTab}
             navigate={navigate}
             isProfessor={isProfessor}
+            isCorretor={isCorretor}
           />
         </div>
       </main>
