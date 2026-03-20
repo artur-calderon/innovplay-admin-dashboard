@@ -1,7 +1,5 @@
 import type { Gabarito, GabaritoGeneration, GabaritoScopeClassEntry } from '@/types/answer-sheet';
 
-export type GabaritoDownloadTarget = { url: string; needsAuth: boolean };
-
 export function scopeTypeLabel(t?: string) {
   switch (t) {
     case 'class':
@@ -70,35 +68,23 @@ export function formatGenerationScopeSummary(gen: GabaritoGeneration): string {
   return scopeTypeLabel(gen.scope_type);
 }
 
-/** MinIO / URL pública primeiro; `download_url` da API exige token (needsAuth: true). */
-export function resolveGenerationDownloadTarget(gen: GabaritoGeneration): GabaritoDownloadTarget | null {
-  const m = gen.minio_url?.trim();
-  if (m) return { url: m, needsAuth: false };
-  const d = gen.download_url?.trim();
-  if (d) return { url: d, needsAuth: true };
-  return null;
-}
-
+/** Somente `download_url` da API (download autenticado com Bearer). */
 export function resolveGenerationDownloadUrl(gen: GabaritoGeneration): string | null {
-  return resolveGenerationDownloadTarget(gen)?.url ?? null;
+  const d = gen.download_url?.trim();
+  return d || null;
 }
 
-/** Cartão na listagem: minio sem auth; download_url com auth. */
-export function resolveGabaritoRootDownload(
-  g: Pick<Gabarito, 'minio_url' | 'download_url'>
-): GabaritoDownloadTarget | null {
-  const m = g.minio_url?.trim();
-  if (m) return { url: m, needsAuth: false };
+/** Cartão na listagem: só `download_url`. */
+export function resolveGabaritoDownloadUrl(g: Pick<Gabarito, 'download_url'>): string | null {
   const d = g.download_url?.trim();
-  if (d) return { url: d, needsAuth: true };
-  return null;
+  return d || null;
 }
 
 export function generationCanDownload(gen: GabaritoGeneration): boolean {
   if (gen.can_download === false) return false;
   if (gen.can_download === true) return true;
   if (gen.status === 'completed') {
-    return !!resolveGenerationDownloadTarget(gen) || !!gen.job_id;
+    return !!resolveGenerationDownloadUrl(gen) || !!gen.job_id;
   }
   return false;
 }
