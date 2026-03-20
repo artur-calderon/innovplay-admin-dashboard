@@ -49,6 +49,8 @@ import { useSkillsStore } from '@/stores/useSkillsStore';
 type Step = 1 | 2;
 
 export default function AnswerSheetGenerator() {
+  // LEGADO: este componente cobre o fluxo antigo em `/app/cartao-resposta`.
+  // O submenu "Gerar cartões" usa `AnswerSheetGenerateCards` em `/app/cartao-resposta/gerar`.
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -2614,26 +2616,9 @@ export default function AnswerSheetGenerator() {
                       </div>
                     )}
 
-                    {/* Botão de Download — só `download_url` via axios + Bearer */}
-                    {jobProgress.percentage === 100 && jobDownloadUrl && (
-                      <Button
-                        onClick={handleDownloadZip}
-                        disabled={isSavingJobZip}
-                        size="lg"
-                        className="w-full bg-green-600 hover:bg-green-700"
-                      >
-                        {isSavingJobZip ? (
-                          <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                        ) : (
-                          <Download className="h-5 w-5 mr-2" />
-                        )}
-                        {isSavingJobZip ? 'Baixando...' : 'Baixar ZIP com Cartões'}
-                      </Button>
-                    )}
-
-                    {jobProgress.percentage === 100 && !jobDownloadUrl && (
+                    {jobProgress.percentage === 100 && (
                       <p className="text-sm text-muted-foreground text-center">
-                        O link de download ainda não está disponível. Confira a aba &quot;Cartões gerados&quot; ou tente atualizar em instantes.
+                        Geração concluída. Faça o download na aba &quot;Cartões gerados&quot;.
                       </p>
                     )}
 

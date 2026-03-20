@@ -1185,24 +1185,10 @@ export default function AnswerSheetGenerateCards() {
                     </CollapsibleContent>
                   </Collapsible>
                 )}
-                {jobDownloadUrl && (
-                  <Button onClick={handleJobCompleteDownload} disabled={isSavingJobZip}>
-                    {isSavingJobZip ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Baixando...
-                      </>
-                    ) : (
-                      <>
-                        <Download className="mr-2 h-4 w-4" />
-                        Baixar ZIP
-                      </>
-                    )}
-                  </Button>
-                )}
-                {lastJobStatus?.status === 'completed' && !jobDownloadUrl && !jobError && (
+                {/* Não mostrar download direto aqui; a liberação/baixar deve acontecer na aba "Cartões gerados". */}
+                {lastJobStatus?.status === 'completed' && !jobError && (
                   <p className="text-sm text-muted-foreground">
-                    O arquivo ainda não está disponível para download direto. Abra a aba &quot;Cartões gerados&quot; e use &quot;Baixar ZIP&quot; quando o gabarito estiver pronto.
+                    Geração concluída. Para baixar os arquivos, use a aba &quot;Cartões gerados&quot;.
                   </p>
                 )}
                 {isGenerating && lastJobStatus?.status !== 'failed' && (
