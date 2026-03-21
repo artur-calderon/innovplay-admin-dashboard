@@ -6,11 +6,13 @@ import { Download, FileText, RefreshCw, Filter, BookOpen, Calculator, LineChart,
 
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { EvaluationResultsApiService, NovaRespostaAPI } from "@/services/evaluationResultsApi";
+import { EvaluationResultsApiService, NovaRespostaAPI, REPORT_ENTITY_TYPE_ANSWER_SHEET } from "@/services/evaluationResultsApi";
 import { RelatorioCompleto } from "@/types/evaluation-results";
 import { useAuth } from "@/context/authContext";
 import { FilterComponentAnalise } from "@/components/filters";
-import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext } from "@/utils/userHierarchy";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext, cityIdQueryParamForAdmin } from "@/utils/userHierarchy";
 import { cn } from "@/lib/utils";
 import { getProficiencyLevelLabel, getProficiencyTableInfo, ProficiencyLevel } from "@/components/evaluations/results/utils/proficiency";
 import { descricoesNiveisEscolares, aplicarSerieNaDescricao, type NivelDescricao } from "./relatorioEscolarDescricoesNiveis";
@@ -31,6 +33,23 @@ const findDisciplinaByAliases = <T,>(
     return aliases.some(alias => normalizedKey.includes(alias));
   })?.[1];
 };
+
+/** Cartão-resposta / JSON enxuto: `por_disciplina.X` pode vir só como `{ media, alunos }` sem `por_turma` nem `media_geral`. */
+function readMediaNotaRelatorio(entry: unknown): number | undefined {
+  if (entry == null || typeof entry !== "object") return undefined;
+  const o = entry as Record<string, unknown>;
+  if (typeof o.media === "number" && !Number.isNaN(o.media)) return o.media;
+  if (typeof o.media_geral === "number" && !Number.isNaN(o.media_geral)) return o.media_geral;
+  return undefined;
+}
+
+function readMediaProficienciaRelatorio(entry: unknown): number | undefined {
+  if (entry == null || typeof entry !== "object") return undefined;
+  const o = entry as Record<string, unknown>;
+  if (typeof o.media === "number" && !Number.isNaN(o.media)) return o.media;
+  if (typeof o.media_geral === "number" && !Number.isNaN(o.media_geral)) return o.media_geral;
+  return undefined;
+}
 
 interface ClassSummaryRow {
   serie: string;
@@ -597,6 +616,62 @@ const getProficiencyLevelForAggregatedData = (
   return 'avancado';
 };
 
+type TabelaDetalhadaRelatorio = NonNullable<NovaRespostaAPI["tabela_detalhada"]>;
+
+/** API de cartão-resposta pode enviar `aluno_id` em vez de `id`. */
+function alunoRowId(aluno: { id?: string; aluno_id?: string }): string {
+  return String(aluno.id ?? aluno.aluno_id ?? "").trim();
+}
+
+type AnswerSheetSkillRow = { id?: string | null; code?: string; description?: string };
+
+function enrichTabelaDetalhadaAnswerSheetSkills(
+  tabela: TabelaDetalhadaRelatorio | null | undefined,
+  skills: AnswerSheetSkillRow[] | undefined,
+  isAnswerSheet: boolean
+): TabelaDetalhadaRelatorio | null | undefined {
+  if (!isAnswerSheet || !tabela?.disciplinas?.length || !skills?.length) return tabela;
+  const sorted = [...skills].filter((s) => s?.id).sort((a, b) => {
+    const ca = (a.code || a.id || "").toString();
+    const cb = (b.code || b.id || "").toString();
+    return ca.localeCompare(cb, undefined, { sensitivity: "base" });
+  });
+  if (sorted.length === 0) return tabela;
+  return {
+    ...tabela,
+    disciplinas: tabela.disciplinas.map((d) => {
+      if (Array.isArray(d.questoes) && d.questoes.length > 0) return d;
+      return {
+        ...d,
+        questoes: sorted.map((s, idx) => ({
+          numero: idx + 1,
+          habilidade: s.description || "",
+          codigo_habilidade: (s.code || String(s.id ?? "")).toString(),
+          question_id: String(s.id ?? idx + 1),
+        })),
+      };
+    }),
+  };
+}
+
+function escolaChaveAgrupamento(
+  aluno: { escola?: string },
+  reportAnswerSheet: boolean,
+  nomeMunicipioOuGeral?: string
+): string {
+  const raw = (aluno.escola ?? "").trim();
+  if (raw && raw.toUpperCase() !== "N/A") return raw;
+  if (reportAnswerSheet) return (nomeMunicipioOuGeral ?? "").trim() || "Total";
+  return "";
+}
+
+function turmaChaveAgrupamento(aluno: { turma?: string }, reportAnswerSheet: boolean): string {
+  const raw = (aluno.turma ?? "").trim();
+  if (raw && raw.toUpperCase() !== "N/A") return raw;
+  if (reportAnswerSheet) return "—";
+  return "";
+}
+
 export default function RelatorioEscolar() {
   const { autoLogin, user } = useAuth();
   const [apiData, setApiData] = useState<NovaRespostaAPI | null>(null);
@@ -614,6 +689,12 @@ export default function RelatorioEscolar() {
   const [selectedMunicipality, setSelectedMunicipality] = useState<string>('all');
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [selectedEvaluation, setSelectedEvaluation] = useState<string>('all');
+  const [reportAnswerSheet, setReportAnswerSheet] = useState(false);
+
+  const adminCityIdQuery = useMemo(
+    () => cityIdQueryParamForAdmin(user?.role, selectedMunicipality === 'all' ? undefined : selectedMunicipality),
+    [user?.role, selectedMunicipality]
+  );
 
   // Estados para hierarquia do usuário
   const [userHierarchyContext, setUserHierarchyContext] = useState<UserHierarchyContext | null>(null);
@@ -723,13 +804,18 @@ export default function RelatorioEscolar() {
             return false;
           }
 
-          // ✅ NOVO: Verificar se o aluno respondeu pelo menos uma questão
-          // (indicando participação na avaliação)
-          if (aluno.respostas_por_questao && Array.isArray(aluno.respostas_por_questao)) {
-            const respondeuAlgumaQuestao = aluno.respostas_por_questao.some(resposta => resposta.respondeu === true);
-            if (!respondeuAlgumaQuestao) {
-              return false; // Aluno não participou
-            }
+          const hasAnsweredAny =
+            Array.isArray(aluno.respostas_por_questao) &&
+            aluno.respostas_por_questao.some((resposta) => resposta.respondeu === true);
+          const classif = (aluno as { classificacao?: string }).classificacao;
+          const summarySemQuestoes =
+            !hasAnsweredAny &&
+            (Number(aluno.nota) > 0 ||
+              Number(aluno.proficiencia) > 0 ||
+              Boolean(classif && String(classif).trim()));
+
+          if (!hasAnsweredAny && !summarySemQuestoes) {
+            return false;
           }
 
           return true;
@@ -1084,6 +1170,67 @@ export default function RelatorioEscolar() {
           }
         });
       }
+
+      // Cartão-resposta: `nota_geral` / `proficiencia` por disciplina podem vir só com `media` (sem `por_turma`).
+      // Nesse caso o mapa fica vazio e a tabela "Desempenho" não renderiza — sintetizamos linhas a partir de total_alunos.
+      if (turmasMap.size === 0) {
+        const nd = relatorioCompleto.nota_geral.por_disciplina;
+        const pd = relatorioCompleto.proficiencia.por_disciplina;
+        const lpEntry = findDisciplinaByAliases(nd, ["portugues", "português", "lingua portuguesa"]);
+        const matEntry = findDisciplinaByAliases(nd, ["matematica", "matemática"]);
+        const mediaLP = readMediaNotaRelatorio(lpEntry);
+        const mediaMAT = readMediaNotaRelatorio(matEntry);
+        const mediaGeral =
+          readMediaNotaRelatorio(nd?.GERAL) ?? readMediaNotaRelatorio(findDisciplinaByAliases(nd, ["geral"]));
+        const profGeral =
+          readMediaProficienciaRelatorio(pd?.GERAL) ??
+          readMediaProficienciaRelatorio(findDisciplinaByAliases(pd, ["geral"]));
+
+        const preencherLinha = (nome: string, serieFallback: string, t: {
+          matriculados?: number;
+          avaliados?: number;
+          percentual?: number;
+        }) => {
+          const row: ClassSummaryRow = {
+            turma: nome,
+            serie: serieFallback,
+            mediaLP,
+            mediaMAT,
+            mediaGeral,
+            proficienciaMedia: profGeral,
+            matriculados: t.matriculados,
+            avaliados: t.avaliados,
+            comparecimento: t.percentual,
+          };
+          if (row.proficienciaMedia !== undefined) {
+            const level = getProficiencyLevelForAggregatedData(row.proficienciaMedia, row.serie, curso);
+            row.proficiencyLevel = level;
+            row.proficiencyLabel = getProficiencyLevelLabel(level);
+            row.proficiencyColor = getProficiencyLevelColorRelatorio(level);
+          }
+          turmasMap.set(nome, row);
+        };
+
+        const porTurma = relatorioCompleto.total_alunos.por_turma;
+        if (porTurma && porTurma.length > 0) {
+          porTurma.forEach((turmaAlunos) => {
+            const nome = (turmaAlunos.turma ?? "").trim();
+            if (!nome) return;
+            const serieFallback = nome.split(/\s+/)[0] || "-";
+            preencherLinha(nome, serieFallback, turmaAlunos);
+          });
+        } else {
+          const porEscola = relatorioCompleto.total_alunos.por_escola;
+          if (porEscola && porEscola.length > 0) {
+            porEscola.forEach((escolaAlunos) => {
+              const nome = (escolaAlunos.escola ?? "").trim();
+              if (!nome) return;
+              const serieFallback = nome.split(/\s+/)[0] || "-";
+              preencherLinha(nome, serieFallback, escolaAlunos);
+            });
+          }
+        }
+      }
       
       // Calcular média geral se não foi definida
       Array.from(turmasMap.values()).forEach(row => {
@@ -1113,13 +1260,19 @@ export default function RelatorioEscolar() {
       if (apiData?.tabela_detalhada?.geral?.alunos?.length) {
         const labelsByKey = new Map<string, string[]>();
         apiData.tabela_detalhada.geral.alunos.forEach((aluno) => {
-          if (!aluno.id) return;
-          const key = turmaKey(isMunicipalView ? aluno.escola : aluno.turma);
+          if (!alunoRowId(aluno)) return;
+          const keyRaw = isMunicipalView
+            ? escolaChaveAgrupamento(aluno, reportAnswerSheet, apiData.estatisticas_gerais?.nome)
+            : turmaChaveAgrupamento(aluno, reportAnswerSheet);
+          const key = turmaKey(keyRaw);
           if (!key) return;
 
           const list = labelsByKey.get(key) ?? [];
-          if (aluno.nivel_proficiencia_geral) {
-            list.push(aluno.nivel_proficiencia_geral);
+          const label =
+            aluno.nivel_proficiencia_geral ||
+            (aluno as { classificacao?: string }).classificacao;
+          if (label) {
+            list.push(label);
             labelsByKey.set(key, list);
           }
         });
@@ -1163,9 +1316,17 @@ export default function RelatorioEscolar() {
         const isMatematica = disciplinaNome.includes('matemática') || disciplinaNome.includes('matematica');
 
         disciplina.alunos?.forEach(aluno => {
-          if (!aluno.escola || !aluno.id) return;
-          
-          const escolaNome = aluno.escola.trim();
+          const rowId = alunoRowId(aluno);
+          if (!rowId) return;
+          const escolaNome = escolaChaveAgrupamento(aluno, reportAnswerSheet, apiData.estatisticas_gerais?.nome);
+          if (!escolaNome) return;
+
+          const serieAluno =
+            (aluno.serie?.trim() && aluno.serie.trim().toUpperCase() !== "N/A")
+              ? aluno.serie.trim()
+              : reportAnswerSheet
+                ? "—"
+                : "-";
           if (!escolasMap.has(escolaNome)) {
             escolasMap.set(escolaNome, {
               alunos: new Set(),
@@ -1173,12 +1334,12 @@ export default function RelatorioEscolar() {
               notasMAT: [],
               notasGeral: [],
               proficiencias: [],
-              serie: aluno.serie || '-'
+              serie: serieAluno
             });
           }
 
           const escola = escolasMap.get(escolaNome)!;
-          escola.alunos.add(aluno.id);
+          escola.alunos.add(rowId);
 
           // Coletar notas e proficiências por disciplina
           if (aluno.nota !== undefined && aluno.nota !== null && !Number.isNaN(aluno.nota)) {
@@ -1186,6 +1347,8 @@ export default function RelatorioEscolar() {
               escola.notasLP.push(aluno.nota);
             } else if (isMatematica) {
               escola.notasMAT.push(aluno.nota);
+            } else if (reportAnswerSheet) {
+              escola.notasGeral.push(aluno.nota);
             }
           }
 
@@ -1198,9 +1361,10 @@ export default function RelatorioEscolar() {
       // Processar dados gerais se disponível
       if (apiData.tabela_detalhada.geral?.alunos) {
         apiData.tabela_detalhada.geral.alunos.forEach(aluno => {
-          if (!aluno.escola || !aluno.id) return;
-          
-          const escolaNome = aluno.escola.trim();
+          const rowId = alunoRowId(aluno);
+          if (!rowId) return;
+          const escolaNome = escolaChaveAgrupamento(aluno, reportAnswerSheet, apiData.estatisticas_gerais?.nome);
+          if (!escolaNome) return;
           const escola = escolasMap.get(escolaNome);
           if (escola) {
             if (aluno.nota_geral !== undefined && aluno.nota_geral !== null && !Number.isNaN(aluno.nota_geral)) {
@@ -1271,12 +1435,17 @@ export default function RelatorioEscolar() {
       if (apiData?.tabela_detalhada?.geral?.alunos?.length) {
         const labelsByKey = new Map<string, string[]>();
         apiData.tabela_detalhada.geral.alunos.forEach((aluno) => {
-          if (!aluno.id) return;
-          const key = isMunicipalView ? aluno.escola?.trim() : aluno.turma?.trim();
+          if (!alunoRowId(aluno)) return;
+          const key = isMunicipalView
+            ? escolaChaveAgrupamento(aluno, reportAnswerSheet, apiData.estatisticas_gerais?.nome)
+            : turmaChaveAgrupamento(aluno, reportAnswerSheet);
           if (!key) return;
           const list = labelsByKey.get(key) ?? [];
-          if (aluno.nivel_proficiencia_geral) {
-            list.push(aluno.nivel_proficiencia_geral);
+          const label =
+            aluno.nivel_proficiencia_geral ||
+            (aluno as { classificacao?: string }).classificacao;
+          if (label) {
+            list.push(label);
             labelsByKey.set(key, list);
           }
         });
@@ -1311,9 +1480,17 @@ export default function RelatorioEscolar() {
       const isMatematica = disciplinaNome.includes('matemática') || disciplinaNome.includes('matematica');
 
       disciplina.alunos?.forEach(aluno => {
-        if (!aluno.turma || !aluno.id) return;
-        
-        const turmaNome = aluno.turma.trim();
+        const rowId = alunoRowId(aluno);
+        if (!rowId) return;
+        const turmaNome = turmaChaveAgrupamento(aluno, reportAnswerSheet);
+        if (!turmaNome) return;
+
+        const serieAluno =
+          (aluno.serie?.trim() && aluno.serie.trim().toUpperCase() !== "N/A")
+            ? aluno.serie.trim()
+            : reportAnswerSheet
+              ? "—"
+              : turmaNome.split(" ")[0] || "-";
         if (!turmasMap.has(turmaNome)) {
           turmasMap.set(turmaNome, {
             alunos: new Set(),
@@ -1321,12 +1498,12 @@ export default function RelatorioEscolar() {
             notasMAT: [],
             notasGeral: [],
             proficiencias: [],
-            serie: aluno.serie || turmaNome.split(' ')[0] || '-'
+            serie: serieAluno
           });
         }
 
         const turma = turmasMap.get(turmaNome)!;
-        turma.alunos.add(aluno.id);
+        turma.alunos.add(rowId);
 
         // Coletar notas e proficiências por disciplina
         if (aluno.nota !== undefined && aluno.nota !== null && !Number.isNaN(aluno.nota)) {
@@ -1334,6 +1511,8 @@ export default function RelatorioEscolar() {
             turma.notasLP.push(aluno.nota);
           } else if (isMatematica) {
             turma.notasMAT.push(aluno.nota);
+          } else if (reportAnswerSheet) {
+            turma.notasGeral.push(aluno.nota);
           }
         }
 
@@ -1346,9 +1525,10 @@ export default function RelatorioEscolar() {
     // Processar dados gerais se disponível
     if (apiData.tabela_detalhada.geral?.alunos) {
       apiData.tabela_detalhada.geral.alunos.forEach(aluno => {
-        if (!aluno.turma || !aluno.id) return;
-        
-        const turmaNome = aluno.turma.trim();
+        const rowId = alunoRowId(aluno);
+        if (!rowId) return;
+        const turmaNome = turmaChaveAgrupamento(aluno, reportAnswerSheet);
+        if (!turmaNome) return;
         const turma = turmasMap.get(turmaNome);
         if (turma) {
           if (aluno.nota_geral !== undefined && aluno.nota_geral !== null && !Number.isNaN(aluno.nota_geral)) {
@@ -1419,12 +1599,17 @@ export default function RelatorioEscolar() {
     if (apiData?.tabela_detalhada?.geral?.alunos?.length) {
       const labelsByKey = new Map<string, string[]>();
       apiData.tabela_detalhada.geral.alunos.forEach((aluno) => {
-        if (!aluno.id) return;
-        const key = isMunicipalView ? aluno.escola?.trim() : aluno.turma?.trim();
+        if (!alunoRowId(aluno)) return;
+        const key = isMunicipalView
+          ? escolaChaveAgrupamento(aluno, reportAnswerSheet, apiData.estatisticas_gerais?.nome)
+          : turmaChaveAgrupamento(aluno, reportAnswerSheet);
         if (!key) return;
         const list = labelsByKey.get(key) ?? [];
-        if (aluno.nivel_proficiencia_geral) {
-          list.push(aluno.nivel_proficiencia_geral);
+        const label =
+          aluno.nivel_proficiencia_geral ||
+          (aluno as { classificacao?: string }).classificacao;
+        if (label) {
+          list.push(label);
           labelsByKey.set(key, list);
         }
       });
@@ -1440,7 +1625,7 @@ export default function RelatorioEscolar() {
     }
 
     return sortedRows;
-  }, [apiData, isMunicipalView, relatorioCompleto]);
+  }, [apiData, isMunicipalView, relatorioCompleto, reportAnswerSheet]);
 
   const distributionCharts = useMemo<DistributionChartData[]>(() => {
     if (!apiData || !apiData.resultados_por_disciplina) return [];
@@ -1490,34 +1675,50 @@ export default function RelatorioEscolar() {
 
     // ✅ PRIORIDADE: Usar dados do relatório completo se disponível
     if (relatorioCompleto) {
-      const portuguesNota = relatorioCompleto.nota_geral.por_disciplina['Português']?.media_geral 
-        || relatorioCompleto.nota_geral.por_disciplina['Língua Portuguesa']?.media_geral
-        || Object.entries(relatorioCompleto.nota_geral.por_disciplina).find(([key]) => 
-          key.toLowerCase().includes('português') || key.toLowerCase().includes('portugues')
-        )?.[1]?.media_geral;
-      
-      const matematicaNota = relatorioCompleto.nota_geral.por_disciplina['Matemática']?.media_geral
-        || Object.entries(relatorioCompleto.nota_geral.por_disciplina).find(([key]) => 
-          key.toLowerCase().includes('matemática') || key.toLowerCase().includes('matematica')
-        )?.[1]?.media_geral;
-      
-      const geralNota = relatorioCompleto.nota_geral.por_disciplina['GERAL']?.media_geral;
-      
-      const portuguesProf = relatorioCompleto.proficiencia.por_disciplina['Português']?.media_geral
-        || relatorioCompleto.proficiencia.por_disciplina['Língua Portuguesa']?.media_geral
-        || Object.entries(relatorioCompleto.proficiencia.por_disciplina).find(([key]) => 
-          key.toLowerCase().includes('português') || key.toLowerCase().includes('portugues')
-        )?.[1]?.media_geral;
-      
-      const matematicaProf = relatorioCompleto.proficiencia.por_disciplina['Matemática']?.media_geral
-        || Object.entries(relatorioCompleto.proficiencia.por_disciplina).find(([key]) => 
-          key.toLowerCase().includes('matemática') || key.toLowerCase().includes('matematica')
-        )?.[1]?.media_geral;
-      
+      const nd = relatorioCompleto.nota_geral.por_disciplina;
+      const pd = relatorioCompleto.proficiencia.por_disciplina;
+
+      const portuguesNota =
+        readMediaNotaRelatorio(nd['Português']) ??
+        readMediaNotaRelatorio(nd['Língua Portuguesa']) ??
+        readMediaNotaRelatorio(
+          Object.entries(nd).find(([key]) =>
+            key.toLowerCase().includes('português') || key.toLowerCase().includes('portugues')
+          )?.[1]
+        );
+
+      const matematicaNota =
+        readMediaNotaRelatorio(nd['Matemática']) ??
+        readMediaNotaRelatorio(
+          Object.entries(nd).find(([key]) =>
+            key.toLowerCase().includes('matemática') || key.toLowerCase().includes('matematica')
+          )?.[1]
+        );
+
+      const geralNota = readMediaNotaRelatorio(nd['GERAL']);
+
+      const portuguesProf =
+        readMediaProficienciaRelatorio(pd['Português']) ??
+        readMediaProficienciaRelatorio(pd['Língua Portuguesa']) ??
+        readMediaProficienciaRelatorio(
+          Object.entries(pd).find(([key]) =>
+            key.toLowerCase().includes('português') || key.toLowerCase().includes('portugues')
+          )?.[1]
+        );
+
+      const matematicaProf =
+        readMediaProficienciaRelatorio(pd['Matemática']) ??
+        readMediaProficienciaRelatorio(
+          Object.entries(pd).find(([key]) =>
+            key.toLowerCase().includes('matemática') || key.toLowerCase().includes('matematica')
+          )?.[1]
+        );
+
       const proficienciasValidas = [portuguesProf, matematicaProf].filter((p): p is number => p !== undefined);
-      const proficienciaMedia = proficienciasValidas.length > 0
-        ? proficienciasValidas.reduce((sum, p) => sum + p, 0) / proficienciasValidas.length
-        : relatorioCompleto.proficiencia.por_disciplina['GERAL']?.media_geral ?? null;
+      const proficienciaMedia =
+        proficienciasValidas.length > 0
+          ? proficienciasValidas.reduce((sum, p) => sum + p, 0) / proficienciasValidas.length
+          : readMediaProficienciaRelatorio(pd['GERAL']) ?? null;
       
       const totalGeral = relatorioCompleto.total_alunos.total_geral;
       const totalMatriculados = totalGeral?.matriculados ?? null;
@@ -2553,6 +2754,8 @@ export default function RelatorioEscolar() {
             municipio: selectedMunicipality,
             avaliacao: selectedEvaluation !== 'all' ? selectedEvaluation : undefined,
             escola: selectedSchool !== 'all' ? selectedSchool : undefined,
+            ...(reportAnswerSheet ? { report_entity_type: REPORT_ENTITY_TYPE_ANSWER_SHEET } : {}),
+            ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
           };
 
           const evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(1, 1, filters);
@@ -2561,10 +2764,19 @@ export default function RelatorioEscolar() {
           let relatorioCompletoData: RelatorioCompleto | null = null;
           if (selectedEvaluation !== 'all') {
             try {
-              const options = selectedSchool !== 'all' 
-                ? { schoolId: selectedSchool }
-                : { cityId: selectedMunicipality };
-              relatorioCompletoData = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation, options);
+              const options =
+                selectedSchool !== 'all'
+                  ? {
+                      schoolId: selectedSchool,
+                      ...(selectedMunicipality !== 'all' ? { cityId: selectedMunicipality } : {}),
+                    }
+                  : { cityId: selectedMunicipality };
+              const relatorioOptions = {
+                ...options,
+                ...(adminCityIdQuery ? { adminCityIdQuery } : {}),
+                ...(reportAnswerSheet ? { reportEntityType: REPORT_ENTITY_TYPE_ANSWER_SHEET } : {}),
+              };
+              relatorioCompletoData = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation, relatorioOptions);
               setRelatorioCompleto(relatorioCompletoData);
             } catch (relatorioError) {
               setRelatorioCompleto(null);
@@ -2589,6 +2801,8 @@ export default function RelatorioEscolar() {
                     municipio: filters.municipio,
                     avaliacao: filters.avaliacao,
                     escola: undefined, // Remover filtro de escola para obter todos os dados do município
+                    ...(reportAnswerSheet ? { report_entity_type: REPORT_ENTITY_TYPE_ANSWER_SHEET } : {}),
+                    ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
                   };
                   
                   const municipioResponse = await EvaluationResultsApiService.getEvaluationsList(1, 1, municipioFilters);
@@ -2610,7 +2824,8 @@ export default function RelatorioEscolar() {
                         municipioResponse.tabela_detalhada.geral.alunos.forEach(aluno => {
                           const escolaDoAluno = aluno.escola;
                           if (escolaDoAluno && escolaDoAluno.toLowerCase().includes(nomeEscolaSelecionada.toLowerCase())) {
-                            alunosDaEscola.add(aluno.id);
+                            const rid = alunoRowId(aluno);
+                            if (rid) alunosDaEscola.add(rid);
                           }
                         });
                       }
@@ -2620,7 +2835,8 @@ export default function RelatorioEscolar() {
                         municipioResponse.tabela_detalhada.disciplinas.forEach(disciplina => {
                           disciplina.alunos?.forEach(aluno => {
                             if (aluno.escola && aluno.escola.toLowerCase().includes(nomeEscolaSelecionada.toLowerCase())) {
-                              alunosDaEscola.add(aluno.id);
+                              const rid = alunoRowId(aluno);
+                              if (rid) alunosDaEscola.add(rid);
                             }
                           });
                         });
@@ -2629,7 +2845,7 @@ export default function RelatorioEscolar() {
                       if (alunosDaEscola.size > 0) {
                         // Reconstruir tabela_detalhada com apenas alunos da escola selecionada
                         const disciplinasComAlunosFiltrados = municipioResponse.tabela_detalhada.disciplinas.map(disciplina => {
-                          const alunosFiltrados = disciplina.alunos?.filter(aluno => alunosDaEscola.has(aluno.id)) || [];
+                          const alunosFiltrados = disciplina.alunos?.filter(aluno => alunosDaEscola.has(alunoRowId(aluno))) || [];
                           
                           return {
                             ...disciplina,
@@ -2639,7 +2855,7 @@ export default function RelatorioEscolar() {
                         
                         // Filtrar também alunos em geral
                         const alunosGeralFiltrados = municipioResponse.tabela_detalhada.geral?.alunos?.filter(
-                          aluno => alunosDaEscola.has(aluno.id)
+                          aluno => alunosDaEscola.has(alunoRowId(aluno))
                         ) || [];
                         
                         // Atualizar a resposta com os dados filtrados
@@ -2657,6 +2873,32 @@ export default function RelatorioEscolar() {
                 } catch (fallbackError) {
                   // Erro silencioso no fallback
                 }
+              }
+            }
+
+            if (
+              reportAnswerSheet &&
+              selectedEvaluation !== "all" &&
+              evaluationsResponse.tabela_detalhada
+            ) {
+              const skills = await EvaluationResultsApiService.getSkillsByEvaluation(
+                selectedEvaluation,
+                {
+                  report_entity_type: REPORT_ENTITY_TYPE_ANSWER_SHEET,
+                  ...(selectedMunicipality !== "all" ? { cityId: selectedMunicipality } : {}),
+                  ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+                }
+              ).catch(() => []);
+              const listaSkills = Array.isArray(skills)
+                ? (skills as AnswerSheetSkillRow[]).filter((s) => s?.id)
+                : [];
+              const tabelaEnriquecida = enrichTabelaDetalhadaAnswerSheetSkills(
+                evaluationsResponse.tabela_detalhada,
+                listaSkills,
+                true
+              );
+              if (tabelaEnriquecida) {
+                evaluationsResponse.tabela_detalhada = tabelaEnriquecida;
               }
             }
             
@@ -2678,7 +2920,7 @@ export default function RelatorioEscolar() {
     };
 
     loadData();
-  }, [allRequiredFiltersSelected, selectedState, selectedMunicipality, selectedSchool, selectedEvaluation, toast]);
+  }, [allRequiredFiltersSelected, selectedState, selectedMunicipality, selectedSchool, selectedEvaluation, reportAnswerSheet, adminCityIdQuery, toast]);
 
   // Removido: useEffect de getTabelaDetalhada - os dados já vêm de getEvaluationsList em apiData.tabela_detalhada
 
@@ -2719,6 +2961,23 @@ export default function RelatorioEscolar() {
         </div>
       </div>
 
+      <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-4">
+        <Checkbox
+          id="report-answer-sheet-escolar"
+          checked={reportAnswerSheet}
+          onCheckedChange={(v) => {
+            const checked = v === true;
+            setReportAnswerSheet(checked);
+            setSelectedEvaluation('all');
+            setApiData(null);
+            setRelatorioCompleto(null);
+          }}
+        />
+        <Label htmlFor="report-answer-sheet-escolar" className="text-sm font-normal leading-snug cursor-pointer">
+          Marque para ver relatórios de um cartão resposta
+        </Label>
+      </div>
+
       {/* Filtros */}
       <FilterComponentAnalise
         selectedState={selectedState}
@@ -2744,6 +3003,8 @@ export default function RelatorioEscolar() {
         }}
         isLoadingFilters={isLoadingFilters}
         onLoadingChange={setIsLoadingFilters}
+        reportEntityType={reportAnswerSheet ? REPORT_ENTITY_TYPE_ANSWER_SHEET : undefined}
+        adminCityIdQuery={adminCityIdQuery}
         // Props para hierarquia
         userRole={user?.role}
         canSelectState={userHierarchyContext?.restrictions.canSelectState}
