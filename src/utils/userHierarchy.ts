@@ -530,4 +530,18 @@ export function getRestrictionMessage(role: string): string {
   }
 }
 
+/**
+ * Valor para o query param `city_id` em rotas que exigem município explícito.
+ * - **Admin:** o JWT costuma não ter cidade; enviar o UUID do município escolhido nos filtros.
+ * - **Demais perfis:** retorna `undefined` — o backend usa o tenant/cidade do token.
+ */
+export function cityIdQueryParamForAdmin(
+  role: string | undefined,
+  selectedMunicipalityId: string | undefined
+): string | undefined {
+  if (!role || role.toLowerCase() !== 'admin') return undefined;
+  const id = selectedMunicipalityId?.trim();
+  if (!id || id === 'all') return undefined;
+  return id;
+}
 

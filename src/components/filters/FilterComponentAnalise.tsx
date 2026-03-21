@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Filter } from "lucide-react";
-import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import { EvaluationResultsApiService, type ReportEntityTypeQuery } from "@/services/evaluationResultsApi";
 import { useToast } from "@/hooks/use-toast";
 
 // Interfaces para os filtros
@@ -57,6 +57,10 @@ interface FilterComponentAnaliseProps {
   }>;
   // Prop para ordenação personalizada: quando true, Avaliação vem antes de Escola
   loadSchoolsAfterEvaluation?: boolean;
+  /** Quando definido, envia `report_entity_type=answer_sheet` nas rotas de filtros. */
+  reportEntityType?: ReportEntityTypeQuery;
+  /** Somente admin: query `city_id` (município selecionado; token sem cidade). */
+  adminCityIdQuery?: string;
 }
 
 export function FilterComponentAnalise({
@@ -79,6 +83,8 @@ export function FilterComponentAnalise({
   fallbackSchools = [],
   // Prop para ordenação personalizada
   loadSchoolsAfterEvaluation = false,
+  reportEntityType,
+  adminCityIdQuery,
 }: FilterComponentAnaliseProps) {
   const { toast } = useToast();
 
@@ -133,7 +139,7 @@ export function FilterComponentAnalise({
   const loadInitialFilters = useCallback(async () => {
     try {
       onLoadingChange(true);
-      const statesData = await EvaluationResultsApiService.getFilterStates();
+      const statesData = await EvaluationResultsApiService.getFilterStates(reportEntityType, adminCityIdQuery);
       setStates(statesData.map(state => ({
         id: state.id,
         name: state.nome,
@@ -148,7 +154,7 @@ export function FilterComponentAnalise({
     } finally {
       onLoadingChange(false);
     }
-  }, [toast, onLoadingChange]);
+  }, [toast, onLoadingChange, reportEntityType, adminCityIdQuery]);
 
   useEffect(() => {
     loadInitialFilters();
@@ -160,7 +166,11 @@ export function FilterComponentAnalise({
       if (selectedState !== 'all') {
         try {
           onLoadingChange(true);
-          const municipalitiesData = await EvaluationResultsApiService.getFilterMunicipalities(selectedState);
+          const municipalitiesData = await EvaluationResultsApiService.getFilterMunicipalities(
+            selectedState,
+            reportEntityType,
+            adminCityIdQuery
+          );
           const formattedMunicipalities = municipalitiesData.map(municipality => ({
             id: municipality.id,
             name: municipality.nome,
@@ -199,7 +209,7 @@ export function FilterComponentAnalise({
     };
 
     loadMunicipalities();
-  }, [selectedState, canSelectMunicipality]);
+  }, [selectedState, canSelectMunicipality, reportEntityType, adminCityIdQuery]);
 
   // Carregar escolas quando município for selecionado (ou após avaliação se loadSchoolsAfterEvaluation for true)
   useEffect(() => {
@@ -212,7 +222,9 @@ export function FilterComponentAnalise({
             const schoolsData = await EvaluationResultsApiService.getFilterSchoolsByEvaluation({
               estado: selectedState,
               municipio: selectedMunicipality,
-              avaliacao: selectedEvaluation
+              avaliacao: selectedEvaluation,
+              ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
+              ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
             });
           let formattedSchools = schoolsData.map(school => ({
             id: school.id,
@@ -281,7 +293,9 @@ export function FilterComponentAnalise({
           onLoadingChange(true);
           const schoolsData = await EvaluationResultsApiService.getFilterSchools({
             municipio: selectedMunicipality,
-            estado: selectedState
+            estado: selectedState,
+            ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
+            ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
           });
           let formattedSchools = schoolsData.map(school => ({
             id: school.id,
@@ -348,7 +362,7 @@ export function FilterComponentAnalise({
     };
 
     loadSchools();
-  }, [selectedMunicipality, selectedState, selectedEvaluation, selectedSchool, mustSelectSpecificSchool, fallbackSchools, loadSchoolsAfterEvaluation]);
+  }, [selectedMunicipality, selectedState, selectedEvaluation, selectedSchool, mustSelectSpecificSchool, fallbackSchools, loadSchoolsAfterEvaluation, reportEntityType, adminCityIdQuery]);
 
   // Carregar avaliações quando município for selecionado (e escola se loadSchoolsAfterEvaluation for false)
   useEffect(() => {
@@ -360,7 +374,9 @@ export function FilterComponentAnalise({
             onLoadingChange(true);
             const evaluationsData = await EvaluationResultsApiService.getFilterEvaluations({
               estado: selectedState,
-              municipio: selectedMunicipality
+              municipio: selectedMunicipality,
+              ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
+              ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
             });
             const mappedEvaluations = evaluationsData.map(evaluation => ({
               id: evaluation.id,
@@ -395,7 +411,9 @@ export function FilterComponentAnalise({
           const evaluationsData = await EvaluationResultsApiService.getFilterEvaluations({
             estado: selectedState,
             municipio: selectedMunicipality,
-            escola: selectedSchool !== 'all' ? selectedSchool : undefined
+            escola: selectedSchool !== 'all' ? selectedSchool : undefined,
+            ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
+            ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
           });
           const mappedEvaluations = evaluationsData.map(evaluation => ({
             id: evaluation.id,
@@ -423,7 +441,7 @@ export function FilterComponentAnalise({
     };
 
     loadEvaluations();
-  }, [selectedState, selectedMunicipality, selectedSchool, mustSelectSpecificSchool, loadSchoolsAfterEvaluation]);
+  }, [selectedState, selectedMunicipality, selectedSchool, mustSelectSpecificSchool, loadSchoolsAfterEvaluation, reportEntityType, adminCityIdQuery]);
 
   return (
     <Card className="overflow-visible">
