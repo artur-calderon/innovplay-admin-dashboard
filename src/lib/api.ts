@@ -73,10 +73,15 @@ api.interceptors.response.use(
     async (error) => {
         // ✅ CORRIGIDO: Melhorar tratamento de erros
         if (error.response?.status === 401) {
-            // Token expirado ou inválido
-            localStorage.removeItem('token');
-            // Redirecionar para login
-            window.location.href = '/';
+            const reqUrl = String(error.config?.url ?? '')
+            // Falha de credenciais no login também é 401 — não recarregar a página (senão o toast some)
+            const isLoginRequest = /(^|\/)login\/?(\?|$)/i.test(reqUrl)
+            if (isLoginRequest) {
+                return Promise.reject(error)
+            }
+            localStorage.removeItem('token')
+            window.location.href = '/'
+            return Promise.reject(error)
         } else if (error.code === 'ERR_NETWORK') {
             // Erro de rede/CORS
             console.error('Erro de rede/CORS:', error.message)
