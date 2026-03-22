@@ -65,6 +65,8 @@ export function PrivateRoute({ children }: PrivateRouteProps) {
       pathname === '/app/cartao-resposta/gerar' ||
       pathname === '/app/cartao-resposta/cadastrar' ||
       pathname === '/app/cartao-resposta/corrigir' ||
+      pathname === '/app/cartao-resposta/resultados' ||
+      pathname.startsWith('/app/cartao-resposta/resultados/') ||
       pathname === '/app/configuracoes' ||
       pathname.startsWith('/app/configuracoes/') ||
       (pathname.startsWith('/app/avaliacao/') && pathname.endsWith('/fisica')) ||

@@ -64,6 +64,22 @@ interface EvaluationInfo {
     serie?: string;
 }
 
+/** Nota: 0 é válido; N/A só quando ausente ou não numérico. Inteiros sem casas decimais. */
+function formatScoreForDisplay(value: unknown, decimals = 1): string {
+    if (value === null || value === undefined || value === "") return "N/A";
+    const n = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(n)) return "N/A";
+    if (Number.isInteger(n)) return String(n);
+    return n.toFixed(decimals);
+}
+
+function formatProficiencyForDisplay(value: unknown): string {
+    if (value === null || value === undefined || value === "") return "N/A";
+    const n = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(n)) return "N/A";
+    return String(n);
+}
+
 // Error Boundary Component
 class ErrorBoundary extends React.Component<
     { children: React.ReactNode },
@@ -329,8 +345,8 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
     const displayStudentName = studentName || studentData?.student_name || studentData?.nome || 'Nome não informado';
     const totalQuestions = studentData?.total_questions || 0;
     const correctAnswers = studentData?.correct_answers || 0;
-    const grade = studentData?.grade || 0;
-    const proficiencia = studentData?.proficiencia || 0;
+    const grade = studentData?.grade;
+    const proficiencia = studentData?.proficiencia;
     const classificacao = studentData?.classificacao || 'Não classificado';
 
     function getDisciplinesList(value?: string | string[]): string[] {
@@ -486,7 +502,7 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-purple-600">
-                            {grade ? grade.toFixed(1) : 'N/A'}
+                            {formatScoreForDisplay(grade)}
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
                             Nota final da avaliação
@@ -503,7 +519,7 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-orange-600">
-                            {proficiencia ? proficiencia.toString() : 'N/A'}
+                            {formatProficiencyForDisplay(proficiencia)}
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
                             Nível: {classificacao}
@@ -529,11 +545,13 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                                 <div className="flex justify-between text-sm">
                                     <span>Nível de Proficiência Alcançado</span>
                                     <span className="font-bold">
-                                        {proficiencia ? proficiencia.toString() : 0} pontos
+                                        {proficiencia != null && Number.isFinite(Number(proficiencia))
+                                            ? `${proficiencia} pontos`
+                                            : "0 pontos"}
                                     </span>
                                 </div>
                                 <Progress 
-                                    value={Math.min((proficiencia / 412.5) * 100, 100)} 
+                                    value={Math.min(((proficiencia ?? 0) / 412.5) * 100, 100)} 
                                     className="h-3" 
                                 />
                             </div>

@@ -3,7 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Filter } from "lucide-react";
-import { EvaluationResultsApiService, type ReportEntityTypeQuery } from "@/services/evaluationResultsApi";
+import {
+  EvaluationResultsApiService,
+  REPORT_ENTITY_TYPE_ANSWER_SHEET,
+  type ReportEntityTypeQuery,
+} from "@/services/evaluationResultsApi";
 import { useToast } from "@/hooks/use-toast";
 
 // Interfaces para os filtros
@@ -87,6 +91,12 @@ export function FilterComponentAnalise({
   adminCityIdQuery,
 }: FilterComponentAnaliseProps) {
   const { toast } = useToast();
+  const isAnswerSheetReport = reportEntityType === REPORT_ENTITY_TYPE_ANSWER_SHEET;
+  const evaluationFilterLabel = isAnswerSheetReport ? "Cartão resposta" : "Avaliações";
+  const evaluationPlaceholder = isAnswerSheetReport
+    ? "Selecione o cartão resposta"
+    : "Selecione a avaliação";
+  const hierarchyEvaluationStep = isAnswerSheetReport ? "Cartão resposta" : "Avaliação";
 
   // Estados dos dados dos filtros
   const [states, setStates] = useState<State[]>([]);
@@ -512,7 +522,7 @@ export function FilterComponentAnalise({
             <>
               {/* Avaliações */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">Avaliações</label>
+                <label className="text-sm font-medium">{evaluationFilterLabel}</label>
                 <Select
                   value={selectedEvaluation}
                   onValueChange={onEvaluationChange}
@@ -523,7 +533,7 @@ export function FilterComponentAnalise({
                   }
                 >
                   <SelectTrigger className="w-full min-w-0">
-                    <SelectValue placeholder="Selecione a avaliação" />
+                    <SelectValue placeholder={evaluationPlaceholder} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas</SelectItem>
@@ -603,7 +613,7 @@ export function FilterComponentAnalise({
 
               {/* Avaliações */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">Avaliações</label>
+                <label className="text-sm font-medium">{evaluationFilterLabel}</label>
                 <Select
                   value={selectedEvaluation}
                   onValueChange={onEvaluationChange}
@@ -615,7 +625,7 @@ export function FilterComponentAnalise({
                   }
                 >
                   <SelectTrigger className="w-full min-w-0">
-                    <SelectValue placeholder="Selecione a avaliação" />
+                    <SelectValue placeholder={evaluationPlaceholder} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas</SelectItem>
@@ -635,13 +645,17 @@ export function FilterComponentAnalise({
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
           <p className="text-sm text-blue-700 dark:text-blue-400">
             💡 <strong>Hierarquia dos Filtros:</strong> {loadSchoolsAfterEvaluation 
-              ? 'Estado → Município → Avaliação → Escola'
-              : 'Estado → Município → Escola → Avaliação'}
+              ? `Estado → Município → ${hierarchyEvaluationStep} → Escola`
+              : `Estado → Município → Escola → ${hierarchyEvaluationStep}`}
           </p>
           <p className="text-sm text-blue-700 mt-1 dark:text-blue-400">
             <strong>Estado</strong> e <strong>Município</strong> são obrigatórios. 
             {loadSchoolsAfterEvaluation 
-              ? <> Selecione uma <strong>Avaliação</strong> para visualizar as escolas disponíveis.</>
+              ? isAnswerSheetReport ? (
+                <> Selecione um <strong>cartão resposta</strong> para visualizar as escolas disponíveis.</>
+              ) : (
+                <> Selecione uma <strong>avaliação</strong> para visualizar as escolas disponíveis.</>
+              )
               : <> Para diretores, coordenadores e professores, a seleção de <strong>Escola</strong> é sempre obrigatória.</>}
           </p>
         </div>

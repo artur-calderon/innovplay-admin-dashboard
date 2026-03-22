@@ -639,7 +639,8 @@ export default function AnaliseAvaliacoes() {
               Selecione todos os filtros para continuar
             </h3>
             <p className="text-muted-foreground text-center max-w-md">
-              Para visualizar a análise das avaliações, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong>. A <strong>Escola</strong> pode ser "Todas" para ver todas as escolas do município.
+              Para visualizar a análise das avaliações, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e{" "}
+              <strong>{reportAnswerSheet ? "cartão resposta" : "Avaliação"}</strong>. A <strong>Escola</strong> pode ser "Todas" para ver todas as escolas do município.
             </p>
           </CardContent>
         </Card>

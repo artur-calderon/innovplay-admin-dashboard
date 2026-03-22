@@ -525,7 +525,7 @@ export default function AcertoNiveis() {
         try {
           const unifiedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 1, filters);
 
-          let tabelaDetalhada =
+          let tabelaDetalhada: TabelaDetalhadaPorDisciplina | null =
             unifiedResponse?.tabela_detalhada &&
               Array.isArray(unifiedResponse.tabela_detalhada.disciplinas)
               ? {
@@ -558,7 +558,9 @@ export default function AcertoNiveis() {
             students: studentsMapped,
             report: null,
             tabelaDetalhada,
-            estatisticas: unifiedResponse?.estatisticas_gerais || null,
+            estatisticas: unifiedResponse?.estatisticas_gerais
+              ? (unifiedResponse.estatisticas_gerais as unknown as { [key: string]: unknown })
+              : null,
             opcoesProximosFiltros: normalizeOpcoesProximosFiltrosShape(
               unifiedResponse?.opcoes_proximos_filtros
                 ? (unifiedResponse.opcoes_proximos_filtros as Record<string, unknown>)
@@ -1323,11 +1325,11 @@ export default function AcertoNiveis() {
       let serieExtraida = 'N/A';
 
       // 1. Tentar obter série das estatísticas gerais do endpoint
-      if (estatisticas?.serie && estatisticas.serie !== 'N/A' && estatisticas.serie !== '') {
-        serieExtraida = estatisticas.serie;
+      if (estatisticas?.serie != null && estatisticas.serie !== 'N/A' && String(estatisticas.serie) !== '') {
+        serieExtraida = String(estatisticas.serie);
       }
       // 2. Tentar obter série de opcoes_proximos_filtros (se houver apenas uma série)
-      else if (opcoes?.series && opcoes.series.length === 1) {
+      else if (opcoes && Array.isArray(opcoes.series) && opcoes.series.length === 1) {
         const s0 = opcoes.series[0] as { nome?: string; name?: string };
         serieExtraida = s0.nome ?? s0.name ?? 'N/A';
       }
@@ -1389,7 +1391,15 @@ export default function AcertoNiveis() {
       setSkillsMapping(newSkillsMapping);
 
       // Tentar extrair série das escolas se não estiver na avaliação
-      const escolasAtuais = schools.length > 0 ? schools : (opcoes?.escolas ? opcoes.escolas.map((esc: { id: string; nome?: string; name?: string }) => ({ id: esc.id, nome: esc.nome ?? esc.name ?? "" })) : []);
+      const escolasAtuais =
+        schools.length > 0
+          ? schools
+          : Array.isArray(opcoes?.escolas)
+            ? opcoes.escolas.map((esc: { id: string; nome?: string; name?: string }) => ({
+                id: esc.id,
+                nome: esc.nome ?? esc.name ?? ""
+              }))
+            : [];
       if (serieExtraida === 'N/A' && escolasAtuais.length > 0) {
         const escolaComSerie = escolasAtuais.find(esc => esc.nome && (esc.nome.includes('º') || esc.nome.includes('ano')));
         if (escolaComSerie) {
@@ -1476,7 +1486,11 @@ export default function AcertoNiveis() {
 
   const handleGeneratePDF = async () => {
     if (!evaluationInfo) {
-      toast({ title: "Atenção", description: "Selecione uma avaliação.", variant: "destructive" });
+      toast({
+        title: "Atenção",
+        description: reportAnswerSheet ? "Selecione um cartão resposta." : "Selecione uma avaliação.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -3413,7 +3427,11 @@ export default function AcertoNiveis() {
             <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
             Acerto e Níveis
           </h1>
-          <p className="text-muted-foreground text-sm sm:text-base">Selecione uma avaliação e exporte o PDF consolidado.</p>
+          <p className="text-muted-foreground text-sm sm:text-base">
+            {reportAnswerSheet
+              ? "Selecione um cartão resposta e exporte o PDF consolidado."
+              : "Selecione uma avaliação e exporte o PDF consolidado."}
+          </p>
           {user?.role && (
             <p className="text-sm text-blue-600 mt-1">
               {getRestrictionMessage(user.role)}
@@ -3534,10 +3552,20 @@ export default function AcertoNiveis() {
               </Select>
             </div>
             <div>
-              <div className="text-sm font-medium mb-2">Avaliação</div>
+              <div className="text-sm font-medium mb-2">
+                {reportAnswerSheet ? "Cartão resposta" : "Avaliação"}
+              </div>
               <Select value={selectedEvaluationId} onValueChange={handleSelectEvaluation} disabled={!selectedMunicipality}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder={selectedMunicipality ? "Selecione uma avaliação" : "Primeiro selecione um município"} />
+                  <SelectValue
+                    placeholder={
+                      selectedMunicipality
+                        ? reportAnswerSheet
+                          ? "Selecione o cartão resposta"
+                          : "Selecione uma avaliação"
+                        : "Primeiro selecione um município"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {evaluations.map(ev => (
@@ -3621,7 +3649,15 @@ export default function AcertoNiveis() {
                           <span className="truncate">Carregando escolas...</span>
                         </div>
                       ) : (
-                        <SelectValue placeholder={selectedEvaluationId ? "Todas as escolas" : "Primeiro selecione uma avaliação"} />
+                        <SelectValue
+                          placeholder={
+                            selectedEvaluationId
+                              ? "Todas as escolas"
+                              : reportAnswerSheet
+                                ? "Primeiro selecione um cartão resposta"
+                                : "Primeiro selecione uma avaliação"
+                          }
+                        />
                       )}
                     </SelectTrigger>
                     {!isLoadingSchools && (
@@ -3671,7 +3707,8 @@ export default function AcertoNiveis() {
             <div className="flex items-start gap-2">
               <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
               <div>
-                <span className="font-semibold">Hierarquia dos Filtros:</span> Estado → Município → Avaliação
+                <span className="font-semibold">Hierarquia dos Filtros:</span> Estado → Município →{" "}
+                {reportAnswerSheet ? "Cartão resposta" : "Avaliação"}
                 <br />
                 <span className="text-xs">Os filtros específicos (Escola, Série, Turma) são opcionais e permitem refinar os resultados.</span>
               </div>
