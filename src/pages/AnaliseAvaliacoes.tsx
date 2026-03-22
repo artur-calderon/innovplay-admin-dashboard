@@ -26,13 +26,16 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import { EvaluationResultsApiService, REPORT_ENTITY_TYPE_ANSWER_SHEET } from "@/services/evaluationResultsApi";
 import { RelatorioCompleto } from "@/types/evaluation-results";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { BarChartComponent, DonutChartComponent } from "@/components/ui/charts";
 import { FilterComponentAnalise } from "@/components/filters";
-import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext } from "@/utils/userHierarchy";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext, cityIdQueryParamForAdmin } from "@/utils/userHierarchy";
+import { normalizeRelatorioCompletoForAnaliseUI } from "@/utils/relatorioCompletoNormalize";
 
 // Interfaces para os dados da API
 interface EvaluationResult {
@@ -140,6 +143,7 @@ export default function AnaliseAvaliacoes() {
   const [selectedMunicipality, setSelectedMunicipality] = useState<string>('all');
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [selectedEvaluation, setSelectedEvaluation] = useState<string>('all');
+  const [reportAnswerSheet, setReportAnswerSheet] = useState(false);
 
   // Estados para hierarquia do usuário
   const [userHierarchyContext, setUserHierarchyContext] = useState<UserHierarchyContext | null>(null);
@@ -149,6 +153,11 @@ export default function AnaliseAvaliacoes() {
   const [renderMode, setRenderMode] = useState<'escola' | 'turma'>('turma');
   const normalizedRole = user?.role?.toLowerCase();
   const roleRequiresSpecificSchool = normalizedRole ? ['diretor', 'coordenador', 'professor'].includes(normalizedRole) : false;
+
+  const adminCityIdQuery = useMemo(
+    () => cityIdQueryParamForAdmin(user?.role, selectedMunicipality === 'all' ? undefined : selectedMunicipality),
+    [user?.role, selectedMunicipality]
+  );
 
   const handleStateChange = useCallback((stateId: string) => {
     if (stateId === selectedState) return;
@@ -335,11 +344,22 @@ export default function AnaliseAvaliacoes() {
       // Determinar qual tipo de relatório gerar baseado na seleção da escola
       let apiUrl: string;
       if (selectedSchool === 'all') {
-        // Relatório para município inteiro (todas as escolas)
-        apiUrl = `/reports/relatorio-pdf/${selectedEvaluation}?city_id=${selectedMunicipality}`;
+        // Município inteiro: `city_id` na query só para admin (demais: tenant no JWT)
+        const pdfMunicipal = new URLSearchParams();
+        if (adminCityIdQuery) {
+          pdfMunicipal.append('city_id', adminCityIdQuery);
+        }
+        const municipalQs = pdfMunicipal.toString();
+        apiUrl = `/reports/relatorio-pdf/${selectedEvaluation}${municipalQs ? `?${municipalQs}` : ''}`;
       } else {
         // Relatório para escola específica
         apiUrl = `/reports/relatorio-pdf/${selectedEvaluation}?school_id=${selectedSchool}`;
+        if (adminCityIdQuery) {
+          apiUrl += `&city_id=${encodeURIComponent(adminCityIdQuery)}`;
+        }
+      }
+      if (reportAnswerSheet) {
+        apiUrl += `&report_entity_type=${REPORT_ENTITY_TYPE_ANSWER_SHEET}`;
       }
       
       // Buscar o relatório PDF diretamente do backend (admin: enviar contexto de cidade)
@@ -401,16 +421,25 @@ export default function AnaliseAvaliacoes() {
           
           // Buscar relatório completo da avaliação selecionada
           // Determinar qual tipo de relatório buscar baseado na seleção da escola
-          const options = selectedSchool !== 'all' 
-            ? { schoolId: selectedSchool }
-            : { cityId: selectedMunicipality };
+          const options =
+            selectedSchool !== 'all'
+              ? {
+                  schoolId: selectedSchool,
+                  ...(selectedMunicipality !== 'all' ? { cityId: selectedMunicipality } : {}),
+                }
+              : { cityId: selectedMunicipality };
+          const reportOptions = {
+            ...options,
+            ...(adminCityIdQuery ? { adminCityIdQuery } : {}),
+            ...(reportAnswerSheet ? { reportEntityType: REPORT_ENTITY_TYPE_ANSWER_SHEET as const } : {}),
+          };
           
           // ✅ NOVO: Verificar status antes de buscar (para mostrar feedback visual)
           let wasProcessing = false;
           let timerInterval: NodeJS.Timeout | null = null;
           
           try {
-            const status = await EvaluationResultsApiService.checkReportStatus(selectedEvaluation, options);
+            const status = await EvaluationResultsApiService.checkReportStatus(selectedEvaluation, reportOptions);
             if (status.status === 'processing') {
               wasProcessing = true;
               setIsProcessingReport(true);
@@ -433,7 +462,7 @@ export default function AnaliseAvaliacoes() {
           
           try {
             // Buscar relatório (método já implementa polling internamente)
-            const relatorio = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation, options);
+            const relatorio = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation, reportOptions);
             
             // ✅ LOG: Ver o que está sendo retornado pela API
             console.log('📊 LOG - Resultado da rota getRelatorioCompleto:');
@@ -459,7 +488,7 @@ export default function AnaliseAvaliacoes() {
             
             setIsProcessingReport(false);
             setProcessingTime(0);
-            setApiData(relatorio);
+            setApiData(normalizeRelatorioCompletoForAnaliseUI(relatorio));
             
             // ✅ CORREÇÃO: Determinar o modo de renderização baseado na seleção da escola
             // Se uma escola específica foi selecionada (não "all"), mostrar turmas
@@ -508,7 +537,7 @@ export default function AnaliseAvaliacoes() {
     };
 
     loadData();
-  }, [allRequiredFiltersSelected, selectedState, selectedMunicipality, selectedSchool, selectedEvaluation, toast]);
+  }, [allRequiredFiltersSelected, selectedState, selectedMunicipality, selectedSchool, selectedEvaluation, reportAnswerSheet, adminCityIdQuery, toast]);
 
   if (isLoading) {
     return (
@@ -547,6 +576,22 @@ export default function AnaliseAvaliacoes() {
         </div>
       </div>
 
+      <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-4">
+        <Checkbox
+          id="report-answer-sheet-analise"
+          checked={reportAnswerSheet}
+          onCheckedChange={(v) => {
+            const checked = v === true;
+            setReportAnswerSheet(checked);
+            setSelectedEvaluation('all');
+            setApiData(null);
+          }}
+        />
+        <Label htmlFor="report-answer-sheet-analise" className="text-sm font-normal leading-snug cursor-pointer">
+          Marque para ver relatórios de um cartão resposta
+        </Label>
+      </div>
+
       {/* Filtros */}
       <FilterComponentAnalise
         selectedState={selectedState}
@@ -571,6 +616,8 @@ export default function AnaliseAvaliacoes() {
         }}
         isLoadingFilters={isLoadingFilters}
         onLoadingChange={setIsLoadingFilters}
+        reportEntityType={reportAnswerSheet ? REPORT_ENTITY_TYPE_ANSWER_SHEET : undefined}
+        adminCityIdQuery={adminCityIdQuery}
         // Props para hierarquia
         userRole={user?.role}
         canSelectState={userHierarchyContext?.restrictions.canSelectState}
@@ -863,7 +910,7 @@ export default function AnaliseAvaliacoes() {
                              : dadosDisciplina.por_turma?.map((turma, index: number) => (
                                  <tr key={index} className="hover:bg-muted transition-colors">
                                    <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
-                                   <td className="border border-border px-4 py-2 text-center">{formatDecimal(turma.proficiencia)}</td>
+                                   <td className="border border-border px-4 py-2 text-center">{formatDecimal(turma.proficiencia ?? (turma as { media?: number }).media)}</td>
                                  </tr>
                                ))}
                            <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">
@@ -921,7 +968,7 @@ export default function AnaliseAvaliacoes() {
                              : dadosDisciplina.por_turma?.map((turma, index: number) => (
                                  <tr key={index} className="hover:bg-muted transition-colors">
                                    <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
-                                   <td className="border border-border px-4 py-2 text-center">{formatDecimal(turma.nota)}</td>
+                                   <td className="border border-border px-4 py-2 text-center">{formatDecimal(turma.nota ?? (turma as { media?: number }).media)}</td>
                                  </tr>
                                ))}
                            <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">

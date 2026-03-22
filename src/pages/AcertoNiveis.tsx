@@ -2,13 +2,15 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { flushSync } from "react-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { FileText, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
-import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
-import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext } from "@/utils/userHierarchy";
+import { EvaluationResultsApiService, REPORT_ENTITY_TYPE_ANSWER_SHEET } from "@/services/evaluationResultsApi";
+import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext, cityIdQueryParamForAdmin } from "@/utils/userHierarchy";
 import { api } from "@/lib/api";
 import type { CellHookData } from "jspdf-autotable";
 
@@ -91,12 +93,14 @@ type TabelaDetalhadaPorDisciplina = {
       question_id: string;
     }>;
     alunos: Array<{
-      id: string;
+      id?: string;
+      aluno_id?: string;
       nome: string;
       escola: string;
       serie: string;
       turma: string;
-      respostas_por_questao: Array<{
+      classificacao?: string;
+      respostas_por_questao?: Array<{
         questao: number;
         acertou: boolean;
         respondeu: boolean;
@@ -113,13 +117,15 @@ type TabelaDetalhadaPorDisciplina = {
   }>;
   geral?: {
     alunos: Array<{
-      id: string;
+      id?: string;
+      aluno_id?: string;
       nome: string;
       escola?: string;
       serie?: string;
       turma?: string;
       nota_geral?: number;
       proficiencia_geral?: number;
+      classificacao?: string;
       nivel_proficiencia_geral?: string;
       total_acertos_geral?: number;
       total_em_branco_geral?: number;
@@ -130,6 +136,43 @@ type TabelaDetalhadaPorDisciplina = {
     }>;
   };
 } | null;
+
+/** Linhas da API podem usar `aluno_id` (cartão-resposta) em vez de `id`. */
+function alunoRowId(aluno: { id?: string; aluno_id?: string }): string {
+  return String(aluno.id ?? aluno.aluno_id ?? "").trim();
+}
+
+type AnswerSheetSkillRow = { id?: string; code?: string; description?: string };
+
+/** Preenche `questoes` vazias com a lista de habilidades da avaliação (cartão-resposta). */
+function enrichTabelaDetalhadaAnswerSheetSkills(
+  tabela: TabelaDetalhadaPorDisciplina | null,
+  skills: AnswerSheetSkillRow[] | undefined,
+  isAnswerSheet: boolean
+): TabelaDetalhadaPorDisciplina | null {
+  if (!isAnswerSheet || !tabela?.disciplinas?.length || !skills?.length) return tabela;
+  const sorted = [...skills].filter((s) => s?.id).sort((a, b) => {
+    const ca = (a.code || a.id || "").toString();
+    const cb = (b.code || b.id || "").toString();
+    return ca.localeCompare(cb, undefined, { sensitivity: "base" });
+  });
+  if (sorted.length === 0) return tabela;
+  return {
+    ...tabela,
+    disciplinas: tabela.disciplinas.map((d) => {
+      if (Array.isArray(d.questoes) && d.questoes.length > 0) return d;
+      return {
+        ...d,
+        questoes: sorted.map((s, idx) => ({
+          numero: idx + 1,
+          habilidade: s.description || "",
+          codigo_habilidade: s.code || s.id || "",
+          question_id: s.id || String(idx + 1),
+        })),
+      };
+    }),
+  };
+}
 
 const mapDetailedStudentsToResults = (alunos: DetailedReport['alunos'] | undefined): StudentResult[] => {
   if (!alunos) return [];
@@ -161,10 +204,26 @@ const mapDetailedStudentsToResults = (alunos: DetailedReport['alunos'] | undefin
   });
 };
 
+/** Conta chaves q1, q2, … no mapa de respostas (ignora metadados acidentais). */
+const perQuestionRespostasCount = (r?: Record<string, boolean | null>): number =>
+  r ? Object.keys(r).filter((k) => /^q\d+$/i.test(k)).length : 0;
+
 const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult[] => {
   const studentsMap = new Map<string, StudentResult>();
 
+  const classifFromRow = (aluno: {
+    nivel_proficiencia?: string;
+    nivel_proficiencia_geral?: string;
+    classificacao?: string;
+  }): StudentResult["classificacao"] =>
+    (aluno.nivel_proficiencia_geral ||
+      aluno.nivel_proficiencia ||
+      aluno.classificacao ||
+      "Abaixo do Básico") as StudentResult["classificacao"];
+
   tabela?.geral?.alunos?.forEach((aluno) => {
+    const rowId = alunoRowId(aluno);
+    if (!rowId) return;
     const totalQuestoes = aluno.total_questoes_geral ?? aluno.total_respondidas_geral ?? 0;
     const totalRespondidas = aluno.total_respondidas_geral ?? totalQuestoes;
     const totalAcertos = aluno.total_acertos_geral ?? 0;
@@ -173,26 +232,28 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
 
     // Determinar status: verificar se participou (respondeu pelo menos uma questão)
     // Não apenas confiar em status_geral, mas também verificar se há respostas
-    const statusFromField = (aluno.status_geral ?? 'pendente') === 'concluida';
+    const statusFromField = (aluno.status_geral ?? "pendente") === "concluida";
     const participou = totalRespondidas > 0 || totalAcertos > 0 || totalErros > 0;
-    const statusFinal = statusFromField || participou ? 'concluida' : 'pendente';
+    const statusFinal = statusFromField || participou ? "concluida" : "pendente";
 
-    studentsMap.set(aluno.id, {
-      id: aluno.id,
+    studentsMap.set(rowId, {
+      id: rowId,
       nome: aluno.nome,
-      turma: aluno.turma || '',
+      turma: aluno.turma || "",
       nota: Number(aluno.nota_geral ?? 0),
       proficiencia: Number(aluno.proficiencia_geral ?? 0),
-      classificacao: (aluno.nivel_proficiencia_geral || 'Abaixo do Básico') as StudentResult['classificacao'],
+      classificacao: classifFromRow(aluno),
       acertos: totalAcertos,
       erros: totalErros,
       questoes_respondidas: totalRespondidas || totalQuestoes,
       status: statusFinal,
-      respostas: {}
+      respostas: {},
     });
   });
 
-  const geralIds = new Set(tabela?.geral?.alunos?.map((aluno) => aluno.id) ?? []);
+  const geralIds = new Set(
+    (tabela?.geral?.alunos ?? []).map((a) => alunoRowId(a)).filter(Boolean)
+  );
 
   // Offset global por disciplina para numerar questões 1..N em todas as disciplinas (ex.: LP 1-20, MAT 21-40)
   let questionOffset = 0;
@@ -201,7 +262,19 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
     const numQuestoesDisc = disciplina.questoes?.length ?? 0;
 
     disciplina.alunos?.forEach((aluno) => {
-      let student = studentsMap.get(aluno.id);
+      const rowId = alunoRowId(aluno);
+      if (!rowId) return;
+
+      let student = studentsMap.get(rowId);
+
+      const hasAnsweredAny =
+        Array.isArray(aluno.respostas_por_questao) &&
+        aluno.respostas_por_questao.some((r) => r.respondeu);
+      const summarySemQuestoes =
+        !hasAnsweredAny &&
+        (Number(aluno.nota) > 0 ||
+          Number(aluno.proficiencia) > 0 ||
+          Boolean(aluno.classificacao));
 
       if (!student) {
         const totalQuestoesDisciplina =
@@ -212,19 +285,19 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
         const totalErros = aluno.total_erros ?? Math.max(0, totalRespondidas - totalAcertos - totalEmBranco);
 
         student = {
-          id: aluno.id,
+          id: rowId,
           nome: aluno.nome,
-          turma: aluno.turma || '',
+          turma: aluno.turma || "",
           nota: Number(aluno.nota ?? 0),
           proficiencia: Number(aluno.proficiencia ?? 0),
-          classificacao: (aluno.nivel_proficiencia || 'Abaixo do Básico') as StudentResult['classificacao'],
+          classificacao: classifFromRow(aluno),
           acertos: totalAcertos,
           erros: totalErros,
           questoes_respondidas: totalRespondidas,
-          status: 'pendente',
-          respostas: {}
+          status: hasAnsweredAny || summarySemQuestoes ? "concluida" : "pendente",
+          respostas: {},
         };
-        studentsMap.set(aluno.id, student);
+        studentsMap.set(rowId, student);
       }
 
       const respostasMap = student.respostas || (student.respostas = {});
@@ -244,10 +317,7 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
         }
       });
 
-      // Verificar se o aluno respondeu alguma questão para determinar status
-      const hasAnsweredAny = Array.isArray(aluno.respostas_por_questao) && aluno.respostas_por_questao.some(r => r.respondeu);
-
-      if (!geralIds.has(aluno.id)) {
+      if (!geralIds.has(rowId)) {
         const totalQuestoesDisciplina =
           aluno.total_questoes_disciplina ?? aluno.respostas_por_questao?.length ?? 0;
         const totalRespondidas = aluno.total_respondidas ?? totalQuestoesDisciplina;
@@ -260,12 +330,11 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
         student.questoes_respondidas += totalRespondidas || totalQuestoesDisciplina;
 
         // Marcar como concluida se participou
-        if (hasAnsweredAny && student.status !== 'concluida') {
-          student.status = 'concluida';
+        if ((hasAnsweredAny || summarySemQuestoes) && student.status !== "concluida") {
+          student.status = "concluida";
         }
-        if (!student.classificacao || student.classificacao === 'Abaixo do Básico') {
-          student.classificacao = (aluno.nivel_proficiencia ||
-            'Abaixo do Básico') as StudentResult['classificacao'];
+        if (!student.classificacao || student.classificacao === "Abaixo do Básico") {
+          student.classificacao = classifFromRow(aluno);
         }
         if (!student.nota) {
           student.nota = Number(aluno.nota ?? 0);
@@ -276,8 +345,8 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
       } else {
         // Aluno está em geral.alunos - verificar se participou mesmo que status_geral não indique
         // Isso garante que alunos que participaram sejam marcados corretamente
-        if (hasAnsweredAny && student.status !== 'concluida') {
-          student.status = 'concluida';
+        if ((hasAnsweredAny || summarySemQuestoes) && student.status !== "concluida") {
+          student.status = "concluida";
         }
       }
     });
@@ -286,11 +355,31 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
   });
 
   const mappedStudents = Array.from(studentsMap.values()).sort((a, b) =>
-    a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
+    a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" })
   );
 
   return mappedStudents;
 };
+
+/** `opcoes_proximos_filtros` pode trazer escolas/séries/turmas com `nome` ou `name` (igual à rota opcoes-filtros). */
+function normalizeOpcoesProximosFiltrosShape(
+  raw: Record<string, unknown> | null | undefined
+): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const mapArr = (arr: unknown) => {
+    if (!Array.isArray(arr)) return arr;
+    return arr.map((item: { id: string; nome?: string; name?: string }) => ({
+      ...item,
+      nome: item.nome ?? item.name ?? '',
+    }));
+  };
+  return {
+    ...raw,
+    ...(raw.escolas !== undefined ? { escolas: mapArr(raw.escolas) } : {}),
+    ...(raw.series !== undefined ? { series: mapArr(raw.series) } : {}),
+    ...(raw.turmas !== undefined ? { turmas: mapArr(raw.turmas) } : {}),
+  };
+}
 
 export default function AcertoNiveis() {
   const { user } = useAuth();
@@ -310,6 +399,12 @@ export default function AcertoNiveis() {
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
   const [selectedGradeId, setSelectedGradeId] = useState<string>("");
   const [selectedClassId, setSelectedClassId] = useState<string>("");
+  const [reportAnswerSheet, setReportAnswerSheet] = useState(false);
+  const reportEntityTypeParam = reportAnswerSheet ? REPORT_ENTITY_TYPE_ANSWER_SHEET : undefined;
+  const adminCityIdQuery = useMemo(
+    () => cityIdQueryParamForAdmin(user?.role, selectedMunicipality || undefined),
+    [user?.role, selectedMunicipality]
+  );
 
   // Estados para hierarquia do usuário
   const [userHierarchyContext, setUserHierarchyContext] = useState<UserHierarchyContext | null>(null);
@@ -323,6 +418,8 @@ export default function AcertoNiveis() {
   const [detailedReport, setDetailedReport] = useState<DetailedReport | null>(null);
   const [skillsMapping, setSkillsMapping] = useState<Record<string, string>>({});
   const fallbackAnswersCache = React.useRef<Map<string, Map<number, boolean>>>(new Map());
+  /** Habilidades da rota `/skills/evaluation/...` para sintetizar colunas em cartão-resposta. */
+  const answerSheetSkillsRef = React.useRef<AnswerSheetSkillRow[]>([]);
   // Nova: tabela detalhada por disciplina do backend
   const [tabelaDetalhada, setTabelaDetalhada] = useState<TabelaDetalhadaPorDisciplina>(null);
   // Ref para debounce dos filtros
@@ -367,6 +464,8 @@ export default function AcertoNiveis() {
   const looksLikeRealSkillCode = (value?: string) => {
     if (!value) return false;
     const v = value.trim().toUpperCase();
+    // BNCC EFxxXXnn (ex.: EF02MA14, EF12LP01)
+    if (/^EF\d+[A-Z]{2,}\d+[A-Z0-9]*$/.test(v)) return true;
     // Exemplos aceitos: LP9L1.2, 9N1.2, CN9L1.3, GE9L1.4, 9L1.1, 9S1.2, 9M1.1, 9 L 1.1, 9 N 1.2
     return /^(LP\d+L\d+\.\d+|\d+N\d\.\d+|[A-Z]{2}\d+L\d+\.\d+|\d+[LMSN]\d+\.\d+|\d+\s+[LMSN]\s+\d+\.\d+)$/.test(v);
   };
@@ -389,6 +488,8 @@ export default function AcertoNiveis() {
       escola?: string;
       serie?: string;
       turma?: string;
+      report_entity_type?: typeof REPORT_ENTITY_TYPE_ANSWER_SHEET;
+      city_id?: string;
     } = {};
 
     const estadoValor = getStateFilterValue();
@@ -398,16 +499,18 @@ export default function AcertoNiveis() {
     if (overrides.schoolId) filters.escola = overrides.schoolId;
     if (overrides.gradeId) filters.serie = overrides.gradeId;
     if (overrides.classId) filters.turma = overrides.classId;
+    if (reportAnswerSheet) filters.report_entity_type = REPORT_ENTITY_TYPE_ANSWER_SHEET;
+    if (adminCityIdQuery) filters.city_id = adminCityIdQuery;
 
     return filters;
-  }, [selectedMunicipality, getStateFilterValue]);
+  }, [selectedMunicipality, getStateFilterValue, reportAnswerSheet, adminCityIdQuery]);
 
   const fetchEvaluationData = React.useCallback(
     async (
       evaluationId: string,
       overrides: { schoolId?: string; gradeId?: string; classId?: string } = {}
     ): Promise<FetchEvaluationDataResult> => {
-      const cacheKey = `${evaluationId}|${overrides.schoolId ?? ''}|${overrides.gradeId ?? ''}|${overrides.classId ?? ''}`;
+      const cacheKey = `${evaluationId}|${overrides.schoolId ?? ''}|${overrides.gradeId ?? ''}|${overrides.classId ?? ''}|${reportAnswerSheet ? 'as' : 'ev'}|${adminCityIdQuery ?? ''}`;
 
       // Reutilizar requisição já em andamento (evita duplicatas)
       const inFlight = fetchEvaluationDataInFlightRef.current.get(cacheKey);
@@ -422,7 +525,7 @@ export default function AcertoNiveis() {
         try {
           const unifiedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 1, filters);
 
-          const tabelaDetalhada =
+          let tabelaDetalhada =
             unifiedResponse?.tabela_detalhada &&
               Array.isArray(unifiedResponse.tabela_detalhada.disciplinas)
               ? {
@@ -443,6 +546,12 @@ export default function AcertoNiveis() {
               }
               : null;
 
+          tabelaDetalhada = enrichTabelaDetalhadaAnswerSheetSkills(
+            tabelaDetalhada,
+            reportAnswerSheet ? answerSheetSkillsRef.current : undefined,
+            reportAnswerSheet
+          );
+
           const studentsMapped = tabelaDetalhada ? mapUnifiedStudents(tabelaDetalhada) : [];
 
           const result: FetchEvaluationDataResult = {
@@ -450,7 +559,11 @@ export default function AcertoNiveis() {
             report: null,
             tabelaDetalhada,
             estatisticas: unifiedResponse?.estatisticas_gerais || null,
-            opcoesProximosFiltros: unifiedResponse?.opcoes_proximos_filtros || null
+            opcoesProximosFiltros: normalizeOpcoesProximosFiltrosShape(
+              unifiedResponse?.opcoes_proximos_filtros
+                ? (unifiedResponse.opcoes_proximos_filtros as Record<string, unknown>)
+                : null
+            )
           };
           fetchEvaluationDataCacheRef.current.set(cacheKey, result);
           return result;
@@ -471,7 +584,7 @@ export default function AcertoNiveis() {
       fetchEvaluationDataInFlightRef.current.set(cacheKey, promise);
       return promise;
     },
-    [buildUnifiedFilters]
+    [buildUnifiedFilters, reportAnswerSheet, adminCityIdQuery]
   );
 
   // ✅ OTIMIZAÇÃO: Filtrar dados no frontend quando possível usando useMemo
@@ -519,7 +632,8 @@ export default function AcertoNiveis() {
             }
           }
 
-          validIds.add(aluno.id);
+          const rid = alunoRowId(aluno);
+          if (rid) validIds.add(rid);
         }
       }
 
@@ -568,7 +682,7 @@ export default function AcertoNiveis() {
           setSelectedMunicipality(context.municipality.id);
 
           // Carregar estado baseado no município
-          const statesResp = await EvaluationResultsApiService.getFilterStates();
+          const statesResp = await EvaluationResultsApiService.getFilterStates(reportEntityTypeParam, adminCityIdQuery);
           setStates(statesResp);
           const userState = statesResp.find(
             (s) =>
@@ -580,17 +694,19 @@ export default function AcertoNiveis() {
 
             // Carregar municípios do estado pré-selecionado
             try {
-              const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id);
+              const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id, reportEntityTypeParam, adminCityIdQuery);
               setMunicipalities(mun);
             } catch (error) {
               // Silenciar
             }
 
             try {
-              const avs = await EvaluationResultsApiService.getFilterEvaluations({
-                estado: userState.id,
-                municipio: context.municipality.id
-              });
+                const avs = await EvaluationResultsApiService.getFilterEvaluations({
+                  estado: userState.id,
+                  municipio: context.municipality.id,
+                  ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+                  ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+                });
               setEvaluations(avs);
             } catch (error) {
               // Silenciar
@@ -603,7 +719,7 @@ export default function AcertoNiveis() {
 
             setSelectedMunicipality(municipalityData.id);
 
-            const statesResp = await EvaluationResultsApiService.getFilterStates();
+            const statesResp = await EvaluationResultsApiService.getFilterStates(reportEntityTypeParam, adminCityIdQuery);
             setStates(statesResp);
             const userState = statesResp.find(
               (s) =>
@@ -614,7 +730,7 @@ export default function AcertoNiveis() {
               setSelectedState(userState.id);
 
               try {
-                const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id);
+                const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id, reportEntityTypeParam, adminCityIdQuery);
                 setMunicipalities(mun);
               } catch (error) {
                 // Silenciar
@@ -623,7 +739,9 @@ export default function AcertoNiveis() {
               try {
                 const avs = await EvaluationResultsApiService.getFilterEvaluations({
                   estado: userState.id,
-                  municipio: municipalityData.id
+                  municipio: municipalityData.id,
+                  ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+                  ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
                 });
                 setEvaluations(avs);
               } catch (error) {
@@ -692,7 +810,7 @@ export default function AcertoNiveis() {
     };
 
     loadUserHierarchy();
-  }, [user?.id, user?.role, toast]);
+  }, [user?.id, user?.role, toast, reportEntityTypeParam, adminCityIdQuery]);
 
   useEffect(() => {
     // Carregar lista de estados (apenas se for admin)
@@ -705,7 +823,7 @@ export default function AcertoNiveis() {
 
       try {
         setIsLoading(true);
-        const resp = await EvaluationResultsApiService.getFilterStates();
+        const resp = await EvaluationResultsApiService.getFilterStates(reportEntityTypeParam, adminCityIdQuery);
         setStates(resp);
       } catch (e) {
         toast({ title: "Erro", description: "Não foi possível carregar estados", variant: "destructive" });
@@ -717,7 +835,7 @@ export default function AcertoNiveis() {
     if (!isLoadingHierarchy) {
       loadStates();
     }
-  }, [toast, user?.role, isLoadingHierarchy, states.length]);
+  }, [toast, user?.role, isLoadingHierarchy, states.length, reportEntityTypeParam, adminCityIdQuery]);
 
   const handleChangeState = async (stateId: string) => {
     // Verificar se usuário pode alterar estado
@@ -747,7 +865,7 @@ export default function AcertoNiveis() {
     if (!stateId) return;
     try {
       setIsLoading(true);
-      const mun = await EvaluationResultsApiService.getFilterMunicipalities(stateId);
+      const mun = await EvaluationResultsApiService.getFilterMunicipalities(stateId, reportEntityTypeParam, adminCityIdQuery);
       setMunicipalities(mun);
     } catch (e) {
       toast({ title: "Erro", description: "Não foi possível carregar municípios", variant: "destructive" });
@@ -782,7 +900,12 @@ export default function AcertoNiveis() {
     if (!selectedState || !municipioId) return;
     try {
       setIsLoading(true);
-      const avs = await EvaluationResultsApiService.getFilterEvaluations({ estado: selectedState, municipio: municipioId });
+      const avs = await EvaluationResultsApiService.getFilterEvaluations({
+        estado: selectedState,
+        municipio: municipioId,
+        ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+        ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+      });
       setEvaluations(avs);
     } catch (e) {
       toast({ title: "Erro", description: "Não foi possível carregar avaliações", variant: "destructive" });
@@ -863,7 +986,8 @@ export default function AcertoNiveis() {
           disciplina.alunos?.forEach(aluno => {
             // Verificar se o aluno pertence à escola selecionada
             if (aluno.escola === selectedSchool.nome || aluno.escola === schoolId) {
-              escolaIds.add(aluno.id);
+              const rid = alunoRowId(aluno);
+              if (rid) escolaIds.add(rid);
             }
           });
         });
@@ -882,7 +1006,9 @@ export default function AcertoNiveis() {
               estado: selectedState,
               municipio: selectedMunicipality,
               avaliacao: selectedEvaluationId,
-              escola: schoolId
+              escola: schoolId,
+              ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+              ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
             });
             setGrades(series);
           } catch (e) {
@@ -903,7 +1029,9 @@ export default function AcertoNiveis() {
         estado: selectedState,
         municipio: selectedMunicipality,
         avaliacao: selectedEvaluationId,
-        escola: schoolId
+        escola: schoolId,
+        ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+        ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
       });
       setGrades(series);
 
@@ -943,7 +1071,8 @@ export default function AcertoNiveis() {
             allTabelaDetalhada.disciplinas.forEach(disciplina => {
               disciplina.alunos?.forEach(aluno => {
                 if (aluno.escola === selectedSchool.nome || aluno.escola === selectedSchoolId) {
-                  escolaIds.add(aluno.id);
+                  const rid = alunoRowId(aluno);
+                  if (rid) escolaIds.add(rid);
                 }
               });
             });
@@ -974,7 +1103,8 @@ export default function AcertoNiveis() {
           disciplina.alunos?.forEach(aluno => {
             if ((aluno.escola === selectedSchool.nome || aluno.escola === selectedSchoolId) &&
               (aluno.serie === selectedGrade.nome || aluno.serie === gradeId)) {
-              validIds.add(aluno.id);
+              const rid = alunoRowId(aluno);
+              if (rid) validIds.add(rid);
             }
           });
         });
@@ -988,7 +1118,9 @@ export default function AcertoNiveis() {
           municipio: selectedMunicipality,
           avaliacao: selectedEvaluationId,
           escola: selectedSchoolId,
-          serie: gradeId
+          serie: gradeId,
+          ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+          ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
         }).then(turmas => {
           setClasses(turmas);
         }).catch(() => {});
@@ -1008,7 +1140,9 @@ export default function AcertoNiveis() {
           municipio: selectedMunicipality,
           avaliacao: selectedEvaluationId,
           escola: selectedSchoolId,
-          serie: gradeId
+          serie: gradeId,
+          ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+          ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
         }),
         fetchEvaluationData(selectedEvaluationId, { schoolId: selectedSchoolId, gradeId })
       ]);
@@ -1107,6 +1241,7 @@ export default function AcertoNiveis() {
     fetchEvaluationDataInFlightRef.current.clear();
 
     if (!evaluationId) {
+      answerSheetSkillsRef.current = [];
       setIsLoadingSchools(false);
       return;
     }
@@ -1121,11 +1256,24 @@ export default function AcertoNiveis() {
 
       // Buscar dados da avaliação em paralelo
       const [info, skills] = await Promise.all([
-        EvaluationResultsApiService.getEvaluationById(evaluationId),
-        EvaluationResultsApiService.getSkillsByEvaluation(evaluationId).catch(() => [])
+        EvaluationResultsApiService.getEvaluationById(evaluationId, {
+          ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+          ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+          ...(selectedMunicipality ? { metaCityId: selectedMunicipality } : {}),
+        }),
+        EvaluationResultsApiService.getSkillsByEvaluation(evaluationId, {
+          ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+          ...(selectedMunicipality ? { cityId: selectedMunicipality } : {}),
+          ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+        }).catch(() => [])
       ]);
 
       if (!info) throw new Error("Avaliação não encontrada");
+
+      answerSheetSkillsRef.current =
+        reportAnswerSheet && Array.isArray(skills)
+          ? (skills as AnswerSheetSkillRow[]).filter((s) => s?.id)
+          : [];
 
       // Processar informações da avaliação primeiro
       const evaluationData = info as unknown as Record<string, unknown>;
@@ -1137,7 +1285,9 @@ export default function AcertoNiveis() {
           ? EvaluationResultsApiService.getFilterSchoolsByEvaluation({
             estado: selectedState,
             municipio: selectedMunicipality,
-            avaliacao: evaluationId
+            avaliacao: evaluationId,
+            ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+            ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
           }).catch(() => [])
           : Promise.resolve([])
       ]);
@@ -1146,9 +1296,9 @@ export default function AcertoNiveis() {
 
       // ✅ OTIMIZAÇÃO: Popular escolas imediatamente - priorizar opcoes, senão usar API
       if (opcoes?.escolas && Array.isArray(opcoes.escolas) && opcoes.escolas.length > 0) {
-        const escolasFromOpcoes = opcoes.escolas.map((esc: { id: string; name: string }) => ({
+        const escolasFromOpcoes = opcoes.escolas.map((esc: { id: string; nome?: string; name?: string }) => ({
           id: esc.id,
-          nome: esc.name
+          nome: esc.nome ?? esc.name ?? ""
         }));
         setSchools(escolasFromOpcoes);
       } else if (Array.isArray(escolasFromApi) && escolasFromApi.length > 0) {
@@ -1178,7 +1328,8 @@ export default function AcertoNiveis() {
       }
       // 2. Tentar obter série de opcoes_proximos_filtros (se houver apenas uma série)
       else if (opcoes?.series && opcoes.series.length === 1) {
-        serieExtraida = opcoes.series[0].name;
+        const s0 = opcoes.series[0] as { nome?: string; name?: string };
+        serieExtraida = s0.nome ?? s0.name ?? 'N/A';
       }
       // 3. Se não houver série do endpoint, usar extractSerie como fallback
       else {
@@ -1238,7 +1389,7 @@ export default function AcertoNiveis() {
       setSkillsMapping(newSkillsMapping);
 
       // Tentar extrair série das escolas se não estiver na avaliação
-      const escolasAtuais = schools.length > 0 ? schools : (opcoes?.escolas ? opcoes.escolas.map((esc: { id: string; name: string }) => ({ id: esc.id, nome: esc.name })) : []);
+      const escolasAtuais = schools.length > 0 ? schools : (opcoes?.escolas ? opcoes.escolas.map((esc: { id: string; nome?: string; name?: string }) => ({ id: esc.id, nome: esc.nome ?? esc.name ?? "" })) : []);
       if (serieExtraida === 'N/A' && escolasAtuais.length > 0) {
         const escolaComSerie = escolasAtuais.find(esc => esc.nome && (esc.nome.includes('º') || esc.nome.includes('ano')));
         if (escolaComSerie) {
@@ -1385,15 +1536,24 @@ export default function AcertoNiveis() {
       }
     }
 
-    // Carregar relatório detalhado só ao gerar PDF (uso local; evita estado para não depender de setState assíncrono)
+    // Relatório detalhado para o PDF: cartão-resposta sempre refetch (evita cache de outro report_entity_type).
     let reportParaPdf: DetailedReport | null = detailedReport;
-    if (!reportParaPdf) {
+    const mustRefetchDetailedForPdf =
+      reportEntityTypeParam === REPORT_ENTITY_TYPE_ANSWER_SHEET || !reportParaPdf;
+    if (mustRefetchDetailedForPdf) {
       try {
         setIsLoading(true);
-        reportParaPdf = await EvaluationResultsApiService.getDetailedReport(evaluationInfo.id);
-        if (reportParaPdf) setDetailedReport(reportParaPdf);
-      } catch (error) {
-        // Continuar com dados básicos
+        const fresh = await EvaluationResultsApiService.getDetailedReport(evaluationInfo.id, {
+          ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+          ...(selectedMunicipality ? { cityId: selectedMunicipality } : {}),
+          ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+        });
+        if (fresh) {
+          reportParaPdf = fresh;
+          setDetailedReport(fresh);
+        }
+      } catch {
+        // Continuar com dados básicos / cache anterior
       } finally {
         setIsLoading(false);
       }
@@ -1407,7 +1567,9 @@ export default function AcertoNiveis() {
           const resp = await EvaluationResultsApiService.getEvaluationsList(1, 10, {
             estado: selectedState,
             municipio: selectedMunicipality,
-            avaliacao: selectedEvaluationId
+            avaliacao: selectedEvaluationId,
+            ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+            ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
           });
           const tdResp = resp as unknown as { tabela_detalhada?: TabelaDetalhadaPorDisciplina };
           const td = (tdResp && tdResp.tabela_detalhada && Array.isArray(tdResp.tabela_detalhada.disciplinas))
@@ -2027,13 +2189,22 @@ export default function AcertoNiveis() {
         porcentagem_acertos: number;
         porcentagem_erros: number;
       };
+      const normalizeReportQuestionTipo = (raw: unknown): QuestaoMinima['tipo'] => {
+        const t = String(raw ?? '')
+          .toLowerCase()
+          .replace(/-/g, '_');
+        if (t === 'multiple_choice' || t === 'multiplechoice') return 'multipleChoice';
+        if (t === 'true_false' || t === 'truefalse') return 'trueFalse';
+        if (t === 'open') return 'open';
+        return 'multipleChoice';
+      };
       const mapToMinimal = (q: NonNullable<DetailedReport['questoes']>[number]): QuestaoMinima => ({
         id: q.id,
         numero: q.numero,
         dificuldade: q.dificuldade,
         habilidade: q.habilidade,
         codigo_habilidade: q.codigo_habilidade,
-        tipo: q.tipo,
+        tipo: normalizeReportQuestionTipo(q.tipo),
         porcentagem_acertos: q.porcentagem_acertos,
         porcentagem_erros: q.porcentagem_erros
       });
@@ -2782,6 +2953,22 @@ export default function AcertoNiveis() {
         studentsToUse = mapUnifiedStudents(tabelaParaUsar);
       }
 
+      const detailedStudentsForMerge =
+        reportParaPdf?.alunos?.length ? mapDetailedStudentsToResults(reportParaPdf.alunos) : [];
+      if (detailedStudentsForMerge.length > 0) {
+        const byId = new Map(detailedStudentsForMerge.map((s) => [s.id, s]));
+        studentsToUse = studentsToUse.map((s) => {
+          const d = byId.get(s.id);
+          if (!d) return s;
+          const baseCount = perQuestionRespostasCount(s.respostas);
+          const detCount = perQuestionRespostasCount(d.respostas);
+          if (detCount > 0 && detCount >= baseCount) {
+            return { ...s, respostas: d.respostas };
+          }
+          return s;
+        });
+      }
+
       if (studentsToUse.length === 0 && reportParaPdf?.alunos) {
         studentsToUse = mapDetailedStudentsToResults(reportParaPdf.alunos);
       }
@@ -2811,20 +2998,25 @@ export default function AcertoNiveis() {
           }
         };
         tabelaParaUsar.geral?.alunos?.forEach(aluno => {
+          const rowId = alunoRowId(aluno);
+          if (!rowId) return;
           const turmaNorm = normalizeTurmaName(aluno.turma);
           const totalQuestoes = aluno.total_questoes_geral ?? aluno.total_respondidas_geral ?? 0;
           const totalRespondidas = aluno.total_respondidas_geral ?? totalQuestoes;
           const totalAcertos = aluno.total_acertos_geral ?? 0;
           const totalEmBranco = aluno.total_em_branco_geral ?? Math.max(0, totalQuestoes - totalRespondidas);
           const totalErros = Math.max(0, totalRespondidas - totalAcertos - totalEmBranco);
-          const participou = totalRespondidas > 0 || totalAcertos > 0 || totalErros > 0;
+          const participou =
+            totalRespondidas > 0 || totalAcertos > 0 || totalErros > 0 ||
+            Number(aluno.nota_geral) > 0 || Number(aluno.proficiencia_geral) > 0 ||
+            Boolean(aluno.nivel_proficiencia_geral && String(aluno.nivel_proficiencia_geral).trim());
           addToMap(turmaNorm, {
-            id: aluno.id,
+            id: rowId,
             nome: aluno.nome,
             turma: aluno.turma || '',
             nota: Number(aluno.nota_geral ?? 0),
             proficiencia: Number(aluno.proficiencia_geral ?? 0),
-            classificacao: (aluno.nivel_proficiencia_geral || 'Abaixo do Básico') as StudentResult['classificacao'],
+            classificacao: (aluno.nivel_proficiencia_geral || aluno.classificacao || 'Abaixo do Básico') as StudentResult['classificacao'],
             acertos: totalAcertos,
             erros: totalErros,
             questoes_respondidas: totalRespondidas || totalQuestoes,
@@ -2834,20 +3026,28 @@ export default function AcertoNiveis() {
         });
         tabelaParaUsar.disciplinas?.forEach(disciplina => {
           disciplina.alunos?.forEach(aluno => {
+            const rowId = alunoRowId(aluno);
+            if (!rowId) return;
             const turmaNorm = normalizeTurmaName(aluno.turma);
             const totalQuestoesDisciplina = aluno.total_questoes_disciplina ?? aluno.respostas_por_questao?.length ?? 0;
             const totalRespondidas = aluno.total_respondidas ?? totalQuestoesDisciplina;
             const totalAcertos = aluno.total_acertos ?? 0;
             const totalEmBranco = Math.max(0, totalQuestoesDisciplina - totalRespondidas);
             const totalErros = aluno.total_erros ?? Math.max(0, totalRespondidas - totalAcertos - totalEmBranco);
-            const participou = Array.isArray(aluno.respostas_por_questao) && aluno.respostas_por_questao.some(r => r.respondeu);
+            const hasAnsweredAny = Array.isArray(aluno.respostas_por_questao) && aluno.respostas_por_questao.some(r => r.respondeu);
+            const summarySemQuestoes =
+              !hasAnsweredAny &&
+              (Number(aluno.nota) > 0 ||
+                Number(aluno.proficiencia) > 0 ||
+                Boolean(aluno.classificacao));
+            const participou = hasAnsweredAny || summarySemQuestoes;
             addToMap(turmaNorm, {
-              id: aluno.id,
+              id: rowId,
               nome: aluno.nome,
               turma: aluno.turma || '',
               nota: Number(aluno.nota ?? 0),
               proficiencia: Number(aluno.proficiencia ?? 0),
-              classificacao: (aluno.nivel_proficiencia || 'Abaixo do Básico') as StudentResult['classificacao'],
+              classificacao: (aluno.nivel_proficiencia || aluno.classificacao || 'Abaixo do Básico') as StudentResult['classificacao'],
               acertos: totalAcertos,
               erros: totalErros,
               questoes_respondidas: totalRespondidas,
@@ -2873,7 +3073,10 @@ export default function AcertoNiveis() {
           disciplina.alunos?.forEach(aluno => {
             const passaEscola = !selectedSchoolId || !escolaNome || aluno.escola === escolaNome || aluno.escola === selectedSchoolId;
             const passaSerie = !selectedGradeId || !serieNome || aluno.serie === serieNome || aluno.serie === selectedGradeId;
-            if (passaEscola && passaSerie) idsPassamFiltro.add(aluno.id);
+            if (passaEscola && passaSerie) {
+              const rid = alunoRowId(aluno);
+              if (rid) idsPassamFiltro.add(rid);
+            }
           });
         });
         studentsToUse = studentsToUse.filter(s => idsPassamFiltro.has(s.id));
@@ -3088,16 +3291,20 @@ export default function AcertoNiveis() {
 
           // Buscar faltosos em geral.alunos
           tabelaParaUsar.geral?.alunos?.forEach(aluno => {
-            if (!passaFiltros(aluno) || alunosIdsProcessados.has(aluno.id)) return;
+            const rowId = alunoRowId(aluno);
+            if (!rowId || !passaFiltros(aluno) || alunosIdsProcessados.has(rowId)) return;
 
             const totalQuestoes = aluno.total_questoes_geral ?? aluno.total_respondidas_geral ?? 0;
             const totalRespondidas = aluno.total_respondidas_geral ?? totalQuestoes;
             const totalAcertos = aluno.total_acertos_geral ?? 0;
             const totalErros = Math.max(0, totalRespondidas - totalAcertos);
-            const participou = totalRespondidas > 0 || totalAcertos > 0 || totalErros > 0;
+            const participou =
+              totalRespondidas > 0 || totalAcertos > 0 || totalErros > 0 ||
+              Number(aluno.nota_geral) > 0 || Number(aluno.proficiencia_geral) > 0 ||
+              Boolean(aluno.nivel_proficiencia_geral && String(aluno.nivel_proficiencia_geral).trim());
 
             if (!participou && aluno.turma) {
-              alunosIdsProcessados.add(aluno.id);
+              alunosIdsProcessados.add(rowId);
               faltososTurma.push({
                 nome: aluno.nome,
                 turma: aluno.turma
@@ -3108,13 +3315,20 @@ export default function AcertoNiveis() {
           // Buscar faltosos em disciplinas
           tabelaParaUsar.disciplinas?.forEach(disciplina => {
             disciplina.alunos?.forEach(aluno => {
-              if (!passaFiltros(aluno) || alunosIdsProcessados.has(aluno.id)) return;
+              const rowId = alunoRowId(aluno);
+              if (!rowId || !passaFiltros(aluno) || alunosIdsProcessados.has(rowId)) return;
 
-              const participou = Array.isArray(aluno.respostas_por_questao) &&
+              const hasAnsweredAny = Array.isArray(aluno.respostas_por_questao) &&
                 aluno.respostas_por_questao.some(r => r.respondeu);
+              const summarySemQuestoes =
+                !hasAnsweredAny &&
+                (Number(aluno.nota) > 0 ||
+                  Number(aluno.proficiencia) > 0 ||
+                  Boolean(aluno.classificacao));
+              const participou = hasAnsweredAny || summarySemQuestoes;
 
               if (!participou && aluno.turma) {
-                alunosIdsProcessados.add(aluno.id);
+                alunosIdsProcessados.add(rowId);
                 faltososTurma.push({
                   nome: aluno.nome,
                   turma: aluno.turma
@@ -3221,6 +3435,58 @@ export default function AcertoNiveis() {
           <CardTitle className="flex items-center gap-2">Filtros de Seleção</CardTitle>
         </CardHeader>
         <CardContent className="overflow-visible">
+          <div className="flex items-start gap-3 mb-6 rounded-lg border border-border bg-muted/30 p-4">
+            <Checkbox
+              id="report-answer-sheet-acertos"
+              checked={reportAnswerSheet}
+              onCheckedChange={(v) => {
+                const checked = v === true;
+                setReportAnswerSheet(checked);
+                setSelectedEvaluationId("");
+                setSelectedSchoolId("");
+                setSelectedGradeId("");
+                setSelectedClassId("");
+                setSchools([]);
+                setGrades([]);
+                setClasses([]);
+                setEvaluations([]);
+                setEvaluationInfo(null);
+                setStudents([]);
+                setAllStudents([]);
+                setDetailedReport(null);
+                setTabelaDetalhada(null);
+                setAllTabelaDetalhada(null);
+                setEstatisticasGerais(null);
+                setOpcoesProximosFiltros(null);
+                setSkillsMapping({});
+                answerSheetSkillsRef.current = [];
+                fetchEvaluationDataCacheRef.current.clear();
+                fetchEvaluationDataInFlightRef.current.clear();
+                if (selectedState && selectedMunicipality) {
+                  void (async () => {
+                    try {
+                      setIsLoading(true);
+                      const avs = await EvaluationResultsApiService.getFilterEvaluations({
+                        estado: selectedState,
+                        municipio: selectedMunicipality,
+                        ...(checked ? { report_entity_type: REPORT_ENTITY_TYPE_ANSWER_SHEET } : {}),
+                        ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+                      });
+                      setEvaluations(avs);
+                    } catch {
+                      // silencioso
+                    } finally {
+                      setIsLoading(false);
+                    }
+                  })();
+                }
+              }}
+            />
+            <Label htmlFor="report-answer-sheet-acertos" className="text-sm font-normal leading-snug cursor-pointer">
+              Marque para ver relatórios de um cartão resposta
+            </Label>
+          </div>
+
           {/* Filtros Principais */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6 w-full min-w-0">
             <div>
@@ -3466,7 +3732,9 @@ export default function AcertoNiveis() {
                 <div className="font-semibold text-foreground mt-1">
                   {estatisticasGerais?.serie ||
                     (opcoesProximosFiltros?.series?.length === 1
-                      ? opcoesProximosFiltros.series[0].name
+                      ? ((r: { nome?: string; name?: string }) => r.nome ?? r.name)(
+                          opcoesProximosFiltros.series[0] as { nome?: string; name?: string }
+                        )
                       : null) ||
                     evaluationInfo?.serie ||
                     (selectedGradeId ? grades.find(g => g.id === selectedGradeId)?.nome : null) ||
