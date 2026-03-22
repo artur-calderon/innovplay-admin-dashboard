@@ -286,7 +286,8 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
             { icon: FilePlus, label: "Cadastrar Cartão Resposta", href: "/app/cartao-resposta/cadastrar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: Ticket, label: "Gerar cartões", href: "/app/cartao-resposta/gerar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: ScanLine, label: "Corrigir cartões", href: "/app/cartao-resposta/corrigir", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-            { icon: BarChart3, label: "Resultados", href: "/app/cartao-resposta/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: BarChart3, label: "Resultados (Cartão)", href: "/app/cartao-resposta/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: Ticket, label: "Relatório Escolar (Cartão)", href: "/app/relatorios/relatorio-escolar-cartao-resposta", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
           ]
         },
         {
@@ -325,7 +326,7 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
           children: [
             { icon: Target, label: "Acerto e Níveis", href: "/app/relatorios/acerto-niveis", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: PieChart, label: "Análise das Avaliações", href: "/app/relatorios/analise-avaliacoes", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-            { icon: School, label: "Relatório Escolar", href: "/app/relatorios/relatorio-escolar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] }
+            { icon: School, label: "Relatório Escolar", href: "/app/relatorios/relatorio-escolar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
           ]
         },
       ]

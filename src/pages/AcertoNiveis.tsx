@@ -525,7 +525,7 @@ export default function AcertoNiveis() {
         try {
           const unifiedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 1, filters);
 
-          let tabelaDetalhada =
+          let tabelaDetalhada: TabelaDetalhadaPorDisciplina | null =
             unifiedResponse?.tabela_detalhada &&
               Array.isArray(unifiedResponse.tabela_detalhada.disciplinas)
               ? {
@@ -558,7 +558,9 @@ export default function AcertoNiveis() {
             students: studentsMapped,
             report: null,
             tabelaDetalhada,
-            estatisticas: unifiedResponse?.estatisticas_gerais || null,
+            estatisticas: unifiedResponse?.estatisticas_gerais
+              ? (unifiedResponse.estatisticas_gerais as unknown as { [key: string]: unknown })
+              : null,
             opcoesProximosFiltros: normalizeOpcoesProximosFiltrosShape(
               unifiedResponse?.opcoes_proximos_filtros
                 ? (unifiedResponse.opcoes_proximos_filtros as Record<string, unknown>)
@@ -1323,11 +1325,11 @@ export default function AcertoNiveis() {
       let serieExtraida = 'N/A';
 
       // 1. Tentar obter série das estatísticas gerais do endpoint
-      if (estatisticas?.serie && estatisticas.serie !== 'N/A' && estatisticas.serie !== '') {
-        serieExtraida = estatisticas.serie;
+      if (estatisticas?.serie != null && estatisticas.serie !== 'N/A' && String(estatisticas.serie) !== '') {
+        serieExtraida = String(estatisticas.serie);
       }
       // 2. Tentar obter série de opcoes_proximos_filtros (se houver apenas uma série)
-      else if (opcoes?.series && opcoes.series.length === 1) {
+      else if (opcoes && Array.isArray(opcoes.series) && opcoes.series.length === 1) {
         const s0 = opcoes.series[0] as { nome?: string; name?: string };
         serieExtraida = s0.nome ?? s0.name ?? 'N/A';
       }
@@ -1389,7 +1391,15 @@ export default function AcertoNiveis() {
       setSkillsMapping(newSkillsMapping);
 
       // Tentar extrair série das escolas se não estiver na avaliação
-      const escolasAtuais = schools.length > 0 ? schools : (opcoes?.escolas ? opcoes.escolas.map((esc: { id: string; nome?: string; name?: string }) => ({ id: esc.id, nome: esc.nome ?? esc.name ?? "" })) : []);
+      const escolasAtuais =
+        schools.length > 0
+          ? schools
+          : Array.isArray(opcoes?.escolas)
+            ? opcoes.escolas.map((esc: { id: string; nome?: string; name?: string }) => ({
+                id: esc.id,
+                nome: esc.nome ?? esc.name ?? ""
+              }))
+            : [];
       if (serieExtraida === 'N/A' && escolasAtuais.length > 0) {
         const escolaComSerie = escolasAtuais.find(esc => esc.nome && (esc.nome.includes('º') || esc.nome.includes('ano')));
         if (escolaComSerie) {
