@@ -3026,7 +3026,8 @@ export default function RelatorioEscolar() {
               Selecione todos os filtros para continuar
             </h3>
             <p className="text-muted-foreground text-center max-w-md">
-              Para visualizar o relatório escolar, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong>. A <strong>Escola</strong> pode ser "Todas" para ver todas as escolas do município.
+              Para visualizar o relatório escolar, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e{" "}
+              <strong>{reportAnswerSheet ? "cartão resposta" : "Avaliação"}</strong>. A <strong>Escola</strong> pode ser "Todas" para ver todas as escolas do município.
             </p>
           </CardContent>
         </Card>

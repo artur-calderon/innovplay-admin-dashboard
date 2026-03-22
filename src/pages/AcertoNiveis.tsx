@@ -1476,7 +1476,11 @@ export default function AcertoNiveis() {
 
   const handleGeneratePDF = async () => {
     if (!evaluationInfo) {
-      toast({ title: "Atenção", description: "Selecione uma avaliação.", variant: "destructive" });
+      toast({
+        title: "Atenção",
+        description: reportAnswerSheet ? "Selecione um cartão resposta." : "Selecione uma avaliação.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -3413,7 +3417,11 @@ export default function AcertoNiveis() {
             <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
             Acerto e Níveis
           </h1>
-          <p className="text-muted-foreground text-sm sm:text-base">Selecione uma avaliação e exporte o PDF consolidado.</p>
+          <p className="text-muted-foreground text-sm sm:text-base">
+            {reportAnswerSheet
+              ? "Selecione um cartão resposta e exporte o PDF consolidado."
+              : "Selecione uma avaliação e exporte o PDF consolidado."}
+          </p>
           {user?.role && (
             <p className="text-sm text-blue-600 mt-1">
               {getRestrictionMessage(user.role)}
@@ -3534,10 +3542,20 @@ export default function AcertoNiveis() {
               </Select>
             </div>
             <div>
-              <div className="text-sm font-medium mb-2">Avaliação</div>
+              <div className="text-sm font-medium mb-2">
+                {reportAnswerSheet ? "Cartão resposta" : "Avaliação"}
+              </div>
               <Select value={selectedEvaluationId} onValueChange={handleSelectEvaluation} disabled={!selectedMunicipality}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder={selectedMunicipality ? "Selecione uma avaliação" : "Primeiro selecione um município"} />
+                  <SelectValue
+                    placeholder={
+                      selectedMunicipality
+                        ? reportAnswerSheet
+                          ? "Selecione o cartão resposta"
+                          : "Selecione uma avaliação"
+                        : "Primeiro selecione um município"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {evaluations.map(ev => (
@@ -3621,7 +3639,15 @@ export default function AcertoNiveis() {
                           <span className="truncate">Carregando escolas...</span>
                         </div>
                       ) : (
-                        <SelectValue placeholder={selectedEvaluationId ? "Todas as escolas" : "Primeiro selecione uma avaliação"} />
+                        <SelectValue
+                          placeholder={
+                            selectedEvaluationId
+                              ? "Todas as escolas"
+                              : reportAnswerSheet
+                                ? "Primeiro selecione um cartão resposta"
+                                : "Primeiro selecione uma avaliação"
+                          }
+                        />
                       )}
                     </SelectTrigger>
                     {!isLoadingSchools && (
@@ -3671,7 +3697,8 @@ export default function AcertoNiveis() {
             <div className="flex items-start gap-2">
               <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
               <div>
-                <span className="font-semibold">Hierarquia dos Filtros:</span> Estado → Município → Avaliação
+                <span className="font-semibold">Hierarquia dos Filtros:</span> Estado → Município →{" "}
+                {reportAnswerSheet ? "Cartão resposta" : "Avaliação"}
                 <br />
                 <span className="text-xs">Os filtros específicos (Escola, Série, Turma) são opcionais e permitem refinar os resultados.</span>
               </div>
