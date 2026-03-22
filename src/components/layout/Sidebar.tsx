@@ -200,7 +200,7 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
           icon: ClipboardList,
           label: "Avaliações",
           href: `${user.role === 'aluno' ? "/aluno/avaliacoes" : "/app/avaliacoes"}`,
-          role: ["aluno", "tecadm"]
+          role: ["aluno"]
         },
         {
           icon: BarChart3,
