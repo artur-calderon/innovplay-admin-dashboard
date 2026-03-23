@@ -8,35 +8,23 @@ export type ReportProficiencyLabel =
   | "Adequado"
   | "Avançado";
 
-/**
- * Converte qualquer texto vindo da API (variações, acentos, colagem sem espaço)
- * para um dos quatro níveis canônicos — mesma cor/tag em toda a UI e PDF.
- */
+/** Rótulo canônico para PDF/tags (desconhecido → Abaixo do Básico). */
 export function normalizeProficiencyLevelLabel(
   raw: string | null | undefined
 ): ReportProficiencyLabel {
-  let s = (raw ?? "").trim();
-  if (!s || s === "—" || s === "-" || s.toLowerCase() === "n/a") {
-    return "Abaixo do Básico";
-  }
-  // "apenasAbaixo" / "doBasico" → insere espaço entre palavras coladas
-  s = s.replace(/([a-záàâãéêíóôõú])([A-ZÁÀÂÃÉÊÍÓÔÕÚ])/g, "$1 $2");
-  s = s.replace(/^apenas\s*/i, "").trim();
-
-  const n = s
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+  const t = (raw ?? "").trim();
+  if (!t || t === "—" || t === "-") return "Abaixo do Básico";
+  const lower = t
     .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (n.includes("abaixo")) return "Abaixo do Básico";
-  if (n.includes("avanc")) return "Avançado";
-  if (n.includes("adequad")) return "Adequado";
-  if (n.includes("basico")) {
-    return n.includes("abaixo") ? "Abaixo do Básico" : "Básico";
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (lower === "avancado") return "Avançado";
+  if (lower === "adequado") return "Adequado";
+  if (lower === "basico") return "Básico";
+  if (lower === "abaixo do basico") return "Abaixo do Básico";
+  if (t === "Avançado" || t === "Adequado" || t === "Básico" || t === "Abaixo do Básico") {
+    return t;
   }
-
   return "Abaixo do Básico";
 }
 
@@ -45,7 +33,7 @@ export function normalizeProficiencyLevelLabel(
  * usado no `RelatorioEscolar` (mesma tipografia/paddings e mesmas cores).
  */
 export function getReportProficiencyTagClass(label?: string | null): string {
-  const normalized = normalizeProficiencyLevelLabel(label);
+  const normalized = (label ?? "").trim();
 
   switch (normalized) {
     case "Avançado":
@@ -56,6 +44,8 @@ export function getReportProficiencyTagClass(label?: string | null): string {
       return `${REPORT_TAG_BASE} bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-950/30 dark:text-yellow-300 dark:border-yellow-800`;
     case "Abaixo do Básico":
       return `${REPORT_TAG_BASE} bg-red-100 text-red-800 border-red-300 dark:bg-red-950/30 dark:text-red-300 dark:border-red-800`;
+    default:
+      return `${REPORT_TAG_BASE} bg-muted text-muted-foreground border-border`;
   }
 }
 
