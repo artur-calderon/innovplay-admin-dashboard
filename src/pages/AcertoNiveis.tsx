@@ -2172,21 +2172,38 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
         if (isAnswerSheetAgregados && asSerie !== "all") {
           return asNorm((asOpcoes.series ?? []).find((s) => s.id === asSerie) ?? { id: asSerie });
         }
-        // 1) Se o usuário selecionou explicitamente uma série, priorizar
         if (selectedGradeId) {
-          const g = grades.find(gr => gr.id === selectedGradeId)?.nome;
+          const g = grades.find((gr) => gr.id === selectedGradeId)?.nome;
           if (g) return g;
         }
-        // 2) Tentar inferir a partir das turmas dos alunos
+        const fromAlunoSerie = new Set<string>();
+        alunosRef.forEach((s) => {
+          const t = (s.serie || "").trim();
+          if (t) fromAlunoSerie.add(t);
+        });
+        if (fromAlunoSerie.size === 1) return Array.from(fromAlunoSerie)[0];
         const inferred = new Set<string>();
-        alunosRef.forEach(s => {
+        alunosRef.forEach((s) => {
           const ser = extractSerieFromTurma(s.turma);
           if (ser) inferred.add(ser);
         });
         if (inferred.size === 1) return Array.from(inferred)[0];
-        // 3) Caso múltiplas ou nenhuma, omitir para evitar séries não aplicadas
+        const eg = (evaluationInfo?.serie || "").trim();
+        if (eg && eg !== "N/A") return eg;
         return null;
       };
+
+      const resolveSerieDisplayForPdf = (alunosRef: StudentResult[]): string =>
+        getHeaderSerieText(alunosRef) ?? "N/A";
+
+      const getPdfEscolaDisplayText = (): string =>
+        isAnswerSheetAgregados
+          ? asEscola !== "all"
+            ? asNorm((asOpcoes.escolas ?? []).find((e) => e.id === asEscola) ?? { id: asEscola })
+            : "Todas as Escolas"
+          : selectedSchoolId
+            ? schools.find((s) => s.id === selectedSchoolId)?.nome || "Escola Selecionada"
+            : "Todas as Escolas";
 
       // Função para adicionar capa inicial
       const addInitialCover = () => {
@@ -2252,7 +2269,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
 
         // Card de informações - tamanho reduzido
         const cardWidth = pageWidth - 120; // Reduzido: mais estreito
-        const cardHeight = 60; // Reduzido: mais baixo
+        const cardHeight = 68;
         const cardX = (pageWidth - cardWidth) / 2;
 
         // Centralizar verticalmente melhor na página
@@ -2314,28 +2331,18 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
         doc.text('ESCOLA:', leftColX, cardY);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...COLORS.textDark);
-        const escolaText = isAnswerSheetAgregados
-          ? asEscola !== "all"
-            ? asNorm((asOpcoes.escolas ?? []).find((e) => e.id === asEscola) ?? { id: asEscola })
-            : "Todas as Escolas"
-          : selectedSchoolId
-            ? schools.find((s) => s.id === selectedSchoolId)?.nome || "Escola Selecionada"
-            : "Todas as Escolas";
+        const escolaText = getPdfEscolaDisplayText();
         const escolaLines = doc.splitTextToSize(escolaText.toUpperCase(), cardWidth - labelWidth - 24);
         doc.text(escolaLines, leftColX + labelWidth, cardY);
         cardY += Math.max(5, escolaLines.length * 4);
 
-        // SÉRIE
-        const serieText = getHeaderSerieText(studentsToUse);
-        if (serieText) {
-          doc.setFont('helvetica', 'bold');
-          doc.setTextColor(...COLORS.primary);
-          doc.text('SÉRIE:', leftColX, cardY);
-          doc.setFont('helvetica', 'normal');
-          doc.setTextColor(...COLORS.textDark);
-          doc.text(serieText, leftColX + labelWidth, cardY);
-          cardY += 5;
-        }
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.primary);
+        doc.text('SÉRIE:', leftColX, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(resolveSerieDisplayForPdf(studentsToUse), leftColX + labelWidth, cardY);
+        cardY += 5;
 
         // DATA
         if (evaluationInfo.data_aplicacao) {
@@ -2368,7 +2375,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
       };
 
       // Função para adicionar capa de faltosos
-      const addFaltososCover = (turmaName: string | null, totalFaltosos: number) => {
+      const addFaltososCover = (turmaName: string | null, totalFaltosos: number, alunosParaSerie: StudentResult[]) => {
         // Garantir fundo branco limpo - desenhar primeiro e cobrir toda a página
         doc.setFillColor(...COLORS.white);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
@@ -2434,7 +2441,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
 
         // Card de estatísticas - tamanho reduzido
         const cardWidth = pageWidth - 120; // Reduzido: mais estreito
-        const cardHeight = 40; // Reduzido: mais baixo
+        const cardHeight = 48;
         const cardX = (pageWidth - cardWidth) / 2;
 
         // Garantir que o card não fique muito próximo do final da página
@@ -2480,6 +2487,14 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...COLORS.textDark); // Valores em preto
         doc.text(`${totalFaltosos}`, leftColX + labelWidth, cardY);
+        cardY += 5;
+
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.primary);
+        doc.text('SÉRIE:', leftColX, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(resolveSerieDisplayForPdf(alunosParaSerie), leftColX + labelWidth, cardY);
 
         const cardBottom = y + cardHeight;
         let noteY = cardBottom + 8;
@@ -2542,112 +2557,102 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
         });
         y += Math.max(18, lines.length * subtitleSize * 0.5) + 8;
 
-        // Card de estatísticas (altura fixa para incluir TOTAL DE QUESTÕES)
-        const cardWidth = pageWidth - 120;
-        const cardHeight = 65;
+        // Card compacto: largura fixa, altura pelo conteúdo, coluna de valores alinhada
+        const cardWidth = 148;
         const cardX = (pageWidth - cardWidth) / 2;
+        const inset = 7;
+        const labelW = 46;
+        const valueX = cardX + inset + labelW;
+        const valueMaxW = cardWidth - inset * 2 - labelW;
+        const rowStep = 3.35;
+        const padTop = 4.5;
+        const padBottom = 5;
 
-        // Garantir que o card não fique muito próximo do final da página
+        const escolaCapLines = doc.splitTextToSize(getPdfEscolaDisplayText(), valueMaxW);
+        const turmaCapLines = doc.splitTextToSize(turmaName || '—', valueMaxW);
+
+        const concluidos = alunosTurma.filter((s) => s.status === 'concluida');
+        const totalAlunos = alunosTurma.length;
+        const mediaNota =
+          concluidos.length > 0
+            ? (concluidos.reduce((sum, s) => sum + s.nota, 0) / concluidos.length).toFixed(1)
+            : '0.0';
+        const mediaProficiencia =
+          concluidos.length > 0
+            ? (concluidos.reduce((sum, s) => sum + s.proficiencia, 0) / concluidos.length).toFixed(1)
+            : '0.0';
+        const taxaParticipacao =
+          totalAlunos > 0 ? ((concluidos.length / totalAlunos) * 100).toFixed(1) : '0.0';
+
+        const bodyH =
+          padTop +
+          5.5 +
+          2 +
+          escolaCapLines.length * rowStep +
+          rowStep +
+          turmaCapLines.length * rowStep +
+          1.5 +
+          6 * rowStep +
+          padBottom;
+        const cardHeight = bodyH;
+
         const minSpaceAtBottom = 20;
+        let cardTopY = y;
         const maxCardY = pageHeight - cardHeight - minSpaceAtBottom;
-
-        // Apenas ajustar se realmente necessário (card muito próximo do final)
-        if (y + cardHeight > maxCardY) {
-          y = maxCardY;
+        if (cardTopY + cardHeight > maxCardY) {
+          cardTopY = maxCardY;
         }
 
-        // Fundo do card
         doc.setFillColor(...COLORS.bgLight);
-        doc.rect(cardX, y, cardWidth, cardHeight, 'F');
-
-        // Borda do card
+        doc.rect(cardX, cardTopY, cardWidth, cardHeight, 'F');
         doc.setDrawColor(...COLORS.borderLight);
-        doc.setLineWidth(0.5);
-        doc.rect(cardX, y, cardWidth, cardHeight, 'S');
+        doc.setLineWidth(0.35);
+        doc.rect(cardX, cardTopY, cardWidth, cardHeight, 'S');
 
-        // Conteúdo do card
-        let cardY = y + 9;
+        const lx = cardX + inset;
+        let cardY = cardTopY + padTop;
 
-        // Título do card
-        doc.setFontSize(11);
-        doc.setTextColor(...COLORS.primary); // Roxo
+        doc.setFontSize(9);
+        doc.setTextColor(...COLORS.primary);
         doc.setFont('helvetica', 'bold');
         doc.text('ESTATÍSTICAS DA TURMA', centerX, cardY, { align: 'center' });
+        cardY += 5.5 + 2;
 
-        cardY += 9;
+        doc.setFontSize(7);
+        const drawLabeledBlock = (label: string, valueLines: string[]) => {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...COLORS.primary);
+          doc.text(label, lx, cardY);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...COLORS.textDark);
+          valueLines.forEach((line, i) => {
+            doc.text(line, valueX, cardY + i * rowStep);
+          });
+          cardY += Math.max(rowStep, valueLines.length * rowStep);
+        };
 
-        // Calcular estatísticas
-        const concluidos = alunosTurma.filter(s => s.status === 'concluida');
-        const totalAlunos = alunosTurma.length;
-        const mediaNota = concluidos.length > 0
-          ? (concluidos.reduce((sum, s) => sum + s.nota, 0) / concluidos.length).toFixed(1)
-          : '0.0';
-        const mediaProficiencia = concluidos.length > 0
-          ? (concluidos.reduce((sum, s) => sum + s.proficiencia, 0) / concluidos.length).toFixed(1)
-          : '0.0';
-        const taxaParticipacao = totalAlunos > 0
-          ? ((concluidos.length / totalAlunos) * 100).toFixed(1)
-          : '0.0';
+        drawLabeledBlock('ESCOLA:', escolaCapLines);
+        drawLabeledBlock('SÉRIE:', [resolveSerieDisplayForPdf(alunosTurma)]);
+        drawLabeledBlock('TURMA:', turmaCapLines);
 
-        // Estatísticas em formato tabular (label: valor)
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'normal');
+        cardY += 1.5;
 
-        const leftColX = cardX + 12;
-        const labelWidth = 48; // Padronizado: mesmo espaçamento
+        const drawStatRow = (label: string, value: string) => {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...COLORS.primary);
+          doc.text(label, lx, cardY);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...COLORS.textDark);
+          doc.text(value, valueX, cardY);
+          cardY += rowStep;
+        };
 
-        // TOTAL DE ALUNOS
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary); // Labels em roxo
-        doc.text('TOTAL DE ALUNOS:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark); // Valores em preto
-        doc.text(`${totalAlunos}`, leftColX + labelWidth, cardY);
-        cardY += 5;
-
-        // ALUNOS CONCLUÍRAM
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary);
-        doc.text('ALUNOS CONCLUÍRAM:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        doc.text(`${concluidos.length}`, leftColX + labelWidth, cardY);
-        cardY += 5;
-
-        // MÉDIA DE NOTA
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary);
-        doc.text('MÉDIA DE NOTA:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        doc.text(`${mediaNota}`, leftColX + labelWidth, cardY);
-        cardY += 5;
-
-        // MÉDIA PROFICIÊNCIA
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary);
-        doc.text('MÉDIA PROFICIÊNCIA:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        doc.text(`${mediaProficiencia}`, leftColX + labelWidth, cardY);
-        cardY += 5;
-
-        // TAXA DE PARTICIPAÇÃO
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary);
-        doc.text('TAXA DE PARTICIPAÇÃO:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        doc.text(`${taxaParticipacao}%`, leftColX + labelWidth, cardY);
-
-        // TOTAL DE QUESTÕES (sempre exibir para consistência; "—" quando não informado)
-        cardY += 5;
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary);
-        doc.text('TOTAL DE QUESTÕES:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        doc.text(typeof totalQuestoes === 'number' ? `${totalQuestoes}` : '—', leftColX + labelWidth, cardY);
+        drawStatRow('TOTAL DE ALUNOS:', `${totalAlunos}`);
+        drawStatRow('ALUNOS CONCLUÍRAM:', `${concluidos.length}`);
+        drawStatRow('MÉDIA DE NOTA:', `${mediaNota}`);
+        drawStatRow('MÉDIA PROFICIÊNCIA:', `${mediaProficiencia}`);
+        drawStatRow('TAXA DE PARTICIPAÇÃO:', `${taxaParticipacao}%`);
+        drawStatRow('TOTAL DE QUESTÕES:', typeof totalQuestoes === 'number' ? `${totalQuestoes}` : '—');
       };
 
       // Função para adicionar rodapé
@@ -2685,7 +2690,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
       };
 
       // Função para adicionar cabeçalho
-      const addHeader = (title: string, turmaOverride?: string): number => {
+      const addHeader = (title: string, turmaOverride?: string, alunosParaSerie?: StudentResult[]): number => {
         const centerX = pageWidth / 2;
         let y = 20;
 
@@ -2701,23 +2706,12 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
         doc.setFontSize(10);
         doc.setTextColor(...COLORS.textGray); // Cinza institucional
 
-        const escolaText = isAnswerSheetAgregados
-          ? asEscola !== "all"
-            ? asNorm((asOpcoes.escolas ?? []).find((e) => e.id === asEscola) ?? { id: asEscola })
-            : "Todas as Escolas"
-          : selectedSchoolId
-            ? schools.find((s) => s.id === selectedSchoolId)?.nome || "Escola Selecionada"
-            : "Todas as Escolas";
-        doc.text(`Escola: ${escolaText}`, centerX, y, { align: 'center' });
+        doc.text(`Escola: ${getPdfEscolaDisplayText()}`, centerX, y, { align: 'center' });
         y += 5;
 
-        const serieText = isAnswerSheetAgregados && asSerie !== "all"
-          ? asNorm((asOpcoes.series ?? []).find((s) => s.id === asSerie) ?? { id: asSerie })
-          : getHeaderSerieText(studentsToUse);
-        if (serieText) {
-          doc.text(`Série: ${serieText}`, centerX, y, { align: 'center' });
-          y += 5;
-        }
+        const alunosSerieRef = alunosParaSerie ?? studentsToUse;
+        doc.text(`Série: ${resolveSerieDisplayForPdf(alunosSerieRef)}`, centerX, y, { align: 'center' });
+        y += 5;
 
         const turmaText =
           turmaOverride !== undefined
@@ -3001,7 +2995,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
         const title = `RELATÓRIO DE DESEMPENHO GERAL`;
         const questoes: QuestaoMinima[] = sortQuestoes(questoesParaUsar);
 
-        const startY = addHeader(title, turmaName);
+        const startY = addHeader(title, turmaName, alunosTurma);
         const availableWidth = pageWidth - (2 * margin);
         const MIN_NIVEL_MM = 40;
         const nameWidth = Math.min(140, availableWidth * 0.5);
@@ -3274,9 +3268,15 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
         doc.setFontSize(10);
         doc.text(`${evaluationInfo.titulo} - ${subtitle}`, landscapeWidth / 2, y, { align: 'center' });
         y += 2.5;
-        doc.setFontSize(8);
-        doc.text(`Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
-        y += 2;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        const metaDetalheGeral = `Escola: ${getPdfEscolaDisplayText()}  •  Série: ${resolveSerieDisplayForPdf(alunosTurma)}  •  Turma: ${turmaName}`;
+        const metaDetalheLines = doc.splitTextToSize(metaDetalheGeral, landscapeWidth - 2 * landscapeMargin);
+        metaDetalheLines.forEach((ln: string, i: number) => {
+          doc.text(ln, landscapeWidth / 2, y + i * 3.2, { align: 'center' });
+        });
+        y += Math.max(3.2, metaDetalheLines.length * 3.2);
+        doc.setFont('helvetica', 'bold');
 
         drawTableChunk(questoes, true, y);
 
@@ -3314,7 +3314,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
 
         doc.addPage('landscape');
         pageCount++;
-        const yCharts = addHeader('VISÃO GRÁFICA DOS RESULTADOS', turmaName);
+        const yCharts = addHeader('VISÃO GRÁFICA DOS RESULTADOS', turmaName, alunosTurma);
         const chartsTop = yCharts + 2;
         const chartsLeft = margin;
         const chartsWidth = pageWidth - 2 * margin;
@@ -3995,7 +3995,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
           pageCount++;
           pageWidth = doc.internal.pageSize.getWidth();
           pageHeight = doc.internal.pageSize.getHeight();
-          addFaltososCover(turmaName, faltososTurma.length);
+          addFaltososCover(turmaName, faltososTurma.length, alunosTurma);
 
           // Nova página para a tabela
           doc.addPage('portrait');
@@ -4003,7 +4003,17 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
           pageWidth = doc.internal.pageSize.getWidth();
           pageHeight = doc.internal.pageSize.getHeight();
 
-          let y = 20;
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8);
+          doc.setTextColor(60, 60, 60);
+          const metaFaltososTbl = `Escola: ${getPdfEscolaDisplayText()}  •  Série: ${resolveSerieDisplayForPdf(alunosTurma)}  •  Turma: ${turmaName}`;
+          const metaFaltososLines = doc.splitTextToSize(metaFaltososTbl, pageWidth - 2 * margin);
+          const metaTop = 14;
+          metaFaltososLines.forEach((ln: string, i: number) => {
+            doc.text(ln, pageWidth / 2, metaTop + i * 3.8, { align: 'center' });
+          });
+          let y = metaTop + metaFaltososLines.length * 3.8 + 4;
+          doc.setTextColor(0, 0, 0);
 
           // Preparar dados da tabela
           const bodyRows: string[][] = faltososTurma
@@ -4070,12 +4080,12 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
         <div className="space-y-1.5">
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
             <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
-            Acerto e Níveis — Cartão resposta
+            Acerto e Níveis — {isAnswerSheetAgregados ? "Cartão resposta" : "Avaliações"}
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base">
             {isAnswerSheetAgregados
-              ? "Dados de GET /answer-sheets/resultados-agregados. Selecione estado, município e cartão resposta para exportar o PDF."
-              : "Selecione estado, município e cartão resposta e exporte o PDF consolidado (lista via API de resultados)."}
+              ? "Dados agregados do cartão resposta. Selecione estado, município e cartão para exportar o PDF."
+              : "Lista de avaliações (cartão resposta). Selecione estado, município e avaliação para ver resultados e exportar o PDF."}
           </p>
           {user?.role && (
             <p className="text-sm text-blue-600 mt-1">
@@ -4096,26 +4106,27 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
       <Card className="overflow-visible">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            {isAnswerSheetAgregados ? (
-              <>
-                <Filter className="h-5 w-5" />
-                Filtros (cartão resposta)
-              </>
-            ) : (
-              "Filtros (cartão resposta)"
-            )}
+            <Filter className="h-5 w-5" />
+            Filtros
           </CardTitle>
           <CardDescription>
             {isAnswerSheetAgregados
-              ? "Estado, município e cartão resposta são obrigatórios."
-              : "Estado, município e cartão resposta são obrigatórios; escola, série e turma refinam o recorte."}
+              ? "Estado, município e cartão resposta são obrigatórios. Escola, série e turma refinam o recorte."
+              : "Estado, município e avaliação são obrigatórios. Escola, série e turma refinam o recorte."}
           </CardDescription>
         </CardHeader>
         <CardContent className="overflow-visible">
-          {isAnswerSheetAgregados ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 w-full min-w-0">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Estado</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 w-full min-w-0">
+            <div className="space-y-2">
+              <div className="text-sm font-medium flex flex-wrap items-center gap-2">
+                Estado
+                {!isAnswerSheetAgregados && userHierarchyContext?.restrictions.canSelectState === false && (
+                  <Badge variant="secondary" className="text-xs shrink-0">
+                    Pré-selecionado
+                  </Badge>
+                )}
+              </div>
+              {isAnswerSheetAgregados ? (
                 <Select value={asEstado} onValueChange={setAsEstadoAndReset} disabled={isLoadingFiltersAg}>
                   <SelectTrigger className="w-full min-w-0">
                     <SelectValue placeholder="Selecione o estado" />
@@ -4129,9 +4140,36 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
                     ))}
                   </SelectContent>
                 </Select>
+              ) : (
+                <Select
+                  value={selectedState}
+                  onValueChange={handleChangeState}
+                  disabled={isLoading || userHierarchyContext?.restrictions.canSelectState === false}
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue placeholder="Selecione o estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {states.map((st) => (
+                      <SelectItem key={st.id} value={st.id}>
+                        {st.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium flex flex-wrap items-center gap-2">
+                Município
+                {!isAnswerSheetAgregados && userHierarchyContext?.restrictions.canSelectMunicipality === false && (
+                  <Badge variant="secondary" className="text-xs shrink-0">
+                    Pré-selecionado
+                  </Badge>
+                )}
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Município</label>
+              {isAnswerSheetAgregados ? (
                 <Select
                   value={asMunicipio}
                   onValueChange={setAsMunicipioAndReset}
@@ -4149,9 +4187,39 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Cartão resposta</label>
+              ) : (
+                <Select
+                  value={selectedMunicipality}
+                  onValueChange={handleChangeMunicipality}
+                  disabled={
+                    isLoading ||
+                    !selectedState ||
+                    userHierarchyContext?.restrictions.canSelectMunicipality === false
+                  }
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue
+                      placeholder={
+                        selectedState ? "Selecione o município" : "Primeiro selecione um estado"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {municipalities.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                {isAnswerSheetAgregados ? "Cartão resposta" : "Avaliação"}
+              </label>
+              {isAnswerSheetAgregados ? (
                 <Select
                   value={asGabarito}
                   onValueChange={setAsGabaritoAndReset}
@@ -4169,9 +4237,48 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
                     ))}
                   </SelectContent>
                 </Select>
+              ) : (
+                <Select
+                  value={selectedEvaluationId}
+                  onValueChange={handleSelectEvaluation}
+                  disabled={!selectedMunicipality}
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue
+                      placeholder={
+                        selectedMunicipality
+                          ? "Selecione a avaliação"
+                          : "Primeiro selecione um município"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent className="max-w-md">
+                    {evaluations.map((ev) => {
+                      const dataStr = ev.data_aplicacao
+                        ? new Date(ev.data_aplicacao).toLocaleDateString("pt-BR")
+                        : "";
+                      const titleHint = dataStr ? `${ev.titulo} — ${dataStr}` : ev.titulo;
+                      return (
+                        <SelectItem key={ev.id} value={ev.id} title={titleHint}>
+                          {ev.titulo}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium flex flex-wrap items-center gap-2">
+                Escola
+                {!isAnswerSheetAgregados && userHierarchyContext?.restrictions.canSelectSchool === false && (
+                  <Badge variant="secondary" className="text-xs shrink-0">
+                    Pré-selecionado
+                  </Badge>
+                )}
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Escola</label>
+              {isAnswerSheetAgregados ? (
                 <Select
                   value={asEscola}
                   onValueChange={setAsEscolaAndReset}
@@ -4189,9 +4296,49 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Série</label>
+              ) : (
+                <Select
+                  value={selectedSchoolId || "all"}
+                  onValueChange={(value) => handleSelectSchool(value === "all" ? "" : value)}
+                  disabled={
+                    !selectedEvaluationId ||
+                    isLoadingSchools ||
+                    userHierarchyContext?.restrictions.canSelectSchool === false
+                  }
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    {isLoadingSchools && selectedEvaluationId ? (
+                      <div className="flex items-center gap-2 text-muted-foreground w-full min-w-0">
+                        <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                        <span className="truncate">Carregando escolas…</span>
+                      </div>
+                    ) : (
+                      <SelectValue
+                        placeholder={
+                          selectedEvaluationId
+                            ? "Todas as escolas"
+                            : "Primeiro selecione uma avaliação"
+                        }
+                      />
+                    )}
+                  </SelectTrigger>
+                  {!isLoadingSchools && (
+                    <SelectContent>
+                      <SelectItem value="all">Todas</SelectItem>
+                      {schools.map((sc) => (
+                        <SelectItem key={sc.id} value={sc.id}>
+                          {sc.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  )}
+                </Select>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Série</label>
+              {isAnswerSheetAgregados ? (
                 <Select
                   value={asSerie}
                   onValueChange={setAsSerieAndReset}
@@ -4209,9 +4356,34 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Turma</label>
+              ) : (
+                <Select
+                  value={selectedGradeId || "all"}
+                  onValueChange={(value) => handleSelectGrade(value === "all" ? "" : value)}
+                  disabled={!selectedSchoolId}
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue
+                      placeholder={
+                        selectedSchoolId ? "Todas as séries" : "Primeiro selecione uma escola"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {grades.map((gr) => (
+                      <SelectItem key={gr.id} value={gr.id}>
+                        {gr.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Turma</label>
+              {isAnswerSheetAgregados ? (
                 <Select
                   value={asTurma}
                   onValueChange={(v) => {
@@ -4237,224 +4409,120 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-            </div>
-          ) : (
-            <>
-          {/* Filtros Principais */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6 w-full min-w-0">
-            <div>
-              <div className="text-sm font-medium mb-2 flex items-center gap-2">
-                Estado
-                {userHierarchyContext?.restrictions.canSelectState === false && (
-                  <Badge variant="secondary" className="text-xs">Pré-selecionado</Badge>
-                )}
-              </div>
-              <Select
-                value={selectedState}
-                onValueChange={handleChangeState}
-                disabled={isLoading || userHierarchyContext?.restrictions.canSelectState === false}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecione um estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  {states.map(st => (
-                    <SelectItem key={st.id} value={st.id}>{st.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <div className="text-sm font-medium mb-2 flex items-center gap-2">
-                Município
-                {userHierarchyContext?.restrictions.canSelectMunicipality === false && (
-                  <Badge variant="secondary" className="text-xs">Pré-selecionado</Badge>
-                )}
-              </div>
-              <Select
-                value={selectedMunicipality}
-                onValueChange={handleChangeMunicipality}
-                disabled={isLoading || !selectedState || userHierarchyContext?.restrictions.canSelectMunicipality === false}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={selectedState ? "Selecione um município" : "Primeiro selecione um estado"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {municipalities.map(m => (
-                    <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <div className="text-sm font-medium mb-2">Cartão resposta</div>
-              <Select value={selectedEvaluationId} onValueChange={handleSelectEvaluation} disabled={!selectedMunicipality}>
-                <SelectTrigger className="w-full">
-                  <SelectValue
-                    placeholder={
-                      selectedMunicipality
-                        ? "Selecione o cartão resposta"
-                        : "Primeiro selecione um município"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {evaluations.map(ev => (
-                    <SelectItem key={ev.id} value={ev.id}>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{ev.titulo}</span>
-                        {ev.data_aplicacao && (
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(ev.data_aplicacao).toLocaleDateString('pt-BR')}
-                          </span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Filtros Específicos (apenas quando um cartão resposta está selecionado) */}
-          {selectedEvaluationId && (
-            <div className="border-t pt-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Filtros Específicos</h3>
-                {(selectedSchoolId || selectedGradeId || selectedClassId) && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      setSelectedSchoolId("");
-                      setSelectedGradeId("");
-                      setSelectedClassId("");
-
-                      // ✅ OTIMIZAÇÃO: Usar dados já carregados quando possível
-                      if (allStudents.length > 0 && allTabelaDetalhada) {
-                        setStudents(allStudents);
-                        setTabelaDetalhada(allTabelaDetalhada);
-                      } else if (selectedEvaluationId) {
-                        try {
-                          setIsLoading(true);
-                          const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
-                            selectedEvaluationId
-                          );
-                          setAllStudents(fetchedStudents);
-                          setAllTabelaDetalhada(tabela || null);
-                          setStudents(fetchedStudents);
-                          setDetailedReport(report || null);
-                          setTabelaDetalhada(tabela || null);
-                          if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
-                          if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
-                        } catch (error) {
-                          toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
-                        } finally {
-                          setIsLoading(false);
-                        }
+              ) : (
+                <Select
+                  value={selectedClassId || "all"}
+                  onValueChange={(value) => handleSelectClass(value === "all" ? "" : value)}
+                  disabled={!selectedGradeId}
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue
+                      placeholder={
+                        selectedGradeId ? "Todas as turmas" : "Primeiro selecione uma série"
                       }
-                    }}
-                    className="text-xs"
-                  >
-                    Limpar Filtros
-                  </Button>
-                )}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <div className="text-sm font-medium mb-2 flex items-center gap-2">
-                    Escola
-                    {userHierarchyContext?.restrictions.canSelectSchool === false && (
-                      <Badge variant="secondary" className="text-xs">Pré-selecionado</Badge>
-                    )}
-                  </div>
-                  <Select
-                    value={selectedSchoolId || "all"}
-                    onValueChange={(value) => handleSelectSchool(value === "all" ? "" : value)}
-                    disabled={!selectedEvaluationId || isLoadingSchools || userHierarchyContext?.restrictions.canSelectSchool === false}
-                  >
-                    <SelectTrigger className="w-full">
-                      {isLoadingSchools && selectedEvaluationId ? (
-                        <div className="flex items-center gap-2 text-muted-foreground w-full">
-                          <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
-                          <span className="truncate">Carregando escolas...</span>
-                        </div>
-                      ) : (
-                        <SelectValue
-                          placeholder={
-                            selectedEvaluationId
-                              ? "Todas as escolas"
-                              : "Primeiro selecione um cartão resposta"
-                          }
-                        />
-                      )}
-                    </SelectTrigger>
-                    {!isLoadingSchools && (
-                      <SelectContent>
-                        <SelectItem value="all">Todas</SelectItem>
-                        {schools.map(sc => (
-                          <SelectItem key={sc.id} value={sc.id}>{sc.nome}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    )}
-                  </Select>
-                </div>
-                <div>
-                  <div className="text-sm font-medium mb-2">Série</div>
-                  <Select value={selectedGradeId || "all"} onValueChange={(value) => handleSelectGrade(value === "all" ? "" : value)} disabled={!selectedSchoolId}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={selectedSchoolId ? "Todas as séries" : "Primeiro selecione uma escola"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas</SelectItem>
-                      {grades.map(gr => (
-                        <SelectItem key={gr.id} value={gr.id}>{gr.nome}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <div className="text-sm font-medium mb-2">Turma</div>
-                  <Select value={selectedClassId || "all"} onValueChange={(value) => handleSelectClass(value === "all" ? "" : value)} disabled={!selectedGradeId}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={selectedGradeId ? "Todas as turmas" : "Primeiro selecione uma série"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas</SelectItem>
-                      {classes.map(cls => (
-                        <SelectItem key={cls.id} value={cls.id}>{cls.nome}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {classes.map((cls) => (
+                      <SelectItem key={cls.id} value={cls.id}>
+                        {cls.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
-          )}
+          </div>
 
-            </>
-          )}
+          {!isAnswerSheetAgregados &&
+            selectedEvaluationId &&
+            (selectedSchoolId || selectedGradeId || selectedClassId) && (
+              <div className="mt-4 flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                  onClick={async () => {
+                    setSelectedSchoolId("");
+                    setSelectedGradeId("");
+                    setSelectedClassId("");
 
-          {/* Informações de Status */}
-          {!isAnswerSheetAgregados && (
-          <div className="mt-6 p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400 text-sm">
+                    if (allStudents.length > 0 && allTabelaDetalhada) {
+                      setStudents(allStudents);
+                      setTabelaDetalhada(allTabelaDetalhada);
+                    } else if (selectedEvaluationId) {
+                      try {
+                        setIsLoading(true);
+                        const {
+                          students: fetchedStudents,
+                          report,
+                          tabelaDetalhada: tabela,
+                          estatisticas,
+                          opcoesProximosFiltros: opcoes,
+                        } = await fetchEvaluationData(selectedEvaluationId);
+                        setAllStudents(fetchedStudents);
+                        setAllTabelaDetalhada(tabela || null);
+                        setStudents(fetchedStudents);
+                        setDetailedReport(report || null);
+                        setTabelaDetalhada(tabela || null);
+                        if (estatisticas)
+                          setEstatisticasGerais(
+                            estatisticas as unknown as {
+                              [key: string]: unknown;
+                              serie?: string;
+                              escola?: string;
+                              municipio?: string;
+                              total_alunos?: number;
+                              alunos_participantes?: number;
+                              alunos_ausentes?: number;
+                              media_nota_geral?: number;
+                              media_proficiencia_geral?: number;
+                            } | null
+                          );
+                        if (opcoes)
+                          setOpcoesProximosFiltros(
+                            opcoes as unknown as {
+                              [key: string]: unknown;
+                              series?: Array<{ id: string; name: string }>;
+                            } | null
+                          );
+                      } catch {
+                        toast({
+                          title: "Erro",
+                          description: "Não foi possível recarregar os dados",
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setIsLoading(false);
+                      }
+                    }
+                  }}
+                >
+                  Limpar escola, série e turma
+                </Button>
+              </div>
+            )}
+
+          <div className="mt-6 p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400 text-sm leading-relaxed">
             <div className="flex items-start gap-2">
-              <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
+              <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full mt-2 shrink-0" />
               <div>
-                <span className="font-semibold">Hierarquia dos Filtros:</span> Estado → Município → Cartão resposta
-                <br />
-                <span className="text-xs">Os filtros específicos (Escola, Série, Turma) são opcionais e permitem refinar os resultados.</span>
+                <span className="font-semibold">Ordem dos filtros:</span>{" "}
+                {isAnswerSheetAgregados ? (
+                  <>
+                    Estado → Município → Cartão resposta → Escola → Série → Turma. Os três últimos são opcionais
+                    (mesma API que Resultados / Relatório Escolar Cartão).
+                  </>
+                ) : (
+                  <>
+                    Estado → Município → Avaliação → Escola → Série → Turma. Escola, série e turma são opcionais
+                    para refinar os resultados.
+                  </>
+                )}
               </div>
             </div>
           </div>
-          )}
-
-          {isAnswerSheetAgregados && (
-            <div className="mt-6 p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400 text-sm text-xs leading-relaxed">
-              <strong className="font-semibold">Ordem dos filtros:</strong> Estado → Município → Cartão resposta → Escola → Série → Turma.
-              Os três últimos são opcionais para refinar o recorte (mesma API que Resultados / Relatório Escolar Cartão).
-            </div>
-          )}
 
           {/* Botão de Geração */}
           <div className="mt-6 flex flex-col items-end gap-2">
@@ -4515,14 +4583,16 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <div className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full"></div>
-              Resumo do cartão resposta
+              {isAnswerSheetAgregados ? "Resumo do cartão resposta" : "Resumo da avaliação"}
             </CardTitle>
           </CardHeader>
           <CardContent>
             {/* Informações Básicas */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-6">
               <div className="p-3 bg-muted rounded-lg">
-                <span className="text-muted-foreground text-xs uppercase tracking-wide">Cartão resposta</span>
+                <span className="text-muted-foreground text-xs uppercase tracking-wide">
+                  {isAnswerSheetAgregados ? "Cartão resposta" : "Avaliação"}
+                </span>
                 <div className="font-semibold text-foreground mt-1">{evaluationInfo.titulo}</div>
               </div>
               <div className="p-3 bg-muted rounded-lg">
@@ -4563,7 +4633,9 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
             {/* Estatísticas da Avaliação — único bloco de cards (sem repetir Informações Gerais) */}
             {(detailedReport || students.length > 0 || estatisticasGerais) && (
               <div className="border-t pt-6">
-                <h3 className="text-lg font-semibold mb-4">Estatísticas do cartão resposta</h3>
+                <h3 className="text-lg font-semibold mb-4">
+                  {isAnswerSheetAgregados ? "Estatísticas do cartão resposta" : "Estatísticas da avaliação"}
+                </h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
                   <div className="text-center p-4 bg-slate-50 dark:bg-slate-900/40 rounded-lg">
                     <div className="text-2xl font-bold text-slate-700 dark:text-slate-300">
