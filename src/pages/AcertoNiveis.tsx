@@ -3230,20 +3230,37 @@ export default function AcertoNiveis() {
       if ((selectedSchoolId || selectedGradeId) && tabelaParaUsar) {
         const selectedSchool = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId) : null;
         const selectedGrade = selectedGradeId ? grades.find(g => g.id === selectedGradeId) : null;
-        const escolaNome = selectedSchool?.nome;
-        const serieNome = selectedGrade?.nome;
+        const normalizeText = (v?: string) => (v || "").trim().toLowerCase();
+        const escolaNome = normalizeText(selectedSchool?.nome);
+        const escolaIdNorm = normalizeText(selectedSchoolId);
+        const serieNome = normalizeText(selectedGrade?.nome);
+        const serieIdNorm = normalizeText(selectedGradeId);
         const idsPassamFiltro = new Set<string>();
-        tabelaParaUsar.disciplinas?.forEach(disciplina => {
-          disciplina.alunos?.forEach(aluno => {
-            const passaEscola = !selectedSchoolId || !escolaNome || aluno.escola === escolaNome || aluno.escola === selectedSchoolId;
-            const passaSerie = !selectedGradeId || !serieNome || aluno.serie === serieNome || aluno.serie === selectedGradeId;
-            if (passaEscola && passaSerie) {
-              const rid = alunoRowId(aluno);
-              if (rid) idsPassamFiltro.add(rid);
-            }
-          });
+
+        const includeIfPassaFiltro = (aluno: { id?: string; aluno_id?: string; escola?: string; serie?: string }) => {
+          const escolaAluno = normalizeText(aluno.escola);
+          const serieAluno = normalizeText(aluno.serie);
+          const passaEscola = !selectedSchoolId || escolaAluno === escolaNome || escolaAluno === escolaIdNorm;
+          const passaSerie = !selectedGradeId || serieAluno === serieNome || serieAluno === serieIdNorm;
+          if (passaEscola && passaSerie) {
+            const rid = alunoRowId(aluno);
+            if (rid) idsPassamFiltro.add(rid);
+          }
+        };
+
+        // Importante: considerar geral + disciplinas para não zerar quando uma das fontes vier incompleta.
+        tabelaParaUsar.geral?.alunos?.forEach(includeIfPassaFiltro);
+        tabelaParaUsar.disciplinas?.forEach((disciplina) => {
+          disciplina.alunos?.forEach(includeIfPassaFiltro);
         });
-        studentsToUse = studentsToUse.filter(s => idsPassamFiltro.has(s.id));
+
+        const filteredFromCurrent = studentsToUse.filter((s) => idsPassamFiltro.has(s.id));
+        if (filteredFromCurrent.length > 0 || idsPassamFiltro.size === 0) {
+          studentsToUse = filteredFromCurrent;
+        } else {
+          // Fallback: reconstrói da tabela para alinhar o mesmo padrão de ids do filtro.
+          studentsToUse = mapUnifiedStudents(tabelaParaUsar).filter((s) => idsPassamFiltro.has(s.id));
+        }
       }
 
       // Aplicar filtro de turma se uma turma foi selecionada

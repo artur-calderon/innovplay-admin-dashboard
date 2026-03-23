@@ -573,6 +573,8 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
     series?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
     turmas?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
   }>({});
+  const asOpcoesRef = React.useRef(asOpcoes);
+  asOpcoesRef.current = asOpcoes;
   const [isLoadingFiltersAg, setIsLoadingFiltersAg] = useState(false);
   const [isLoadingAgregadosData, setIsLoadingAgregadosData] = useState(false);
 
@@ -609,6 +611,12 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
   const fallbackAnswersCache = React.useRef<Map<string, Map<number, boolean>>>(new Map());
   /** Habilidades da rota `/skills/evaluation/...` para sintetizar colunas em cartão-resposta. */
   const answerSheetSkillsRef = React.useRef<AnswerSheetSkillRow[]>([]);
+  /** Modo agregados: reutiliza GET de skills quando só mudam escola/série/turma (mesmo gabarito). */
+  const agregadosSkillsByGabaritoRef = React.useRef<{
+    gabaritoId: string;
+    skills: AnswerSheetSkillRow[];
+    mapping: Record<string, string>;
+  } | null>(null);
   // Nova: tabela detalhada por disciplina do backend
   const [tabelaDetalhada, setTabelaDetalhada] = useState<TabelaDetalhadaPorDisciplina>(null);
   // Ref para debounce dos filtros
@@ -792,6 +800,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
     if (!isAnswerSheetAgregados || !allRequiredAgregadosFilters) {
       if (isAnswerSheetAgregados && !allRequiredAgregadosFilters) {
         answerSheetSkillsRef.current = [];
+        agregadosSkillsByGabaritoRef.current = null;
         setAllStudents([]);
         setStudents([]);
         setAllTabelaDetalhada(null);
@@ -806,25 +815,6 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
       try {
         setIsLoadingAgregadosData(true);
 
-        const skills = await EvaluationResultsApiService.getSkillsByEvaluation(asGabarito, {
-          report_entity_type: REPORT_ENTITY_TYPE_ANSWER_SHEET,
-          cityId: asMunicipio,
-          ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
-        }).catch(() => []);
-
-        answerSheetSkillsRef.current =
-          Array.isArray(skills) ? (skills as AnswerSheetSkillRow[]).filter((s) => s?.id) : [];
-        const newSkillsMapping: Record<string, string> = {};
-        if (skills && Array.isArray(skills)) {
-          skills.forEach((skill: { id?: string; code?: string }) => {
-            const idNorm = skill?.id ? normalizeUUID(skill.id) : "";
-            const code = (skill?.code || "").trim();
-            if (idNorm && code) newSkillsMapping[idNorm] = code;
-            if (code) newSkillsMapping[normalizeUUID(code)] = code;
-          });
-        }
-        setSkillsMapping(newSkillsMapping);
-
         const params = new URLSearchParams();
         params.set("estado", asEstado);
         params.set("municipio", asMunicipio);
@@ -832,9 +822,50 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
         if (asEscola !== "all") params.set("escola", asEscola);
         if (asSerie !== "all") params.set("serie", asSerie);
         if (asTurma !== "all") params.set("turma", asTurma);
-        const res = await api.get<AnswerSheetResultadosAgregadosRaw>(
-          `/answer-sheets/resultados-agregados?${params.toString()}`
-        );
+        const agregadosPath = `/answer-sheets/resultados-agregados?${params.toString()}`;
+
+        const skillsParams = {
+          report_entity_type: REPORT_ENTITY_TYPE_ANSWER_SHEET,
+          cityId: asMunicipio,
+          ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+        } as const;
+
+        const cached = agregadosSkillsByGabaritoRef.current;
+        const reuseSkillsForGabarito = cached?.gabaritoId === asGabarito;
+
+        let res: { data: AnswerSheetResultadosAgregadosRaw };
+
+        if (reuseSkillsForGabarito && cached) {
+          answerSheetSkillsRef.current = cached.skills;
+          setSkillsMapping(cached.mapping);
+          res = await api.get<AnswerSheetResultadosAgregadosRaw>(agregadosPath);
+        } else {
+          const [skillsRaw, resParallel] = await Promise.all([
+            EvaluationResultsApiService.getSkillsByEvaluation(asGabarito, skillsParams).catch(() => []),
+            api.get<AnswerSheetResultadosAgregadosRaw>(agregadosPath),
+          ]);
+          res = resParallel;
+
+          const skillRows = Array.isArray(skillsRaw)
+            ? (skillsRaw as AnswerSheetSkillRow[]).filter((s) => s?.id)
+            : [];
+          const newSkillsMapping: Record<string, string> = {};
+          if (skillsRaw && Array.isArray(skillsRaw)) {
+            skillsRaw.forEach((skill: { id?: string; code?: string }) => {
+              const idNorm = skill?.id ? normalizeUUID(skill.id) : "";
+              const code = (skill?.code || "").trim();
+              if (idNorm && code) newSkillsMapping[idNorm] = code;
+              if (code) newSkillsMapping[normalizeUUID(code)] = code;
+            });
+          }
+          answerSheetSkillsRef.current = skillRows;
+          setSkillsMapping(newSkillsMapping);
+          agregadosSkillsByGabaritoRef.current = {
+            gabaritoId: asGabarito,
+            skills: skillRows,
+            mapping: newSkillsMapping,
+          };
+        }
         const rawTd = res.data?.tabela_detalhada;
         let tabelaDetalhadaNext: TabelaDetalhadaPorDisciplina | null =
           rawTd && Array.isArray(rawTd.disciplinas)
@@ -875,15 +906,16 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
           setEstatisticasGerais(null);
         }
 
+        const op = asOpcoesRef.current;
         const gabTitulo =
-          (asOpcoes.gabaritos ?? []).find((g) => g.id === asGabarito)?.nome ??
-          (asOpcoes.gabaritos ?? []).find((g) => g.id === asGabarito)?.titulo ??
+          (op.gabaritos ?? []).find((g) => g.id === asGabarito)?.nome ??
+          (op.gabaritos ?? []).find((g) => g.id === asGabarito)?.titulo ??
           eg?.nome ??
           "Cartão resposta";
 
         const munNome =
           eg?.municipio ??
-          asNorm((asOpcoes.municipios ?? []).find((m) => m.id === asMunicipio) ?? { id: asMunicipio });
+          asNorm((op.municipios ?? []).find((m) => m.id === asMunicipio) ?? { id: asMunicipio });
 
         setEvaluationInfo({
           id: asGabarito,
@@ -923,7 +955,6 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
     asSerie,
     asTurma,
     toast,
-    asOpcoes.gabaritos,
     adminCityIdQuery,
   ]);
 
@@ -976,6 +1007,18 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
       evaluationId: string,
       overrides: { schoolId?: string; gradeId?: string; classId?: string } = {}
     ): Promise<FetchEvaluationDataResult> => {
+      // Modo agregados: dados vêm de GET /answer-sheets/resultados-agregados (useEffect dedicado).
+      // Não chamar /evaluation-results/avaliacoes (getEvaluationsList) — parâmetro errado (avaliação vs gabarito).
+      if (isAnswerSheetAgregados) {
+        return {
+          students: [],
+          report: null,
+          tabelaDetalhada: null,
+          estatisticas: null,
+          opcoesProximosFiltros: null
+        };
+      }
+
       const cacheKey = `${evaluationId}|${overrides.schoolId ?? ''}|${overrides.gradeId ?? ''}|${overrides.classId ?? ''}|${!isAnswerSheetAgregados ? 'as' : 'ev'}|${adminCityIdQuery ?? ''}`;
 
       // Reutilizar requisição já em andamento (evita duplicatas)
@@ -1735,6 +1778,8 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
   };
 
   const handleSelectEvaluation = async (evaluationId: string) => {
+    if (isAnswerSheetAgregados) return;
+
     setSelectedEvaluationId(evaluationId);
     setSelectedSchoolId("");
     setSelectedGradeId("");
@@ -3710,23 +3755,40 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
       };
 
       // Aplicar filtros de escola e série: construir Set de ids que passam em uma única passagem
-      if ((selectedSchoolId || selectedGradeId) && tabelaParaUsar) {
+      if (!isAnswerSheetAgregados && (selectedSchoolId || selectedGradeId) && tabelaParaUsar) {
         const selectedSchool = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId) : null;
         const selectedGrade = selectedGradeId ? grades.find(g => g.id === selectedGradeId) : null;
-        const escolaNome = selectedSchool?.nome;
-        const serieNome = selectedGrade?.nome;
+        const normalizeText = (v?: string) => (v || "").trim().toLowerCase();
+        const escolaNome = normalizeText(selectedSchool?.nome);
+        const escolaIdNorm = normalizeText(selectedSchoolId);
+        const serieNome = normalizeText(selectedGrade?.nome);
+        const serieIdNorm = normalizeText(selectedGradeId);
         const idsPassamFiltro = new Set<string>();
-        tabelaParaUsar.disciplinas?.forEach(disciplina => {
-          disciplina.alunos?.forEach(aluno => {
-            const passaEscola = !selectedSchoolId || !escolaNome || aluno.escola === escolaNome || aluno.escola === selectedSchoolId;
-            const passaSerie = !selectedGradeId || !serieNome || aluno.serie === serieNome || aluno.serie === selectedGradeId;
-            if (passaEscola && passaSerie) {
-              const rid = alunoRowId(aluno);
-              if (rid) idsPassamFiltro.add(rid);
-            }
-          });
+
+        const includeIfPassaFiltro = (aluno: { id?: string; aluno_id?: string; escola?: string; serie?: string }) => {
+          const escolaAluno = normalizeText(aluno.escola);
+          const serieAluno = normalizeText(aluno.serie);
+          const passaEscola = !selectedSchoolId || escolaAluno === escolaNome || escolaAluno === escolaIdNorm;
+          const passaSerie = !selectedGradeId || serieAluno === serieNome || serieAluno === serieIdNorm;
+          if (passaEscola && passaSerie) {
+            const rid = alunoRowId(aluno);
+            if (rid) idsPassamFiltro.add(rid);
+          }
+        };
+
+        // Importante: considerar geral + disciplinas para não zerar quando uma das fontes vier incompleta.
+        tabelaParaUsar.geral?.alunos?.forEach(includeIfPassaFiltro);
+        tabelaParaUsar.disciplinas?.forEach((disciplina) => {
+          disciplina.alunos?.forEach(includeIfPassaFiltro);
         });
-        studentsToUse = studentsToUse.filter(s => idsPassamFiltro.has(s.id));
+
+        const filteredFromCurrent = studentsToUse.filter((s) => idsPassamFiltro.has(s.id));
+        if (filteredFromCurrent.length > 0 || idsPassamFiltro.size === 0) {
+          studentsToUse = filteredFromCurrent;
+        } else {
+          // Fallback: reconstrói da tabela para alinhar o mesmo padrão de ids do filtro.
+          studentsToUse = mapUnifiedStudents(tabelaParaUsar).filter((s) => idsPassamFiltro.has(s.id));
+        }
       }
 
       // Aplicar filtro de turma se uma turma foi selecionada
@@ -3784,8 +3846,10 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
 
         const passaFiltrosAluno = (aluno: { escola?: string; serie?: string; turma?: string }) => {
           if (!aluno.turma) return false;
-          if (selectedSchoolId && _school && aluno.escola !== _school.nome && aluno.escola !== selectedSchoolId) return false;
-          if (selectedGradeId && _grade && aluno.serie !== _grade.nome && aluno.serie !== selectedGradeId) return false;
+          if (!isAnswerSheetAgregados) {
+            if (selectedSchoolId && _school && aluno.escola !== _school.nome && aluno.escola !== selectedSchoolId) return false;
+            if (selectedGradeId && _grade && aluno.serie !== _grade.nome && aluno.serie !== selectedGradeId) return false;
+          }
           return true;
         };
 

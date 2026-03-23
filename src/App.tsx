@@ -362,7 +362,14 @@ const App = () => {
               {/* Rotas de Relatórios */}
               <Route path="/app/relatorios/analise-avaliacoes" element={<PrivateRoute><AnaliseAvaliacoes /></PrivateRoute>} />
               <Route path="/app/relatorios/acerto-niveis" element={<PrivateRoute><AcertoNiveis /></PrivateRoute>} />
-              <Route path="/app/relatorios/acerto-niveis-cartao" element={<PrivateRoute><AcertoNiveisCartao /></PrivateRoute>} />
+              <Route
+                path="/app/relatorios/acerto-niveis-cartao"
+                element={
+                  <PrivateRoute>
+                    <AcertoNiveisCartao answerSheetsResultadosAgregados />
+                  </PrivateRoute>
+                }
+              />
               <Route path="/app/relatorios/acerto-niveis-cartao-resposta" element={<Navigate to="/app/relatorios/acerto-niveis-cartao" replace />} />
               <Route path="/app/relatorios/relatorio-escolar" element={<PrivateRoute><RelatorioEscolar /></PrivateRoute>} />
               <Route path="/app/relatorios/relatorio-escolar-cartao-resposta" element={<PrivateRoute><RelatorioEscolarCartaoResposta /></PrivateRoute>} />
