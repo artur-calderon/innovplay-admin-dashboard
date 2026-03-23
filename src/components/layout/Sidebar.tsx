@@ -288,6 +288,7 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
             { icon: ScanLine, label: "Corrigir cartões", href: "/app/cartao-resposta/corrigir", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: BarChart3, label: "Resultados (Cartão)", href: "/app/cartao-resposta/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: Ticket, label: "Relatório Escolar (Cartão)", href: "/app/relatorios/relatorio-escolar-cartao-resposta", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: FileText, label: "Acerto e Níveis (Cartão)", href: "/app/relatorios/acerto-niveis-cartao-resposta", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
           ]
         },
         {

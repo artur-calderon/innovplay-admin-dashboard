@@ -55,6 +55,7 @@ const AnaliseAvaliacoes = React.lazy(() => import("./pages/AnaliseAvaliacoes"));
 const AcertoNiveis = React.lazy(() => import("./pages/AcertoNiveis"));
 const RelatorioEscolar = React.lazy(() => import("./pages/RelatorioEscolar"));
 const RelatorioEscolarCartaoResposta = React.lazy(() => import("./pages/RelatorioEscolarCartaoResposta"));
+const AcertoNiveisCartaoResposta = React.lazy(() => import("./pages/AcertoNiveisCartaoResposta"));
 const PhysicalTestPage = React.lazy(() => import("./pages/PhysicalTestPage"));
 const Evolution = React.lazy(() => import("./pages/Evolution"));
 
@@ -361,6 +362,7 @@ const App = () => {
               {/* Rotas de Relatórios */}
               <Route path="/app/relatorios/analise-avaliacoes" element={<PrivateRoute><AnaliseAvaliacoes /></PrivateRoute>} />
               <Route path="/app/relatorios/acerto-niveis" element={<PrivateRoute><AcertoNiveis /></PrivateRoute>} />
+              <Route path="/app/relatorios/acerto-niveis-cartao-resposta" element={<PrivateRoute><AcertoNiveisCartaoResposta /></PrivateRoute>} />
               <Route path="/app/relatorios/relatorio-escolar" element={<PrivateRoute><RelatorioEscolar /></PrivateRoute>} />
               <Route path="/app/relatorios/relatorio-escolar-cartao-resposta" element={<PrivateRoute><RelatorioEscolarCartaoResposta /></PrivateRoute>} />
             </Route>

@@ -1,24 +1,33 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { flushSync } from "react-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Loader2 } from "lucide-react";
+import { FileText, Loader2, Filter, Users, Check } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 import { EvaluationResultsApiService, REPORT_ENTITY_TYPE_ANSWER_SHEET } from "@/services/evaluationResultsApi";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext, cityIdQueryParamForAdmin } from "@/utils/userHierarchy";
 import { api } from "@/lib/api";
-import type { CellHookData } from "jspdf-autotable";
+import type { jsPDF } from "jspdf";
+import type { CellHookData, Styles } from "jspdf-autotable";
+import { normalizeProficiencyLevelLabel } from "@/utils/reportTagStyles";
+import type { ReportProficiencyLabel } from "@/utils/reportTagStyles";
+import type { AnswerSheetResultadosAgregadosRaw } from "@/utils/mapAnswerSheetResultadosAgregadosToNovaResposta";
+import {
+  filtrarGabaritosOpcoesSomenteComHabilidadesVinculadas,
+  type GabaritoOpcaoFiltrosResults,
+} from "@/utils/answerSheetRelatorioGabaritoComHabilidades";
 
 // Types from the original component
 type StudentResult = {
   id: string;
   nome: string;
   turma: string;
+  escola?: string;
+  serie?: string;
   nota: number;
   proficiencia: number;
   classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
@@ -142,6 +151,141 @@ function alunoRowId(aluno: { id?: string; aluno_id?: string }): string {
   return String(aluno.id ?? aluno.aluno_id ?? "").trim();
 }
 
+/** Mesma regra de subtítulo do modal em AnswerSheetResults (escola · turma · série). */
+function formatAlunoEscolaTurmaSerie(a: { escola?: string; turma?: string; serie?: string }): string {
+  return [a.escola, a.turma, a.serie].filter(Boolean).join(" · ") || "—";
+}
+
+function getProficiencyLevelRgb(level: ReportProficiencyLabel): [number, number, number] {
+  switch (level) {
+    case "Avançado":
+      return [22, 163, 74];
+    case "Adequado":
+      return [34, 197, 94];
+    case "Básico":
+      return [250, 204, 21];
+    case "Abaixo do Básico":
+      return [239, 68, 68];
+  }
+}
+
+/**
+ * Tabelas massivas (detalhada por questão / por disciplina) — alta densidade (~400 alunos).
+ * Não usar na tabela "RELATÓRIO DE DESEMPENHO GERAL" (resumo).
+ * Padding corpo: `CELL_PAD_V` menor que `CELL_PAD_H` para baixar a altura das linhas.
+ * `PDF_BULK_DENSITY`: 1.0 menos compacto; valores menores encolhem fonte, paddings, linhas e ícones.
+ */
+const PDF_BULK_DENSITY = 0.62;
+
+const PDF_BULK_LANDSCAPE_FONT = (numCols: number) =>
+  Math.max(0.9, Math.min(2.45, 2.35 * (18 / Math.max(1, numCols)) * PDF_BULK_DENSITY));
+
+const PDF_BULK_LANDSCAPE_CELL_PAD_H = (numCols: number) =>
+  Math.max(0.014, Math.min(0.065, 0.07 * (18 / Math.max(1, numCols)) * PDF_BULK_DENSITY));
+
+const PDF_BULK_LANDSCAPE_CELL_PAD_V = (numCols: number) =>
+  Math.max(0.004, Math.min(0.018, 0.022 * (18 / Math.max(1, numCols)) * PDF_BULK_DENSITY));
+
+const PDF_BULK_HEAD_CELL_PAD: { vertical: number; horizontal: number } = {
+  vertical: 0.038 * PDF_BULK_DENSITY,
+  horizontal: 0.095 * PDF_BULK_DENSITY,
+};
+
+/**
+ * ✓/✗ nas colunas de questão: mesmo tamanho em todas as tabelas bulk (detalhe geral e por disciplina).
+ * Só reduz se a célula for menor que o alvo; evita ícones minúsculos quando a linha é baixa.
+ */
+const PDF_BULK_Q_ICON_TARGET_MM = 0.88;
+const PDF_BULK_Q_ICON_MIN_MM = 0.52;
+const PDF_BULK_Q_ICON_CELL_PAD_MM = 0.09;
+
+function pdfBulkQuestionMarkIconHalfExtentMm(cellWidth: number, cellHeight: number): number {
+  const innerW = cellWidth - PDF_BULK_Q_ICON_CELL_PAD_MM;
+  const innerH = cellHeight - PDF_BULK_Q_ICON_CELL_PAD_MM;
+  if (innerW <= 0.2 || innerH <= 0.2) return PDF_BULK_Q_ICON_MIN_MM;
+  const maxHalf = Math.min(innerW, innerH) / 2.18;
+  return Math.max(PDF_BULK_Q_ICON_MIN_MM, Math.min(PDF_BULK_Q_ICON_TARGET_MM, maxHalf));
+}
+
+/** Só coluna “Aluno”: encolhe fonte e padding vertical; a altura da linha segue esse texto. */
+const PDF_BULK_NAME_COL_FONT_MUL = 0.86;
+const PDF_BULK_NAME_COL_PAD_V_MUL = 0.42;
+
+/** Altura da linha = 1 linha do nome (ellipsize) + padding vertical — no limite. */
+function pdfBulkBodyRowHeightToMatchNameMm(fontSizePt: number, padVerticalMm: number): number {
+  const lineMm = fontSizePt * 0.3528 * 1.02;
+  return Math.max(1.5, lineMm + padVerticalMm * 2);
+}
+
+
+type DrawProficiencyNivelPdfOpts = {
+  compact?: boolean;
+  /** Opcional: limita a altura do fundo colorido (faixa central). Omitir = preenche a célula toda. */
+  chipMaxHeightMm?: number;
+};
+
+/** Fundo colorido + texto multilinha (evita cortar "Abaixo do Básico" e cinza por rótulo desconhecido). */
+function drawProficiencyNivelInPdfCell(
+  d: jsPDF,
+  cell: { x: number; y: number; width: number; height: number },
+  rawLabel: string,
+  fontSize: number,
+  opts: DrawProficiencyNivelPdfOpts = {}
+): void {
+  const compact = opts.compact ?? false;
+  const chipMax = opts.chipMaxHeightMm;
+
+  const label = normalizeProficiencyLevelLabel(
+    rawLabel === "—" || rawLabel === "-" ? "" : rawLabel
+  );
+  const [r, g, b] = getProficiencyLevelRgb(label);
+
+  let fillY = cell.y;
+  let fillH = cell.height;
+  if (chipMax != null && chipMax > 0 && Number.isFinite(chipMax)) {
+    const m = 0.1;
+    fillH = Math.min(chipMax, Math.max(1.05, cell.height - m * 2));
+    fillY = cell.y + (cell.height - fillH) / 2;
+  }
+
+  d.setFillColor(r, g, b);
+  d.rect(cell.x, fillY, cell.width, fillH, "F");
+  d.setTextColor(255, 255, 255);
+  d.setFont("helvetica", "bold");
+
+  let fs: number;
+  let pad: number;
+  let lineH: number;
+  const chipMode = chipMax != null && chipMax > 0;
+
+  if (compact) {
+    fs = Math.max(1.15, Math.min(2.05, fontSize));
+    if (chipMode) {
+      fs = Math.min(fs, Math.max(1.1, fillH * 0.38));
+    } else {
+      fs = Math.min(fs, Math.max(1.05, fillH * 0.48));
+    }
+    pad = chipMode ? 0.22 : 0.28;
+    lineH = Math.max(fs * (chipMode ? 0.2 : 0.24), chipMode ? 1.05 : 1.02);
+  } else {
+    fs = Math.max(5, label.length > 24 && fontSize > 6 ? fontSize - 1.25 : fontSize);
+    pad = 2;
+    lineH = Math.max(fs * 0.42, 2.8);
+  }
+
+  d.setFontSize(fs);
+  const maxW = Math.max(compact ? 2.2 : 4, cell.width - pad * 2);
+  const lines = d.splitTextToSize(label, maxW);
+  const totalH = lines.length * lineH;
+  const startY = fillY + (fillH - totalH) / 2 + lineH * (compact ? 0.14 : 0.25);
+  lines.forEach((line, i) => {
+    d.text(line, cell.x + cell.width / 2, startY + i * lineH, { align: "center" });
+  });
+  d.setDrawColor(200, 200, 200);
+  d.setLineWidth(0.05);
+  d.rect(cell.x, cell.y, cell.width, cell.height);
+}
+
 type AnswerSheetSkillRow = { id?: string; code?: string; description?: string };
 
 /** Preenche `questoes` vazias com a lista de habilidades da avaliação (cartão-resposta). */
@@ -194,7 +338,7 @@ const mapDetailedStudentsToResults = (alunos: DetailedReport['alunos'] | undefin
       turma: aluno.turma,
       nota: aluno.nota_final,
       proficiencia: aluno.proficiencia,
-      classificacao: aluno.classificacao,
+      classificacao: normalizeProficiencyLevelLabel(aluno.classificacao),
       acertos: aluno.total_acertos,
       erros: aluno.total_erros,
       questoes_respondidas: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
@@ -216,10 +360,9 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
     nivel_proficiencia_geral?: string;
     classificacao?: string;
   }): StudentResult["classificacao"] =>
-    (aluno.nivel_proficiencia_geral ||
-      aluno.nivel_proficiencia ||
-      aluno.classificacao ||
-      "Abaixo do Básico") as StudentResult["classificacao"];
+    normalizeProficiencyLevelLabel(
+      aluno.nivel_proficiencia_geral || aluno.nivel_proficiencia || aluno.classificacao || ""
+    );
 
   tabela?.geral?.alunos?.forEach((aluno) => {
     const rowId = alunoRowId(aluno);
@@ -240,6 +383,8 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
       id: rowId,
       nome: aluno.nome,
       turma: aluno.turma || "",
+      escola: aluno.escola,
+      serie: aluno.serie,
       nota: Number(aluno.nota_geral ?? 0),
       proficiencia: Number(aluno.proficiencia_geral ?? 0),
       classificacao: classifFromRow(aluno),
@@ -267,6 +412,12 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
 
       let student = studentsMap.get(rowId);
 
+      if (student) {
+        if (aluno.escola && !student.escola) student.escola = aluno.escola;
+        if (aluno.serie && !student.serie) student.serie = aluno.serie;
+        if (aluno.turma && !student.turma) student.turma = aluno.turma;
+      }
+
       const hasAnsweredAny =
         Array.isArray(aluno.respostas_por_questao) &&
         aluno.respostas_por_questao.some((r) => r.respondeu);
@@ -288,6 +439,8 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
           id: rowId,
           nome: aluno.nome,
           turma: aluno.turma || "",
+          escola: aluno.escola,
+          serie: aluno.serie,
           nota: Number(aluno.nota ?? 0),
           proficiencia: Number(aluno.proficiencia ?? 0),
           classificacao: classifFromRow(aluno),
@@ -381,9 +534,15 @@ function normalizeOpcoesProximosFiltrosShape(
   };
 }
 
-export default function AcertoNiveis() {
+export type AcertoNiveisProps = {
+  answerSheetsResultadosAgregados?: boolean;
+};
+
+export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }: AcertoNiveisProps = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
+
+  const isAnswerSheetAgregados = answerSheetsResultadosAgregados;
 
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingSchools, setIsLoadingSchools] = useState(false);
@@ -399,12 +558,42 @@ export default function AcertoNiveis() {
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
   const [selectedGradeId, setSelectedGradeId] = useState<string>("");
   const [selectedClassId, setSelectedClassId] = useState<string>("");
-  const [reportAnswerSheet, setReportAnswerSheet] = useState(false);
-  const reportEntityTypeParam = reportAnswerSheet ? REPORT_ENTITY_TYPE_ANSWER_SHEET : undefined;
+
+  const [asEstado, setAsEstado] = useState<string>("all");
+  const [asMunicipio, setAsMunicipio] = useState<string>("all");
+  const [asGabarito, setAsGabarito] = useState<string>("all");
+  const [asEscola, setAsEscola] = useState<string>("all");
+  const [asSerie, setAsSerie] = useState<string>("all");
+  const [asTurma, setAsTurma] = useState<string>("all");
+  const [asOpcoes, setAsOpcoes] = useState<{
+    estados?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+    municipios?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+    gabaritos?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+    escolas?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+    series?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+    turmas?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+  }>({});
+  const [isLoadingFiltersAg, setIsLoadingFiltersAg] = useState(false);
+  const [isLoadingAgregadosData, setIsLoadingAgregadosData] = useState(false);
+
+  const municipalityForAdmin = isAnswerSheetAgregados
+    ? asMunicipio !== "all"
+      ? asMunicipio
+      : ""
+    : selectedMunicipality;
   const adminCityIdQuery = useMemo(
-    () => cityIdQueryParamForAdmin(user?.role, selectedMunicipality || undefined),
-    [user?.role, selectedMunicipality]
+    () => cityIdQueryParamForAdmin(user?.role, municipalityForAdmin || undefined),
+    [user?.role, municipalityForAdmin]
   );
+
+  /** Fora do modo agregados, esta página usa apenas cartões resposta (API com `report_entity_type`). */
+  const reportEntityTypeParam = !isAnswerSheetAgregados ? REPORT_ENTITY_TYPE_ANSWER_SHEET : undefined;
+
+  const asNorm = (o: { id: string; nome?: string; name?: string; titulo?: string }) =>
+    o.nome ?? o.name ?? o.titulo ?? o.id;
+
+  const allRequiredAgregadosFilters =
+    asEstado !== "all" && asMunicipio !== "all" && asGabarito !== "all";
 
   // Estados para hierarquia do usuário
   const [userHierarchyContext, setUserHierarchyContext] = useState<UserHierarchyContext | null>(null);
@@ -424,6 +613,7 @@ export default function AcertoNiveis() {
   const [tabelaDetalhada, setTabelaDetalhada] = useState<TabelaDetalhadaPorDisciplina>(null);
   // Ref para debounce dos filtros
   const filterTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [showAbsentStudentsModal, setShowAbsentStudentsModal] = useState(false);
   // Cache de fetchEvaluationData para evitar requisições idênticas (mesma avaliação + filtros)
   type FetchEvaluationDataResult = {
     students: StudentResult[];
@@ -461,6 +651,282 @@ export default function AcertoNiveis() {
 
   // Utilitários para tratar habilidades
   const normalizeUUID = (value?: string) => (value || '').replace(/[{}]/g, '').trim().toLowerCase();
+
+  const setAsEstadoAndReset = useCallback((v: string) => {
+    setAsEstado(v);
+    setAsMunicipio("all");
+    setAsGabarito("all");
+    setAsEscola("all");
+    setAsSerie("all");
+    setAsTurma("all");
+    setAllStudents([]);
+    setStudents([]);
+    setAllTabelaDetalhada(null);
+    setTabelaDetalhada(null);
+    setEstatisticasGerais(null);
+    setEvaluationInfo(null);
+  }, []);
+
+  const setAsMunicipioAndReset = useCallback((v: string) => {
+    setAsMunicipio(v);
+    setAsGabarito("all");
+    setAsEscola("all");
+    setAsSerie("all");
+    setAsTurma("all");
+    setAllStudents([]);
+    setStudents([]);
+    setAllTabelaDetalhada(null);
+    setTabelaDetalhada(null);
+    setEstatisticasGerais(null);
+    setEvaluationInfo(null);
+  }, []);
+
+  const setAsGabaritoAndReset = useCallback((v: string) => {
+    setAsGabarito(v);
+    setAsEscola("all");
+    setAsSerie("all");
+    setAsTurma("all");
+    setAllStudents([]);
+    setStudents([]);
+    setAllTabelaDetalhada(null);
+    setTabelaDetalhada(null);
+    setEstatisticasGerais(null);
+    setEvaluationInfo(null);
+  }, []);
+
+  const setAsEscolaAndReset = useCallback((v: string) => {
+    setAsEscola(v);
+    setAsSerie("all");
+    setAsTurma("all");
+    setAllStudents([]);
+    setStudents([]);
+    setAllTabelaDetalhada(null);
+    setTabelaDetalhada(null);
+    setEstatisticasGerais(null);
+    setEvaluationInfo(null);
+  }, []);
+
+  const setAsSerieAndReset = useCallback((v: string) => {
+    setAsSerie(v);
+    setAsTurma("all");
+    setAllStudents([]);
+    setStudents([]);
+    setAllTabelaDetalhada(null);
+    setTabelaDetalhada(null);
+    setEstatisticasGerais(null);
+    setEvaluationInfo(null);
+  }, []);
+
+  const fetchAsOpcoesFiltros = useCallback(async () => {
+    if (!isAnswerSheetAgregados) return;
+    const params = new URLSearchParams();
+    if (asEstado && asEstado !== "all") params.set("estado", asEstado);
+    if (asMunicipio && asMunicipio !== "all") params.set("municipio", asMunicipio);
+    if (asGabarito && asGabarito !== "all") params.set("gabarito", asGabarito);
+    if (asEscola && asEscola !== "all") params.set("escola", asEscola);
+    if (asSerie && asSerie !== "all") params.set("serie", asSerie);
+    if (asTurma && asTurma !== "all") params.set("turma", asTurma);
+    const query = params.toString();
+    try {
+      setIsLoadingFiltersAg(true);
+      const url = `/answer-sheets/opcoes-filtros-results${query ? `?${query}` : ""}`;
+      const res = await api.get<{
+        estados?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+        municipios?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+        gabaritos?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+        escolas?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+        series?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+        turmas?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+      }>(url);
+      const raw = res.data || {};
+      const gabaritosFiltrados = await filtrarGabaritosOpcoesSomenteComHabilidadesVinculadas(
+        (raw.gabaritos ?? []) as GabaritoOpcaoFiltrosResults[]
+      );
+      setAsOpcoes({ ...raw, gabaritos: gabaritosFiltrados });
+    } catch {
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os filtros de cartão resposta.",
+        variant: "destructive",
+      });
+      setAsOpcoes({});
+    } finally {
+      setIsLoadingFiltersAg(false);
+    }
+  }, [
+    isAnswerSheetAgregados,
+    asEstado,
+    asMunicipio,
+    asGabarito,
+    asEscola,
+    asSerie,
+    asTurma,
+    toast,
+  ]);
+
+  useEffect(() => {
+    if (isAnswerSheetAgregados) {
+      void fetchAsOpcoesFiltros();
+    }
+  }, [isAnswerSheetAgregados, fetchAsOpcoesFiltros]);
+
+  useEffect(() => {
+    if (!isAnswerSheetAgregados || asGabarito === "all") return;
+    const ids = (asOpcoes.gabaritos ?? []).map((g) => g.id);
+    if (ids.length === 0) return;
+    if (!ids.includes(asGabarito)) {
+      setAsGabarito("all");
+      setAsEscola("all");
+      setAsSerie("all");
+      setAsTurma("all");
+      setAllStudents([]);
+      setStudents([]);
+      setAllTabelaDetalhada(null);
+      setTabelaDetalhada(null);
+      setEstatisticasGerais(null);
+      setEvaluationInfo(null);
+    }
+  }, [isAnswerSheetAgregados, asGabarito, asOpcoes.gabaritos]);
+
+  useEffect(() => {
+    if (!isAnswerSheetAgregados || !allRequiredAgregadosFilters) {
+      if (isAnswerSheetAgregados && !allRequiredAgregadosFilters) {
+        answerSheetSkillsRef.current = [];
+        setAllStudents([]);
+        setStudents([]);
+        setAllTabelaDetalhada(null);
+        setTabelaDetalhada(null);
+        setEstatisticasGerais(null);
+        setDetailedReport(null);
+        setEvaluationInfo(null);
+      }
+      return;
+    }
+    const load = async () => {
+      try {
+        setIsLoadingAgregadosData(true);
+
+        const skills = await EvaluationResultsApiService.getSkillsByEvaluation(asGabarito, {
+          report_entity_type: REPORT_ENTITY_TYPE_ANSWER_SHEET,
+          cityId: asMunicipio,
+          ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+        }).catch(() => []);
+
+        answerSheetSkillsRef.current =
+          Array.isArray(skills) ? (skills as AnswerSheetSkillRow[]).filter((s) => s?.id) : [];
+        const newSkillsMapping: Record<string, string> = {};
+        if (skills && Array.isArray(skills)) {
+          skills.forEach((skill: { id?: string; code?: string }) => {
+            const idNorm = skill?.id ? normalizeUUID(skill.id) : "";
+            const code = (skill?.code || "").trim();
+            if (idNorm && code) newSkillsMapping[idNorm] = code;
+            if (code) newSkillsMapping[normalizeUUID(code)] = code;
+          });
+        }
+        setSkillsMapping(newSkillsMapping);
+
+        const params = new URLSearchParams();
+        params.set("estado", asEstado);
+        params.set("municipio", asMunicipio);
+        params.set("gabarito", asGabarito);
+        if (asEscola !== "all") params.set("escola", asEscola);
+        if (asSerie !== "all") params.set("serie", asSerie);
+        if (asTurma !== "all") params.set("turma", asTurma);
+        const res = await api.get<AnswerSheetResultadosAgregadosRaw>(
+          `/answer-sheets/resultados-agregados?${params.toString()}`
+        );
+        const rawTd = res.data?.tabela_detalhada;
+        let tabelaDetalhadaNext: TabelaDetalhadaPorDisciplina | null =
+          rawTd && Array.isArray(rawTd.disciplinas)
+            ? ({
+                disciplinas: rawTd.disciplinas.map((disciplina) => ({
+                  ...disciplina,
+                  alunos: [...(disciplina.alunos || [])].sort((a, b) =>
+                    a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" })
+                  ),
+                })),
+                geral: rawTd.geral
+                  ? {
+                      alunos: [...(rawTd.geral.alunos || [])].sort((a, b) =>
+                        a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" })
+                      ),
+                    }
+                  : undefined,
+              } as TabelaDetalhadaPorDisciplina)
+            : null;
+
+        tabelaDetalhadaNext = enrichTabelaDetalhadaAnswerSheetSkills(
+          tabelaDetalhadaNext,
+          answerSheetSkillsRef.current,
+          true
+        );
+
+        const mappedStudents = tabelaDetalhadaNext ? mapUnifiedStudents(tabelaDetalhadaNext) : [];
+        setAllTabelaDetalhada(tabelaDetalhadaNext);
+        setTabelaDetalhada(tabelaDetalhadaNext);
+        setAllStudents(mappedStudents);
+        setStudents(mappedStudents);
+        setDetailedReport(null);
+
+        const eg = res.data.estatisticas_gerais;
+        if (eg) {
+          setEstatisticasGerais(eg as unknown as { [key: string]: unknown });
+        } else {
+          setEstatisticasGerais(null);
+        }
+
+        const gabTitulo =
+          (asOpcoes.gabaritos ?? []).find((g) => g.id === asGabarito)?.nome ??
+          (asOpcoes.gabaritos ?? []).find((g) => g.id === asGabarito)?.titulo ??
+          eg?.nome ??
+          "Cartão resposta";
+
+        const munNome =
+          eg?.municipio ??
+          asNorm((asOpcoes.municipios ?? []).find((m) => m.id === asMunicipio) ?? { id: asMunicipio });
+
+        setEvaluationInfo({
+          id: asGabarito,
+          titulo: String(gabTitulo),
+          disciplina: "",
+          disciplinas: [],
+          serie: eg?.serie ?? "",
+          escola: eg?.escola ?? "",
+          municipio: munNome,
+          data_aplicacao: "",
+          logo_url: undefined,
+        });
+      } catch {
+        toast({
+          title: "Erro ao carregar dados",
+          description: "Não foi possível carregar os resultados agregados do cartão resposta.",
+          variant: "destructive",
+        });
+        setAllStudents([]);
+        setStudents([]);
+        setAllTabelaDetalhada(null);
+        setTabelaDetalhada(null);
+        setEstatisticasGerais(null);
+        setEvaluationInfo(null);
+      } finally {
+        setIsLoadingAgregadosData(false);
+      }
+    };
+    void load();
+  }, [
+    isAnswerSheetAgregados,
+    allRequiredAgregadosFilters,
+    asEstado,
+    asMunicipio,
+    asGabarito,
+    asEscola,
+    asSerie,
+    asTurma,
+    toast,
+    asOpcoes.gabaritos,
+    adminCityIdQuery,
+  ]);
+
   const looksLikeRealSkillCode = (value?: string) => {
     if (!value) return false;
     const v = value.trim().toUpperCase();
@@ -499,18 +965,18 @@ export default function AcertoNiveis() {
     if (overrides.schoolId) filters.escola = overrides.schoolId;
     if (overrides.gradeId) filters.serie = overrides.gradeId;
     if (overrides.classId) filters.turma = overrides.classId;
-    if (reportAnswerSheet) filters.report_entity_type = REPORT_ENTITY_TYPE_ANSWER_SHEET;
+    if (!isAnswerSheetAgregados) filters.report_entity_type = REPORT_ENTITY_TYPE_ANSWER_SHEET;
     if (adminCityIdQuery) filters.city_id = adminCityIdQuery;
 
     return filters;
-  }, [selectedMunicipality, getStateFilterValue, reportAnswerSheet, adminCityIdQuery]);
+  }, [selectedMunicipality, getStateFilterValue, isAnswerSheetAgregados, adminCityIdQuery]);
 
   const fetchEvaluationData = React.useCallback(
     async (
       evaluationId: string,
       overrides: { schoolId?: string; gradeId?: string; classId?: string } = {}
     ): Promise<FetchEvaluationDataResult> => {
-      const cacheKey = `${evaluationId}|${overrides.schoolId ?? ''}|${overrides.gradeId ?? ''}|${overrides.classId ?? ''}|${reportAnswerSheet ? 'as' : 'ev'}|${adminCityIdQuery ?? ''}`;
+      const cacheKey = `${evaluationId}|${overrides.schoolId ?? ''}|${overrides.gradeId ?? ''}|${overrides.classId ?? ''}|${!isAnswerSheetAgregados ? 'as' : 'ev'}|${adminCityIdQuery ?? ''}`;
 
       // Reutilizar requisição já em andamento (evita duplicatas)
       const inFlight = fetchEvaluationDataInFlightRef.current.get(cacheKey);
@@ -548,8 +1014,8 @@ export default function AcertoNiveis() {
 
           tabelaDetalhada = enrichTabelaDetalhadaAnswerSheetSkills(
             tabelaDetalhada,
-            reportAnswerSheet ? answerSheetSkillsRef.current : undefined,
-            reportAnswerSheet
+            !isAnswerSheetAgregados ? answerSheetSkillsRef.current : undefined,
+            !isAnswerSheetAgregados
           );
 
           const studentsMapped = tabelaDetalhada ? mapUnifiedStudents(tabelaDetalhada) : [];
@@ -586,7 +1052,7 @@ export default function AcertoNiveis() {
       fetchEvaluationDataInFlightRef.current.set(cacheKey, promise);
       return promise;
     },
-    [buildUnifiedFilters, reportAnswerSheet, adminCityIdQuery]
+    [buildUnifiedFilters, isAnswerSheetAgregados, adminCityIdQuery]
   );
 
   // ✅ OTIMIZAÇÃO: Filtrar dados no frontend quando possível usando useMemo
@@ -594,6 +1060,10 @@ export default function AcertoNiveis() {
   // ✅ OTIMIZAÇÃO: useMemo para calcular dados filtrados de forma eficiente
   // Ordem otimizada: filtrar por escola/série primeiro (reduz dataset), depois por turma (filtro simples)
   const filteredStudents = useMemo(() => {
+    if (isAnswerSheetAgregados) {
+      return allStudents;
+    }
+
     if (!selectedSchoolId && !selectedGradeId && !selectedClassId) {
       return allStudents;
     }
@@ -651,7 +1121,26 @@ export default function AcertoNiveis() {
     }
 
     return filtered;
-  }, [allStudents, allTabelaDetalhada, selectedSchoolId, selectedGradeId, selectedClassId, schools, grades, classes]);
+  }, [
+    isAnswerSheetAgregados,
+    allStudents,
+    allTabelaDetalhada,
+    selectedSchoolId,
+    selectedGradeId,
+    selectedClassId,
+    schools,
+    grades,
+    classes,
+  ]);
+
+  /** Alinhado ao modal de AnswerSheetResults: não concluídos / pendentes. */
+  const absentStudents = useMemo(
+    () =>
+      students
+        .filter((s) => s.status === "pendente")
+        .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" })),
+    [students]
+  );
 
   // ✅ OTIMIZAÇÃO: Limpar timeout quando componente for desmontado
   useEffect(() => {
@@ -693,6 +1182,10 @@ export default function AcertoNiveis() {
           );
           if (userState) {
             setSelectedState(userState.id);
+            if (isAnswerSheetAgregados) {
+              setAsEstado(userState.id);
+              setAsMunicipio(context.municipality.id);
+            }
 
             // Carregar municípios do estado pré-selecionado
             try {
@@ -702,16 +1195,18 @@ export default function AcertoNiveis() {
               // Silenciar
             }
 
-            try {
+            if (!isAnswerSheetAgregados) {
+              try {
                 const avs = await EvaluationResultsApiService.getFilterEvaluations({
                   estado: userState.id,
                   municipio: context.municipality.id,
                   ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
                   ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
                 });
-              setEvaluations(avs);
-            } catch (error) {
-              // Silenciar
+                setEvaluations(avs);
+              } catch (error) {
+                // Silenciar
+              }
             }
           }
         } else if (context.school && context.school.municipality_id) {
@@ -730,6 +1225,10 @@ export default function AcertoNiveis() {
             );
             if (userState) {
               setSelectedState(userState.id);
+              if (isAnswerSheetAgregados) {
+                setAsEstado(userState.id);
+                setAsMunicipio(municipalityData.id);
+              }
 
               try {
                 const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id, reportEntityTypeParam, adminCityIdQuery);
@@ -738,16 +1237,18 @@ export default function AcertoNiveis() {
                 // Silenciar
               }
 
-              try {
-                const avs = await EvaluationResultsApiService.getFilterEvaluations({
-                  estado: userState.id,
-                  municipio: municipalityData.id,
-                  ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
-                  ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
-                });
-                setEvaluations(avs);
-              } catch (error) {
-                // Silenciar
+              if (!isAnswerSheetAgregados) {
+                try {
+                  const avs = await EvaluationResultsApiService.getFilterEvaluations({
+                    estado: userState.id,
+                    municipio: municipalityData.id,
+                    ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+                    ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+                  });
+                  setEvaluations(avs);
+                } catch (error) {
+                  // Silenciar
+                }
               }
             }
           } catch (error) {
@@ -757,6 +1258,9 @@ export default function AcertoNiveis() {
 
         if (context.school) {
           setSelectedSchoolId(context.school.id);
+          if (isAnswerSheetAgregados) {
+            setAsEscola(context.school.id);
+          }
           // Adicionar escola na lista de escolas disponíveis
           setSchools([{
             id: context.school.id,
@@ -812,11 +1316,13 @@ export default function AcertoNiveis() {
     };
 
     loadUserHierarchy();
-  }, [user?.id, user?.role, toast, reportEntityTypeParam, adminCityIdQuery]);
+  }, [user?.id, user?.role, toast, reportEntityTypeParam, adminCityIdQuery, isAnswerSheetAgregados]);
 
   useEffect(() => {
     // Carregar lista de estados (apenas se for admin)
     const loadStates = async () => {
+      if (isAnswerSheetAgregados) return;
+
       // Pular se já foi carregado no useEffect anterior
       if (states.length > 0) return;
 
@@ -837,7 +1343,7 @@ export default function AcertoNiveis() {
     if (!isLoadingHierarchy) {
       loadStates();
     }
-  }, [toast, user?.role, isLoadingHierarchy, states.length, reportEntityTypeParam, adminCityIdQuery]);
+  }, [toast, user?.role, isLoadingHierarchy, states.length, reportEntityTypeParam, adminCityIdQuery, isAnswerSheetAgregados]);
 
   const handleChangeState = async (stateId: string) => {
     // Verificar se usuário pode alterar estado
@@ -1273,7 +1779,7 @@ export default function AcertoNiveis() {
       if (!info) throw new Error("Avaliação não encontrada");
 
       answerSheetSkillsRef.current =
-        reportAnswerSheet && Array.isArray(skills)
+        Array.isArray(skills)
           ? (skills as AnswerSheetSkillRow[]).filter((s) => s?.id)
           : [];
 
@@ -1448,16 +1954,6 @@ export default function AcertoNiveis() {
     }
   };
 
-  const generateClassificationColor = (classification: string): [number, number, number] => {
-    switch (classification) {
-      case 'Avançado': return [22, 163, 74]; // Verde escuro
-      case 'Adequado': return [34, 197, 94]; // Verde claro
-      case 'Básico': return [250, 204, 21]; // Amarelo
-      case 'Abaixo do Básico': return [239, 68, 68]; // Vermelho
-      default: return [156, 163, 175]; // Cinza
-    }
-  };
-
   const generateHabilidadeCode = (
     questao: {
       codigo_habilidade?: string;
@@ -1488,14 +1984,14 @@ export default function AcertoNiveis() {
     if (!evaluationInfo) {
       toast({
         title: "Atenção",
-        description: reportAnswerSheet ? "Selecione um cartão resposta." : "Selecione uma avaliação.",
+        description: "Selecione um cartão resposta.",
         variant: "destructive",
       });
       return;
     }
 
     // Professor só pode imprimir quando tiver turma selecionada
-    if (user?.role === "professor" && !selectedClassId) {
+    if (user?.role === "professor" && (isAnswerSheetAgregados ? asTurma === "all" : !selectedClassId)) {
       toast({
         title: "Turma obrigatória",
         description: "Selecione uma turma para imprimir o relatório.",
@@ -1532,13 +2028,25 @@ export default function AcertoNiveis() {
 
     // Validar acesso baseado na hierarquia
     if (userHierarchyContext && user?.role) {
-      const validation = validateReportAccess(user.role, {
-        state: selectedState,
-        municipality: selectedMunicipality,
-        school: selectedSchoolId,
-        grade: selectedGradeId,
-        class: selectedClassId
-      }, userHierarchyContext);
+      const validation = validateReportAccess(
+        user.role,
+        isAnswerSheetAgregados
+          ? {
+              state: asEstado,
+              municipality: asMunicipio,
+              school: asEscola !== "all" ? asEscola : "",
+              grade: asSerie !== "all" ? asSerie : "",
+              class: asTurma !== "all" ? asTurma : "",
+            }
+          : {
+              state: selectedState,
+              municipality: selectedMunicipality,
+              school: selectedSchoolId,
+              grade: selectedGradeId,
+              class: selectedClassId,
+            },
+        userHierarchyContext
+      );
 
       if (!validation.isValid) {
         toast({
@@ -1550,10 +2058,11 @@ export default function AcertoNiveis() {
       }
     }
 
-    // Relatório detalhado para o PDF: cartão-resposta sempre refetch (evita cache de outro report_entity_type).
+    // Relatório detalhado para o PDF: cartão via evaluations list — refetch; cartão agregados usa só tabela_detalhada.
     let reportParaPdf: DetailedReport | null = detailedReport;
     const mustRefetchDetailedForPdf =
-      reportEntityTypeParam === REPORT_ENTITY_TYPE_ANSWER_SHEET || !reportParaPdf;
+      !isAnswerSheetAgregados &&
+      (reportEntityTypeParam === REPORT_ENTITY_TYPE_ANSWER_SHEET || !reportParaPdf);
     if (mustRefetchDetailedForPdf) {
       try {
         setIsLoading(true);
@@ -1575,7 +2084,13 @@ export default function AcertoNiveis() {
     try {
       // Garantir que a tabela detalhada foi carregada quando possível (evitar requisição extra se já temos allTabelaDetalhada ou tabelaDetalhada)
       const jaTemTabela = tabelaDetalhada ?? allTabelaDetalhada;
-      if (!jaTemTabela && selectedState && selectedMunicipality && selectedEvaluationId) {
+      if (
+        !isAnswerSheetAgregados &&
+        !jaTemTabela &&
+        selectedState &&
+        selectedMunicipality &&
+        selectedEvaluationId
+      ) {
         try {
           setIsLoading(true);
           const resp = await EvaluationResultsApiService.getEvaluationsList(1, 10, {
@@ -1654,6 +2169,9 @@ export default function AcertoNiveis() {
 
       // Utilitário: obter texto de série confiável (recebe lista de alunos como parâmetro)
       const getHeaderSerieText = (alunosRef: StudentResult[] = students): string | null => {
+        if (isAnswerSheetAgregados && asSerie !== "all") {
+          return asNorm((asOpcoes.series ?? []).find((s) => s.id === asSerie) ?? { id: asSerie });
+        }
         // 1) Se o usuário selecionou explicitamente uma série, priorizar
         if (selectedGradeId) {
           const g = grades.find(gr => gr.id === selectedGradeId)?.nome;
@@ -1796,9 +2314,13 @@ export default function AcertoNiveis() {
         doc.text('ESCOLA:', leftColX, cardY);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...COLORS.textDark);
-        const escolaText = selectedSchoolId
-          ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada'
-          : 'Todas as Escolas';
+        const escolaText = isAnswerSheetAgregados
+          ? asEscola !== "all"
+            ? asNorm((asOpcoes.escolas ?? []).find((e) => e.id === asEscola) ?? { id: asEscola })
+            : "Todas as Escolas"
+          : selectedSchoolId
+            ? schools.find((s) => s.id === selectedSchoolId)?.nome || "Escola Selecionada"
+            : "Todas as Escolas";
         const escolaLines = doc.splitTextToSize(escolaText.toUpperCase(), cardWidth - labelWidth - 24);
         doc.text(escolaLines, leftColX + labelWidth, cardY);
         cardY += Math.max(5, escolaLines.length * 4);
@@ -1891,11 +2413,11 @@ export default function AcertoNiveis() {
 
         y += 20;
 
-        // Título "ALUNOS FALTOSOS"
+        // Título (mesmo título do modal em AnswerSheetResults)
         doc.setFontSize(24);
         doc.setTextColor(...COLORS.textDark); // Preto
         doc.setFont('helvetica', 'bold');
-        doc.text('ALUNOS FALTOSOS', centerX, y, { align: 'center' });
+        doc.text('FALTOSOS / PENDENTES', centerX, y, { align: 'center' });
 
         y += 20;
 
@@ -1958,6 +2480,16 @@ export default function AcertoNiveis() {
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...COLORS.textDark); // Valores em preto
         doc.text(`${totalFaltosos}`, leftColX + labelWidth, cardY);
+
+        const cardBottom = y + cardHeight;
+        let noteY = cardBottom + 8;
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textGray);
+        const avisoFaltosos =
+          'Estes alunos ainda não entregaram ou não tiveram o cartão resposta corrigido.';
+        const splitAviso = doc.splitTextToSize(avisoFaltosos, cardWidth - 24);
+        doc.text(splitAviso, centerX, noteY, { align: 'center', maxWidth: cardWidth - 24 });
       };
 
       // Função para adicionar capa de turma
@@ -2169,17 +2701,32 @@ export default function AcertoNiveis() {
         doc.setFontSize(10);
         doc.setTextColor(...COLORS.textGray); // Cinza institucional
 
-        const escolaText = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas';
+        const escolaText = isAnswerSheetAgregados
+          ? asEscola !== "all"
+            ? asNorm((asOpcoes.escolas ?? []).find((e) => e.id === asEscola) ?? { id: asEscola })
+            : "Todas as Escolas"
+          : selectedSchoolId
+            ? schools.find((s) => s.id === selectedSchoolId)?.nome || "Escola Selecionada"
+            : "Todas as Escolas";
         doc.text(`Escola: ${escolaText}`, centerX, y, { align: 'center' });
         y += 5;
 
-        const serieText = getHeaderSerieText(studentsToUse);
+        const serieText = isAnswerSheetAgregados && asSerie !== "all"
+          ? asNorm((asOpcoes.series ?? []).find((s) => s.id === asSerie) ?? { id: asSerie })
+          : getHeaderSerieText(studentsToUse);
         if (serieText) {
           doc.text(`Série: ${serieText}`, centerX, y, { align: 'center' });
           y += 5;
         }
 
-        const turmaText = turmaOverride !== undefined ? turmaOverride : (selectedClassId ? classes.find(c => c.id === selectedClassId)?.nome || 'Selecionada' : (studentsToUse[0]?.turma || 'Todas'));
+        const turmaText =
+          turmaOverride !== undefined
+            ? turmaOverride
+            : isAnswerSheetAgregados && asTurma !== "all"
+              ? asNorm((asOpcoes.turmas ?? []).find((t) => t.id === asTurma) ?? { id: asTurma })
+              : selectedClassId
+                ? classes.find((c) => c.id === selectedClassId)?.nome || "Selecionada"
+                : studentsToUse[0]?.turma || "Todas";
         doc.text(`Turma: ${turmaText}`, centerX, y, { align: 'center' });
         y += 10;
 
@@ -2230,7 +2777,8 @@ export default function AcertoNiveis() {
         // Unificar questões de todas as disciplinas com numero global (1..N), evitando colisão quando LP e MAT têm 1-20 cada
         const list: QuestaoMinima[] = [];
         let globalNumero = 0;
-        tabelaDetalhada?.disciplinas?.forEach(disc => {
+        const tabelaQuestoesFonte = allTabelaDetalhada ?? tabelaDetalhada;
+        tabelaQuestoesFonte?.disciplinas?.forEach(disc => {
           const sorted = [...(disc.questoes || [])].sort((a, b) => (a?.numero ?? 0) - (b?.numero ?? 0));
           sorted.forEach(q => {
             globalNumero += 1;
@@ -2257,16 +2805,14 @@ export default function AcertoNiveis() {
       // Total de questões para fallback determinístico
       const totalQuestionsAll = questoesParaUsar.length;
 
-      // Utilitário: obter resposta coerente (detalhado -> fallback determinístico)
-      const getAnswer = (student: StudentResult, questionNumber: number): boolean => {
-        const direct = student.respostas?.[`q${questionNumber}`];
-        if (typeof direct === 'boolean') return direct;
-        // Fallback estável por aluno
+      const respostaKey = (questionNumber: number) => `q${questionNumber}`;
+
+      // Fallback sintético só quando não há mapa por questão (ex.: dados antigos sem `respostas`)
+      const getAnswerSynthetic = (student: StudentResult, questionNumber: number): boolean => {
         let cache = fallbackAnswersCache.current.get(student.id);
         if (!cache) {
           cache = new Map<number, boolean>();
           const totalQ = Math.max(1, totalQuestionsAll);
-          // seed a partir do id
           let seed = 0;
           for (let i = 0; i < student.id.length; i++) seed = (seed * 31 + student.id.charCodeAt(i)) >>> 0;
           const order = Array.from({ length: totalQ }, (_, i) => i + 1);
@@ -2282,10 +2828,43 @@ export default function AcertoNiveis() {
         return cache.get(questionNumber) ?? false;
       };
 
+      /** Acerto para gráficos / % turma: cartão com `null` = em branco → não conta como acerto. */
+      const getAnswer = (student: StudentResult, questionNumber: number): boolean => {
+        const key = respostaKey(questionNumber);
+        const map = student.respostas;
+        if (map && Object.prototype.hasOwnProperty.call(map, key)) {
+          const direct = map[key];
+          if (direct === true) return true;
+          if (direct === false || direct === null) return false;
+        }
+        return getAnswerSynthetic(student, questionNumber);
+      };
+
+      /** Célula da tabela detalhada: em branco não vira ✗ (cartão resposta / agregados). */
+      const getAnswerMarkForPdf = (student: StudentResult, questionNumber: number): string => {
+        const key = respostaKey(questionNumber);
+        const map = student.respostas;
+        if (map && Object.prototype.hasOwnProperty.call(map, key)) {
+          const direct = map[key];
+          if (direct === true) return "\u2713";
+          if (direct === false) return "\u2717";
+          if (direct === null) return "";
+        }
+        return getAnswerSynthetic(student, questionNumber) ? "\u2713" : "\u2717";
+      };
+
       const countCorrectFor = (student: StudentResult, qs: QuestaoMinima[]): number => {
         if (!qs || qs.length === 0) return 0;
         let count = 0;
-        qs.forEach(q => { if (getAnswer(student, q.numero)) count++; });
+        qs.forEach((q) => {
+          const key = respostaKey(q.numero);
+          const map = student.respostas;
+          if (map && Object.prototype.hasOwnProperty.call(map, key)) {
+            if (map[key] === true) count++;
+            return;
+          }
+          if (getAnswerSynthetic(student, q.numero)) count++;
+        });
         return count;
       };
 
@@ -2297,9 +2876,16 @@ export default function AcertoNiveis() {
         h: number,
         studentsToUse: StudentResult[] = students
       ) => {
-        const categorias = ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'];
+        const categorias: ReportProficiencyLabel[] = [
+          'Abaixo do Básico',
+          'Básico',
+          'Adequado',
+          'Avançado',
+        ];
         const concluidos = studentsToUse.filter(s => s.status === 'concluida');
-        const counts = categorias.map(c => concluidos.filter(s => s.classificacao === c).length);
+        const counts = categorias.map((c) =>
+          concluidos.filter((s) => normalizeProficiencyLevelLabel(s.classificacao) === c).length
+        );
         const total = Math.max(1, concluidos.length);
         const barAreaW = w - 80; // espaço para labels e números
         const topPadding = 10;
@@ -2317,7 +2903,7 @@ export default function AcertoNiveis() {
           doc.text(cat, x, yRow + barH / 2, { align: 'left' } as unknown as Record<string, unknown>);
           // Barra
           const len = barAreaW * (count / Math.max(...counts, 1));
-          const [r, g, b] = generateClassificationColor(cat);
+          const [r, g, b] = getProficiencyLevelRgb(cat);
           doc.setFillColor(r, g, b);
           doc.rect(x + 70, yRow, Math.max(1, len), barH, 'F');
           // Valor
@@ -2417,7 +3003,7 @@ export default function AcertoNiveis() {
 
         const startY = addHeader(title, turmaName);
         const availableWidth = pageWidth - (2 * margin);
-        const MIN_NIVEL_MM = 28;
+        const MIN_NIVEL_MM = 40;
         const nameWidth = Math.min(140, availableWidth * 0.5);
         const restWidth = availableWidth - nameWidth - MIN_NIVEL_MM;
         const otherWidth = Math.max(20, restWidth / 2);
@@ -2435,7 +3021,7 @@ export default function AcertoNiveis() {
             `${i + 1}. ${s.nome}`,
             `${acertos}/${total}`,
             s.proficiencia.toFixed(1),
-            s.classificacao
+            normalizeProficiencyLevelLabel(s.classificacao),
           ];
           bodyRows.push(row);
         });
@@ -2458,7 +3044,9 @@ export default function AcertoNiveis() {
             fillColor: [230, 230, 230],
             textColor: [0, 0, 0],
             fontStyle: 'bold',
-            halign: 'center'
+            halign: 'center',
+            fontSize: 9,
+            cellPadding: 2.5,
           },
           bodyStyles: { textColor: [33, 33, 33] },
           alternateRowStyles: { fillColor: [250, 250, 250] },
@@ -2468,31 +3056,18 @@ export default function AcertoNiveis() {
             2: { cellWidth: otherWidth, halign: 'center' },
             3: { cellWidth: MIN_NIVEL_MM, halign: 'center' }
           },
+          didParseCell: (data: CellHookData) => {
+            if (data.section === 'body' && data.column.index === 3) {
+              data.cell.styles.minCellHeight = 16;
+            }
+          },
           didDrawCell: (data: CellHookData) => {
             if (data.section !== 'body' || data.column.index !== 3) return;
 
             const textValue = (Array.isArray(data.cell.text) ? data.cell.text[0] : data.cell.text || '')
               .toString()
               .trim();
-            const [r, g, b] = generateClassificationColor(textValue);
-
-            data.doc.setFillColor(r, g, b);
-            data.doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
-
-            data.doc.setTextColor(255, 255, 255);
-            data.doc.setFont('helvetica', 'bold');
-            const bodyFontSize = 9;
-            data.doc.setFontSize(bodyFontSize);
-            const nivelY = data.cell.y + Math.min(3, data.cell.height * 0.35) + (bodyFontSize * 0.35);
-            data.doc.text(
-              textValue,
-              data.cell.x + data.cell.width / 2,
-              nivelY,
-              { align: 'center' }
-            );
-
-            data.doc.setDrawColor(200, 200, 200);
-            data.doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height);
+            drawProficiencyNivelInPdfCell(data.doc as jsPDF, data.cell, textValue, 9);
           }
         });
 
@@ -2538,44 +3113,50 @@ export default function AcertoNiveis() {
           completedStudentsLocal.forEach((s, idx) => {
             const row: (string | number)[] = [s.nome];
             chunk.forEach(q => {
-              const resposta = getAnswer(s, q.numero);
-              if (resposta === true) row.push('\u2713');
-              else row.push('\u2717');
+              row.push(getAnswerMarkForPdf(s, q.numero));
             });
             if (isLastChunk) {
               row.push(`${acertosPorAluno[idx]}/${totalQuestoes}`);
               row.push(s.proficiencia.toFixed(1));
-              row.push(String(s.classificacao ?? '—'));
+              row.push(normalizeProficiencyLevelLabel(s.classificacao));
             }
             bodyRows.push(row);
           });
 
           const availableWidth = landscapeWidth - (2 * landscapeMargin);
           const nameColWidth = Math.min(45, Math.max(25, availableWidth * (chunk.length > 28 ? 0.10 : 0.15)));
-          const MIN_NIVEL_WIDTH_MM = 28; // Garantir que "Abaixo do Básico" / "Avançado" apareçam por completo
-          const colTotalAcertos = chunk.length > 28 ? 10 : 15;
-          const colProficiencia = chunk.length > 28 ? 12 : 18;
-          const colNivel = Math.max(MIN_NIVEL_WIDTH_MM, chunk.length > 28 ? 18 : 24);
+          const MIN_NIVEL_WIDTH_MM = 20;
+          const colTotalAcertos = chunk.length > 28 ? 8 : 11;
+          const colProficiencia = chunk.length > 28 ? 9 : 14;
+          const colNivel = Math.max(MIN_NIVEL_WIDTH_MM, chunk.length > 28 ? 17 : 21);
           const finalColsWidth = isLastChunk ? (colTotalAcertos + colProficiencia + colNivel) : 0;
 
           const numCols = Math.max(1, chunk.length);
           const spaceForQuestions = Math.max(0, availableWidth - nameColWidth - finalColsWidth);
           const questionColWidth = spaceForQuestions / numCols;
 
-          // Escala de fonte adaptável: menor quando há muitas questões para caber em uma página
-          const dynamicFontSize = Math.max(2.0, Math.min(6, 5.5 * (18 / numCols)));
-          const dynamicCellPadding = Math.max(0.3, Math.min(0.5, 0.5 * (18 / numCols)));
-          const dynamicIconScale = Math.max(1.5, Math.min(4.5, 4.5 * (18 / numCols)));
+          const dynamicFontSize = PDF_BULK_LANDSCAPE_FONT(numCols);
+          const bulkPadH = PDF_BULK_LANDSCAPE_CELL_PAD_H(numCols);
+          const bulkPadV = PDF_BULK_LANDSCAPE_CELL_PAD_V(numCols);
+          const nameColFont = Math.max(0.78, dynamicFontSize * PDF_BULK_NAME_COL_FONT_MUL);
+          const namePadV = bulkPadV * PDF_BULK_NAME_COL_PAD_V_MUL;
+          const bodyRowHeightMm = pdfBulkBodyRowHeightToMatchNameMm(nameColFont, namePadV);
 
-          const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
-            0: { cellWidth: nameColWidth, halign: 'left' }
+          const columnStyles: Record<string, Partial<Styles>> = {
+            '0': { cellWidth: nameColWidth, halign: 'left', overflow: 'ellipsize' },
           };
-          for (let i = 1; i <= chunk.length; i++) columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
+          for (let i = 1; i <= chunk.length; i++) {
+            columnStyles[String(i)] = { cellWidth: questionColWidth, halign: 'center' };
+          }
 
           if (isLastChunk) {
-            columnStyles[chunk.length + 1] = { cellWidth: colTotalAcertos, halign: 'center' };
-            columnStyles[chunk.length + 2] = { cellWidth: colProficiencia, halign: 'center' };
-            columnStyles[chunk.length + 3] = { cellWidth: colNivel, halign: 'center' };
+            columnStyles[String(chunk.length + 1)] = { cellWidth: colTotalAcertos, halign: 'center' };
+            columnStyles[String(chunk.length + 2)] = { cellWidth: colProficiencia, halign: 'center' };
+            columnStyles[String(chunk.length + 3)] = {
+              cellWidth: colNivel,
+              halign: 'center',
+              overflow: 'ellipsize',
+            };
           }
 
           const numQuestoesThisChunk = chunk.length;
@@ -2589,10 +3170,10 @@ export default function AcertoNiveis() {
             showHead: 'everyPage',
             styles: {
               fontSize: dynamicFontSize,
-              cellPadding: dynamicCellPadding,
+              cellPadding: { vertical: bulkPadV, horizontal: bulkPadH },
               lineColor: [200, 200, 200],
               lineWidth: 0.05,
-              overflow: 'hidden',
+              overflow: 'linebreak',
               valign: 'middle',
               halign: 'center'
             },
@@ -2601,11 +3182,34 @@ export default function AcertoNiveis() {
               textColor: [0, 0, 0],
               fontStyle: 'bold',
               halign: 'center',
-              fontSize: dynamicFontSize
+              fontSize: dynamicFontSize,
+              cellPadding: PDF_BULK_HEAD_CELL_PAD,
             },
             columnStyles: columnStyles,
             bodyStyles: { textColor: [33, 33, 33] },
             alternateRowStyles: { fillColor: [252, 252, 252] },
+            didParseCell: (data: CellHookData) => {
+              if (data.section === 'body') {
+                data.cell.styles.minCellHeight = bodyRowHeightMm;
+                if (data.column.index === 0) {
+                  data.cell.styles.fontSize = nameColFont;
+                  data.cell.styles.cellPadding = { vertical: namePadV, horizontal: bulkPadH };
+                }
+              }
+              if (data.section === 'head') {
+                data.cell.styles.cellPadding = PDF_BULK_HEAD_CELL_PAD;
+                const fs = dynamicFontSize;
+                if (data.row.index === 0) {
+                  data.cell.styles.fontSize = Math.max(1.05, fs * 0.72);
+                } else if (data.row.index === 1) {
+                  data.cell.styles.fontSize = Math.max(1.02, fs - 0.82);
+                  data.cell.styles.fontStyle = 'normal';
+                  data.cell.styles.font = 'courier';
+                } else if (data.row.index === 2) {
+                  data.cell.styles.fontSize = Math.max(1.08, fs - 0.32);
+                }
+              }
+            },
             didDrawCell: (data: CellHookData) => {
               const { doc: d, cell, column, section, row } = data;
               const val = Array.isArray(cell.text) ? cell.text[0] : cell.text;
@@ -2618,16 +3222,16 @@ export default function AcertoNiveis() {
                   const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
                   d.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
                   d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-                  const iconSize = Math.min(cell.width, cell.height) / dynamicIconScale;
+                  const iconSize = pdfBulkQuestionMarkIconHalfExtentMm(cell.width, cell.height);
                   const isCorrect = (valStr as string) === '✓' || (valStr as string) === '\u2713';
                   if (isCorrect) {
                     d.setDrawColor(22, 163, 74);
-                    d.setLineWidth(Math.max(0.4, 0.8 * (dynamicFontSize / 6)));
+                    d.setLineWidth(Math.max(0.18, Math.min(0.38, iconSize * 0.13)));
                     d.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
                     d.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
                   } else {
                     d.setDrawColor(239, 68, 68);
-                    d.setLineWidth(0.8);
+                    d.setLineWidth(Math.max(0.18, Math.min(0.38, iconSize * 0.13)));
                     d.line(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
                     d.line(centerX + iconSize, centerY - iconSize, centerX - iconSize, centerY + iconSize);
                   }
@@ -2638,7 +3242,7 @@ export default function AcertoNiveis() {
               }
               if (section === 'head' && row.index === 1) {
                 cell.styles.fillColor = [219, 234, 254];
-                cell.styles.fontSize = Math.max(3, dynamicFontSize - 1);
+                cell.styles.fontSize = Math.max(1.02, dynamicFontSize - 0.82);
                 cell.styles.fontStyle = 'normal';
                 cell.styles.font = 'courier';
               }
@@ -2649,24 +3253,14 @@ export default function AcertoNiveis() {
                   cell.styles.fillColor = pct >= 60 ? [220, 252, 231] : [254, 226, 226];
                   cell.styles.textColor = pct >= 60 ? [22, 163, 74] : [239, 68, 68];
                   cell.styles.fontStyle = 'bold';
-                  cell.styles.fontSize = Math.max(3, dynamicFontSize - 1);
+                  cell.styles.fontSize = Math.max(1.08, dynamicFontSize - 0.32);
                 }
               }
               if (isLastChunk && section === 'body' && column.index === chunk.length + 3) {
                 const raw = (Array.isArray(cell.text) ? cell.text[0] : cell.text ?? '').toString().trim();
-                const textValue = raw || '—';
-                const [r, g, b] = generateClassificationColor(raw || 'Abaixo do Básico');
-                d.setFillColor(r, g, b);
-                d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-                d.setTextColor(255, 255, 255);
-                d.setFont('helvetica', 'bold');
-                d.setFontSize(dynamicFontSize);
-                const centerX = cell.x + cell.width / 2;
-                const nivelY = cell.y + Math.min(3, cell.height * 0.32) + (dynamicFontSize * 0.35);
-                const lines = d.splitTextToSize(textValue, cell.width - 2);
-                d.text(lines, centerX, nivelY, { align: 'center' });
-                d.setDrawColor(200, 200, 200);
-                d.rect(cell.x, cell.y, cell.width, cell.height);
+                drawProficiencyNivelInPdfCell(d as jsPDF, cell, raw || '—', Math.max(1.2, dynamicFontSize * 0.82), {
+                  compact: true,
+                });
               }
             },
           });
@@ -2675,36 +3269,37 @@ export default function AcertoNiveis() {
         doc.addPage('landscape');
         pageCount++;
 
-        let y = 15;
+        let y = 8;
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(12);
-        doc.text(`${evaluationInfo.titulo} - ${subtitle}`, landscapeWidth / 2, y, { align: 'center' });
-        y += 5;
         doc.setFontSize(10);
+        doc.text(`${evaluationInfo.titulo} - ${subtitle}`, landscapeWidth / 2, y, { align: 'center' });
+        y += 2.5;
+        doc.setFontSize(8);
         doc.text(`Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
-        y += 10;
+        y += 2;
 
         drawTableChunk(questoes, true, y);
 
-        const finalY = ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y) + 4;
-        doc.setFontSize(8);
+        const finalY = ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y) + 1.2;
+        doc.setFontSize(6);
         doc.setFont('helvetica', 'normal');
         let legendX = landscapeMargin;
         doc.setDrawColor(22, 163, 74);
-        doc.setLineWidth(0.8);
-        const iconSize = 2;
-        const legendY = finalY + 2;
+        doc.setLineWidth(0.28);
+        const iconSize = 1.05;
+        const legendY = finalY + 1.1;
+        const legendTextY = finalY + 1.85;
         doc.line(legendX - iconSize, legendY, legendX - iconSize / 2, legendY + iconSize);
         doc.line(legendX - iconSize / 2, legendY + iconSize, legendX + iconSize, legendY - iconSize);
         doc.setTextColor(90, 90, 90);
-        doc.text('Correto', legendX + 5, finalY + 3);
-        legendX += 24;
+        doc.text('Correto', legendX + 3.2, legendTextY);
+        legendX += 16;
         doc.setDrawColor(239, 68, 68);
-        doc.setLineWidth(0.8);
+        doc.setLineWidth(0.28);
         doc.line(legendX - iconSize, legendY - iconSize, legendX + iconSize, legendY + iconSize);
         doc.line(legendX + iconSize, legendY - iconSize, legendX - iconSize, legendY + iconSize);
         doc.setTextColor(90, 90, 90);
-        doc.text('Incorretas', legendX + 5, finalY + 3);
+        doc.text('Incorretas', legendX + 3.2, legendTextY);
 
         doc.setFontSize(8);
         doc.setTextColor(100, 100, 100);
@@ -2736,7 +3331,7 @@ export default function AcertoNiveis() {
 
       // ====== Páginas por disciplina (consumindo diretamente tabela_detalhada) ======
       const renderDisciplineTablesPagesForTurma = (turmaName: string, alunosTurma: StudentResult[], customTabela?: typeof tabelaDetalhada) => {
-        const activeTabela = customTabela !== undefined ? customTabela : tabelaDetalhada;
+        const activeTabela = customTabela !== undefined ? customTabela : (allTabelaDetalhada || tabelaDetalhada);
         if (!activeTabela || !Array.isArray(activeTabela.disciplinas)) return;
         const disciplinas = activeTabela.disciplinas;
 
@@ -2754,10 +3349,21 @@ export default function AcertoNiveis() {
           const landscapeWidth = 297;
           const landscapeHeight = 210;
           const landscapeMargin = 10;
-          const escolaText = selectedSchoolId ? (schools.find(s => s.id === selectedSchoolId)?.nome || '') : 'Todas as Escolas';
+          const escolaText = isAnswerSheetAgregados
+            ? asEscola !== "all"
+              ? asNorm((asOpcoes.escolas ?? []).find((e) => e.id === asEscola) ?? { id: asEscola })
+              : "Todas as Escolas"
+            : selectedSchoolId
+              ? schools.find((s) => s.id === selectedSchoolId)?.nome || ""
+              : "Todas as Escolas";
           const alunosParticipantes = alunosTurmaDisciplina.filter(al => Array.isArray(al.respostas_por_questao) && al.respostas_por_questao.some(r => r.respondeu));
           const serieHeuristicaGlobal = getHeaderSerieText(studentsToUse);
-          let serieText = selectedGradeId ? (grades.find(g => g.id === selectedGradeId)?.nome || '') : (serieHeuristicaGlobal || '');
+          let serieText =
+            isAnswerSheetAgregados && asSerie !== "all"
+              ? asNorm((asOpcoes.series ?? []).find((s) => s.id === asSerie) ?? { id: asSerie })
+              : selectedGradeId
+                ? grades.find((g) => g.id === selectedGradeId)?.nome || ""
+                : serieHeuristicaGlobal || "";
           if (!serieText) {
             const setSeries = new Set<string>();
             (alunosParticipantes || []).forEach(a => {
@@ -2776,15 +3382,15 @@ export default function AcertoNiveis() {
           doc.addPage('landscape');
           pageCount++;
 
-          let y = 15;
+          let y = 8;
           doc.setFont('helvetica', 'bold');
-          doc.setFontSize(12);
+          doc.setFontSize(10);
           const headerDisc = `DISCIPLINA: ${disc.nome || 'N/A'}`;
           doc.text(`${evaluationInfo?.titulo || 'Avaliação'} - ${headerDisc}`, landscapeWidth / 2, y, { align: 'center' });
-          y += 5;
-          doc.setFontSize(10);
+          y += 2.5;
+          doc.setFontSize(8);
           doc.text(`Escola: ${escolaText}  •  Série: ${serieText || 'N/A'}  •  Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
-          y += 8;
+          y += 2;
 
             const headerRow1 = ['Aluno'];
             const headerRow2 = ['Habilidade'];
@@ -2823,18 +3429,18 @@ export default function AcertoNiveis() {
                 row.push(`${al.total_acertos ?? 0}/${totalQuestoesDisc}`);
                 row.push(Number(al.nota ?? 0).toFixed(1));
                 row.push(Number(al.proficiencia ?? 0).toFixed(1));
-                row.push(String(al.nivel_proficiencia ?? '—'));
+                row.push(normalizeProficiencyLevelLabel(al.nivel_proficiencia));
               }
               bodyRows.push(row);
             });
 
             const availableWidth = landscapeWidth - (2 * landscapeMargin);
             const nameColWidth = Math.min(45, Math.max(25, availableWidth * (chunk.length > 28 ? 0.10 : 0.15)));
-            const MIN_NIVEL_WIDTH_MM_DISC = 28; // Garantir que nível (ex.: "Avançado") apareça por completo
-            const colTotalAcertosDisc = chunk.length > 28 ? 10 : 15;
-            const colNotaDisc = chunk.length > 28 ? 10 : 15;
-            const colProficienciaDisc = chunk.length > 28 ? 12 : 18;
-            const colNivelDisc = Math.max(MIN_NIVEL_WIDTH_MM_DISC, chunk.length > 28 ? 18 : 24);
+            const MIN_NIVEL_WIDTH_MM_DISC = 20;
+            const colTotalAcertosDisc = chunk.length > 28 ? 8 : 11;
+            const colNotaDisc = chunk.length > 28 ? 8 : 11;
+            const colProficienciaDisc = chunk.length > 28 ? 9 : 12;
+            const colNivelDisc = Math.max(MIN_NIVEL_WIDTH_MM_DISC, chunk.length > 28 ? 17 : 21);
             const finalColsWidth = isLastChunk ? (colTotalAcertosDisc + colNotaDisc + colProficienciaDisc + colNivelDisc) : 0;
 
             const numColsDisc = Math.max(1, chunk.length);
@@ -2842,19 +3448,28 @@ export default function AcertoNiveis() {
             const questionColWidth = spaceForQuestionsDisc / numColsDisc;
 
             // Escala fontes para caber em uma página com todas as questões
-            const dynamicFontSize = Math.max(2.0, Math.min(6, 5.5 * (18 / numColsDisc)));
-            const dynamicCellPadding = Math.max(0.3, Math.min(0.5, 0.5 * (18 / numColsDisc)));
-            const dynamicIconScale = Math.max(1.5, Math.min(4.5, 4.5 * (18 / numColsDisc)));
+            const dynamicFontSize = PDF_BULK_LANDSCAPE_FONT(numColsDisc);
+            const bulkPadHDisc = PDF_BULK_LANDSCAPE_CELL_PAD_H(numColsDisc);
+            const bulkPadVDisc = PDF_BULK_LANDSCAPE_CELL_PAD_V(numColsDisc);
+            const nameColFontDisc = Math.max(0.78, dynamicFontSize * PDF_BULK_NAME_COL_FONT_MUL);
+            const namePadVDisc = bulkPadVDisc * PDF_BULK_NAME_COL_PAD_V_MUL;
+            const bodyRowHeightMmDisc = pdfBulkBodyRowHeightToMatchNameMm(nameColFontDisc, namePadVDisc);
 
-            const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
-              0: { cellWidth: nameColWidth, halign: 'left' }
+            const columnStyles: Record<string, Partial<Styles>> = {
+              '0': { cellWidth: nameColWidth, halign: 'left', overflow: 'ellipsize' },
             };
-            for (let i = 1; i <= chunk.length; i++) columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
+            for (let i = 1; i <= chunk.length; i++) {
+              columnStyles[String(i)] = { cellWidth: questionColWidth, halign: 'center' };
+            }
             if (isLastChunk) {
-              columnStyles[chunk.length + 1] = { cellWidth: colTotalAcertosDisc, halign: 'center' };
-              columnStyles[chunk.length + 2] = { cellWidth: colNotaDisc, halign: 'center' };
-              columnStyles[chunk.length + 3] = { cellWidth: colProficienciaDisc, halign: 'center' };
-              columnStyles[chunk.length + 4] = { cellWidth: colNivelDisc, halign: 'center' };
+              columnStyles[String(chunk.length + 1)] = { cellWidth: colTotalAcertosDisc, halign: 'center' };
+              columnStyles[String(chunk.length + 2)] = { cellWidth: colNotaDisc, halign: 'center' };
+              columnStyles[String(chunk.length + 3)] = { cellWidth: colProficienciaDisc, halign: 'center' };
+              columnStyles[String(chunk.length + 4)] = {
+                cellWidth: colNivelDisc,
+                halign: 'center',
+                overflow: 'ellipsize',
+              };
             }
             const numQuestoesThisChunk = chunk.length;
 
@@ -2868,10 +3483,10 @@ export default function AcertoNiveis() {
               showHead: 'everyPage',
               styles: {
                 fontSize: dynamicFontSize,
-                cellPadding: dynamicCellPadding,
+                cellPadding: { vertical: bulkPadVDisc, horizontal: bulkPadHDisc },
                 lineColor: [200, 200, 200],
                 lineWidth: 0.05,
-                overflow: 'hidden',
+                overflow: 'linebreak',
                 valign: 'middle',
                 halign: 'center'
               },
@@ -2880,11 +3495,34 @@ export default function AcertoNiveis() {
                 textColor: [0, 0, 0],
                 fontStyle: 'bold',
                 halign: 'center',
-                fontSize: dynamicFontSize
+                fontSize: dynamicFontSize,
+                cellPadding: PDF_BULK_HEAD_CELL_PAD,
               },
               columnStyles: columnStyles,
               bodyStyles: { textColor: [33, 33, 33] },
               alternateRowStyles: { fillColor: [252, 252, 252] },
+              didParseCell: (data: CellHookData) => {
+                if (data.section === 'body') {
+                  data.cell.styles.minCellHeight = bodyRowHeightMmDisc;
+                  if (data.column.index === 0) {
+                    data.cell.styles.fontSize = nameColFontDisc;
+                    data.cell.styles.cellPadding = { vertical: namePadVDisc, horizontal: bulkPadHDisc };
+                  }
+                }
+                if (data.section === 'head') {
+                  data.cell.styles.cellPadding = PDF_BULK_HEAD_CELL_PAD;
+                  const fs = dynamicFontSize;
+                  if (data.row.index === 0) {
+                    data.cell.styles.fontSize = Math.max(1.05, fs * 0.72);
+                  } else if (data.row.index === 1) {
+                    data.cell.styles.fontSize = Math.max(1.02, fs - 0.82);
+                    data.cell.styles.fontStyle = 'normal';
+                    data.cell.styles.font = 'courier';
+                  } else if (data.row.index === 2) {
+                    data.cell.styles.fontSize = Math.max(1.08, fs - 0.32);
+                  }
+                }
+              },
               didDrawCell: (data: CellHookData) => {
                 const { doc: d, cell, column, section, row } = data;
                 const val = Array.isArray(cell.text) ? cell.text[0] : cell.text;
@@ -2896,16 +3534,16 @@ export default function AcertoNiveis() {
                     const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
                     d.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
                     d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-                    const iconSize = Math.min(cell.width, cell.height) / dynamicIconScale;
+                    const iconSize = pdfBulkQuestionMarkIconHalfExtentMm(cell.width, cell.height);
                     const isCorrect = (valStr as string) === '✓' || (valStr as string) === '\u2713';
                     if (isCorrect) {
                       d.setDrawColor(22, 163, 74);
-                      d.setLineWidth(Math.max(0.4, 0.8 * (dynamicFontSize / 6)));
+                      d.setLineWidth(Math.max(0.18, Math.min(0.38, iconSize * 0.13)));
                       d.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
                       d.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
                     } else {
                       d.setDrawColor(239, 68, 68);
-                      d.setLineWidth(0.8);
+                      d.setLineWidth(Math.max(0.18, Math.min(0.38, iconSize * 0.13)));
                       d.line(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
                       d.line(centerX + iconSize, centerY - iconSize, centerX - iconSize, centerY + iconSize);
                     }
@@ -2916,22 +3554,13 @@ export default function AcertoNiveis() {
                 }
                 if (isLastChunk && section === 'body' && column.index === chunk.length + 4) {
                   const raw = (Array.isArray(cell.text) ? cell.text[0] : cell.text ?? '').toString().trim();
-                  const textValue = raw || '—';
-                  const [r, g, b] = generateClassificationColor(raw || 'Abaixo do Básico');
-                  d.setFillColor(r, g, b);
-                  d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-                  d.setTextColor(255, 255, 255);
-                  d.setFont('helvetica', 'bold');
-                  d.setFontSize(dynamicFontSize);
-                  const centerX = cell.x + cell.width / 2;
-                  const nivelY = cell.y + Math.min(3, cell.height * 0.32) + (dynamicFontSize * 0.35);
-                  d.text(textValue, centerX, nivelY, { align: 'center' });
-                  d.setDrawColor(200, 200, 200);
-                  d.rect(cell.x, cell.y, cell.width, cell.height);
+                  drawProficiencyNivelInPdfCell(d as jsPDF, cell, raw || '—', Math.max(1.2, dynamicFontSize * 0.82), {
+                    compact: true,
+                  });
                 }
                 if (section === 'head' && row.index === 1) {
                   cell.styles.fillColor = [219, 234, 254];
-                  cell.styles.fontSize = Math.max(3, dynamicFontSize - 1);
+                  cell.styles.fontSize = Math.max(1.02, dynamicFontSize - 0.82);
                   cell.styles.fontStyle = 'normal';
                   cell.styles.font = 'courier';
                 }
@@ -2942,7 +3571,7 @@ export default function AcertoNiveis() {
                     cell.styles.fillColor = pct >= 60 ? [220, 252, 231] : [254, 226, 226];
                     cell.styles.textColor = pct >= 60 ? [22, 163, 74] : [239, 68, 68];
                     cell.styles.fontStyle = 'bold';
-                    cell.styles.fontSize = Math.max(3, dynamicFontSize - 1);
+                    cell.styles.fontSize = Math.max(1.08, dynamicFontSize - 0.32);
                   }
                 }
               },
@@ -3030,7 +3659,9 @@ export default function AcertoNiveis() {
             turma: aluno.turma || '',
             nota: Number(aluno.nota_geral ?? 0),
             proficiencia: Number(aluno.proficiencia_geral ?? 0),
-            classificacao: (aluno.nivel_proficiencia_geral || aluno.classificacao || 'Abaixo do Básico') as StudentResult['classificacao'],
+            classificacao: normalizeProficiencyLevelLabel(
+              aluno.nivel_proficiencia_geral || aluno.classificacao || ""
+            ),
             acertos: totalAcertos,
             erros: totalErros,
             questoes_respondidas: totalRespondidas || totalQuestoes,
@@ -3061,7 +3692,9 @@ export default function AcertoNiveis() {
               turma: aluno.turma || '',
               nota: Number(aluno.nota ?? 0),
               proficiencia: Number(aluno.proficiencia ?? 0),
-              classificacao: (aluno.nivel_proficiencia || aluno.classificacao || 'Abaixo do Básico') as StudentResult['classificacao'],
+              classificacao: normalizeProficiencyLevelLabel(
+                aluno.nivel_proficiencia || aluno.classificacao || ""
+              ),
               acertos: totalAcertos,
               erros: totalErros,
               questoes_respondidas: totalRespondidas,
@@ -3213,14 +3846,14 @@ export default function AcertoNiveis() {
         renderDetailedPageForTurma('GERAL', 'VISÃO GERAL', todosAlunosParticipantes, questoesParaUsar);
 
         // 4. Resultado por disciplina Geral
-        if (tabelaDetalhada && Array.isArray(tabelaDetalhada.disciplinas) && tabelaDetalhada.disciplinas.length > 0) {
+        if (tabelaParaUsar && Array.isArray(tabelaParaUsar.disciplinas) && tabelaParaUsar.disciplinas.length > 0) {
           const fakeTurmaName = 'VISÃO GERAL';
           // Create a temporary mapping so the discipline render function works
-          const previousDisciplinas = tabelaDetalhada.disciplinas.map(d => ({
+          const previousDisciplinas = tabelaParaUsar.disciplinas.map(d => ({
             ...d,
             alunos: d.alunos?.map(a => ({ ...a, originalTurma: a.turma, turma: fakeTurmaName }))
           }));
-          const temporarioTabelaDetalhada = { ...tabelaDetalhada, disciplinas: previousDisciplinas };
+          const temporarioTabelaDetalhada = { ...tabelaParaUsar, disciplinas: previousDisciplinas };
           const alunosParticipantesCopiados = todosAlunosParticipantes.map(a => ({ ...a, turma: fakeTurmaName }));
 
           renderDisciplineTablesPagesForTurma(fakeTurmaName, alunosParticipantesCopiados, temporarioTabelaDetalhada as any);
@@ -3267,7 +3900,7 @@ export default function AcertoNiveis() {
 
         // 4. Resultado por disciplina (tabelas por disciplina)
         // Renderizar apenas se houver alunos participantes
-        if (tabelaDetalhada && Array.isArray(tabelaDetalhada.disciplinas) && tabelaDetalhada.disciplinas.length > 0 && alunosParticipantesTurma.length > 0) {
+        if (tabelaParaUsar && Array.isArray(tabelaParaUsar.disciplinas) && tabelaParaUsar.disciplinas.length > 0 && alunosParticipantesTurma.length > 0) {
           renderDisciplineTablesPagesForTurma(turmaName, alunosParticipantesTurma);
         }
 
@@ -3277,7 +3910,7 @@ export default function AcertoNiveis() {
           if (!tabelaParaUsar) return;
 
           // Obter faltosos apenas desta turma
-          const faltososTurma: Array<{ nome: string; turma: string }> = [];
+          const faltososTurma: Array<{ nome: string; turma: string; escola?: string; serie?: string }> = [];
           const alunosIdsProcessados = new Set<string>();
           const turmaNormalizada = normalizeTurmaName(turmaName);
 
@@ -3321,7 +3954,9 @@ export default function AcertoNiveis() {
               alunosIdsProcessados.add(rowId);
               faltososTurma.push({
                 nome: aluno.nome,
-                turma: aluno.turma
+                turma: aluno.turma,
+                escola: aluno.escola,
+                serie: aluno.serie,
               });
             }
           });
@@ -3345,7 +3980,9 @@ export default function AcertoNiveis() {
                 alunosIdsProcessados.add(rowId);
                 faltososTurma.push({
                   nome: aluno.nome,
-                  turma: aluno.turma
+                  turma: aluno.turma,
+                  escola: aluno.escola,
+                  serie: aluno.serie,
                 });
               }
             });
@@ -3371,32 +4008,40 @@ export default function AcertoNiveis() {
           // Preparar dados da tabela
           const bodyRows: string[][] = faltososTurma
             .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
-            .map(faltoso => [faltoso.nome, faltoso.turma]);
+            .map((faltoso) => [
+              faltoso.nome,
+              formatAlunoEscolaTurmaSerie(faltoso),
+              'Pendente',
+            ]);
 
-          // Gerar tabela
+          // Gerar tabela (colunas: Nome | localização | Situação — como modal AnswerSheetResults)
           autoTable(doc, {
             startY: y,
-            head: [['Nome do Aluno', 'Turma']],
+            head: [['Nome do aluno', 'Escola · Turma · Série', 'Situação']],
             body: bodyRows,
             theme: 'grid',
             margin: { left: margin, right: margin },
             styles: {
-              fontSize: 10,
-              cellPadding: 3,
+              fontSize: 7,
+              cellPadding: 1.15,
               lineColor: [200, 200, 200],
-              lineWidth: 0.1
+              lineWidth: 0.1,
+              valign: 'middle',
             },
             headStyles: {
               fillColor: [230, 230, 230],
               textColor: [0, 0, 0],
               fontStyle: 'bold',
-              halign: 'center'
+              halign: 'center',
+              fontSize: 7,
+              cellPadding: 1.15,
             },
             bodyStyles: { textColor: [33, 33, 33] },
             alternateRowStyles: { fillColor: [250, 250, 250] },
             columnStyles: {
-              0: { halign: 'left', cellWidth: (pageWidth - 2 * margin) * 0.7 },
-              1: { halign: 'center', cellWidth: (pageWidth - 2 * margin) * 0.3 }
+              0: { halign: 'left', cellWidth: (pageWidth - 2 * margin) * 0.34 },
+              1: { halign: 'left', cellWidth: (pageWidth - 2 * margin) * 0.46 },
+              2: { halign: 'center', cellWidth: (pageWidth - 2 * margin) * 0.2 }
             }
           });
 
@@ -3425,12 +4070,12 @@ export default function AcertoNiveis() {
         <div className="space-y-1.5">
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
             <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
-            Acerto e Níveis
+            Acerto e Níveis — Cartão resposta
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base">
-            {reportAnswerSheet
-              ? "Selecione um cartão resposta e exporte o PDF consolidado."
-              : "Selecione uma avaliação e exporte o PDF consolidado."}
+            {isAnswerSheetAgregados
+              ? "Dados de GET /answer-sheets/resultados-agregados. Selecione estado, município e cartão resposta para exportar o PDF."
+              : "Selecione estado, município e cartão resposta e exporte o PDF consolidado (lista via API de resultados)."}
           </p>
           {user?.role && (
             <p className="text-sm text-blue-600 mt-1">
@@ -3450,61 +4095,152 @@ export default function AcertoNiveis() {
 
       <Card className="overflow-visible">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">Filtros de Seleção</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            {isAnswerSheetAgregados ? (
+              <>
+                <Filter className="h-5 w-5" />
+                Filtros (cartão resposta)
+              </>
+            ) : (
+              "Filtros (cartão resposta)"
+            )}
+          </CardTitle>
+          <CardDescription>
+            {isAnswerSheetAgregados
+              ? "Estado, município e cartão resposta são obrigatórios."
+              : "Estado, município e cartão resposta são obrigatórios; escola, série e turma refinam o recorte."}
+          </CardDescription>
         </CardHeader>
         <CardContent className="overflow-visible">
-          <div className="flex items-start gap-3 mb-6 rounded-lg border border-border bg-muted/30 p-4">
-            <Checkbox
-              id="report-answer-sheet-acertos"
-              checked={reportAnswerSheet}
-              onCheckedChange={(v) => {
-                const checked = v === true;
-                setReportAnswerSheet(checked);
-                setSelectedEvaluationId("");
-                setSelectedSchoolId("");
-                setSelectedGradeId("");
-                setSelectedClassId("");
-                setSchools([]);
-                setGrades([]);
-                setClasses([]);
-                setEvaluations([]);
-                setEvaluationInfo(null);
-                setStudents([]);
-                setAllStudents([]);
-                setDetailedReport(null);
-                setTabelaDetalhada(null);
-                setAllTabelaDetalhada(null);
-                setEstatisticasGerais(null);
-                setOpcoesProximosFiltros(null);
-                setSkillsMapping({});
-                answerSheetSkillsRef.current = [];
-                fetchEvaluationDataCacheRef.current.clear();
-                fetchEvaluationDataInFlightRef.current.clear();
-                if (selectedState && selectedMunicipality) {
-                  void (async () => {
-                    try {
-                      setIsLoading(true);
-                      const avs = await EvaluationResultsApiService.getFilterEvaluations({
-                        estado: selectedState,
-                        municipio: selectedMunicipality,
-                        ...(checked ? { report_entity_type: REPORT_ENTITY_TYPE_ANSWER_SHEET } : {}),
-                        ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
-                      });
-                      setEvaluations(avs);
-                    } catch {
-                      // silencioso
-                    } finally {
-                      setIsLoading(false);
-                    }
-                  })();
-                }
-              }}
-            />
-            <Label htmlFor="report-answer-sheet-acertos" className="text-sm font-normal leading-snug cursor-pointer">
-              Marque para ver relatórios de um cartão resposta
-            </Label>
-          </div>
-
+          {isAnswerSheetAgregados ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 w-full min-w-0">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Estado</label>
+                <Select value={asEstado} onValueChange={setAsEstadoAndReset} disabled={isLoadingFiltersAg}>
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue placeholder="Selecione o estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {(asOpcoes.estados ?? []).map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {asNorm(s)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Município</label>
+                <Select
+                  value={asMunicipio}
+                  onValueChange={setAsMunicipioAndReset}
+                  disabled={isLoadingFiltersAg || asEstado === "all"}
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue placeholder="Selecione o município" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {(asOpcoes.municipios ?? []).map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {asNorm(m)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Cartão resposta</label>
+                <Select
+                  value={asGabarito}
+                  onValueChange={setAsGabaritoAndReset}
+                  disabled={isLoadingFiltersAg || asMunicipio === "all"}
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue placeholder="Selecione o cartão resposta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {(asOpcoes.gabaritos ?? []).map((g) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {asNorm(g)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Escola</label>
+                <Select
+                  value={asEscola}
+                  onValueChange={setAsEscolaAndReset}
+                  disabled={isLoadingFiltersAg || asGabarito === "all"}
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {(asOpcoes.escolas ?? []).map((e) => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {asNorm(e)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Série</label>
+                <Select
+                  value={asSerie}
+                  onValueChange={setAsSerieAndReset}
+                  disabled={isLoadingFiltersAg || asEscola === "all"}
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {(asOpcoes.series ?? []).map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {asNorm(s)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Turma</label>
+                <Select
+                  value={asTurma}
+                  onValueChange={(v) => {
+                    setAsTurma(v);
+                    setAllStudents([]);
+                    setStudents([]);
+                    setAllTabelaDetalhada(null);
+                    setTabelaDetalhada(null);
+                    setEstatisticasGerais(null);
+                    setEvaluationInfo(null);
+                  }}
+                  disabled={isLoadingFiltersAg || asSerie === "all"}
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {(asOpcoes.turmas ?? []).map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {asNorm(t)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          ) : (
+            <>
           {/* Filtros Principais */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6 w-full min-w-0">
             <div>
@@ -3552,17 +4288,13 @@ export default function AcertoNiveis() {
               </Select>
             </div>
             <div>
-              <div className="text-sm font-medium mb-2">
-                {reportAnswerSheet ? "Cartão resposta" : "Avaliação"}
-              </div>
+              <div className="text-sm font-medium mb-2">Cartão resposta</div>
               <Select value={selectedEvaluationId} onValueChange={handleSelectEvaluation} disabled={!selectedMunicipality}>
                 <SelectTrigger className="w-full">
                   <SelectValue
                     placeholder={
                       selectedMunicipality
-                        ? reportAnswerSheet
-                          ? "Selecione o cartão resposta"
-                          : "Selecione uma avaliação"
+                        ? "Selecione o cartão resposta"
                         : "Primeiro selecione um município"
                     }
                   />
@@ -3585,7 +4317,7 @@ export default function AcertoNiveis() {
             </div>
           </div>
 
-          {/* Filtros Específicos (apenas quando avaliação selecionada) */}
+          {/* Filtros Específicos (apenas quando um cartão resposta está selecionado) */}
           {selectedEvaluationId && (
             <div className="border-t pt-6">
               <div className="flex items-center justify-between mb-4">
@@ -3653,9 +4385,7 @@ export default function AcertoNiveis() {
                           placeholder={
                             selectedEvaluationId
                               ? "Todas as escolas"
-                              : reportAnswerSheet
-                                ? "Primeiro selecione um cartão resposta"
-                                : "Primeiro selecione uma avaliação"
+                              : "Primeiro selecione um cartão resposta"
                           }
                         />
                       )}
@@ -3702,22 +4432,33 @@ export default function AcertoNiveis() {
             </div>
           )}
 
+            </>
+          )}
+
           {/* Informações de Status */}
+          {!isAnswerSheetAgregados && (
           <div className="mt-6 p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400 text-sm">
             <div className="flex items-start gap-2">
               <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
               <div>
-                <span className="font-semibold">Hierarquia dos Filtros:</span> Estado → Município →{" "}
-                {reportAnswerSheet ? "Cartão resposta" : "Avaliação"}
+                <span className="font-semibold">Hierarquia dos Filtros:</span> Estado → Município → Cartão resposta
                 <br />
                 <span className="text-xs">Os filtros específicos (Escola, Série, Turma) são opcionais e permitem refinar os resultados.</span>
               </div>
             </div>
           </div>
+          )}
+
+          {isAnswerSheetAgregados && (
+            <div className="mt-6 p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400 text-sm text-xs leading-relaxed">
+              <strong className="font-semibold">Ordem dos filtros:</strong> Estado → Município → Cartão resposta → Escola → Série → Turma.
+              Os três últimos são opcionais para refinar o recorte (mesma API que Resultados / Relatório Escolar Cartão).
+            </div>
+          )}
 
           {/* Botão de Geração */}
           <div className="mt-6 flex flex-col items-end gap-2">
-            {user?.role === "professor" && !selectedClassId && (
+            {user?.role === "professor" && (isAnswerSheetAgregados ? asTurma === "all" : !selectedClassId) && (
               <p className="text-sm text-amber-600 dark:text-amber-400">
                 Selecione uma turma para imprimir o relatório.
               </p>
@@ -3725,10 +4466,16 @@ export default function AcertoNiveis() {
             <Button
               onClick={handleGeneratePDF}
               disabled={
-                !selectedEvaluationId ||
-                isLoading ||
-                (!allTabelaDetalhada && !detailedReport && allStudents.length === 0) ||
-                (user?.role === "professor" && !selectedClassId)
+                isAnswerSheetAgregados
+                  ? !allRequiredAgregadosFilters ||
+                    isLoadingAgregadosData ||
+                    isLoading ||
+                    (!allTabelaDetalhada && !detailedReport && allStudents.length === 0) ||
+                    (user?.role === "professor" && asTurma === "all")
+                  : !selectedEvaluationId ||
+                    isLoading ||
+                    (!allTabelaDetalhada && !detailedReport && allStudents.length === 0) ||
+                    (user?.role === "professor" && !selectedClassId)
               }
               className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
             >
@@ -3739,25 +4486,55 @@ export default function AcertoNiveis() {
         </CardContent>
       </Card>
 
+      {isAnswerSheetAgregados && !allRequiredAgregadosFilters && !isLoadingAgregadosData && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-10">
+            <div className="w-14 h-14 bg-muted rounded-full flex items-center justify-center mb-3">
+              <Filter className="h-7 w-7 text-muted-foreground" />
+            </div>
+            <h3 className="text-base font-medium text-foreground mb-2">Selecione os filtros obrigatórios</h3>
+            <p className="text-muted-foreground text-center max-w-md text-sm">
+              Escolha <strong>Estado</strong>, <strong>Município</strong> e <strong>Cartão resposta</strong>.{" "}
+              <strong>Escola</strong>, <strong>Série</strong> e <strong>Turma</strong> refinam o recorte.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {isAnswerSheetAgregados && allRequiredAgregadosFilters && isLoadingAgregadosData && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-10">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-4" />
+            <p className="text-muted-foreground">Carregando resultados agregados…</p>
+          </CardContent>
+        </Card>
+      )}
+
       {evaluationInfo && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <div className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full"></div>
-              Resumo da Avaliação Selecionada
+              Resumo do cartão resposta
             </CardTitle>
           </CardHeader>
           <CardContent>
             {/* Informações Básicas */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-6">
               <div className="p-3 bg-muted rounded-lg">
-                <span className="text-muted-foreground text-xs uppercase tracking-wide">Avaliação</span>
+                <span className="text-muted-foreground text-xs uppercase tracking-wide">Cartão resposta</span>
                 <div className="font-semibold text-foreground mt-1">{evaluationInfo.titulo}</div>
               </div>
               <div className="p-3 bg-muted rounded-lg">
                 <span className="text-muted-foreground text-xs uppercase tracking-wide">Escola</span>
                 <div className="font-semibold text-foreground mt-1">
-                  {selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas'}
+                  {isAnswerSheetAgregados
+                    ? asEscola !== "all"
+                      ? asNorm((asOpcoes.escolas ?? []).find((e) => e.id === asEscola) ?? { id: asEscola })
+                      : "Todas as Escolas"
+                    : selectedSchoolId
+                      ? schools.find((s) => s.id === selectedSchoolId)?.nome || "Escola Selecionada"
+                      : "Todas as Escolas"}
                 </div>
               </div>
               <div className="p-3 bg-muted rounded-lg">
@@ -3774,6 +4551,9 @@ export default function AcertoNiveis() {
                         )
                       : null) ||
                     evaluationInfo?.serie ||
+                    (isAnswerSheetAgregados && asSerie !== "all"
+                      ? asNorm((asOpcoes.series ?? []).find((s) => s.id === asSerie) ?? { id: asSerie })
+                      : null) ||
                     (selectedGradeId ? grades.find(g => g.id === selectedGradeId)?.nome : null) ||
                     'Série não informada'}
                 </div>
@@ -3783,7 +4563,7 @@ export default function AcertoNiveis() {
             {/* Estatísticas da Avaliação — único bloco de cards (sem repetir Informações Gerais) */}
             {(detailedReport || students.length > 0 || estatisticasGerais) && (
               <div className="border-t pt-6">
-                <h3 className="text-lg font-semibold mb-4">Estatísticas da Avaliação</h3>
+                <h3 className="text-lg font-semibold mb-4">Estatísticas do cartão resposta</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
                   <div className="text-center p-4 bg-slate-50 dark:bg-slate-900/40 rounded-lg">
                     <div className="text-2xl font-bold text-slate-700 dark:text-slate-300">
@@ -3807,11 +4587,37 @@ export default function AcertoNiveis() {
                     </div>
                     <div className="text-sm text-muted-foreground mt-1">Participantes</div>
                   </div>
-                  <div className="text-center p-4 bg-red-50 dark:bg-red-950/30 rounded-lg">
+                  <div
+                    role="button"
+                    tabIndex={evaluationInfo ? 0 : -1}
+                    onClick={() => {
+                      if (evaluationInfo) setShowAbsentStudentsModal(true);
+                    }}
+                    onKeyDown={(e) => {
+                      if (!evaluationInfo) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setShowAbsentStudentsModal(true);
+                      }
+                    }}
+                    className={
+                      evaluationInfo
+                        ? "text-center p-4 bg-red-50 dark:bg-red-950/30 rounded-lg cursor-pointer hover:bg-red-100/80 dark:hover:bg-red-950/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        : "text-center p-4 bg-red-50 dark:bg-red-950/30 rounded-lg"
+                    }
+                    aria-label="Ver faltosos e pendentes"
+                  >
                     <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-                      {typeof estatisticasGerais?.alunos_ausentes === 'number' ? estatisticasGerais.alunos_ausentes : 0}
+                      {students.length > 0
+                        ? absentStudents.length
+                        : typeof estatisticasGerais?.alunos_ausentes === "number"
+                          ? estatisticasGerais.alunos_ausentes
+                          : 0}
                     </div>
                     <div className="text-sm text-muted-foreground mt-1">Faltosos</div>
+                    {evaluationInfo && (
+                      <div className="text-xs text-muted-foreground mt-1.5">Clique para ver a lista</div>
+                    )}
                   </div>
                   <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
                     <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
@@ -3837,24 +4643,51 @@ export default function AcertoNiveis() {
                   </div>
                 </div>
 
-                {(selectedSchoolId || selectedGradeId || selectedClassId) && (
+                {(isAnswerSheetAgregados
+                  ? asEscola !== "all" || asSerie !== "all" || asTurma !== "all"
+                  : selectedSchoolId || selectedGradeId || selectedClassId) && (
                   <div className="mt-6 p-4 bg-muted rounded-lg">
                     <h4 className="font-medium text-foreground mb-2">Filtros Aplicados:</h4>
                     <div className="flex flex-wrap gap-2">
-                      {selectedSchoolId && (
-                        <Badge variant="secondary" className="text-xs">
-                          Escola: {schools.find(s => s.id === selectedSchoolId)?.nome || 'Selecionada'}
-                        </Badge>
-                      )}
-                      {selectedGradeId && (
-                        <Badge variant="secondary" className="text-xs">
-                          Série: {grades.find(g => g.id === selectedGradeId)?.nome || 'Selecionada'}
-                        </Badge>
-                      )}
-                      {selectedClassId && (
-                        <Badge variant="secondary" className="text-xs">
-                          Turma: {classes.find(c => c.id === selectedClassId)?.nome || 'Selecionada'}
-                        </Badge>
+                      {isAnswerSheetAgregados ? (
+                        <>
+                          {asEscola !== "all" && (
+                            <Badge variant="secondary" className="text-xs">
+                              Escola:{" "}
+                              {asNorm((asOpcoes.escolas ?? []).find((e) => e.id === asEscola) ?? { id: asEscola })}
+                            </Badge>
+                          )}
+                          {asSerie !== "all" && (
+                            <Badge variant="secondary" className="text-xs">
+                              Série:{" "}
+                              {asNorm((asOpcoes.series ?? []).find((s) => s.id === asSerie) ?? { id: asSerie })}
+                            </Badge>
+                          )}
+                          {asTurma !== "all" && (
+                            <Badge variant="secondary" className="text-xs">
+                              Turma:{" "}
+                              {asNorm((asOpcoes.turmas ?? []).find((t) => t.id === asTurma) ?? { id: asTurma })}
+                            </Badge>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {selectedSchoolId && (
+                            <Badge variant="secondary" className="text-xs">
+                              Escola: {schools.find(s => s.id === selectedSchoolId)?.nome || 'Selecionada'}
+                            </Badge>
+                          )}
+                          {selectedGradeId && (
+                            <Badge variant="secondary" className="text-xs">
+                              Série: {grades.find(g => g.id === selectedGradeId)?.nome || 'Selecionada'}
+                            </Badge>
+                          )}
+                          {selectedClassId && (
+                            <Badge variant="secondary" className="text-xs">
+                              Turma: {classes.find(c => c.id === selectedClassId)?.nome || 'Selecionada'}
+                            </Badge>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -3864,6 +4697,77 @@ export default function AcertoNiveis() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={showAbsentStudentsModal} onOpenChange={setShowAbsentStudentsModal}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-red-600" />
+              Faltosos / Pendentes
+              {evaluationInfo?.titulo && (
+                <span className="text-sm font-normal text-muted-foreground ml-1">· {evaluationInfo.titulo}</span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto flex-1 min-h-0 py-2">
+            {absentStudents.length > 0 ? (
+              <div className="space-y-4">
+                <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-3 h-3 bg-red-500 dark:bg-red-400 rounded-full shrink-0" />
+                    <span className="font-semibold text-red-800 dark:text-red-400">
+                      {absentStudents.length} {absentStudents.length === 1 ? "aluno" : "alunos"} pendente(s)
+                    </span>
+                  </div>
+                  <p className="text-sm text-red-700 dark:text-red-400">
+                    Estes alunos ainda não entregaram ou não tiveram o cartão resposta corrigido.
+                  </p>
+                </div>
+                <div className="grid gap-3">
+                  {absentStudents.map((a) => (
+                    <div
+                      key={a.id}
+                      className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 bg-red-100 dark:bg-red-950/30 rounded-full flex items-center justify-center shrink-0">
+                          <span className="text-red-600 dark:text-red-400 font-semibold text-sm">
+                            {a.nome.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium text-foreground truncate">{a.nome}</div>
+                          <div className="text-sm text-muted-foreground truncate">
+                            {formatAlunoEscolaTurmaSerie(a)}
+                          </div>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="text-red-600 dark:text-red-400 border-red-300 dark:border-red-800 shrink-0">
+                        Pendente
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="w-16 h-16 bg-green-100 dark:bg-green-950/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Check className="h-8 w-8 text-green-600 dark:text-green-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground mb-2">Nenhum faltoso</h3>
+                <p className="text-muted-foreground">
+                  Todos os alunos do escopo já têm resultado ou estão como participantes.
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end pt-4 border-t mt-4">
+            <Button variant="outline" onClick={() => setShowAbsentStudentsModal(false)}>
+              Fechar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
