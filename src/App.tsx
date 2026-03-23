@@ -53,6 +53,7 @@ const DetailedResultsView = React.lazy(() => import("./components/evaluations/De
 const StudentDetailedResults = React.lazy(() => import("./components/evaluations/StudentDetailedResults"));
 const AnaliseAvaliacoes = React.lazy(() => import("./pages/AnaliseAvaliacoes"));
 const AcertoNiveis = React.lazy(() => import("./pages/AcertoNiveis"));
+const AcertoNiveisCartao = React.lazy(() => import("./pages/AcertoNiveisCartao"));
 const RelatorioEscolar = React.lazy(() => import("./pages/RelatorioEscolar"));
 const RelatorioEscolarCartaoResposta = React.lazy(() => import("./pages/RelatorioEscolarCartaoResposta"));
 const PhysicalTestPage = React.lazy(() => import("./pages/PhysicalTestPage"));
@@ -361,6 +362,15 @@ const App = () => {
               {/* Rotas de Relatórios */}
               <Route path="/app/relatorios/analise-avaliacoes" element={<PrivateRoute><AnaliseAvaliacoes /></PrivateRoute>} />
               <Route path="/app/relatorios/acerto-niveis" element={<PrivateRoute><AcertoNiveis /></PrivateRoute>} />
+              <Route
+                path="/app/relatorios/acerto-niveis-cartao"
+                element={
+                  <PrivateRoute>
+                    <AcertoNiveisCartao answerSheetsResultadosAgregados />
+                  </PrivateRoute>
+                }
+              />
+              <Route path="/app/relatorios/acerto-niveis-cartao-resposta" element={<Navigate to="/app/relatorios/acerto-niveis-cartao" replace />} />
               <Route path="/app/relatorios/relatorio-escolar" element={<PrivateRoute><RelatorioEscolar /></PrivateRoute>} />
               <Route path="/app/relatorios/relatorio-escolar-cartao-resposta" element={<PrivateRoute><RelatorioEscolarCartaoResposta /></PrivateRoute>} />
             </Route>

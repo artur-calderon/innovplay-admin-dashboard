@@ -8,6 +8,26 @@ export type ReportProficiencyLabel =
   | "Adequado"
   | "Avançado";
 
+/** Rótulo canônico para PDF/tags (desconhecido → Abaixo do Básico). */
+export function normalizeProficiencyLevelLabel(
+  raw: string | null | undefined
+): ReportProficiencyLabel {
+  const t = (raw ?? "").trim();
+  if (!t || t === "—" || t === "-") return "Abaixo do Básico";
+  const lower = t
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (lower === "avancado") return "Avançado";
+  if (lower === "adequado") return "Adequado";
+  if (lower === "basico") return "Básico";
+  if (lower === "abaixo do basico") return "Abaixo do Básico";
+  if (t === "Avançado" || t === "Adequado" || t === "Básico" || t === "Abaixo do Básico") {
+    return t;
+  }
+  return "Abaixo do Básico";
+}
+
 /**
  * Padroniza o visual das tags de proficiência para ficar igual ao estilo
  * usado no `RelatorioEscolar` (mesma tipografia/paddings e mesmas cores).
