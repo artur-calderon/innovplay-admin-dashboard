@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { getRoleDisplayName } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { formatSlugForHost } from "@/lib/subdomain";
 
 export interface CityDomain {
   id: string;
@@ -193,7 +194,7 @@ export default function Domains() {
                             <ExternalLink className="h-3.5 w-3.5 flex-shrink-0 ml-auto" />
                           </a>
                           <a
-                            href={`http://${d.slug}.localhost:8080`}
+                            href={`http://${formatSlugForHost(d.slug)}.localhost:8080`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className={cn(
@@ -202,7 +203,7 @@ export default function Domains() {
                               "transition-colors hover:bg-muted/40 hover:text-foreground"
                             )}
                           >
-                            <span className="truncate">{d.slug}.localhost:8080</span>
+                            <span className="truncate">{formatSlugForHost(d.slug)}.localhost:8080</span>
                             <ExternalLink className="h-3 w-3 flex-shrink-0 ml-auto" />
                           </a>
                         </div>
