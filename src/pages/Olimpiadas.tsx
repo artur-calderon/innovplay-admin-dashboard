@@ -171,6 +171,7 @@ export default function Olimpiadas() {
       });
 
       setOlimpiadas(olimpiadasData);
+      return olimpiadasData;
     } catch (error) {
       console.error('Erro ao carregar olimpíadas:', error);
       toast({
@@ -180,6 +181,7 @@ export default function Olimpiadas() {
       });
       // Garantir que olimpiadas seja um array vazio em caso de erro
       setOlimpiadas([]);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -187,42 +189,39 @@ export default function Olimpiadas() {
 
   const getStatus = (olimpiada: any): OlimpiadaStatus => {
     // Verificar se a olimpíada foi aplicada
-    // Pode estar em is_applied, is_active, ou ter applied_classes com turmas aplicadas
-    const hasAppliedClasses = olimpiada.applied_classes && 
-                              Array.isArray(olimpiada.applied_classes) && 
+    const hasAppliedClasses = olimpiada.applied_classes &&
+                              Array.isArray(olimpiada.applied_classes) &&
                               olimpiada.applied_classes.length > 0 &&
                               olimpiada.applied_classes.some((ac: any) => ac.class_test_id !== null || ac.status === 'applied');
-    
-    // ✅ NOVO: aplicação individual (alunos) também deve contar como aplicada
+
+    // application_info com application/expiration = já foi aplicada (backend preenche ao aplicar)
+    const hasApplicationInfo = olimpiada.application_info &&
+      (olimpiada.application_info.application || olimpiada.application_info.expiration);
+
+    // selected_students vindo do enriquecimento (getIndividualAppliedStudents) = já aplicada para esses alunos
     const hasIndividualApplied =
       olimpiada.selected_students &&
       Array.isArray(olimpiada.selected_students) &&
       olimpiada.selected_students.length > 0;
 
-    const isApplied = olimpiada.is_applied || olimpiada.is_active || hasAppliedClasses || hasIndividualApplied;
-    
-    // Se não foi aplicada ainda, considerar como agendada (não rascunho)
-    // Isso evita o status "draft" que não deve existir para olimpíadas
+    const isApplied = olimpiada.is_applied || olimpiada.is_active || hasAppliedClasses || hasApplicationInfo || hasIndividualApplied;
+
+    // Ainda não aplicada → agendada (mostra botão Aplicar)
     if (!isApplied) {
-      // Se tem turmas selecionadas mas ainda não aplicada, considerar como agendada
       if (olimpiada.classes && Array.isArray(olimpiada.classes) && olimpiada.classes.length > 0) {
         return 'scheduled';
       }
-      // Se não tem turmas, ainda considerar como agendada (será aplicada automaticamente)
       return 'scheduled';
     }
-    
-    // Se foi aplicada, determinar status baseado nas datas
+
+    // Já aplicada: usar datas da aplicação (application_info) para active/completed.
+    // Só "agendada" se application_info.application estiver no futuro; senão ativa ou concluída.
     const now = new Date();
-    const startDate = olimpiada.startDateTime || olimpiada.time_limit;
-    const endDate = olimpiada.endDateTime || olimpiada.end_time;
-    
-    if (startDate && new Date(startDate) > now) {
-      return 'scheduled';
-    }
-    if (endDate && new Date(endDate) < now) {
-      return 'completed';
-    }
+    const appStart = olimpiada.application_info?.application;
+    const endDate = olimpiada.application_info?.expiration || olimpiada.endDateTime || olimpiada.end_time;
+
+    if (appStart && new Date(appStart) > now) return 'scheduled';
+    if (endDate && new Date(endDate) < now) return 'completed';
     return 'active';
   };
 
@@ -658,9 +657,10 @@ export default function Olimpiadas() {
               : `A olimpíada foi enviada para ${n} alunos selecionados.`,
         });
         
-        // ✅ Preservar selected_students antes de recarregar
+        // ✅ Preservar selected_students e datas da aplicação antes de recarregar
         const preservedSelectedStudents = studentIds;
         const preservedOlimpiadaId = applyingOlimpiadaId;
+        const preservedApplicationInfo = { application: startDateTimeISO, expiration: endDateTimeISO };
         
         setShowApplyDialog(false);
         setApplyingOlimpiadaId(null);
@@ -668,27 +668,20 @@ export default function Olimpiadas() {
         setApplyEndDateTime('');
         setApplyingOlimpiada(null);
         
-        // Recarregar lista e depois mesclar selected_students preservados
-        await loadOlimpiadas();
-        
-        // ✅ Mesclar selected_students preservados após recarregar (garantir que não seja sobrescrito)
-        setOlimpiadas((prev) =>
-          prev.map((o) => {
-            if (o.id === preservedOlimpiadaId) {
-              // ✅ Garantir que selected_students seja preservado mesmo se o backend não retornar
-              const finalSelectedStudents = preservedSelectedStudents.length > 0 
-                ? preservedSelectedStudents 
-                : (o.selected_students || []);
-              return { 
-                ...o, 
-                selected_students: finalSelectedStudents, 
-                totalStudents: finalSelectedStudents.length > 0 ? finalSelectedStudents.length : o.totalStudents
-              };
-            }
-            return o;
-          })
-        );
-        
+        const list = await loadOlimpiadas();
+        const newStatus: OlimpiadaStatus = new Date(preservedApplicationInfo.expiration) < new Date() ? 'completed' : 'active';
+        const merged = (Array.isArray(list) ? list : []).map((o) => {
+          if (o.id !== preservedOlimpiadaId) return o;
+          const finalSelectedStudents = preservedSelectedStudents.length > 0 ? preservedSelectedStudents : (o.selected_students || []);
+          return {
+            ...o,
+            selected_students: finalSelectedStudents,
+            totalStudents: finalSelectedStudents.length > 0 ? finalSelectedStudents.length : o.totalStudents,
+            application_info: preservedApplicationInfo,
+            status: newStatus,
+          };
+        });
+        setOlimpiadas(merged);
         setIsApplying(false);
         return;
       }
@@ -700,19 +693,30 @@ export default function Olimpiadas() {
       if (olimpiada.classes && Array.isArray(olimpiada.classes) && olimpiada.classes.length > 0) {
         const firstItem = olimpiada.classes[0];
         // Verificar se é array de objetos com propriedade id
-        if (typeof firstItem === 'object' && firstItem !== null && 'id' in firstItem) {
-          classIds = olimpiada.classes.map((item: any) => String(item.id));
-        } else {
-          // Array direto de strings/números
+        if (firstItem == null) {
           classIds = olimpiada.classes.map((item: any) => String(item));
+        } else {
+          const item = firstItem;
+          const hasId = item != null && typeof item === 'object' && 'id' in (item as object);
+          if (hasId) {
+            classIds = olimpiada.classes.map((c: any) => String(c?.id ?? c));
+          } else {
+            classIds = olimpiada.classes.map((c: any) => String(c));
+          }
         }
       } else if (olimpiada.applied_classes && Array.isArray(olimpiada.applied_classes)) {
         // Usar applied_classes como fallback
         const firstItem = olimpiada.applied_classes[0];
-        if (typeof firstItem === 'object' && firstItem !== null && 'id' in firstItem) {
-          classIds = olimpiada.applied_classes.map((item: any) => String(item.id));
-        } else {
+        if (firstItem == null) {
           classIds = olimpiada.applied_classes.map((item: any) => String(item));
+        } else {
+          const item = firstItem;
+          const hasId = item != null && typeof item === 'object' && 'id' in (item as object);
+          if (hasId) {
+            classIds = olimpiada.applied_classes.map((c: any) => String(c?.id ?? c));
+          } else {
+            classIds = olimpiada.applied_classes.map((c: any) => String(c));
+          }
         }
       }
       
@@ -808,12 +812,19 @@ export default function Olimpiadas() {
             ? 'A olimpíada foi enviada para 1 turma.'
             : `A olimpíada foi enviada para ${turmasCount} turmas.`,
       });
+      const preservedId = applyingOlimpiadaId;
+      const preservedAppInfo = { application: startDateTimeISO, expiration: endDateTimeISO };
       setShowApplyDialog(false);
       setApplyingOlimpiadaId(null);
       setApplyStartDateTime('');
       setApplyEndDateTime('');
       setApplyingOlimpiada(null);
-      loadOlimpiadas();
+      const list = await loadOlimpiadas();
+      const newStatus: OlimpiadaStatus = new Date(preservedAppInfo.expiration) < new Date() ? 'completed' : 'active';
+      const merged = (Array.isArray(list) ? list : []).map((o) =>
+        o.id === preservedId ? { ...o, application_info: preservedAppInfo, status: newStatus } : o
+      );
+      setOlimpiadas(merged);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } }; message?: string };
       const message =
@@ -854,18 +865,18 @@ export default function Olimpiadas() {
 
   return (
     <div className="container mx-auto py-6 px-4 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Trophy className="w-8 h-8 text-blue-600" />
+      {/* Header — mobile: título/desc alinhados, botões centralizados abaixo */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <Trophy className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
             Olimpíadas
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground text-sm sm:text-base">
             Gerencie olimpíadas para treinamento de alunos
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-center gap-2 w-full sm:w-auto sm:justify-end">
           <Button
             variant="outline"
             onClick={() => setShowAllResultsModal(true)}

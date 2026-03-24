@@ -42,17 +42,19 @@ interface Evaluation {
     id: string;
     title: string;
     description: string | null;
-    course: {
+    course?: {
         id: string;
         name: string;
     } | null;
+    education_stage_id?: string;
+    education_stage?: { id: string; name?: string } | null;
     model: string;
-    subject: {
+    subject?: {
         id: string;
         name: string;
     };
-    subjects?: Array<{ id: string; name: string }>;
-    subjects_info?: Array<{ id: string; name: string }>;
+    subjects?: Array<{ id: string; name: string } | { subject: string; name?: string }>;
+    subjects_info?: Array<{ id: string; name: string } | { subject: string; name?: string }>;
     grade: {
         id: string;
         name: string;
@@ -173,29 +175,32 @@ const EditEvaluation = () => {
                     return { id: s.id, name: s.name };
                 }) || [];
 
-                // Converter turmas - tentar de applied_classes primeiro, depois de classes
+                // Converter turmas - PRIORIDADE: classes (IDs vinculados), depois applied_classes como fallback
                 let classesFormatted: Array<{ id: string; name: string; school?: { id: string; name: string } }> = [];
 
-                if (evaluation.applied_classes && evaluation.applied_classes.length > 0) {
-                    // Usar applied_classes que tem informações completas
-                    classesFormatted = evaluation.applied_classes.map((ac: AppliedClass) => ({
-                        id: ac.class.id,
-                        name: ac.class.name,
-                        school: ac.class.school,
-                    }));
-                } else if (evaluation.classes && evaluation.classes.length > 0) {
-                    // Se não tiver applied_classes, carregar informações das turmas
+                if (evaluation.classes && evaluation.classes.length > 0) {
+                    // Normalizar para lista de IDs (API pode devolver strings ou objetos com id/name)
+                    const classIds = (Array.isArray(evaluation.classes) ? evaluation.classes : [evaluation.classes])
+                        .map((item: string | { id?: string }) =>
+                            typeof item === "object" && item !== null && "id" in item
+                                ? String((item as { id?: string }).id || "")
+                                : String(item)
+                        )
+                        .filter((id) => id);
+
                     try {
-                        const classesPromises = (Array.isArray(evaluation.classes) ? evaluation.classes : [evaluation.classes]).map(async (classId: string) => {
+                        const classesPromises = classIds.map(async (classId: string) => {
                             try {
                                 const classRes = await api.get(`/classes/${classId}`);
                                 return {
                                     id: classRes.data.id,
                                     name: classRes.data.name,
-                                    school: classRes.data.school ? {
-                                        id: classRes.data.school.id,
-                                        name: classRes.data.school.name,
-                                    } : undefined,
+                                    school: classRes.data.school
+                                        ? {
+                                              id: classRes.data.school.id,
+                                              name: classRes.data.school.name,
+                                          }
+                                        : undefined,
                                 };
                             } catch {
                                 return { id: classId, name: `Turma ${classId}` };
@@ -203,9 +208,31 @@ const EditEvaluation = () => {
                         });
                         classesFormatted = await Promise.all(classesPromises);
                     } catch (error) {
-                        console.error("Erro ao carregar informações das turmas:", error);
+                        console.error("Erro ao carregar informações das turmas (classes):", error);
                     }
+                } else if (evaluation.applied_classes && evaluation.applied_classes.length > 0) {
+                    // Fallback: usar applied_classes quando não houver classes definidas
+                    classesFormatted = evaluation.applied_classes.map((ac: AppliedClass) => ({
+                        id: ac.class.id,
+                        name: ac.class.name,
+                        school: ac.class.school,
+                    }));
                 }
+
+                // Normalizar disciplinas: API pode retornar { id, name } ou { subject: id, name? }
+                const rawSubjects = evaluation.subjects || evaluation.subjects_info || (evaluation.subject ? [evaluation.subject] : []);
+                const subjectsNormalized = Array.isArray(rawSubjects)
+                    ? rawSubjects.map((s: { id?: string; name?: string; subject?: string }) => ({
+                        id: s.id ?? s.subject ?? "",
+                        name: s.name ?? "",
+                    })).filter((s: { id: string }) => s.id)
+                    : [];
+
+                // Curso: API pode retornar course ou education_stage_id / education_stage
+                const courseId = evaluation.course?.id
+                    || evaluation.education_stage_id
+                    || (evaluation.education_stage && (typeof evaluation.education_stage === "object" ? evaluation.education_stage.id : evaluation.education_stage))
+                    || "";
 
                 // Converter dados da avaliação para o formato do formulário
                 const formData: EvaluationFormData = {
@@ -214,15 +241,15 @@ const EditEvaluation = () => {
                     municipalities: evaluation.municipalities?.map((m: Municipality | string) =>
                         typeof m === 'string' ? m : m.id) || [],
                     schools: schoolsFormatted.map(s => s.id),
-                    course: evaluation.course?.id || "",
+                    course: courseId,
                     grade: evaluation.grade?.id || "",
                     classId: classesFormatted[0]?.id || "",
                     type: evaluation.type || "AVALIACAO",
                     model: (evaluation.model === "SAEB" || evaluation.model === "PROVA" || evaluation.model === "AVALIE")
                         ? evaluation.model
                         : "SAEB",
-                    subjects: evaluation.subjects || evaluation.subjects_info || (evaluation.subject ? [evaluation.subject] : []),
-                    subject: evaluation.subject?.id || "",
+                    subjects: subjectsNormalized.length > 0 ? subjectsNormalized : (evaluation.subject ? [{ id: evaluation.subject.id, name: evaluation.subject.name || "" }] : []),
+                    subject: evaluation.subject?.id || subjectsNormalized[0]?.id || "",
                     questions: questionsData,
                     startDateTime: evaluation.time_limit || "",
                     duration: evaluation.duration?.toString() || "",

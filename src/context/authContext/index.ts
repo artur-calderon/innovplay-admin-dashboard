@@ -3,6 +3,8 @@ import { api } from '@/lib/api'
 import { toast } from 'react-toastify'
 import { AxiosError } from 'axios'
 import { loadAndApplySettings } from '@/hooks/useSettings'
+import type { OnboardingProfile } from '@/services/onboardingApi'
+import { getOnboardingStatus } from '@/services/onboardingApi'
 
 export interface AvatarConfig {
     seed?: string;
@@ -44,14 +46,17 @@ export interface AvatarConfig {
     nose?: string[];
     noseColor?: string[];
     skinColor?: string[];
+    /** Moldura ao redor do avatar: none | gold | silver | bronze | gradient */
+    frame?: string;
 }
 
-interface User {
+export interface User {
     id: string,
     name: string,
     email: string,
     role: string,
     tenant_id: string,
+    city_id?: string,
     registration: string,
     created_at: string,
     updated_at: string,
@@ -61,6 +66,10 @@ interface User {
     nationality: string,
     birth_date: string,
     avatar_config?: AvatarConfig | null,
+    traits?: string[],
+    competition_band?: string | null,
+    /** IDs das molduras compradas na loja (ex: ['gold', 'silver']) */
+    owned_frames?: string[],
 }
 
 interface ApiError {
@@ -72,17 +81,23 @@ interface ApiError {
 interface AuthContext {
     user: User,
     loading: boolean,
+    needsOnboarding: boolean,
+    onboardingProfile: OnboardingProfile | null,
     login: (registration: string, password: string) => Promise<any>,
     autoLogin: () => Promise<any>,
     logout: () => Promise<void>,
     setUser: (user: User) => void,
+    setOnboardingComplete: (user: User) => void,
     persistUser: () => Promise<boolean>,
     updateAvatarConfig: (config: AvatarConfig) => Promise<void>,
+    addOwnedFrame: (frameId: string) => Promise<void>,
     fetchUserDetails: (userId: string) => Promise<void>,
 }
 
 export const useAuth = create<AuthContext>((set, get) => ({
     loading: false,
+    needsOnboarding: false,
+    onboardingProfile: null,
     user: {
         id: '',
         name: '',
@@ -101,6 +116,11 @@ export const useAuth = create<AuthContext>((set, get) => ({
     },
     setUser: (user) => {
         set({ user })
+        localStorage.setItem('user', JSON.stringify(user))
+    },
+    setOnboardingComplete: (user) => {
+        set({ needsOnboarding: false, onboardingProfile: null, user })
+        localStorage.setItem('user', JSON.stringify(user))
     },
     fetchUserDetails: async (userId: string) => {
         if (!userId) {
@@ -117,6 +137,7 @@ export const useAuth = create<AuthContext>((set, get) => ({
                         ...detailedUser,
                     }
                 }));
+                localStorage.setItem('user', JSON.stringify(get().user));
             }
         } catch (error) {
             console.error('Erro ao buscar detalhes completos do usuário:', error);
@@ -137,10 +158,17 @@ export const useAuth = create<AuthContext>((set, get) => ({
             // ✅ CORRIGIDO: Usar a instância da API corretamente
             api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
             set({ user: response.data.user })
+            localStorage.setItem('user', JSON.stringify(response.data.user))
 
             if (response.data.user?.id) {
-                await loadAndApplySettings(response.data.user.id)
-                await get().fetchUserDetails(response.data.user.id)
+                await loadAndApplySettings(response.data.user.id);
+                await get().fetchUserDetails(response.data.user.id);
+                try {
+                    const status = await getOnboardingStatus();
+                    set({ needsOnboarding: status.needs_onboarding === true, onboardingProfile: status.profile ?? null });
+                } catch {
+                    set({ needsOnboarding: false, onboardingProfile: null });
+                }
             }
 
             return response;
@@ -174,15 +202,20 @@ export const useAuth = create<AuthContext>((set, get) => ({
             api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
 
             set({ user: response.data.user })
+            localStorage.setItem('user', JSON.stringify(response.data.user))
 
             if (response.data.user?.id) {
-                await loadAndApplySettings(response.data.user.id)
-                await get().fetchUserDetails(response.data.user.id)
+                await loadAndApplySettings(response.data.user.id);
+                await get().fetchUserDetails(response.data.user.id);
+                try {
+                    const status = await getOnboardingStatus();
+                    set({ needsOnboarding: status.needs_onboarding === true, onboardingProfile: status.profile ?? null });
+                } catch {
+                    set({ needsOnboarding: false, onboardingProfile: null });
+                }
             }
 
-            // Adicionar um pequeno delay para o toast ser visível
             await new Promise(resolve => setTimeout(resolve, 1000));
-
             return response;
         } catch (error: unknown) {
             console.error("Erro no login:", error);
@@ -197,9 +230,11 @@ export const useAuth = create<AuthContext>((set, get) => ({
         try {
             await api.post("/logout/")
             localStorage.removeItem('token')
+            localStorage.removeItem('user')
             
-            // ✅ NOVO: Limpar filtros da página de resultados ao fazer logout
+            // ✅ Limpar filtros das páginas de resultados ao fazer logout
             sessionStorage.removeItem('results_filters')
+            sessionStorage.removeItem('answer_sheet_results_filters')
 
             // ✅ CORRIGIDO: Usar a instância da API corretamente
             delete api.defaults.headers.common['Authorization']
@@ -234,7 +269,9 @@ export const useAuth = create<AuthContext>((set, get) => ({
                     nationality: '',
                     birth_date: '',
                     avatar_config: null,
-                }
+                },
+                needsOnboarding: false,
+                onboardingProfile: null,
             })
             window.location.href = '/';
         } catch (error: unknown) {
@@ -255,6 +292,8 @@ export const useAuth = create<AuthContext>((set, get) => ({
             const response = await api.get('/persist-user/');
             if (response.data) {
                 const persistedUser = response.data.user ?? response.data;
+                const needsOnboarding = response.data.needs_onboarding === true;
+                const onboardingProfile = response.data.profile ?? null;
 
                 if (response.data.token) {
                     localStorage.setItem('token', response.data.token);
@@ -266,13 +305,16 @@ export const useAuth = create<AuthContext>((set, get) => ({
                         user: {
                             ...state.user,
                             ...persistedUser,
-                        }
+                        },
+                        needsOnboarding,
+                        onboardingProfile,
                     }));
+                    localStorage.setItem('user', JSON.stringify(get().user));
 
                     const targetId = persistedUser.id;
                     if (targetId) {
-                        await loadAndApplySettings(targetId)
-                        await get().fetchUserDetails(targetId)
+                        await loadAndApplySettings(targetId);
+                        await get().fetchUserDetails(targetId);
                     }
                     return true;
                 }
@@ -281,6 +323,7 @@ export const useAuth = create<AuthContext>((set, get) => ({
         } catch (error: unknown) {
             console.error('Erro ao persistir usuário:', error);
             localStorage.removeItem('token');
+            localStorage.removeItem('user');
             delete api.defaults.headers.common['Authorization'];
             return false;
         }
@@ -303,6 +346,7 @@ export const useAuth = create<AuthContext>((set, get) => ({
                         ...response.data.user,
                     }
                 }));
+                localStorage.setItem('user', JSON.stringify(get().user));
                 toast.success('Avatar atualizado com sucesso!');
             }
         } catch (error: unknown) {
@@ -312,5 +356,26 @@ export const useAuth = create<AuthContext>((set, get) => ({
             toast.error(errorMessage);
             throw error;
         }
-    }
+    },
+    addOwnedFrame: async (frameId: string) => {
+        const currentUser = get().user;
+        const current = currentUser.owned_frames ?? [];
+        if (current.includes(frameId)) return;
+        const next = [...current, frameId];
+        set((state) => ({
+            user: {
+                ...state.user,
+                owned_frames: next,
+            },
+        }));
+        localStorage.setItem('user', JSON.stringify(get().user));
+        try {
+            await api.put(`/users/${currentUser.id}`, {
+                owned_frames: next,
+            });
+        } catch (err) {
+            console.error('Erro ao persistir molduras (owned_frames):', err);
+            // Mantém no estado local; backend pode não suportar ainda
+        }
+    },
 }))

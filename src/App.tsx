@@ -6,8 +6,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./context/authContext";
+import { StudentPreferencesProvider } from "./context/StudentPreferencesContext";
 import Layout from "./components/layout/Layout";
 import FullscreenLayout from "./components/layout/FullscreenLayout";
+import { AppThemeStyles } from "./components/layout/AppThemeStyles";
 import { PrivateRoute } from "./components/PrivateRoute";
 import { RoleRoute } from "./components/layout/RoleRoute";
 
@@ -16,6 +18,8 @@ const Index = React.lazy(() => import("./pages/Index"));
 const Evaluations = React.lazy(() => import("./pages/Evaluations"));
 const NotFound = React.lazy(() => import("./pages/NotFound"));
 const Login = React.lazy(() => import("./pages/Login"));
+const SubdominioInvalido = React.lazy(() => import("./pages/SubdominioInvalido"));
+const SubdomainCheck = React.lazy(() => import("./components/SubdomainCheck"));
 const ForgotPassword = React.lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = React.lazy(() => import("./pages/ResetPassword"));
 const ChangePassword = React.lazy(() => import("./pages/ChangePassword"));
@@ -24,7 +28,6 @@ const Settings = React.lazy(() => import("./pages/Settings"));
 const Certificates = React.lazy(() => import("./pages/Certificates"));
 const StudentCertificates = React.lazy(() => import("./pages/StudentCertificates"));
 const StudentEvaluations = React.lazy(() => import("./components/evaluations/StudentEvaluations"));
-const Users = React.lazy(() => import("./pages/Users"));
 const Profile = React.lazy(() => import("./pages/Profile"));
 const ClassDetails = React.lazy(() => import("./components/schools/ClassDetails"));
 const SchoolDetails = React.lazy(() => import("./components/schools/SchoolDetails"));
@@ -36,9 +39,8 @@ const ViewEvaluation = React.lazy(() => import("./pages/ViewEvaluation"));
 const CreateQuestionPage = React.lazy(() => import("./pages/CreateQuestionPage"));
 const QuestionsPage = React.lazy(() => import("./pages/QuestionsPage"));
 const EditQuestionPage = React.lazy(() => import("./pages/EditQuestionPage"));
-const Turmas = React.lazy(() => import("./pages/Turmas"));
-const Instituicao = React.lazy(() => import("./pages/Instituicao"));
-const Curso = React.lazy(() => import("./pages/Curso"));
+const HabilidadesPage = React.lazy(() => import("./pages/HabilidadesPage"));
+const Gestao = React.lazy(() => import("./pages/Gestao"));
 const Serie = React.lazy(() => import("./pages/Serie"));
 const Disciplina = React.lazy(() => import("./pages/Disciplina"));
 const StudentAgenda = React.lazy(() => import("./pages/StudentAgendaOptimized"));
@@ -51,7 +53,9 @@ const DetailedResultsView = React.lazy(() => import("./components/evaluations/De
 const StudentDetailedResults = React.lazy(() => import("./components/evaluations/StudentDetailedResults"));
 const AnaliseAvaliacoes = React.lazy(() => import("./pages/AnaliseAvaliacoes"));
 const AcertoNiveis = React.lazy(() => import("./pages/AcertoNiveis"));
+const AcertoNiveisCartao = React.lazy(() => import("./pages/AcertoNiveisCartao"));
 const RelatorioEscolar = React.lazy(() => import("./pages/RelatorioEscolar"));
+const RelatorioEscolarCartaoResposta = React.lazy(() => import("./pages/RelatorioEscolarCartaoResposta"));
 const PhysicalTestPage = React.lazy(() => import("./pages/PhysicalTestPage"));
 const Evolution = React.lazy(() => import("./pages/Evolution"));
 
@@ -73,6 +77,8 @@ const FormRegistration = React.lazy(() => import("./pages/FormRegistration"));
 const FormView = React.lazy(() => import("./pages/FormView"));
 const FormCreate = React.lazy(() => import("./pages/FormCreate"));
 const FormReports = React.lazy(() => import("./pages/FormReports"));
+const FormRespostasReport = React.lazy(() => import("./pages/FormRespostasReport"));
+const InseSaebReport = React.lazy(() => import("./pages/InseSaebReport"));
 const QuestionarioList = React.lazy(() => import("./pages/QuestionarioList"));
 const QuestionarioRespond = React.lazy(() => import("./pages/QuestionarioRespond"));
 
@@ -82,6 +88,8 @@ const TorneioExecucao = React.lazy(() => import("./pages/TorneioExecucao"));
 // Lazy loading para dashboards específicos
 const StudentDashboard = React.lazy(() => import("./pages/StudentDashboard"));
 const StudentResult = React.lazy(() => import("./pages/StudentResult"));
+const StudentResultsPage = React.lazy(() => import("./pages/StudentResultsPage"));
+const ConquistasPage = React.lazy(() => import("./pages/ConquistasPage"));
 const ProfessorDashboard = React.lazy(() => import("./pages/ProfessorDashboard"));
 
 // Lazy loading para Play TV
@@ -94,16 +102,27 @@ const PlantaoOnline = React.lazy(() => import("./pages/PlantaoOnline"));
 const PlantaoOnlineStudent = React.lazy(() => import("./pages/PlantaoOnlineStudent"));
 const AnswerSheetGenerator = React.lazy(() => import("./pages/AnswerSheetGenerator"));
 const AnswerSheetResults = React.lazy(() => import("./pages/AnswerSheetResults"));
+const AnswerSheetStudentDetailedResults = React.lazy(() => import("./pages/AnswerSheetStudentDetailedResults"));
+const AnswerSheetCreateGabarito = React.lazy(() => import("./pages/AnswerSheetCreateGabarito"));
+const AnswerSheetGenerateCards = React.lazy(() => import("./pages/AnswerSheetGenerateCards"));
+const AnswerSheetCorrection = React.lazy(() => import("./pages/AnswerSheetCorrection"));
+const ListaFrequencia = React.lazy(() => import("./pages/ListaFrequencia"));
 
 // Lazy loading para Olimpíadas
 const Olimpiadas = React.lazy(() => import("./pages/Olimpiadas"));
 const OlimpiadasStudent = React.lazy(() => import("./pages/OlimpiadasStudent"));
 const OlimpiadaStudent = React.lazy(() => import("./pages/OlimpiadaStudent"));
 const CoinHistory = React.lazy(() => import("./pages/CoinHistory"));
+const Loja = React.lazy(() => import("./pages/Loja"));
+const StoreAdmin = React.lazy(() => import("./pages/StoreAdmin"));
+const StoreAdminForm = React.lazy(() => import("./pages/StoreAdminForm"));
+const StoreAdminBatchForm = React.lazy(() => import("./pages/StoreAdminBatchForm"));
 const CoinsAdmin = React.lazy(() => import("./pages/CoinsAdmin"));
 const CompetitionList = React.lazy(() => import("./pages/Competitions"));
 const CompetitionDetails = React.lazy(() => import("./pages/CompetitionDetails"));
 const CompetitionAnalytics = React.lazy(() => import("./pages/Admin/Competitions/CompetitionAnalytics"));
+const CompetitionTemplatesList = React.lazy(() => import("./pages/Admin/Competitions/CompetitionTemplatesList"));
+const CompetitionTemplateDetails = React.lazy(() => import("./pages/Admin/Competitions/CompetitionTemplateDetails"));
 const CompetitionsStudent = React.lazy(() => import("./pages/CompetitionsStudent"));
 const CompetitionStudentDetail = React.lazy(() => import("./pages/CompetitionStudentDetail"));
 const CompetitionTest = React.lazy(() => import("./pages/CompetitionTest"));
@@ -112,7 +131,7 @@ const CompetitionRankingPage = React.lazy(() => import("./pages/CompetitionRanki
 // Loading component
 const LoadingSpinner = () => (
   <div className="flex items-center justify-center min-h-[50vh]">
-    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
   </div>
 );
 
@@ -145,26 +164,34 @@ const App = () => {
         />
         <Sonner />
 
+        <StudentPreferencesProvider>
         <Suspense fallback={<LoadingSpinner />}>
           <Routes>
-            {/* Rota raiz - redireciona baseado no papel do usuário */}
+            {/* Rota raiz - checa subdomínio e redireciona ou mostra login */}
             <Route
               path="/"
               element={
-                user.id ? <Navigate to={getBaseRoute()} /> : <Login key="login" />
+                user.id ? (
+                  <Navigate to={getBaseRoute()} />
+                ) : (
+                  <SubdomainCheck />
+                )
               }
             />
+
+            {/* Subdomínio não cadastrado */}
+            <Route path="/subdominio-invalido" element={<SubdominioInvalido />} />
 
             {/* Rotas de autenticação */}
             <Route path="/forgot-password" element={<ForgotPassword key="forgot-password" />} />
             <Route path="/reset-password" element={<ResetPassword key="reset-password" />} />
-            <Route path="/change-password" element={<PrivateRoute><ChangePassword /></PrivateRoute>} />
+            <Route path="/change-password" element={<PrivateRoute><AppThemeStyles><ChangePassword /></AppThemeStyles></PrivateRoute>} />
 
             {/* Rotas do aluno */}
             <Route path="/aluno" element={<Layout />}>
               <Route index element={<PrivateRoute><StudentDashboard /></PrivateRoute>} />
               <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
-              {/** Rota removida: página de resultados do aluno foi descontinuada */}
+              <Route path="/aluno/resultados" element={<PrivateRoute><StudentResultsPage /></PrivateRoute>} />
               <Route path="/aluno/avaliacao/:id/resultado" element={<PrivateRoute><StudentResult /></PrivateRoute>} />
               <Route path="/aluno/agenda" element={<PrivateRoute><StudentAgenda /></PrivateRoute>} />
               <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
@@ -187,6 +214,8 @@ const App = () => {
               <Route path="/aluno/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
               <Route path="/aluno/configuracoes" element={<PrivateRoute><Settings /></PrivateRoute>} />
               <Route path="/aluno/moedas/historico" element={<PrivateRoute><CoinHistory /></PrivateRoute>} />
+              <Route path="/aluno/loja" element={<PrivateRoute><Loja /></PrivateRoute>} />
+              <Route path="/aluno/conquistas" element={<PrivateRoute><ConquistasPage /></PrivateRoute>} />
               <Route path="/aluno/competitions" element={<PrivateRoute><CompetitionsStudent /></PrivateRoute>} />
               <Route path="/aluno/competitions/:id" element={<PrivateRoute><CompetitionStudentDetail /></PrivateRoute>} />
               <Route path="/aluno/competitions/:id/fazer" element={<PrivateRoute><CompetitionTest /></PrivateRoute>} />
@@ -225,35 +254,98 @@ const App = () => {
               <Route path="/app/play-tv/:id" element={<PrivateRoute><PlayTvVideoView /></PrivateRoute>} />
               <Route path="/app/plantao" element={<PrivateRoute><PlantaoOnline /></PrivateRoute>} />
               <Route path="/app/cartao-resposta" element={<PrivateRoute><AnswerSheetGenerator /></PrivateRoute>} />
-              <Route path="/app/cartao-resposta/resultados/:gabaritoId" element={<PrivateRoute><AnswerSheetResults /></PrivateRoute>} />
+              <Route path="/app/cartao-resposta/gerar" element={<PrivateRoute><AnswerSheetGenerateCards /></PrivateRoute>} />
+              <Route path="/app/cartao-resposta/cadastrar" element={<PrivateRoute><AnswerSheetCreateGabarito /></PrivateRoute>} />
+              <Route path="/app/cartao-resposta/corrigir" element={<PrivateRoute><AnswerSheetCorrection /></PrivateRoute>} />
+              <Route
+                path="/app/cartao-resposta/resultados/gabarito/:gabaritoId/aluno/:studentId"
+                element={
+                  <PrivateRoute>
+                    <AnswerSheetStudentDetailedResults onBack={() => window.history.back()} />
+                  </PrivateRoute>
+                }
+              />
+              <Route path="/app/cartao-resposta/resultados" element={<PrivateRoute><AnswerSheetResults /></PrivateRoute>} />
+              <Route path="/app/lista-frequencia" element={<PrivateRoute><ListaFrequencia /></PrivateRoute>} />
               <Route path="/app/certificados" element={<PrivateRoute><Certificates /></PrivateRoute>} />
               <Route path="/app/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
               <Route path="/app/olimpiadas" element={<PrivateRoute><Olimpiadas /></PrivateRoute>} />
-              <Route path="/app/competitions" element={<PrivateRoute><RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}><CompetitionList /></RoleRoute></PrivateRoute>} />
-              <Route path="/app/competitions/:id" element={<PrivateRoute><RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}><CompetitionDetails /></RoleRoute></PrivateRoute>} />
-              <Route path="/app/competitions/:id/analytics" element={<PrivateRoute><RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}><CompetitionAnalytics /></RoleRoute></PrivateRoute>} />
+              <Route
+                path="/app/competitions"
+                element={
+                  <PrivateRoute>
+                    <RoleRoute allowed={["admin", "professor", "coordenador", "diretor", "tecadm"]}>
+                      <CompetitionList />
+                    </RoleRoute>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/app/competitions/:id"
+                element={
+                  <PrivateRoute>
+                    <RoleRoute allowed={["admin", "professor", "coordenador", "diretor", "tecadm"]}>
+                      <CompetitionDetails />
+                    </RoleRoute>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/app/competitions/:id/analytics"
+                element={
+                  <PrivateRoute>
+                    <RoleRoute allowed={["admin", "professor", "coordenador", "diretor", "tecadm"]}>
+                      <CompetitionAnalytics />
+                    </RoleRoute>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/app/competition-templates"
+                element={
+                  <PrivateRoute>
+                    <RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}>
+                      <CompetitionTemplatesList />
+                    </RoleRoute>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/app/competition-templates/:id"
+                element={
+                  <PrivateRoute>
+                    <RoleRoute allowed={["admin", "coordenador", "diretor", "tecadm"]}>
+                      <CompetitionTemplateDetails />
+                    </RoleRoute>
+                  </PrivateRoute>
+                }
+              />
               <Route path="/app/olimpiada/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
               <Route path="/app/olimpiada-resultado/:testId/:studentId" element={<PrivateRoute><StudentResult /></PrivateRoute>} />
-              <Route path="/app/city" element={<PrivateRoute><Cities /></PrivateRoute>} />
+              <Route path="/app/city" element={<PrivateRoute><RoleRoute allowed={["admin", "tecadm"]}><Cities /></RoleRoute></PrivateRoute>} />
               <Route path="/app/turma/:id" element={<PrivateRoute><ClassDetails /></PrivateRoute>} />
               <Route path="/app/escola/:id" element={<PrivateRoute><SchoolDetails /></PrivateRoute>} />
-              <Route path="/app/usuarios" element={<PrivateRoute><Users /></PrivateRoute>} />
+              <Route path="/app/usuarios" element={<Navigate to="/app/cadastros/gestao?tab=usuarios" replace />} />
+              <Route path="/app/cadastros/usuarios" element={<Navigate to="/app/cadastros/gestao?tab=usuarios" replace />} />
               <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/app/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
               <Route path="/app/configuracoes" element={<PrivateRoute><Settings /></PrivateRoute>} />
               <Route path="/app/moedas" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><CoinsAdmin /></RoleRoute></PrivateRoute>} />
+              <Route path="/app/loja/gerenciar" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><StoreAdmin /></RoleRoute></PrivateRoute>} />
+              <Route path="/app/loja/gerenciar/novo" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><StoreAdminForm /></RoleRoute></PrivateRoute>} />
+              <Route path="/app/loja/gerenciar/lote" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><StoreAdminBatchForm /></RoleRoute></PrivateRoute>} />
+              <Route path="/app/loja/gerenciar/:id/editar" element={<PrivateRoute><RoleRoute allowed={['admin', 'coordenador', 'diretor', 'tecadm', 'professor']}><StoreAdminForm /></RoleRoute></PrivateRoute>} />
 
               {/* Rotas de gerenciamento de questões */}
               <Route path="/app/cadastros/questao" element={<PrivateRoute><QuestionsPage /></PrivateRoute>} />
               <Route path="/app/cadastros/questao/criar" element={<PrivateRoute><CreateQuestionPage /></PrivateRoute>} />
               <Route path="/app/cadastros/questao/editar/:id" element={<PrivateRoute><EditQuestionPage /></PrivateRoute>} />
+              <Route path="/app/cadastros/habilidades" element={<PrivateRoute><HabilidadesPage /></PrivateRoute>} />
 
-              {/* Rotas de gerenciamento de turmas */}
-              <Route path="/app/cadastros/turma" element={<PrivateRoute><Turmas /></PrivateRoute>} />
-
-              {/* Rotas de cadastros institucionais */}
-              <Route path="/app/cadastros/instituicao" element={<PrivateRoute><Instituicao /></PrivateRoute>} />
-              <Route path="/app/cadastros/curso" element={<PrivateRoute><Curso /></PrivateRoute>} />
+              <Route path="/app/cadastros/turma" element={<Navigate to="/app/cadastros/gestao?tab=turmas" replace />} />
+              {/* Rotas de gestão escolar (turmas, usuários e instituições) */}
+              <Route path="/app/cadastros/gestao" element={<PrivateRoute><Gestao /></PrivateRoute>} />
+              <Route path="/app/cadastros/curso" element={<Navigate to="/app/cadastros/gestao" replace />} />
               <Route path="/app/cadastros/serie" element={<PrivateRoute><Serie /></PrivateRoute>} />
               <Route path="/app/cadastros/disciplina" element={<PrivateRoute><Disciplina /></PrivateRoute>} />
 
@@ -262,13 +354,25 @@ const App = () => {
               <Route path="/app/questionarios/criar/:formType" element={<PrivateRoute><FormCreate /></PrivateRoute>} />
               <Route path="/app/questionarios/:id" element={<PrivateRoute><FormView /></PrivateRoute>} />
               <Route path="/app/questionarios/relatorios-socio-economicos" element={<PrivateRoute><FormReports /></PrivateRoute>} />
+              <Route path="/app/questionarios/resultados-socioeconomicos" element={<PrivateRoute><FormRespostasReport /></PrivateRoute>} />
+              <Route path="/app/questionarios/inse-saeb" element={<PrivateRoute><InseSaebReport /></PrivateRoute>} />
               <Route path="/app/questionario" element={<PrivateRoute><QuestionarioList /></PrivateRoute>} />
               <Route path="/app/questionario/responder/:formId" element={<PrivateRoute><QuestionarioRespond /></PrivateRoute>} />
 
               {/* Rotas de Relatórios */}
               <Route path="/app/relatorios/analise-avaliacoes" element={<PrivateRoute><AnaliseAvaliacoes /></PrivateRoute>} />
               <Route path="/app/relatorios/acerto-niveis" element={<PrivateRoute><AcertoNiveis /></PrivateRoute>} />
+              <Route
+                path="/app/relatorios/acerto-niveis-cartao"
+                element={
+                  <PrivateRoute>
+                    <AcertoNiveisCartao answerSheetsResultadosAgregados />
+                  </PrivateRoute>
+                }
+              />
+              <Route path="/app/relatorios/acerto-niveis-cartao-resposta" element={<Navigate to="/app/relatorios/acerto-niveis-cartao" replace />} />
               <Route path="/app/relatorios/relatorio-escolar" element={<PrivateRoute><RelatorioEscolar /></PrivateRoute>} />
+              <Route path="/app/relatorios/relatorio-escolar-cartao-resposta" element={<PrivateRoute><RelatorioEscolarCartaoResposta /></PrivateRoute>} />
             </Route>
 
             {/* Rota de avaliação em tela cheia para admin/professor */}
@@ -280,6 +384,7 @@ const App = () => {
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
+        </StudentPreferencesProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

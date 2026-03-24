@@ -82,7 +82,7 @@ function RealTimeActionCard({
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-1">
-              <h3 className="font-semibold text-sm group-hover:text-blue-600 transition-colors">
+              <h3 className="font-semibold text-sm group-hover:text-primary transition-colors">
                 {title}
               </h3>
               {count !== undefined && (
@@ -117,7 +117,7 @@ function RealTimeActionCard({
               onClick={action}
               size="sm" 
               variant="ghost" 
-              className="h-8 px-2 text-xs group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors"
+              className="h-8 px-2 text-xs group-hover:bg-primary/10 group-hover:text-primary transition-colors"
               disabled={isLoading}
             >
               Acessar
@@ -238,7 +238,7 @@ export default function RealTimeActionCards() {
       title: "Criar Nova Avaliação",
       description: "Crie uma nova avaliação personalizada com questões de múltipla escolha, dissertativas e mais.",
       action: () => navigate('/app/criar-avaliacao'),
-      color: "text-blue-600",
+      color: "text-primary",
       bgColor: "bg-blue-50",
       count: data.recentEvaluations,
       countLabel: `${data.recentEvaluations} criadas esta semana`,
@@ -248,7 +248,7 @@ export default function RealTimeActionCards() {
       icon: <Upload className="h-5 w-5" />,
       title: "Gerenciar Usuários",
       description: "Gerencie alunos, professores e outros usuários do sistema de forma eficiente.",
-      action: () => navigate('/app/usuarios'),
+      action: () => navigate('/app/cadastros/gestao?tab=usuarios'),
       color: "text-green-600",
       bgColor: "bg-green-50",
       count: data.totalStudents,
@@ -315,7 +315,7 @@ export default function RealTimeActionCards() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
         <Card 
           className="group cursor-pointer transition-all duration-200 hover:shadow-md border border-gray-200"
-          onClick={() => navigate('/app/usuarios')}
+          onClick={() => navigate('/app/cadastros/gestao?tab=usuarios')}
         >
           <CardContent className="p-3">
             <div className="flex items-center gap-2">

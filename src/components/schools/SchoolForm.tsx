@@ -48,7 +48,20 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
   });
   const [cities, setCities] = useState<City[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
+
+  // Sincronizar formulário quando abrir em modo edição
+  useEffect(() => {
+    if (school) {
+      setFormData({
+        name: school.name || "",
+        address: school.address || "",
+        domain: school.domain || "",
+        city_id: school.city_id || "",
+      });
+    }
+  }, [school]);
 
   useEffect(() => {
     const fetchCities = async () => {
@@ -56,7 +69,6 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
         const response = await api.get("/city/");
         setCities(response.data);
       } catch (error) {
-        console.error("Error fetching cities:", error);
         toast({
           title: "Erro",
           description: "Erro ao carregar municípios",
@@ -80,14 +92,54 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
       return;
     }
 
-    setIsDeleting(true);
+    if (school) {
+      // Modo edição: chamar PUT no backend
+      setIsSaving(true);
+      try {
+        const payload = {
+          name: formData.name.trim(),
+          domain: formData.domain?.trim() || undefined,
+          address: formData.address.trim(),
+          city_id: formData.city_id,
+        };
+        await api.put(`/school/${school.id}`, payload);
+        const updatedCity = cities.find((c) => c.id === formData.city_id) || school.city;
+        onSave({
+          ...formData,
+          city: updatedCity,
+        });
+        toast({
+          title: "Sucesso",
+          description: "Escola atualizada com sucesso",
+        });
+        onClose();
+      } catch (error: unknown) {
+        const axiosError = error as { response?: { data?: { erro?: string; detalhes?: string } } };
+        const message =
+          axiosError.response?.data?.erro ||
+          axiosError.response?.data?.detalhes ||
+          "Erro ao atualizar escola. Tente novamente.";
+        toast({
+          title: "Erro",
+          description: message,
+          variant: "destructive",
+        });
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
 
+    // Modo criação (nova escola): comportamento existente
     try {
       onSave(formData);
+      onClose();
     } catch (error) {
-      console.error("Error saving school:", error);
-    } finally {
-      setIsDeleting(false);
+      toast({
+        title: "Erro",
+        description: "Erro ao salvar escola",
+        variant: "destructive",
+      });
     }
   };
 
@@ -104,7 +156,6 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
       });
       onClose();
     } catch (error) {
-      console.error("Error deleting school:", error);
       toast({
         title: "Erro",
         description: "Erro ao excluir escola",
@@ -136,7 +187,7 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
-                disabled={isLoading || isDeleting}
+                disabled={isLoading || isDeleting || isSaving}
                 autoComplete="off"
                 className="h-11"
                 placeholder="Nome completo da instituição"
@@ -150,7 +201,7 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
                 id="domain"
                 value={formData.domain}
                 onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
-                disabled={isLoading || isDeleting}
+                disabled={isLoading || isDeleting || isSaving}
                 autoComplete="off"
                 className="h-11"
                 placeholder="exemplo.com.br"
@@ -168,7 +219,7 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
               value={formData.address}
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
               required
-              disabled={isLoading || isDeleting}
+              disabled={isLoading || isDeleting || isSaving}
               autoComplete="off"
               className="h-11"
               placeholder="Endereço completo da escola"
@@ -182,7 +233,7 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
             <Select
               value={formData.city_id}
               onValueChange={(value) => setFormData({ ...formData, city_id: value })}
-              disabled={isLoading || isDeleting}
+              disabled={isLoading || isDeleting || isSaving}
             >
               <SelectTrigger className="h-11">
                 <SelectValue placeholder="Selecione um município" />
@@ -202,7 +253,7 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
                 type="button" 
                 variant="destructive" 
                 onClick={handleDelete}
-                disabled={isLoading || isDeleting}
+                disabled={isLoading || isDeleting || isSaving}
                 className="h-11 order-3 sm:order-1"
               >
                 {isDeleting ? (
@@ -220,17 +271,17 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
                 type="button" 
                 variant="outline" 
                 onClick={onClose} 
-                disabled={isLoading || isDeleting}
+                disabled={isLoading || isDeleting || isSaving}
                 className="h-11 order-2 sm:order-1"
               >
                 Cancelar
               </Button>
               <Button 
                 type="submit" 
-                disabled={isLoading || isDeleting}
+                disabled={isLoading || isDeleting || isSaving}
                 className="h-11 order-1 sm:order-2"
               >
-                {isLoading ? (
+                {isLoading || isSaving ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Salvando...

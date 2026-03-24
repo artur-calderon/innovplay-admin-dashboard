@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { DisciplineTag } from '@/components/ui/discipline-tag';
 import { Button } from '@/components/ui/button';
 import { OlimpiadaCardData, OlimpiadaStatus } from '@/types/olimpiada-types';
 import { 
@@ -290,13 +291,7 @@ export function OlimpiadaCard({
         {olimpiada.subjects && olimpiada.subjects.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {olimpiada.subjects.slice(0, 3).map((subject) => (
-              <Badge
-                key={subject.id}
-                variant="outline"
-                className="bg-yellow-100/50 dark:bg-yellow-900/20 border-yellow-300 dark:border-yellow-700 text-yellow-900 dark:text-yellow-100"
-              >
-                {subject.name}
-              </Badge>
+              <DisciplineTag key={subject.id} subjectId={subject.id} name={subject.name} />
             ))}
             {olimpiada.subjects.length > 3 && (
               <Badge

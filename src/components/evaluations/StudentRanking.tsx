@@ -8,11 +8,14 @@ import {
   getPositionTextColor,
   formatCoins 
 } from "@/utils/coins";
+import { getReportProficiencyTagClass } from "@/utils/reportTagStyles";
 
 interface Student {
   id: string;
   nome: string;
   turma: string;
+  escola?: string;
+  serie?: string;
   nota: number;
   proficiencia: number;
   classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
@@ -86,23 +89,14 @@ export function StudentRanking({
     }
   };
 
-  // Função para obter cor do badge do nível
-  const getLevelBadgeColor = (classificacao: string) => {
-    switch (classificacao) {
-      case 'Avançado': return 'bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400 border-green-200 dark:border-green-800';
-      case 'Adequado': return 'bg-blue-100 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400 border-blue-200 dark:border-blue-800';
-      case 'Básico': return 'bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800';
-      case 'Abaixo do Básico': return 'bg-red-100 dark:bg-red-950/30 text-red-800 dark:text-red-400 border-red-200 dark:border-red-800';
-      default: return 'bg-muted text-foreground border-border';
-    }
-  };
+  // A cor/estilo do badge de proficiência segue o padrão do Relatório Escolar.
 
   return (
     <div className="space-y-6">
       {/* Ranking dos Melhores Alunos */}
       <Card className="border border-border shadow-lg">
         <CardHeader className="bg-gradient-to-r from-purple-700 to-purple-600 text-white">
-          <CardTitle className="flex items-center justify-between">
+          <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-4">
               <div className="flex items-center justify-center w-12 h-12 bg-white/10 rounded-lg">
                 <Trophy className="h-6 w-6 text-purple-200" />
@@ -127,31 +121,38 @@ export function StudentRanking({
         <CardContent className="p-6">
           {rankedStudents.length > 0 ? (
             <div className="space-y-4">
-              {rankedStudents.map((student) => {
+              {rankedStudents.map((student, index) => {
                 const position = student.posicao || 1;
                 const positionColor = getPositionTextColor(position);
 
                 return (
                   <div
-                    key={student.id}
-                    className={`flex items-center gap-4 p-4 rounded-lg border transition-all duration-200 hover:shadow-md ${getRankingBackground(position)}`}
+                    key={`${student.id ?? 'r'}-${index}`}
+                    className={`flex flex-col sm:flex-row sm:items-center items-start gap-4 p-4 rounded-lg border transition-all duration-200 hover:shadow-md ${getRankingBackground(position)}`}
                   >
                     {/* Posição no ranking */}
-                    <div className={`flex items-center justify-center w-12 h-12 rounded-lg bg-card border-2 ${
-                      position <= 3 ? 'border-yellow-400 dark:border-yellow-600' : 'border-border'
-                    } shadow-sm`}>
+                    <div
+                      className={`flex items-center justify-center w-12 h-12 rounded-lg bg-card border-2 ${
+                        position <= 3 ? 'border-yellow-400 dark:border-yellow-600' : 'border-border'
+                      } shadow-sm self-center sm:self-auto`}
+                    >
                       {getRankingIcon(position)}
                     </div>
 
                     {/* Informações do aluno */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
                         <h3 className={`font-semibold truncate text-base ${positionColor}`}>
                           {student.nome}
                         </h3>
                         <Badge variant="outline" className="text-xs">
                           {student.turma}
                         </Badge>
+                        {(student.escola || student.serie) && (
+                          <span className="text-xs text-muted-foreground truncate max-w-[200px]" title={[student.escola, student.serie].filter(Boolean).join(' • ')}>
+                            {[student.escola, student.serie].filter(Boolean).join(' • ')}
+                          </span>
+                        )}
                         {position <= 3 && (
                           <Badge className="bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400 border-yellow-300 text-xs font-bold">
                             {position}º Lugar
@@ -168,7 +169,7 @@ export function StudentRanking({
                         <div className="flex items-center gap-2">
                           <Star className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                           <span className="font-medium">Proficiência:</span>
-                          <span className="font-semibold text-foreground">{student.proficiencia || 0}</span>
+                          <span className="font-semibold text-foreground">{Number(student.proficiencia || 0).toFixed(1)}</span>
                         </div>
                         {showCoins && student.moedas_ganhas !== undefined && (
                           <div className="flex items-center gap-2">
@@ -183,10 +184,10 @@ export function StudentRanking({
                     </div>
 
                     {/* Nível de proficiência e moedas */}
-                    <div className="flex flex-col items-end gap-2">
+                    <div className="flex flex-col items-start sm:items-end gap-2">
                       <div className="flex flex-col items-end gap-1">
                         <div className="text-xs text-muted-foreground font-medium">Nível</div>
-                        <Badge className={`${getLevelBadgeColor(student.classificacao)} text-xs font-medium border`}>
+                        <Badge className={getReportProficiencyTagClass(student.classificacao)}>
                           {student.classificacao}
                         </Badge>
                       </div>
@@ -241,9 +242,9 @@ export function StudentRanking({
           </CardHeader>
           <CardContent className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {absentStudents.map((student) => (
+              {absentStudents.map((student, index) => (
                 <div
-                  key={student.id}
+                  key={`${student.id ?? 'a'}-${index}`}
                   className="flex items-center gap-3 p-3 bg-muted rounded-lg border border-border hover:bg-muted/80 transition-colors duration-200"
                 >
                   <div className="w-8 h-8 rounded-full bg-muted-foreground/50 flex items-center justify-center">

@@ -565,29 +565,27 @@ export default function EvaluationCorrection() {
   if (selectedEvaluation) {
     return (
       <div className="container mx-auto px-4 py-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        {/* Header — mobile: título/desc alinhados, botões centralizados abaixo */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <Button variant="outline" size="sm" onClick={() => {
-              // Atualizar a avaliação na lista antes de voltar
               if (selectedEvaluation) {
                 updateEvaluationInList(selectedEvaluation);
               }
               setSelectedEvaluation(null);
-            }}>
+            }} className="self-start sm:self-auto">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Voltar
             </Button>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                <ClipboardList className="w-8 h-8 text-blue-600" />
+            <div className="space-y-1.5">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+                <ClipboardList className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
                 Correção de Avaliação
               </h1>
-              <p className="text-muted-foreground">{selectedEvaluation.testTitle}</p>
+              <p className="text-muted-foreground text-sm sm:text-base">{selectedEvaluation.testTitle}</p>
             </div>
           </div>
-          
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap justify-center gap-2 w-full sm:w-auto sm:justify-end">
             <Button variant="outline" size="sm" onClick={recalculateAllQuestions}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Atualizar
@@ -1037,19 +1035,18 @@ export default function EvaluationCorrection() {
   // Vista de lista de avaliações
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <ClipboardList className="w-8 h-8 text-blue-600" />
+      {/* Header — mobile: título/desc alinhados, botão centralizado abaixo */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <ClipboardList className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
             Correção de Avaliações
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground text-sm sm:text-base">
             Gerencie avaliações virtuais e visualize avaliações aplicadas
           </p>
         </div>
-        
-        <div className="flex items-center gap-2">
+        <div className="flex justify-center w-full sm:w-auto sm:justify-end">
           <Button variant="outline" onClick={fetchSubmittedEvaluations}>
             <Download className="h-4 w-4 mr-2" />
             Atualizar Lista

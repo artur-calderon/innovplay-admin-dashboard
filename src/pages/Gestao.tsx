@@ -5,15 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PlusCircle, Search, Edit, Trash2, Building, Loader2, Eye, Users, GraduationCap, UserPlus, ArrowLeft, Filter, Settings, School } from "lucide-react";
+import { PlusCircle, Search, Trash2, Building, Loader2, GraduationCap, Settings, School, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import SchoolForm from "@/components/schools/SchoolForm";
-import { InstituicaoUserManagement } from "@/components/schools/InstituicaoUserManagement";
-import { AddTeacherForm } from "@/components/schools/AddTeacherForm";
-import { AddStudentForm } from "@/components/schools/AddStudentForm";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,11 +36,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import Turmas from "@/pages/Turmas";
+import { InstituicaoUsersTab } from "@/components/schools/InstituicaoUsersTab";
+import { getUserHierarchyContext } from "@/utils/userHierarchy";
+import { normalizeSubdomainFromHost } from "@/lib/subdomain";
 
 interface City {
   id: string;
   name: string;
   state: string;
+}
+
+interface CityWithSlug extends City {
+  slug?: string;
 }
 
 interface Instituicao {
@@ -89,7 +94,7 @@ interface Student {
   };
 }
 
-export default function Instituicao() {
+export default function Gestao() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
@@ -117,8 +122,68 @@ export default function Instituicao() {
   const [selectedState, setSelectedState] = useState<string>("ALL");
   const [selectedCityId, setSelectedCityId] = useState<string>("ALL");
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("ALL");
-  
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState<string>(
+    tabParam === "turmas" ? "turmas" : tabParam === "usuarios" ? "usuarios" : "instituicoes"
+  );
+  const [selectedUsersCityId, setSelectedUsersCityId] = useState<string>("");
+  const [citiesWithSlug, setCitiesWithSlug] = useState<CityWithSlug[]>([]);
+  const [domainCityId, setDomainCityId] = useState<string>("");
+
+  useEffect(() => {
+    if (tabParam === "turmas") setActiveTab("turmas");
+    else if (tabParam === "usuarios") setActiveTab("usuarios");
+  }, [tabParam]);
+
   const { toast } = useToast();
+
+  // Buscar cidades com slug para detectar município do subdomínio
+  useEffect(() => {
+    api.get("/city/").then((res) => {
+      let list = res.data || [];
+      if (user.role !== "admin") {
+        list = list.filter((c: CityWithSlug) => c.id === user.tenant_id);
+      }
+      setCitiesWithSlug(Array.isArray(list) ? list : []);
+    }).catch(() => setCitiesWithSlug([]));
+  }, [user.role, user.tenant_id]);
+
+  // Detectar município pelo subdomínio (jiparana.afirmeplay.com.br ou jiparana.localhost)
+  useEffect(() => {
+    if (typeof window === "undefined" || !citiesWithSlug.length) return;
+    const hostname = window.location.hostname;
+    const parts = hostname.split(".");
+    const first = normalizeSubdomainFromHost((parts[0] || "").toLowerCase());
+    const reserved = ["www", "localhost", "127", "app"];
+    const isSubdomain = parts.length >= 2 && first && !reserved.includes(first);
+    const subdomain = isSubdomain ? first : "";
+    if (!subdomain) {
+      setDomainCityId("");
+      return;
+    }
+    const city = citiesWithSlug.find((c) => (c.slug || "").toLowerCase() === subdomain);
+    if (city) {
+      setDomainCityId(city.id);
+      setSelectedUsersCityId(city.id);
+    } else {
+      setDomainCityId("");
+    }
+  }, [citiesWithSlug]);
+
+  // Professor: definir município da escola como padrão na aba Usuários (evita "Nenhum município definido")
+  useEffect(() => {
+    if (user?.role !== "professor" || !user?.id) return;
+    let cancelled = false;
+    getUserHierarchyContext(user.id, user.role).then((ctx) => {
+      if (cancelled) return;
+      const cityId = ctx.municipality?.id ?? ctx.school?.municipality_id ?? "";
+      if (cityId) {
+        setSelectedUsersCityId((prev) => (prev ? prev : cityId));
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [user?.id, user?.role]);
 
   const fetchInstituicoes = useCallback(async () => {
     setIsLoading(true);
@@ -240,11 +305,45 @@ export default function Instituicao() {
         title: "Sucesso",
         description: "Instituição excluída com sucesso",
       });
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Erro ao excluir instituição:", error);
+      
+      let errorTitle = "Erro ao excluir";
+      let errorMessage = "Ocorreu um erro ao excluir a instituição";
+
+      // Verificar se é um erro do Axios com resposta
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { 
+          response?: { 
+            status?: number;
+            data?: { 
+              mensagem?: string; 
+              erro?: string;
+              dependencias?: {
+                turmas?: number;
+                professores?: number;
+                alunos?: number;
+              }
+            } 
+          } 
+        };
+        
+        if (axiosError.response?.data) {
+          const data = axiosError.response.data;
+          
+          // Se houver mensagem específica do backend, usar ela
+          if (data.mensagem) {
+            errorMessage = data.mensagem;
+            errorTitle = data.erro || "Não é possível excluir";
+          } else if (data.erro) {
+            errorMessage = data.erro;
+          }
+        }
+      }
+
       toast({
-        title: "Erro",
-        description: "Erro ao excluir instituição",
+        title: errorTitle,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -386,24 +485,45 @@ export default function Instituicao() {
 
   return (
     <div className="space-y-6 p-4 md:p-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <School className="w-8 h-8 text-blue-600" />
-            Gerenciar Instituições
-          </h1>
-          <p className="text-muted-foreground text-sm md:text-base">
-            Cadastre e gerencie as instituições de ensino
-          </p>
-        </div>
-        {(user.role === 'admin' || user.role === 'tecadm') && (
-          <Button onClick={() => setIsAddDialogOpen(true)} className="w-full sm:w-auto">
-            <PlusCircle className="h-4 w-4 mr-2" />
-            Nova Instituição
-          </Button>
-        )}
+      {/* Header unificado — mobile: título/desc alinhados */}
+      <div className="space-y-1.5">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+          <School className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
+          Gestão Escolar
+        </h1>
+        <p className="text-muted-foreground text-sm sm:text-base max-w-2xl">
+          Gerencie escolas, turmas e usuários (alunos, professores, diretores e coordenadores) em um só lugar.
+        </p>
       </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full max-w-2xl grid-cols-3 h-11 bg-muted/50">
+          <TabsTrigger value="instituicoes" className="flex items-center gap-2">
+            <Building className="h-4 w-4" />
+            <span className="hidden sm:inline">Escolas</span>
+          </TabsTrigger>
+          <TabsTrigger value="turmas" className="flex items-center gap-2">
+            <GraduationCap className="h-4 w-4" />
+            <span className="hidden sm:inline">Turmas</span>
+          </TabsTrigger>
+          <TabsTrigger value="usuarios" className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            <span className="hidden sm:inline">Usuários</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="instituicoes" className="space-y-6 mt-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <p className="text-muted-foreground text-sm">
+              Liste as instituições de ensino, filtre por estado e município e acesse o gerenciamento completo em &quot;Gerenciar&quot;.
+            </p>
+            {(user.role === 'admin' || user.role === 'tecadm') && (
+              <Button onClick={() => setIsAddDialogOpen(true)} className="w-full sm:w-auto shrink-0">
+                <PlusCircle className="h-4 w-4 mr-2" />
+                Nova Instituição
+              </Button>
+            )}
+          </div>
 
       {/* Search and Filters */}
       <div className="space-y-3 sm:space-y-4">
@@ -539,9 +659,9 @@ export default function Instituicao() {
               {filteredAndSortedInstituicoes.map((instituicao) => (
                                  <Card key={instituicao.id} className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02]">
                    <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-                     <CardTitle className="text-base md:text-lg font-semibold flex items-center gap-2 min-w-0 flex-1">
-                       <Building className="h-4 w-4 md:h-5 md:w-5 text-orange-600 flex-shrink-0" />
-                       <span className="truncate">{instituicao.name}</span>
+                     <CardTitle className="text-base md:text-lg font-semibold flex items-start gap-2 min-w-0 flex-1">
+                       <Building className="h-4 w-4 md:h-5 md:w-5 text-orange-600 flex-shrink-0 mt-0.5" />
+                       <span className="break-words">{instituicao.name}</span>
                      </CardTitle>
                      <Badge variant="default" className="text-xs flex-shrink-0 ml-2">
                        Ativa
@@ -686,8 +806,28 @@ export default function Instituicao() {
             </Card>
           )}
         </div>
+        </TabsContent>
 
-      {/* Add/Edit Instituição Dialog */}
+        <TabsContent value="turmas" className="mt-6">
+          <Turmas embedded />
+        </TabsContent>
+
+        <TabsContent value="usuarios" className="mt-6">
+          <InstituicaoUsersTab
+            cityId={
+              user.role === "tecadm"
+                ? (user.tenant_id ?? null)
+                : (selectedUsersCityId || null)
+            }
+            cities={(citiesWithSlug.length > 0 ? citiesWithSlug : availableCities).map((c) => ({ id: c.id, name: c.name }))}
+            selectedCityId={selectedUsersCityId}
+            onCityChange={setSelectedUsersCityId}
+            isAdmin={user.role === "admin"}
+          />
+        </TabsContent>
+      </Tabs>
+
+      {/* Add/Edit Escola Dialog (página Gestão Escolar) */}
       {(isAddDialogOpen || selectedInstituicao) && (
         <SchoolForm
           school={selectedInstituicao ? {

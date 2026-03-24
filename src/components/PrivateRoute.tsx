@@ -1,14 +1,16 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/authContext';
 
 interface PrivateRouteProps {
   children: ReactNode;
 }
 
+
 export function PrivateRoute({ children }: PrivateRouteProps) {
-  const { persistUser } = useAuth();
+  const { persistUser, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isLoading, setIsLoading] = useState(true);
 
   const token = localStorage.getItem('token')
@@ -43,5 +45,37 @@ export function PrivateRoute({ children }: PrivateRouteProps) {
     return null;
   }
 
+  // Contas "corretor(n)@afirmeplay.com.br" (TEC admin) devem acessar
+  // somente cartão resposta, agenda, configurações e correção de prova física;
+  // todo o resto é redirecionado.
+  const email = user?.email?.toLowerCase();
+  const isCorretor = Boolean(email?.includes('corretor'));
+  if (isCorretor) {
+    const pathname = location.pathname;
+    const allowed =
+      pathname === '/app' ||
+      pathname === '/app/' ||
+      pathname === '/app/avaliacoes' ||
+      pathname === '/app/avaliacoes/' ||
+      pathname === '/app/perfil' ||
+      pathname === '/app/perfil/' ||
+      pathname === '/app/agenda' ||
+      pathname.startsWith('/app/agenda/') ||
+      pathname === '/app/cartao-resposta' ||
+      pathname === '/app/cartao-resposta/gerar' ||
+      pathname === '/app/cartao-resposta/cadastrar' ||
+      pathname === '/app/cartao-resposta/corrigir' ||
+      pathname === '/app/cartao-resposta/resultados' ||
+      pathname.startsWith('/app/cartao-resposta/resultados/') ||
+      pathname === '/app/configuracoes' ||
+      pathname.startsWith('/app/configuracoes/') ||
+      (pathname.startsWith('/app/avaliacao/') && pathname.endsWith('/fisica')) ||
+      pathname.startsWith('/app/provas-fisicas/');
+
+    if (!allowed) {
+      return <Navigate to="/app/cartao-resposta/corrigir" replace />;
+    }
+  }
+
   return <>{children}</>;
-} 
+}

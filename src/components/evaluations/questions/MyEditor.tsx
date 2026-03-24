@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Superscript from '@tiptap/extension-superscript';
@@ -15,10 +15,11 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
-  Heading1, Heading2, Heading3, List, Code, Type, AlignLeft, AlignCenter, AlignRight,
-  Image as ImageIcon, Bold, Italic, Underline as UnderlineIcon, Upload, Move, 
-  RotateCcw, Settings, Save, X, Expand, Shrink, MousePointer
+  Heading1, Heading2, Heading3, List, ListOrdered, Code, Type, AlignLeft, AlignCenter, AlignRight, AlignJustify,
+  Image as ImageIcon, Bold, Italic, Underline as UnderlineIcon, Strikethrough, Eraser, Replace,
+  Upload, Move, RotateCcw, Settings, Save, X, Expand, Shrink, MousePointer
 } from "lucide-react";
+import { normalizePdfLineBreaks } from "@/utils/normalizePdfLineBreaks";
 import { ResizableImage } from 'tiptap-extension-resizable-image';
 import 'tiptap-extension-resizable-image/styles.css';
 
@@ -31,13 +32,25 @@ interface ImageConfig {
   src: string;
   width?: number;
   height?: number;
-  align?: 'left' | 'center' | 'right';
+  align?: 'left' | 'center' | 'right' | 'justify';
   caption?: string;
   borderRadius?: number;
   shadow?: boolean;
 }
 
+/** Converte texto puro em HTML de parágrafos, quebrando em \\n\\n e juntando \\n em espaço. */
+function normalizePlainTextPaste(text: string): string {
+  const paragraphs = text.split(/\n\n+/).map((p) => p.replace(/\n\s*/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  if (paragraphs.length === 0) return '';
+  const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return paragraphs.map((p) => `<p>${escape(p)}</p>`).join('');
+}
+
 const MyEditor = ({ value, onChange }: MyEditorProps) => {
+  const editorRef = useRef<ReturnType<typeof useEditor>>(null);
+  // Evita flushSync durante o ciclo de render do React (ex.: quando usado dentro de FormField/Controller).
+  // O TipTap chama flushSync ao montar EditorContent; ao montar só após o primeiro commit, o aviso some.
+  const [editorContentMounted, setEditorContentMounted] = useState(false);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [currentImageConfig, setCurrentImageConfig] = useState<ImageConfig>({
     src: '',
@@ -62,7 +75,7 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
       Underline,
       TextAlign.configure({
         types: ['heading', 'paragraph', 'image'],
-        alignments: ['left', 'center', 'right'],
+        alignments: ['left', 'center', 'right', 'justify'],
         defaultAlignment: 'left',
       }),
       Placeholder.configure({
@@ -83,14 +96,41 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
       attributes: {
         class: 'prose prose-lg dark:prose-invert max-w-none focus:outline-none min-h-[300px] p-4 prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-em:text-foreground prose-code:text-foreground prose-pre:bg-muted dark:prose-pre:bg-muted/50 prose-pre:text-foreground',
       },
+      handlePaste: (_view, event, _slice) => {
+        const ed = editorRef.current;
+        if (!ed) return false;
+        const html = event.clipboardData?.getData('text/html');
+        const plain = event.clipboardData?.getData('text/plain');
+        let toInsert: string;
+        if (html && html.trim()) {
+          toInsert = html;
+        } else if (plain != null && plain !== '') {
+          toInsert = normalizePlainTextPaste(plain);
+          if (!toInsert) return false;
+        } else {
+          return false;
+        }
+        ed.commands.insertContent(toInsert);
+        event.preventDefault();
+        return true;
+      },
     },
   });
+
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
   useEffect(() => {
     if (editor && value !== editor.getHTML()) {
       editor.commands.setContent(value);
     }
   }, [value, editor]);
+
+  // Monta o EditorContent após o primeiro commit para evitar "flushSync was called from inside a lifecycle method"
+  useEffect(() => {
+    queueMicrotask(() => setEditorContentMounted(true));
+  }, []);
 
   if (!editor) {
     return null;
@@ -168,6 +208,12 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
       action: () => editor.chain().focus().toggleUnderline().run(),
       isActive: editor.isActive('underline'),
     },
+    {
+      icon: Strikethrough,
+      label: 'Riscado',
+      action: () => editor.chain().focus().toggleStrike().run(),
+      isActive: editor.isActive('strike'),
+    },
   ];
 
   const headingCommands = [
@@ -210,12 +256,18 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
       action: () => editor.chain().focus().setTextAlign('right').run(),
       isActive: editor.isActive({ textAlign: 'right' }),
     },
+    {
+      icon: AlignJustify,
+      label: 'Justificar',
+      action: () => editor.chain().focus().setTextAlign('justify').run(),
+      isActive: editor.isActive({ textAlign: 'justify' }),
+    },
   ];
 
   return (
-    <div className="border rounded-lg overflow-hidden bg-white dark:bg-card shadow-sm">
+    <div className="border border-border rounded-lg overflow-hidden bg-background dark:bg-card shadow-sm">
       {/* Toolbar */}
-      <div className="border-b bg-gray-50/50 dark:bg-muted/50 px-4 py-3">
+      <div className="border-b border-border bg-muted/30 dark:bg-muted/50 px-4 py-3">
         <div className="flex flex-wrap items-center gap-1">
           {/* Formatação básica */}
           <div className="flex items-center gap-1">
@@ -274,7 +326,7 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                   variant="ghost"
                   size="sm"
                   onClick={() => editor.chain().focus().toggleBulletList().run()}
-                  className={`h-9 w-9 p-0 ${editor.isActive('bulletList') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'}`}
+                  className={`h-9 w-9 p-0 ${editor.isActive('bulletList') ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-muted'}`}
                 >
                   <List className="h-4 w-4" />
                 </Button>
@@ -290,8 +342,25 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                   type="button"
                   variant="ghost"
                   size="sm"
+                  onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                  className={`h-9 w-9 p-0 ${editor.isActive('orderedList') ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-muted'}`}
+                >
+                  <ListOrdered className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Lista numerada</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => editor.chain().focus().toggleCode().run()}
-                  className={`h-9 w-9 p-0 ${editor.isActive('code') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'}`}
+                  className={`h-9 w-9 p-0 ${editor.isActive('code') ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-muted'}`}
                 >
                   <Type className="h-4 w-4" />
                 </Button>
@@ -307,14 +376,50 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => editor.chain().focus().toggleSuperscript().run()}
-                  className={`h-9 w-9 p-0 ${editor.isActive('superscript') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'}`}
+                  onClick={() => editor.chain().focus().insertContent('²').run()}
+                  className="h-9 w-9 p-0 hover:bg-gray-100 dark:hover:bg-muted"
+                  title="Inserir elevado (²)"
                 >
                   <span className="text-xs font-bold">x²</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Sobrescrito</p>
+                <p>Inserir elevado (²)</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => editor.chain().focus().insertContent('√').run()}
+                  className="h-9 w-9 p-0 font-math hover:bg-gray-100 dark:hover:bg-muted"
+                  title="Inserir raiz quadrada"
+                >
+                  <span className="text-base font-medium" style={{ fontFamily: 'serif' }}>√</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Inserir raiz quadrada (√)</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => editor.chain().focus().unsetAllMarks().run()}
+                  className="h-9 w-9 p-0 hover:bg-gray-100 dark:hover:bg-muted"
+                >
+                  <Eraser className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Limpar formatação da seleção</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -345,6 +450,34 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
 
           <Separator orientation="vertical" className="h-6 mx-2" />
 
+          {/* Ajustar quebras de linha (transformar em espaço onde for continuação de frase) */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const html = editor.getHTML();
+                  const normalized = normalizePdfLineBreaks(html);
+                  if (normalized !== html) {
+                    editor.commands.setContent(normalized);
+                    onChange(normalized);
+                  }
+                }}
+                className="h-9 px-2 gap-1.5 font-medium text-muted-foreground hover:bg-gray-100 dark:hover:bg-muted hover:text-foreground"
+              >
+                <Replace className="h-4 w-4" />
+                <span className="hidden sm:inline text-xs">Ajustar quebras</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Ajustar quebras de linha automaticamente (transformar em espaço onde for continuação de frase)</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Separator orientation="vertical" className="h-6 mx-2" />
+
           {/* Imagem */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -366,9 +499,13 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
         </div>
       </div>
 
-      {/* Editor Content */}
+      {/* Editor Content — montado após o primeiro commit para evitar flushSync no ciclo de vida do React */}
       <div className="relative">
-        <EditorContent editor={editor} />
+        {editorContentMounted ? (
+          <EditorContent editor={editor} />
+        ) : (
+          <div className="prose prose-lg dark:prose-invert max-w-none min-h-[300px] p-4 border-0 rounded-b-lg bg-background" aria-hidden />
+        )}
       </div>
 
       {/* Image Configuration Dialog */}
@@ -495,11 +632,12 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
               {/* Alinhamento */}
               <div className="space-y-3">
                 <Label className="text-sm font-semibold">Alinhamento</Label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {[
                     { value: 'left', label: 'Esquerda', icon: AlignLeft },
                     { value: 'center', label: 'Centro', icon: AlignCenter },
                     { value: 'right', label: 'Direita', icon: AlignRight },
+                    { value: 'justify', label: 'Justificar', icon: AlignJustify },
                   ].map((align) => (
                     <Button
                       key={align.value}
@@ -508,7 +646,7 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                       size="sm"
                       onClick={() => setCurrentImageConfig(prev => ({ 
                         ...prev, 
-                        align: align.value as 'left' | 'center' | 'right' 
+                        align: align.value as 'left' | 'center' | 'right' | 'justify' 
                       }))}
                       className="flex-1"
                     >

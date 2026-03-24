@@ -215,7 +215,6 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
         const response = await api.get(`/grades/by-education-stage/${selectedStage}`);
         setGrades(response.data);
       } catch (error) {
-        console.error("Error fetching grades:", error);
         toast({
           title: "Erro",
           description: "Erro ao carregar séries",
@@ -338,7 +337,6 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
       setOpen(false);
       onSuccess?.();
     } catch (error: unknown) {
-      console.error("Error creating classes:", error);
       const errorMessage = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || "Erro ao criar turma(s)";
       toast({
         title: "Erro",

@@ -31,6 +31,16 @@ import { FormType } from '@/types/forms';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { FormMultiSelect, FormOption } from '@/components/ui/form-multi-select';
 import { useToast } from '@/hooks/use-toast';
 import { FormFiltersApiService } from '@/services/formFiltersApi';
@@ -154,6 +164,25 @@ interface Class {
   name: string;
 }
 
+interface ListedForm {
+  id: string;
+  title: string;
+  formType: string;
+  description?: string;
+  isActive: boolean;
+  deadline?: string;
+  totalQuestions?: number;
+  recipientsCount?: number;
+  sentAt?: string;
+  statistics?: { totalRecipients?: number; completedResponses?: number; completionRate?: number };
+  createdAt: string;
+  updatedAt?: string;
+  createdBy?: string;
+  selectedSchools?: string[];
+  selectedGrades?: string[];
+  selectedClasses?: string[];
+}
+
 const FormRegistration = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -180,12 +209,6 @@ const FormRegistration = () => {
   // Estados de loading
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
 
-  // Estado para tipo de formulário determinado pela série
-  const [determinedFormType, setDeterminedFormType] = useState<string | null>(null);
-  const [isDeterminingFormType, setIsDeterminingFormType] = useState(false);
-
-  // Estados para formulários disponíveis baseados em escola e município
-  const [availableFormTypes, setAvailableFormTypes] = useState<string[]>([]);
   const [selectedFormType, setSelectedFormType] = useState<string | null>(null);
 
   // Estados para informações do formulário (editáveis pelo usuário)
@@ -204,6 +227,76 @@ const FormRegistration = () => {
 
   // Ref para controlar resets em cascata
   const isRestoringFiltersRef = useRef(false);
+
+  // Listagem de formulários cadastrados pelo usuário
+  const [formsList, setFormsList] = useState<ListedForm[]>([]);
+  const [formsPagination, setFormsPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
+  const [isLoadingForms, setIsLoadingForms] = useState(false);
+  const [deletingFormId, setDeletingFormId] = useState<string | null>(null);
+  const [formToDeleteId, setFormToDeleteId] = useState<string | null>(null);
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false);
+
+  const loadForms = useCallback(async (page = 1, limit = 20) => {
+    try {
+      setIsLoadingForms(true);
+      const { data } = await api.get<{ data: ListedForm[]; pagination: typeof formsPagination }>('/forms', {
+        params: { page, limit },
+      });
+      setFormsList(data.data || []);
+      setFormsPagination(data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 });
+    } catch (err) {
+      console.error('Erro ao carregar formulários:', err);
+      setFormsList([]);
+      toast({
+        title: 'Erro ao carregar formulários',
+        description: 'Não foi possível listar os questionários. Tente novamente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingForms(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    loadForms(formsPagination.page, formsPagination.limit);
+  }, [loadForms]);
+
+  const handleOpenDeleteConfirm = (formId: string) => {
+    setFormToDeleteId(formId);
+    setShowDeleteAlert(true);
+  };
+
+  const handleConfirmDeleteForm = useCallback(async () => {
+    if (!formToDeleteId) return;
+    try {
+      setDeletingFormId(formToDeleteId);
+      await api.delete(`/forms/${formToDeleteId}`);
+      setShowDeleteAlert(false);
+      setFormToDeleteId(null);
+      toast({ title: 'Questionário excluído', description: 'O questionário foi excluído com sucesso.' });
+      await loadForms(formsPagination.page, formsPagination.limit);
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.message || 'Não foi possível excluir o questionário.';
+      toast({
+        title: 'Erro ao excluir',
+        description: msg,
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingFormId(null);
+    }
+  }, [formToDeleteId, loadForms, formsPagination.page, formsPagination.limit, toast]);
+
+  const getFormTypeDisplayName = (formType: string): string => {
+    const names: Record<string, string> = {
+      'aluno-jovem': 'Anos iniciais e educação infantil',
+      'aluno-velho': 'EJA e anos finais',
+      professor: 'Professores',
+      diretor: 'Diretor',
+      secretario: 'Secretário',
+    };
+    return names[formType] || formType;
+  };
 
   // Carregar estados iniciais
   useEffect(() => {
@@ -249,9 +342,6 @@ const FormRegistration = () => {
   const resetAfterGrade = useCallback(() => {
     setSelectedClasses([]);
     setClasses([]);
-    setDeterminedFormType(null);
-    // Não limpar availableFormTypes e selectedFormType aqui
-    // Eles serão gerenciados pelos useEffects específicos baseados nos filtros selecionados
   }, []);
 
   const resetAfterState = useCallback(() => {
@@ -412,6 +502,54 @@ const FormRegistration = () => {
     loadGrades();
   }, [selectedSchools, selectedState, selectedMunicipality]);
 
+  // Função para obter dados do formulário baseado no tipo
+  const getFormData = useCallback((formType: string) => {
+    switch (formType) {
+      case 'aluno-jovem':
+        return {
+          name: 'Formulário socioeconômico para anos iniciais e educação infantil',
+          description: 'Questionário socioeconômico para estudantes da Educação Infantil e anos iniciais do Ensino Fundamental (1º ao 5º ano).',
+          questions: questionsAlunoJovem,
+          icon: Users,
+          color: 'bg-blue-500'
+        };
+      case 'aluno-velho':
+        return {
+          name: 'Formulário socioeconômico para EJA e anos finais',
+          description: 'Questionário socioeconômico para estudantes dos anos finais do Ensino Fundamental (6º ao 9º ano) e EJA do 1º ao 9º período.',
+          questions: questionsAlunoVelho,
+          icon: GraduationCap,
+          color: 'bg-green-500'
+        };
+      case 'professor':
+        return {
+          name: 'Formulário socioeconômico para professores',
+          description: 'Questionário socioeconômico, de caracterização e condições de trabalho para professores da Educação Básica.',
+          questions: professorQuestions,
+          icon: UserCheck,
+          color: 'bg-purple-500'
+        };
+      case 'diretor':
+        return {
+          name: 'Diretor',
+          description: 'Questionário de caracterização da escola e condições de gestão para diretores escolares.',
+          questions: diretorQuestions,
+          icon: Building2,
+          color: 'bg-orange-500'
+        };
+      case 'secretario':
+        return {
+          name: 'Secretário Municipal de Educação',
+          description: 'Questionário de caracterização e gestão educacional para secretários municipais de educação.',
+          questions: secretarioQuestions,
+          icon: Shield,
+          color: 'bg-indigo-500'
+        };
+      default:
+        return null;
+    }
+  }, []);
+
   // Carregar turmas quando série(s) for(em) selecionada(s)
   useEffect(() => {
     const loadClasses = async () => {
@@ -470,174 +608,21 @@ const FormRegistration = () => {
     loadClasses();
   }, [selectedGrades, selectedSchools, selectedState, selectedMunicipality]);
 
-  // Determinar formulários disponíveis quando escola(s) for(em) selecionada(s) (sem série)
+  // Preencher campos com valores sugeridos quando um tipo de formulário é selecionado
   useEffect(() => {
-    if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchools.length > 0 && selectedGrades.length === 0) {
-      // Quando escola(s) está(ão) selecionada(s) mas série não, mostrar professor e diretor
-      const expected = ['professor', 'diretor'];
-      setAvailableFormTypes(prev => {
-        // Só atualizar se for diferente do esperado
-        if (JSON.stringify(prev.sort()) !== JSON.stringify(expected.sort())) {
-          return expected;
-        }
-        return prev;
-      });
-      setDeterminedFormType(null); // Limpar tipo determinado pela série
-      // Se há múltiplos tipos, não selecionar automaticamente (usuário deve escolher)
-      // Mas manter a seleção atual se já existir
-    } else if (selectedGrades.length > 0) {
-      // Se série(s) foi(foram) selecionada(s), limpar formulários disponíveis por escola
-      setAvailableFormTypes([]);
-      setSelectedFormType(null);
-    } else if (selectedSchools.length === 0 && selectedState !== 'all' && selectedMunicipality !== 'all') {
-      // Se escola foi deselecionada mas município ainda está selecionado, não limpar aqui
-      // (será tratado pelo useEffect do município)
-    } else if (selectedState === 'all' || selectedMunicipality === 'all') {
-      // Limpar apenas se os filtros obrigatórios não estiverem selecionados
-      setAvailableFormTypes([]);
-      setSelectedFormType(null);
-    }
-  }, [selectedState, selectedMunicipality, selectedSchools, selectedGrades]);
-
-  // Determinar formulários disponíveis quando município for selecionado (sem escola)
-  useEffect(() => {
-    if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchools.length === 0) {
-      // Quando município está selecionado mas escola não, mostrar secretário
-      const expected = ['secretario'];
-      setAvailableFormTypes(prev => {
-        // Só atualizar se for diferente do esperado
-        if (JSON.stringify(prev.sort()) !== JSON.stringify(expected.sort())) {
-          return expected;
-        }
-        return prev;
-      });
-      setDeterminedFormType(null); // Limpar tipo determinado pela série
-      // Selecionar automaticamente quando há apenas um tipo disponível
-      setSelectedFormType('secretario');
-    } else if (selectedSchools.length > 0) {
-      // Se escola foi selecionada, o useEffect acima já vai tratar de definir professor/diretor
-      // Não limpar aqui para evitar conflitos
-    } else if (selectedState === 'all' || selectedMunicipality === 'all') {
-      // Limpar quando filtros obrigatórios não estão selecionados
-      setAvailableFormTypes([]);
-      setSelectedFormType(null);
-    }
-  }, [selectedState, selectedMunicipality, selectedSchools]);
-
-  // Determinar tipo de formulário quando série(s) for(em) selecionada(s)
-  useEffect(() => {
-    const determineFormType = async () => {
-      if (selectedGrades.length > 0) {
-        setIsDeterminingFormType(true);
-        try {
-          // Se houver múltiplas séries, verificar tipos de todas
-          const formTypes = new Set<string>();
-          
-          for (const gradeId of selectedGrades) {
-            const formType = await determineFormTypeFromGrade(gradeId);
-            if (formType) {
-              formTypes.add(formType);
-            }
-          }
-          
-          // Se todas as séries têm o mesmo tipo, usar esse tipo
-          // Se houver tipos diferentes, não determinar automaticamente
-          if (formTypes.size === 1) {
-            setDeterminedFormType(Array.from(formTypes)[0]);
-            setAvailableFormTypes([]);
-            setSelectedFormType(null);
-          } else if (formTypes.size > 1) {
-            // Múltiplos tipos - mostrar opções ou avisar conflito
-            setDeterminedFormType(null);
-            setAvailableFormTypes(Array.from(formTypes));
-            setSelectedFormType(null);
-          } else {
-            setDeterminedFormType(null);
-          }
-        } catch (error) {
-          console.error('Erro ao determinar tipo de formulário:', error);
-          setDeterminedFormType(null);
-        } finally {
-          setIsDeterminingFormType(false);
-        }
-      } else {
-        setDeterminedFormType(null);
-      }
-    };
-
-    determineFormType();
-  }, [selectedGrades]);
-
-  // Preencher campos com valores sugeridos quando o tipo de formulário for determinado (série) ou selecionado (escola/município)
-  useEffect(() => {
-    const formTypeToUse = determinedFormType || selectedFormType;
-    if (formTypeToUse) {
-      const formData = getFormData(formTypeToUse);
+    if (selectedFormType) {
+      const formData = getFormData(selectedFormType);
       if (formData) {
-        // Preencher apenas se os campos estiverem vazios (para não sobrescrever edições do usuário)
         setFormTitle(prev => prev.trim() ? prev : formData.name);
         setFormDescription(prev => prev.trim() ? prev : (formData.description || ''));
       }
     } else {
-      // Limpar campos apenas se não houver tipos disponíveis E não houver tipo selecionado
-      // Não limpar se houver tipos disponíveis aguardando seleção
-      if (!availableFormTypes.length && !determinedFormType && !selectedFormType) {
-        setFormTitle('');
-        setFormDescription('');
-        setFormInstructions('');
-        setFormDeadline('');
-      }
+      setFormTitle('');
+      setFormDescription('');
+      setFormInstructions('');
+      setFormDeadline('');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [determinedFormType, selectedFormType, availableFormTypes.length]);
-
-  // Função para obter dados do formulário baseado no tipo
-  const getFormData = useCallback((formType: string) => {
-    switch (formType) {
-      case 'aluno-jovem':
-        return {
-          name: 'Aluno (Anos Iniciais)',
-          description: 'Questionário socioeconômico para estudantes dos anos iniciais do Ensino Fundamental (1° ao 5° ano), EJA 1° ao 5° período e Educação Infantil.',
-          questions: questionsAlunoJovem,
-          icon: Users,
-          color: 'bg-blue-500'
-        };
-      case 'aluno-velho':
-        return {
-          name: 'Aluno (Anos Finais)',
-          description: 'Questionário socioeconômico para estudantes dos anos finais do Ensino Fundamental (6° ao 9° ano) e EJA 6° ao 9° período.',
-          questions: questionsAlunoVelho,
-          icon: GraduationCap,
-          color: 'bg-green-500'
-        };
-      case 'professor':
-        return {
-          name: 'Professor',
-          description: 'Questionário de caracterização e condições de trabalho para professores da Educação Básica.',
-          questions: professorQuestions,
-          icon: UserCheck,
-          color: 'bg-purple-500'
-        };
-      case 'diretor':
-        return {
-          name: 'Diretor',
-          description: 'Questionário de caracterização da escola e condições de gestão para diretores escolares.',
-          questions: diretorQuestions,
-          icon: Building2,
-          color: 'bg-orange-500'
-        };
-      case 'secretario':
-        return {
-          name: 'Secretário Municipal de Educação',
-          description: 'Questionário de caracterização e gestão educacional para secretários municipais de educação.',
-          questions: secretarioQuestions,
-          icon: Shield,
-          color: 'bg-indigo-500'
-        };
-      default:
-        return null;
-    }
-  }, []);
+  }, [selectedFormType, getFormData]);
 
   // Função para abrir editor de perguntas
   const handleOpenQuestionEditor = (formType: string) => {
@@ -693,12 +678,12 @@ const FormRegistration = () => {
 
   // Função para enviar formulário
   const handleSendForm = async () => {
-    const formTypeToUse = determinedFormType || selectedFormType;
+    const formTypeToUse = selectedFormType;
     
     if (!formTypeToUse) {
       toast({
         title: "Erro",
-        description: "Selecione um tipo de formulário ou uma série para determinar o tipo.",
+        description: "Selecione um tipo de formulário antes de enviar.",
         variant: "destructive",
       });
       return;
@@ -711,6 +696,41 @@ const FormRegistration = () => {
         variant: "destructive",
       });
       return;
+    }
+
+    // Para formulários de alunos, garantir que as séries selecionadas (quando houver) são compatíveis com o tipo escolhido
+    if ((formTypeToUse === 'aluno-jovem' || formTypeToUse === 'aluno-velho')) {
+      // Se nenhuma série foi selecionada, o formulário será enviado para todas as séries da(s) escola(s)
+      // Somente se houver séries selecionadas é que validamos compatibilidade com o tipo (anos iniciais vs finais/EJA)
+      if (selectedGrades.length > 0) {
+        try {
+          const incompatibleGrades: string[] = [];
+
+          for (const gradeId of selectedGrades) {
+            const detectedType = await determineFormTypeFromGrade(gradeId);
+            if (!detectedType || detectedType !== formTypeToUse) {
+              incompatibleGrades.push(gradeId);
+            }
+          }
+
+          if (incompatibleGrades.length > 0) {
+            toast({
+              title: "Séries incompatíveis com o formulário selecionado",
+              description: "Remova as séries que não pertencem ao público-alvo deste formulário (anos iniciais/Educação Infantil ou EJA/anos finais) e tente novamente.",
+              variant: "destructive",
+            });
+            return;
+          }
+        } catch (error) {
+          console.error('Erro ao validar séries para o tipo de formulário selecionado:', error);
+          toast({
+            title: "Erro ao validar séries",
+            description: "Não foi possível validar as séries selecionadas. Tente novamente.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
     }
 
     // Preparar payload
@@ -763,26 +783,31 @@ const FormRegistration = () => {
       return;
     }
 
-    // Preparar payload no formato correto da API
+    // Validar data de expiração (obrigatória)
+    if (!formDeadline.trim()) {
+      toast({
+        title: "Erro",
+        description: "A data de expiração do formulário é obrigatória.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Payload conforme spec POST /forms: formType + selectedSchools; séries/turmas só se preenchidos
     const payload: any = {
       formType: formTypeToUse,
-      title: formTitle.trim(),
-      questions: normalizedQuestions
+      selectedSchools,
+      isActive: true,
+      questions: normalizedQuestions,
     };
 
-    // Adicionar campos opcionais apenas se tiverem valor
-    if (formDescription.trim()) {
-      payload.description = formDescription.trim();
-    }
-
-    if (formInstructions.trim()) {
-      payload.instructions = formInstructions.trim();
-    }
-
-    // Adicionar deadline se fornecido (formato ISO 8601)
+    if (selectedGrades.length > 0) payload.selectedGrades = selectedGrades;
+    if (selectedClasses.length > 0) payload.selectedClasses = selectedClasses;
+    if (formTitle.trim()) payload.title = formTitle.trim();
+    if (formDescription.trim()) payload.description = formDescription.trim();
+    if (formInstructions.trim()) payload.instructions = formInstructions.trim();
     if (formDeadline.trim()) {
       try {
-        // Converter para ISO 8601 se necessário
         const deadlineDate = new Date(formDeadline);
         if (!isNaN(deadlineDate.getTime())) {
           payload.deadline = deadlineDate.toISOString();
@@ -792,34 +817,37 @@ const FormRegistration = () => {
       }
     }
 
-    // Adicionar seleções (arrays) - backend processa múltiplos destinatários usando apenas selected*
-    payload.selectedSchools = selectedSchools.length > 0 ? selectedSchools : [];
-    payload.selectedGrades = selectedGrades.length > 0 ? selectedGrades : [];
-    payload.selectedClasses = selectedClasses.length > 0 ? selectedClasses : [];
-
-    // Adicionar filtros com escopo hierárquico comum
-    payload.filters = {
-      estado: selectedState,           // Do filtro de navegação
-      municipio: selectedMunicipality  // Do filtro de navegação
-      // NÃO colocar escola/série/turma (pois podem ser múltiplas)
-    };
-
-    // Campos padrão
-    payload.isActive = true;
-
     try {
-      // Enviar para o backend usando a rota correta
-      const response = await api.post('/forms', payload);
-      
-      const recipientsCount = response.data?.recipientsCount;
-      const message = recipientsCount 
-        ? `Formulário criado e enviado com sucesso! ${recipientsCount} destinatário${recipientsCount !== 1 ? 's' : ''} notificado${recipientsCount !== 1 ? 's' : ''}.`
-        : "Formulário criado com sucesso!";
-      
+      // Enviar para o backend usando a rota correta (admin: enviar contexto de cidade)
+      const postConfig = selectedMunicipality !== 'all' ? { meta: { cityId: selectedMunicipality } } : {};
+      const response = await api.post('/forms', payload, postConfig);
+      const data = response.data;
+
+      let successMessage: string;
+      if (data?.forms && Array.isArray(data.forms)) {
+        const totalRecipients = data.forms.reduce((sum: number, f: any) => sum + (f.recipientsCount || 0), 0);
+        successMessage = data.message || `${data.forms.length} formulário(s) criado(s) com sucesso.`;
+        if (totalRecipients > 0) {
+          successMessage += ` ${totalRecipients} destinatário(s) notificado(s).`;
+        }
+      } else {
+        const recipientsCount = data?.recipientsCount;
+        successMessage = recipientsCount
+          ? `Formulário criado e enviado com sucesso! ${recipientsCount} destinatário${recipientsCount !== 1 ? 's' : ''} notificado${recipientsCount !== 1 ? 's' : ''}.`
+          : "Formulário criado com sucesso!";
+      }
+
+      const warnings = data?.warnings;
+      if (warnings && Array.isArray(warnings) && warnings.length > 0) {
+        successMessage += "\n\nAvisos: " + warnings.join(" ");
+      }
+
       toast({
         title: "Sucesso!",
-        description: message,
+        description: successMessage,
       });
+
+      await loadForms(formsPagination.page, formsPagination.limit);
 
       // Limpar seleções após sucesso (opcional)
       // setSelectedState('all');
@@ -827,7 +855,6 @@ const FormRegistration = () => {
       // setSelectedSchool('all');
       // setSelectedGrade('all');
       // setSelectedClass('all');
-      // setDeterminedFormType(null);
     } catch (error: any) {
       console.error('Erro ao enviar formulário:', error);
       toast({
@@ -842,8 +869,8 @@ const FormRegistration = () => {
   const formTypes: FormType[] = [
     {
       id: 'aluno-jovem',
-      name: 'Aluno (Anos Iniciais)',
-      description: 'Questionário socioeconômico para estudantes dos anos iniciais do Ensino Fundamental (1° ao 5° ano), EJA 1° ao 5° período e Educação Infantil.',
+      name: 'Formulário socioeconômico para anos iniciais e educação infantil',
+      description: 'Questionário socioeconômico para estudantes da Educação Infantil e anos iniciais do Ensino Fundamental (1º ao 5º ano).',
       targetAudience: 'Estudantes de 6 a 11 anos',
       educationLevel: 'Anos Iniciais, EJA Inicial, Educação Infantil',
       questions: [],
@@ -855,8 +882,8 @@ const FormRegistration = () => {
     },
     {
       id: 'aluno-velho',
-      name: 'Aluno (Anos Finais)',
-      description: 'Questionário socioeconômico para estudantes dos anos finais do Ensino Fundamental (6° ao 9° ano) e EJA 6° ao 9° período.',
+      name: 'Formulário socioeconômico para EJA e anos finais',
+      description: 'Questionário socioeconômico para estudantes dos anos finais do Ensino Fundamental (6º ao 9º ano) e EJA do 1º ao 9º período.',
       targetAudience: 'Estudantes de 12 a 17 anos',
       educationLevel: 'Anos Finais, EJA Avançado',
       questions: [],
@@ -868,8 +895,8 @@ const FormRegistration = () => {
     },
     {
       id: 'professor',
-      name: 'Professor',
-      description: 'Questionário de caracterização e condições de trabalho para professores da Educação Básica.',
+      name: 'Formulário socioeconômico para professores',
+      description: 'Questionário socioeconômico, de caracterização e condições de trabalho para professores da Educação Básica.',
       targetAudience: 'Professores da Educação Básica',
       educationLevel: 'Todos os níveis',
       questions: [],
@@ -928,22 +955,175 @@ const FormRegistration = () => {
   };
 
   // Obter dados do formulário determinado ou selecionado
-  const formDataToShow = determinedFormType || selectedFormType;
-  const determinedFormData = formDataToShow ? getFormData(formDataToShow) : null;
+  const formTypeToShow = selectedFormType;
+  const formDataToShow = formTypeToShow ? getFormData(formTypeToShow) : null;
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <FileText className="w-8 h-8 text-blue-600" />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
             Cadastro de Questionários
           </h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-muted-foreground text-sm sm:text-base">
             Selecione os filtros para determinar o público-alvo e configure o questionário
           </p>
         </div>
       </div>
+
+      {/* Formulários já cadastrados pelo usuário */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Formulários cadastrados
+          </CardTitle>
+          <CardDescription>
+            Questionários criados por você. O backend retorna apenas os formulários do usuário logado.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoadingForms ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : formsList.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">
+              Nenhum questionário cadastrado ainda. Selecione um tipo abaixo e preencha os filtros para criar.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-3 px-2 font-medium">Título</th>
+                    <th className="text-left py-3 px-2 font-medium">Tipo</th>
+                    <th className="text-left py-3 px-2 font-medium">Prazo</th>
+                    <th className="text-left py-3 px-2 font-medium">Destinatários</th>
+                    <th className="text-left py-3 px-2 font-medium">Status</th>
+                    <th className="text-right py-3 px-2 font-medium">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {formsList.map((form) => (
+                    <tr key={form.id} className="border-b last:border-0">
+                      <td className="py-3 px-2 max-w-[240px] truncate" title={form.title}>{form.title}</td>
+                      <td className="py-3 px-2">{getFormTypeDisplayName(form.formType)}</td>
+                      <td className="py-3 px-2">
+                        {form.deadline
+                          ? new Date(form.deadline).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+                          : '—'}
+                      </td>
+                      <td className="py-3 px-2">
+                        {form.recipientsCount != null
+                          ? `${form.statistics?.completedResponses ?? 0}/${form.recipientsCount}`
+                          : '—'}
+                      </td>
+                      <td className="py-3 px-2">
+                        <Badge variant={form.isActive ? 'default' : 'secondary'}>
+                          {form.isActive ? 'Ativo' : 'Inativo'}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-2 text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => handleOpenDeleteConfirm(form.id)}
+                          disabled={deletingFormId === form.id}
+                        >
+                          {deletingFormId === form.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                          <span className="ml-1.5">Excluir</span>
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {formsPagination.totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+              <span>
+                Página {formsPagination.page} de {formsPagination.totalPages} ({formsPagination.total} no total)
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={formsPagination.page <= 1}
+                  onClick={() => loadForms(formsPagination.page - 1, formsPagination.limit)}
+                >
+                  Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={formsPagination.page >= formsPagination.totalPages}
+                  onClick={() => loadForms(formsPagination.page + 1, formsPagination.limit)}
+                >
+                  Próxima
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Seleção de tipo de formulário */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Selecione o tipo de formulário
+          </CardTitle>
+          <CardDescription>
+            Primeiro escolha qual formulário socioeconômico deseja enviar e, em seguida, defina os filtros de destinatários.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {formTypes.map((formType) => {
+              const Icon = getIcon(formType.icon);
+              const isSelected = selectedFormType === formType.id;
+
+              return (
+                <Card
+                  key={formType.id}
+                  className={`cursor-pointer transition-all ${
+                    isSelected
+                      ? 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-950/30'
+                      : 'border hover:border-gray-300'
+                  }`}
+                  onClick={() => setSelectedFormType(formType.id)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-3 rounded-lg ${formType.color}`}>
+                        <Icon className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-lg">{formType.name}</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {formType.description}
+                        </p>
+                      </div>
+                      {isSelected && (
+                        <Check className="h-5 w-5 text-blue-600" />
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Filtros */}
       <Card>
@@ -1086,82 +1266,22 @@ const FormRegistration = () => {
         </CardContent>
       </Card>
 
-      {/* Seleção de tipo de formulário quando escola está selecionada */}
-      {availableFormTypes.length > 0 && selectedGrades.length === 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Filter className="h-5 w-5" />
-              Selecione o Tipo de Formulário
-            </CardTitle>
-            <CardDescription>
-              {availableFormTypes.length === 1 
-                ? 'Um tipo de formulário está disponível para esta seleção.'
-                : 'Selecione o tipo de formulário que deseja criar.'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {availableFormTypes.map((formType) => {
-                const formData = getFormData(formType);
-                if (!formData) return null;
-                
-                const Icon = formData.icon;
-                const isSelected = selectedFormType === formType;
-                
-                return (
-                  <Card
-                    key={formType}
-                    className={`cursor-pointer transition-all ${
-                      isSelected
-                        ? 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-950/30'
-                        : 'border hover:border-gray-300'
-                    }`}
-                    onClick={() => setSelectedFormType(formType)}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`p-3 rounded-lg ${formData.color}`}>
-                          <Icon className="h-6 w-6 text-white" />
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-lg">{formData.name}</h3>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {formData.description}
-                          </p>
-                        </div>
-                        {isSelected && (
-                          <Check className="h-5 w-5 text-blue-600" />
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Formulário determinado pela série OU selecionado manualmente */}
-      {formDataToShow && determinedFormData && (
+      {formTypeToShow && formDataToShow && (
         <Card className="border-2 border-blue-500">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={`p-3 rounded-lg ${determinedFormData.color}`}>
-                  <determinedFormData.icon className="h-6 w-6 text-white" />
+                <div className={`p-3 rounded-lg ${formDataToShow.color}`}>
+                  <formDataToShow.icon className="h-6 w-6 text-white" />
                 </div>
                 <div>
-                  <CardTitle>{determinedFormData.name}</CardTitle>
+                  <CardTitle>{formDataToShow.name}</CardTitle>
                   <CardDescription className="mt-1">
-                    {determinedFormData.description}
+                    {formDataToShow.description}
                   </CardDescription>
                 </div>
               </div>
-              {isDeterminingFormType && (
-                <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-              )}
             </div>
           </CardHeader>
           <CardContent>
@@ -1181,7 +1301,7 @@ const FormRegistration = () => {
                   />
                   {!formTitle.trim() && (
                     <p className="text-xs text-muted-foreground">
-                      Sugestão: {determinedFormData.name}
+                      Sugestão: {formDataToShow.name}
                     </p>
                   )}
                 </div>
@@ -1199,7 +1319,7 @@ const FormRegistration = () => {
                   />
                   {!formDescription.trim() && (
                     <p className="text-xs text-muted-foreground">
-                      Sugestão: {determinedFormData.description}
+                      Sugestão: {formDataToShow.description}
                     </p>
                   )}
                 </div>
@@ -1220,12 +1340,12 @@ const FormRegistration = () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="form-deadline" className="text-sm font-medium">
-                    Data de Expiração
+                    Data de Expiração <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id="form-deadline"
                     type="datetime-local"
-                    placeholder="Selecione a data e hora de expiração (opcional)"
+                    placeholder="Selecione a data e hora de expiração"
                     value={formDeadline}
                     onChange={(e) => setFormDeadline(e.target.value)}
                     className="w-full"
@@ -1243,13 +1363,13 @@ const FormRegistration = () => {
                 <Target className="h-4 w-4" />
                 <span>
                   Total de perguntas: {
-                    selectedQuestionIds.size > 0 && selectedFormTypeForEditor === formDataToShow
+                    selectedQuestionIds.size > 0 && selectedFormTypeForEditor === formTypeToShow
                       ? selectedQuestionIds.size
-                      : determinedFormData.questions.length
+                      : formDataToShow.questions.length
                   }
-                  {selectedQuestionIds.size > 0 && selectedFormTypeForEditor === formDataToShow && (
+                  {selectedQuestionIds.size > 0 && selectedFormTypeForEditor === formTypeToShow && (
                     <span className="text-muted-foreground ml-1">
-                      (de {determinedFormData.questions.length} disponíveis)
+                      (de {formDataToShow.questions.length} disponíveis)
                     </span>
                   )}
                 </span>
@@ -1258,7 +1378,7 @@ const FormRegistration = () => {
               <div className="flex gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => handleOpenQuestionEditor(formDataToShow)}
+                  onClick={() => handleOpenQuestionEditor(formTypeToShow)}
                   className="flex items-center gap-2"
                 >
                   <CheckSquare className="h-4 w-4" />
@@ -1273,41 +1393,6 @@ const FormRegistration = () => {
                 </Button>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Mensagem quando não há série selecionada mas escola está selecionada */}
-      {selectedGrades.length === 0 && selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchools.length > 0 && availableFormTypes.length === 0 && !selectedFormType && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-              <Filter className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-medium text-foreground mb-2">
-              Selecione um Tipo de Formulário
-            </h3>
-            <p className="text-muted-foreground text-center max-w-md">
-              Com a escola selecionada, você pode criar formulários para <strong>Professores</strong> ou <strong>Diretores</strong>. 
-              Selecione uma série para criar formulários para alunos.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Mensagem quando município está selecionado mas escola não */}
-      {selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchools.length === 0 && availableFormTypes.length === 0 && !selectedFormType && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-              <Filter className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-medium text-foreground mb-2">
-              Formulário de Secretário Disponível
-            </h3>
-            <p className="text-muted-foreground text-center max-w-md">
-              Com o município selecionado, você pode criar um formulário para <strong>Secretário Municipal de Educação</strong>.
-            </p>
           </CardContent>
         </Card>
       )}
@@ -1630,6 +1715,33 @@ const FormRegistration = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmação de exclusão de questionário */}
+      <AlertDialog open={showDeleteAlert} onOpenChange={(open) => { setShowDeleteAlert(open); if (!open) setFormToDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir questionário</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deseja realmente excluir este questionário? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDeleteForm}
+              disabled={!!deletingFormId}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingFormId ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

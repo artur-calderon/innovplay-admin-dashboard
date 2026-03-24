@@ -239,21 +239,21 @@ const ProfessorDashboard = () => {
                 <>
                   {[...Array(6)].map((_, index) => (
                     <div key={index} className="flex items-center gap-3 animate-pulse">
-                      <Skeleton className="h-12 w-12 rounded-full bg-gray-200" />
+                      <Skeleton className="h-12 w-12 rounded-full bg-muted" />
                       <div className="flex-1">
-                        <Skeleton className="h-4 w-24 mb-1 bg-gray-200" />
+                        <Skeleton className="h-4 w-24 mb-1 bg-muted" />
                       </div>
                     </div>
                   ))}
                 </>
               ) : quickLinks.length === 0 ? (
-                <div className="col-span-full text-center text-muted-foreground py-8">
+                <div className="col-span-full text-center py-8">
                   <div className="flex flex-col items-center gap-2">
-                    <div className="p-3 rounded-full bg-gray-100">
-                      <Pencil className="h-6 w-6 text-gray-400" />
+                    <div className="p-3 rounded-full bg-muted">
+                      <Pencil className="h-6 w-6 text-muted-foreground" />
                     </div>
-                    <p>Nenhum atalho selecionado.</p>
-                    <p className="text-sm">Clique no lápis para adicionar.</p>
+                    <p className="text-foreground">Nenhum atalho selecionado.</p>
+                    <p className="text-sm text-muted-foreground">Clique no lápis para adicionar.</p>
                   </div>
                 </div>
               ) : (
@@ -268,7 +268,7 @@ const ProfessorDashboard = () => {
                       <div className="p-3 rounded-full bg-innov-purple/10 flex-shrink-0">
                         <IconComponent className="h-6 w-6 text-innov-purple" />
                       </div>
-                      <span className="font-medium text-sm">{link.label}</span>
+                      <span className="font-medium text-sm text-foreground">{link.label}</span>
                     </div>
                   );
                 })

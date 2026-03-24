@@ -76,18 +76,69 @@ export interface Student {
   escola_id?: string;
 }
 
+/** Resumo de escola (apenas quando scope_type === 'city') */
+export interface GabaritoSchoolSummary {
+  school_id: string;
+  school_name: string;
+  classes_count: number;
+  students_count: number;
+}
+
+/** Turma no snapshot (API pode enviar UUIDs ou objetos enriquecidos) */
+export interface GabaritoScopeClassEntry {
+  class_id: string;
+  class_name?: string;
+  grade_name?: string;
+  /** Ex.: "9º Ano - A" */
+  label?: string;
+}
+
+/** Snapshot do escopo no momento da geração (schema flexível por tenant) */
+export interface GabaritoScopeSnapshot {
+  scope?: string;
+  city_id?: string;
+  /** UUIDs ou lista detalhada por turma/série */
+  class_ids?: Array<string | GabaritoScopeClassEntry>;
+  school_ids?: string[];
+  grade_ids?: string[];
+  [key: string]: unknown;
+}
+
+/** Uma geração / ZIP distinta do mesmo cartão resposta (histórico no tenant) */
+export interface GabaritoGeneration {
+  id: string;
+  gabarito_id: string;
+  job_id?: string;
+  scope_type?: 'class' | 'grade' | 'school' | 'city';
+  scope_snapshot?: GabaritoScopeSnapshot | null;
+  minio_url?: string | null;
+  minio_object_name?: string;
+  minio_bucket?: string;
+  zip_generated_at?: string | null;
+  total_classes?: number;
+  total_students?: number;
+  status?: string;
+  created_by?: string;
+  created_at?: string;
+  can_download?: boolean;
+  /** URL assinada ou redirect, quando o backend expõe por geração (ex.: ?job_id=...) */
+  download_url?: string | null;
+}
+
 export interface Gabarito {
   id: string;
   test_id: string | null;
-  class_id?: string;
-  class_name?: string;
+  class_id?: string | null;
+  class_name?: string | null;
+  grade_id?: string | null;
+  grade_name?: string;
   num_questions?: number;
   use_blocks?: boolean;
   title: string;
-  school_name: string;
+  school_id?: string | null;
+  school_name?: string;
   municipality?: string;
   state?: string;
-  grade_name?: string;
   institution?: string;
   created_at: string;
   created_by?: string;
@@ -95,13 +146,22 @@ export interface Gabarito {
   // Novos campos para batch
   is_batch?: boolean;
   batch_id?: string | null;
-  // Formato lista (GET /gabaritos): escopo escola/série — classes_count só turmas que geraram PDF
-  scope_type?: 'class' | 'grade' | 'school';
+  // Formato lista (GET /gabaritos): escopo escola/série/city
+  scope_type?: 'class' | 'grade' | 'school' | 'city';
   classes_count?: number;
   students_count?: number;
   generation_status?: string;
   can_download?: boolean;
   minio_url?: string;
+  /** URL do backend para download (com ?redirect=1). Usar no link "Baixar"; não usar minio_url no navegador. */
+  download_url?: string;
+  /** Apenas quando scope_type === 'city' */
+  schools_summary?: GabaritoSchoolSummary[];
+  /** Histórico de gerações (escopos diferentes do mesmo cartão) */
+  generations?: GabaritoGeneration[];
+  generations_count?: number;
+  /** Job da geração mais recente (espelha em geral minio_url/download_url do cartão) */
+  latest_generation_job_id?: string | null;
 }
 
 export interface GabaritosResponse {
@@ -110,6 +170,8 @@ export interface GabaritosResponse {
   page: number;
   per_page: number;
   pages: number;
+  /** Município do contexto (tenant), quando disponível */
+  city_id?: string | null;
 }
 
 // Novos tipos para batch

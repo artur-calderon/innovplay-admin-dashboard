@@ -39,6 +39,8 @@ interface ClassSelectorProps {
   initialMunicipality?: string;
   initialSchool?: string;
   initialGrade?: string;
+  /** Quando true, não exibe filtros nem busca; usa apenas os valores iniciais (seleção do pai como filtro). */
+  hideFilters?: boolean;
 }
 
 export function ClassSelector({
@@ -48,6 +50,7 @@ export function ClassSelector({
   initialMunicipality,
   initialSchool,
   initialGrade,
+  hideFilters = false,
 }: ClassSelectorProps) {
   const { toast } = useToast();
   const [states, setStates] = useState<State[]>([]);
@@ -225,105 +228,118 @@ export function ClassSelector({
     return selectedClasses.some(c => c.id === classId);
   };
 
+  // Sincronizar estado interno com props quando os filtros estão ocultos (pai usa seleção como filtro)
+  useEffect(() => {
+    if (hideFilters) {
+      setSelectedState(initialState || '');
+      setSelectedMunicipality(initialMunicipality || '');
+      setSelectedSchool(initialSchool || '');
+      setSelectedGrade(initialGrade || '');
+    }
+  }, [hideFilters, initialState, initialMunicipality, initialSchool, initialGrade]);
+
   return (
     <div className="space-y-4">
-      {/* Filtros */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="space-y-2">
-          <Label>Estado</Label>
-          <Select
-            value={selectedState}
-            onValueChange={setSelectedState}
-            disabled={loadingStates}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione o estado" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              {states.map((state) => (
-                <SelectItem key={state.id} value={state.id}>
-                  {state.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      {/* Filtros (ocultos quando hideFilters — o pai usa a seleção como filtro) */}
+      {!hideFilters && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="space-y-2">
+              <Label>Estado</Label>
+              <Select
+                value={selectedState}
+                onValueChange={setSelectedState}
+                disabled={loadingStates}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {states.map((state) => (
+                    <SelectItem key={state.id} value={state.id}>
+                      {state.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-        <div className="space-y-2">
-          <Label>Município</Label>
-          <Select
-            value={selectedMunicipality}
-            onValueChange={setSelectedMunicipality}
-            disabled={loadingMunicipalities || !selectedState || selectedState === 'all'}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione o município" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              {municipalities.map((municipality) => (
-                <SelectItem key={municipality.id} value={municipality.id}>
-                  {municipality.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+            <div className="space-y-2">
+              <Label>Município</Label>
+              <Select
+                value={selectedMunicipality}
+                onValueChange={setSelectedMunicipality}
+                disabled={loadingMunicipalities || !selectedState || selectedState === 'all'}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o município" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {municipalities.map((municipality) => (
+                    <SelectItem key={municipality.id} value={municipality.id}>
+                      {municipality.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-        <div className="space-y-2">
-          <Label>Escola</Label>
-          <Select
-            value={selectedSchool}
-            onValueChange={setSelectedSchool}
-            disabled={loadingSchools || !selectedMunicipality || selectedMunicipality === 'all'}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione a escola" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {schools.map((school) => (
-                <SelectItem key={school.id} value={school.id}>
-                  {school.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+            <div className="space-y-2">
+              <Label>Escola</Label>
+              <Select
+                value={selectedSchool}
+                onValueChange={setSelectedSchool}
+                disabled={loadingSchools || !selectedMunicipality || selectedMunicipality === 'all'}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a escola" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {schools.map((school) => (
+                    <SelectItem key={school.id} value={school.id}>
+                      {school.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-        <div className="space-y-2">
-          <Label>Série</Label>
-          <Select
-            value={selectedGrade}
-            onValueChange={setSelectedGrade}
-            disabled={loadingGrades || !selectedSchool || selectedSchool === 'all'}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione a série" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {grades.map((grade) => (
-                <SelectItem key={grade.id} value={grade.id}>
-                  {grade.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+            <div className="space-y-2">
+              <Label>Série</Label>
+              <Select
+                value={selectedGrade}
+                onValueChange={setSelectedGrade}
+                disabled={loadingGrades || !selectedSchool || selectedSchool === 'all'}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a série" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {grades.map((grade) => (
+                    <SelectItem key={grade.id} value={grade.id}>
+                      {grade.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
-      {/* Busca */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar turmas..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
-        />
-      </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar turmas..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </>
+      )}
 
       {/* Contador de selecionados */}
       {selectedClasses.length > 0 && (
@@ -344,7 +360,7 @@ export function ClassSelector({
         ) : filteredClasses.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             {!selectedSchool || !selectedGrade
-              ? 'Selecione estado, município, escola e série para ver as turmas'
+              ? (hideFilters ? 'Preencha os filtros acima para ver as turmas' : 'Selecione estado, município, escola e série para ver as turmas')
               : 'Nenhuma turma encontrada'}
           </div>
         ) : (

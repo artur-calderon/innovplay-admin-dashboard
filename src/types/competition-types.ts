@@ -32,8 +32,15 @@ export interface RewardConfig {
   ranking_rewards?: { position: number; coins: number }[];
 }
 
-/** Escopo: quem recebe (individual, turma, série, escola, estado, município). Etapa 3 usará na listagem/inscrição. */
-export type CompetitionScope = 'individual' | 'turma' | 'serie' | 'escola' | 'estado' | 'municipio';
+/** Escopo: quem recebe (individual, turma, série, escola, estado, município, global). Etapa 3 usará na listagem/inscrição. */
+export type CompetitionScope =
+  | 'individual'
+  | 'turma'
+  | 'serie'
+  | 'escola'
+  | 'estado'
+  | 'municipio'
+  | 'global';
 
 /** Filtro de escopo: IDs conforme o tipo de escopo (enviado na criação/edição da competição). */
 export interface CompetitionScopeFilter {
@@ -95,6 +102,8 @@ export interface Competition {
   created_by?: string;
   created_at?: string;
   updated_at?: string;
+  /** Edição gerada a partir de um template (quando aplicável). */
+  edition_number?: number;
   /** IDs de questões associadas diretamente à competição (modo manual ou legado). */
   question_ids?: string[];
   /** IDs de questões sorteadas a partir de test_id (modo auto_random). */

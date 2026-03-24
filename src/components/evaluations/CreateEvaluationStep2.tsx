@@ -99,7 +99,6 @@ export const CreateEvaluationStep2 = ({
             }
           }
         } catch (error) {
-          console.error("Erro ao buscar nome da série:", error);
           setGradeName("");
         }
       }
@@ -192,7 +191,6 @@ export const CreateEvaluationStep2 = ({
       }
       setShowQuestionPreview(true);
     } catch (error) {
-      console.error("Erro ao buscar questão:", error);
       toast({
         title: "Erro",
         description: "Não foi possível carregar a questão",
@@ -262,7 +260,6 @@ export const CreateEvaluationStep2 = ({
 
       // ✅ CORREÇÃO: Se estiver em modo de edição, delegar para o EditEvaluation
       if (editMode && onComplete) {
-        console.log("📝 Modo de edição: delegando questões para EditEvaluation");
         onComplete(allQuestions);
         return;
       }
@@ -272,7 +269,8 @@ export const CreateEvaluationStep2 = ({
       const classesToSend = data.selectedClasses?.map(c => c.id) || data.classes || [];
       const schoolsToSend = data.selectedSchools?.map(s => s.id) || data.schools || [];
       
-      console.log('📤 CreateEvaluationStep2 - Dados que serão enviados ao backend:', {
+      // Dados enviados ao backend
+      void ({
         selectedClasses: data.selectedClasses?.map(c => ({ id: c.id, name: c.name, school: c.school?.name })),
         classes: data.classes,
         classesToSend,
@@ -360,9 +358,6 @@ export const CreateEvaluationStep2 = ({
       }
     } catch (error: unknown) {
       const apiError = error as { response?: { data?: { message?: string; error?: string } }; message?: string };
-      
-      console.error("Erro ao criar avaliação:", error);
-      
       let errorMessage: string = ERROR_MESSAGES.EVALUATION_CREATE_FAILED;
       if (apiError?.response?.data?.message) {
         errorMessage = apiError.response.data.message;

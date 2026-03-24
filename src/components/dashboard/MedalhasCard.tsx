@@ -25,8 +25,8 @@ interface MedalhasCardProps {
 
 const MedalhasCard: React.FC<MedalhasCardProps> = ({ medalhas }) => {
   return (
-    <Card className="hover:shadow-lg transition-shadow duration-300">
-      <CardHeader className="pb-3">
+    <Card className="h-full flex flex-col hover:shadow-lg transition-shadow duration-300">
+      <CardHeader className="pb-3 flex-shrink-0">
         <CardTitle className="flex items-center gap-2 sm:gap-3 text-base sm:text-lg">
           <div className="p-2 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg flex-shrink-0">
             <Medal className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
@@ -37,7 +37,7 @@ const MedalhasCard: React.FC<MedalhasCardProps> = ({ medalhas }) => {
           </div>
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-0">
+      <CardContent className="pt-0 flex-1 flex flex-col min-h-0">
         {/* Medalhas Conquistadas */}
         <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-4">
           <div className="text-center p-1 sm:p-2 bg-gradient-to-br from-yellow-100 to-yellow-200 dark:from-yellow-950/30 dark:to-yellow-900/30 rounded-lg border border-yellow-300 dark:border-yellow-800">

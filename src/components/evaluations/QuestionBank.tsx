@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -478,12 +479,9 @@ export function QuestionBank({
       const matchesDifficulty = !filters.difficulty || filters.difficulty === "all" || question.difficulty === filters.difficulty;
       const matchesType = !filters.type || filters.type === "all" || question.type === filters.type;
 
-      // Aplicar mapeamento EJA: se a avaliação é EJA, incluir questões do ano equivalente
-      if (gradeId && gradeName && grades.length > 0) {
-        if (!shouldIncludeQuestionForEJA(question, gradeId, gradeName, grades)) {
-          return false;
-        }
-      }
+      // ✅ CORREÇÃO: Remover filtro automático por gradeId para permitir que o usuário
+      // visualize questões de todas as séries usando o filtro dropdown
+      // O filtro de série agora é controlado apenas pelo dropdown (matchesGrade)
       
       return matchesSearch && matchesSubjectId && matchesSubject && matchesGrade && matchesDifficulty && matchesType;
     });
@@ -779,9 +777,11 @@ export function QuestionBank({
                               
                               <div className="flex flex-wrap gap-1 md:gap-2">
                                 {question.subject && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    {question.subject.name}
-                                  </Badge>
+                                  <DisciplineTag
+                                    subjectId={question.subject.id}
+                                    name={question.subject.name}
+                                    className="text-xs"
+                                  />
                                 )}
                                 {question.grade && (
                                   <Badge variant="outline" className="text-xs">

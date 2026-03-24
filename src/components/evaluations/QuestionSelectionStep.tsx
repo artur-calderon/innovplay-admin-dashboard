@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -388,7 +389,7 @@ export default function QuestionSelectionStep({
               {Object.values(questionsBySubject).map(({ subject, questions }) => (
                 <div key={subject.id} className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Badge variant="secondary">{subject.name}</Badge>
+                    <DisciplineTag subjectId={subject.id} name={subject.name} />
                     <span className="text-sm text-muted-foreground">
                       {questions.length} questões
                     </span>

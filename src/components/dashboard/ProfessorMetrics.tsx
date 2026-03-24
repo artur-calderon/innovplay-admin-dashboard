@@ -57,7 +57,7 @@ export default function ProfessorMetrics() {
 
   // Função para mapear KPI para card
   // Os KPIs já são filtrados antes de chegar aqui, então todos têm valores válidos
-  const renderKpiCard = (kpi: ProfessorDashboardType['kpis'][0]) => {
+  const renderKpiCard = (kpi: ProfessorDashboardType['kpis'][0], index: number) => {
     switch (kpi.id) {
       case 'students': {
         // Card: Total de Alunos na Turma
@@ -72,6 +72,7 @@ export default function ProfessorMetrics() {
               ? `${kpi.active_this_week} alunos ativos esta semana` 
               : "Total de alunos nas suas turmas"}
             performance="good"
+            delay={index * 80}
           />
         );
       }
@@ -89,6 +90,7 @@ export default function ProfessorMetrics() {
               ? `${kpi.created_this_month} avaliações criadas este mês`
               : "Avaliações vinculadas às suas turmas"}
             performance="good"
+            delay={index * 80}
           />
         );
       }
@@ -104,6 +106,7 @@ export default function ProfessorMetrics() {
             value={kpi.value}
             subtitle="Quantidade de avaliações finalizadas pelos alunos"
             performance="good"
+            delay={index * 80}
           />
         );
       }
@@ -119,6 +122,7 @@ export default function ProfessorMetrics() {
             value={typeof kpi.value === 'number' ? kpi.value.toFixed(1) : kpi.value}
             subtitle="Média geral de notas de todas as avaliações"
             performance={getPerformanceLevel(kpi.value)}
+            delay={index * 80}
           />
         );
       }
@@ -172,15 +176,15 @@ export default function ProfessorMetrics() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900">Visão Geral</h3>
-        <div className="text-sm text-gray-500">
+        <h3 className="text-lg font-semibold text-foreground">Visão Geral</h3>
+        <div className="text-sm text-muted-foreground">
           Atualizado há poucos minutos
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Renderizar cards dinamicamente baseados nos KPIs do backend */}
-        {validKpis.map(kpi => renderKpiCard(kpi))}
+        {validKpis.map((kpi, index) => renderKpiCard(kpi, index))}
 
         {/* Card de Turmas Ativas - apenas se houver turmas */}
         {/* Backend: dashboard.summary.classes - total de turmas do professor */}
@@ -191,6 +195,7 @@ export default function ProfessorMetrics() {
             value={dashboard.summary.classes}
             subtitle="Total de turmas onde você está vinculado como professor"
             performance="good"
+            delay={validKpis.length * 80}
           />
         )}
       </div>

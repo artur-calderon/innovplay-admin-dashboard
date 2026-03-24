@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { UserPlus, Search, Plus, Users } from "lucide-react";
+import { UserPlus, Search, Plus, Users, Loader2, CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { useEmailCheck, generatePasswordFromName } from "@/hooks/useEmailCheck";
 import { useAuth } from "@/context/authContext";
 import {
     Select,
@@ -140,6 +141,7 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
     const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
     const [activeTab, setActiveTab] = useState("existing");
+    const [showPassword, setShowPassword] = useState(false);
     const [formData, setFormData] = useState({
         name: "",
         email: "",
@@ -151,6 +153,24 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
     });
 
     const config = USER_TYPE_CONFIG[userType];
+
+    const { checkedEmail, isChecking, isAvailable } = useEmailCheck(formData.name, activeTab === "new");
+
+    // Sincronizar email e senha com formData quando nome muda na aba "novo"
+    useEffect(() => {
+        if (activeTab !== "new") return;
+        if (checkedEmail) {
+            setFormData(prev => ({ ...prev, email: checkedEmail }));
+        }
+    }, [checkedEmail, activeTab]);
+
+    useEffect(() => {
+        if (activeTab !== "new") return;
+        if (formData.name) {
+            setFormData(prev => ({ ...prev, password: generatePasswordFromName(prev.name) }));
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [formData.name, activeTab]);
 
     // Verificar permissões baseadas no role do usuário e tipo de usuário a ser adicionado
     const canAddUser = () => {
@@ -191,13 +211,10 @@ if (user.role === 'admin' || user.role === 'tecadm') return true;
                 try {
                     if (userType === 'aluno') {
                         response = await api.get(config.fetchEndpoint);
-                        users = Array.isArray(response.data) ? response.data : [];
+                        users = Array.isArray(response.data) ? response.data : response.data?.alunos ?? response.data?.students ?? [];
                     } else {
                         response = await api.get(config.fetchEndpoint);
-                        
-                        // Verificar se a resposta tem a estrutura esperada
                         if (response.data && config.responseKey && response.data[config.responseKey]) {
-                            // Usar a nova estrutura padronizada
                             users = response.data[config.responseKey];
                         } else if (Array.isArray(response.data)) {
                             users = response.data;
@@ -205,35 +222,36 @@ if (user.role === 'admin' || user.role === 'tecadm') return true;
                             users = [];
                         }
                     }
-                } catch (error) {
-                    console.error('First endpoint failed, trying alternative...');
-                    // Tentar endpoint alternativo
-                    try {
-                        response = await api.get('/users/');
-                        users = Array.isArray(response.data) ? response.data : [];
-                    } catch (secondError) {
-                        console.error('Both endpoints failed');
+                } catch (firstError: unknown) {
+                    const status = (firstError as { response?: { status?: number } })?.response?.status;
+                    // 404/204 = nenhum usuário com a role; não exibir erro
+                    if (status === 404 || status === 204) {
                         users = [];
+                    } else {
+                        try {
+                            response = await api.get('/users/');
+                            users = Array.isArray(response?.data) ? response.data : [];
+                        } catch {
+                            users = [];
+                        }
                     }
                 }
-                
-                // Mostrar todos os usuários disponíveis para permitir vinculação
-                const usersToShow = users;
-                
-                if (usersToShow.length > 0) {
-                    setAllUsers(usersToShow);
-                    setFilteredUsers(usersToShow);
-                } else {
-                    setAllUsers([]);
-                    setFilteredUsers([]);
+
+                const usersToShow = Array.isArray(users) ? users : [];
+                setAllUsers(usersToShow);
+                setFilteredUsers(usersToShow);
+            } catch (error: unknown) {
+                const status = (error as { response?: { status?: number } })?.response?.status;
+                if (status !== 404 && status !== 204) {
+                    console.error(`Error fetching ${userType}:`, error);
+                    toast({
+                        title: "Erro",
+                        description: `Erro ao carregar ${config.title.toLowerCase()}s`,
+                        variant: "destructive",
+                    });
                 }
-            } catch (error) {
-                console.error(`Error fetching ${userType}:`, error);
-                toast({
-                    title: "Erro",
-                    description: `Erro ao carregar ${config.title.toLowerCase()}s`,
-                    variant: "destructive",
-                });
+                setAllUsers([]);
+                setFilteredUsers([]);
             } finally {
                 setIsLoading(false);
             }
@@ -334,14 +352,27 @@ if (user.role === 'admin' || user.role === 'tecadm') return true;
         if (!selectedUser) return;
         setIsLoading(true);
         try {
-            if (userType !== 'aluno') {
-                await api.post(`${config.schoolsEndpoint}/${selectedUser.id}/schools`, {
-                    escolas_ids: [schoolId],
+            if (userType === 'diretor' || userType === 'coordenador') {
+                await api.post("/managers/link-to-school", {
+                    user_id: selectedUser.id,
+                    school_id: schoolId,
                 });
-            } else {
+            } else if (userType === 'professor') {
+                await api.post("/school-teacher", {
+                    school_id: schoolId,
+                    teacher_id: (selectedUser as { teacher_id?: string }).teacher_id ?? selectedUser.id,
+                });
+            } else if (userType === 'aluno') {
                 await api.post(`${config.schoolsEndpoint}/${selectedUser.id}/schools`, {
                     escola_id: schoolId,
                 });
+            } else {
+                toast({
+                    title: "Erro",
+                    description: `Vínculo não suportado para o perfil ${config.title}`,
+                    variant: "destructive",
+                });
+                return;
             }
 
             toast({
@@ -352,9 +383,10 @@ if (user.role === 'admin' || user.role === 'tecadm') return true;
             onSuccess?.();
         } catch (error) {
             console.error(`Error linking ${userType}:`, error);
+            const msg = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
             toast({
                 title: "Erro",
-                description: `Erro ao vincular ${config.title.toLowerCase()}`,
+                description: msg || `Erro ao vincular ${config.title.toLowerCase()}`,
                 variant: "destructive",
             });
         } finally {
@@ -481,25 +513,50 @@ if (user.role === 'admin' || user.role === 'tecadm') return true;
                             </div>
                             
                             <div className="space-y-2">
-                                <Label htmlFor="email">Email</Label>
-                                <Input
-                                    id="email"
-                                    type="email"
-                                    value={formData.email}
-                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                    placeholder="exemplo@email.com"
-                                />
+                                <Label htmlFor="email" className="text-sm text-gray-600">Email (Gerado automaticamente)</Label>
+                                <div className="relative">
+                                    <Input
+                                        id="email"
+                                        value={formData.email}
+                                        readOnly
+                                        className="bg-gray-50 border-gray-200 font-mono cursor-not-allowed pr-8"
+                                        placeholder="Será gerado ao digitar o nome"
+                                    />
+                                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                        {isChecking && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                                        {!isChecking && isAvailable === true && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                                        {!isChecking && isAvailable === false && <AlertCircle className="h-4 w-4 text-amber-500" />}
+                                    </div>
+                                </div>
+                                {!isChecking && isAvailable === false && (
+                                    <p className="text-xs text-amber-600">Email original em uso. Usando sugestão disponível.</p>
+                                )}
                             </div>
                             
                             <div className="space-y-2">
-                                <Label htmlFor="password">Senha</Label>
-                                <Input
-                                    id="password"
-                                    type="password"
-                                    value={formData.password}
-                                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                    placeholder="Mínimo 6 caracteres"
-                                />
+                                <Label htmlFor="password" className="text-sm text-gray-600">Senha (Gerada automaticamente)</Label>
+                                <div className="relative">
+                                    <Input
+                                        id="password"
+                                        type={showPassword ? "text" : "password"}
+                                        value={formData.password}
+                                        readOnly
+                                        className="bg-gray-50 border-gray-200 font-mono cursor-not-allowed pr-10"
+                                        placeholder="Será gerada ao digitar o nome"
+                                    />
+                                    <button
+                                        type="button"
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        aria-label={showPassword ? "Ocultar senha" : "Ver senha"}
+                                    >
+                                        {showPassword ? (
+                                            <EyeOff className="h-4 w-4" />
+                                        ) : (
+                                            <Eye className="h-4 w-4" />
+                                        )}
+                                    </button>
+                                </div>
                             </div>
                             
                             <div className="space-y-2">

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Copy, HelpCircle } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, Copy, HelpCircle, BookOpen } from "lucide-react";
 import { Question } from "@/components/evaluations/types";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
@@ -13,11 +13,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import QuestionPreview from "@/components/evaluations/questions/QuestionPreview";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { getDifficultyColor } from "@/lib/utils";
+import { useSkillsStore } from "@/stores/useSkillsStore";
 
 
 // Estilos customizados para skeleton mais fluído
@@ -52,7 +52,8 @@ interface QuestionApiResponse {
   type: string;
   difficulty: string;
   value: number;
-  skills: string[] | string;
+  skills?: string[] | string | { id: string; code?: string }[];
+  skill_code?: string;
   topics: string[] | string;
   subject?: { id: string; name: string };
   grade?: { id: string; name: string };
@@ -165,6 +166,9 @@ const SkeletonRow = ({ index }: { index: number }) => (
       <div className="h-4 w-8 rounded" style={shimmerStyle} />
     </td>
     <td className="px-3 py-2">
+      <div className="h-4 w-20 rounded" style={shimmerStyle} />
+    </td>
+    <td className="px-3 py-2">
       <div className="flex items-center gap-1">
         <div className="h-8 w-8 rounded" style={shimmerStyle} />
         <div className="h-8 w-8 rounded" style={shimmerStyle} />
@@ -264,6 +268,10 @@ const QuestionsPage = () => {
   const [deleteQuestionId, setDeleteQuestionId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
+  // Mapeamento skillId -> code para exibir código da habilidade (não o id)
+  const [skillIdToCode, setSkillIdToCode] = useState<Record<string, string>>({});
+  const { fetchSkills } = useSkillsStore();
+
   // Função de ordenação
   const sortQuestions = (questions: Question[], sortBy: string): Question[] => {
     if (!sortBy || sortBy === 'default') return questions;
@@ -326,12 +334,24 @@ const QuestionsPage = () => {
   const filteredAndSortedQuestions = useMemo(() => {
     if (questions.length === 0) return [];
 
+    const term = debouncedSearchTerm.trim().toLowerCase();
+    const getSearchableContent = (q: Question): string => {
+      const raw = [
+        q.title,
+        (q as any).text ?? '',
+        (q as any).formattedText ?? '',
+        (q as any).secondStatement ?? (q as any).second_statement ?? '',
+      ].join(' ');
+      return raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    };
+
     const filtered = questions.filter(question => {
-      // Early returns para melhor performance
-      if (debouncedSearchTerm !== '' && 
-          !question.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) &&
-          !question.id.includes(debouncedSearchTerm)) {
-        return false;
+      // Busca por título, id ou conteúdo do enunciado (texto, formattedText, secondStatement)
+      if (term !== '') {
+        const matchTitle = question.title.toLowerCase().includes(term);
+        const matchId = question.id.includes(debouncedSearchTerm);
+        const matchContent = getSearchableContent(question).includes(term);
+        if (!matchTitle && !matchId && !matchContent) return false;
       }
 
       if (filters.subject !== 'all' && question.subject?.id !== filters.subject) {
@@ -361,6 +381,113 @@ const QuestionsPage = () => {
     const startIndex = (currentPage - 1) * pageSize;
     return filteredAndSortedQuestions.slice(startIndex, startIndex + pageSize);
   }, [filteredAndSortedQuestions, currentPage, pageSize]);
+
+  // --- Filtros com opções somente do que existe ---
+  // Objetivo: evitar mostrar disciplinas/séries/tipos que não aparecem em nenhuma questão carregada.
+  const availableSubjectIds = useMemo(() => {
+    return new Set(
+      questions
+        .map((q) => q.subject?.id)
+        .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+    );
+  }, [questions]);
+
+  const availableGradeIds = useMemo(() => {
+    return new Set(
+      questions
+        .map((q) => q.grade?.id)
+        .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+    );
+  }, [questions]);
+
+  const availableTypes = useMemo(() => {
+    return new Set(
+      questions
+        .map((q) => q.type)
+        .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+    );
+  }, [questions]);
+
+  const availableDifficulties = useMemo(() => {
+    return new Set(
+      questions
+        .map((q) => q.difficulty)
+        .filter((d): d is string => typeof d === "string" && d.trim().length > 0)
+    );
+  }, [questions]);
+
+  const restrictFilterOptions = questions.length > 0;
+
+  const questionSubjectOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const q of questions) {
+      const sid = q.subject?.id;
+      const sname = q.subject?.name;
+      if (typeof sid === "string" && sid.trim() && typeof sname === "string" && sname.trim()) {
+        map.set(sid, sname);
+      }
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [questions]);
+
+  const questionGradeOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const q of questions) {
+      const gid = q.grade?.id;
+      const gname = q.grade?.name;
+      if (typeof gid === "string" && gid.trim() && typeof gname === "string" && gname.trim()) {
+        map.set(gid, gname);
+      }
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [questions]);
+
+  const subjectOptions = useMemo(() => {
+    if (!restrictFilterOptions) return subjects;
+    // Se a API `/subjects` ainda não carregou, deriva das próprias questões para não “sumir” com opções.
+    if (subjects.length === 0) return questionSubjectOptions;
+    return subjects.filter((s) => availableSubjectIds.has(s.id));
+  }, [restrictFilterOptions, subjects, availableSubjectIds]);
+
+  const gradeOptions = useMemo(() => {
+    if (!restrictFilterOptions) return grades;
+    // Se a API `/grades/` ainda não carregou, deriva das próprias questões para não “sumir” com opções.
+    if (grades.length === 0) return questionGradeOptions;
+    return grades.filter((g) => availableGradeIds.has(g.id));
+  }, [restrictFilterOptions, grades, availableGradeIds]);
+
+  const typeOptions = useMemo(() => {
+    if (!restrictFilterOptions) return QUESTION_TYPES;
+    return QUESTION_TYPES.filter((t) => availableTypes.has(t.value));
+  }, [restrictFilterOptions, availableTypes]);
+
+  const difficultyOptions = useMemo(() => {
+    if (!restrictFilterOptions) return DIFFICULTIES;
+    return DIFFICULTIES.filter((d) => availableDifficulties.has(d));
+  }, [restrictFilterOptions, availableDifficulties]);
+
+  // Se o usuário tinha um filtro, mas ele deixa de existir no dataset carregado, volta para "all".
+  useEffect(() => {
+    if (!restrictFilterOptions) return;
+    setFilters((prev) => {
+      const next = { ...prev };
+      if (next.subject !== "all" && !availableSubjectIds.has(next.subject)) next.subject = "all";
+      if (next.grade !== "all" && !availableGradeIds.has(next.grade)) next.grade = "all";
+      if (next.type !== "all" && !availableTypes.has(next.type)) next.type = "all";
+      if (next.difficulty !== "all" && !availableDifficulties.has(next.difficulty)) next.difficulty = "all";
+      return next;
+    });
+  }, [
+    restrictFilterOptions,
+    availableSubjectIds,
+    availableGradeIds,
+    availableTypes,
+    availableDifficulties,
+  ]);
 
   // Definir filtro inicial para professores (removido - permite que professores escolham entre Minhas e Todas)
   // useEffect(() => {
@@ -566,6 +693,23 @@ const QuestionsPage = () => {
         };
 
         const creatorId = resolveCreatorId();
+
+        // Código da habilidade: API pode enviar skill_code, ou skills como array de { id, code }
+        let skillCode: string | undefined;
+        let skillsArr: string[] = [];
+        if ((q as QuestionApiResponse).skill_code) {
+          skillCode = (q as QuestionApiResponse).skill_code;
+        } else if (Array.isArray(q.skills) && q.skills.length > 0) {
+          const first = q.skills[0];
+          if (typeof first === 'object' && first !== null && 'code' in first) {
+            skillCode = (q.skills as { id: string; code?: string }[]).map(s => s.code).filter(Boolean).join(', ');
+            skillsArr = (q.skills as { id: string; code?: string }[]).map(s => s.id);
+          } else {
+            skillsArr = (q.skills as string[]).map((s: string) => (typeof s === 'string' ? s.trim() : String(s)));
+          }
+        } else if (q.skills && typeof q.skills === 'string') {
+          skillsArr = q.skills.split(',').map(s => s.trim());
+        }
         
         return {
           id: q.id,
@@ -582,7 +726,8 @@ const QuestionsPage = () => {
           formattedText: q.formattedText,
           formattedSolution: q.formattedSolution,
           options: q.options || [],
-          skills: Array.isArray(q.skills) ? q.skills : (q.skills && typeof q.skills === 'string' ? q.skills.split(',').map(s => s.trim()) : []),
+          skills: skillsArr,
+          skillCode,
           created_by: creatorId,
           educationStage: null
         };
@@ -737,6 +882,50 @@ const QuestionsPage = () => {
     }
   }, [user.id, filterType, fetchQuestions]);
 
+  // Carregar habilidades por disciplina/série em paralelo; atualizar o mapa assim que cada resposta chegar
+  useEffect(() => {
+    if (questions.length === 0) {
+      setSkillIdToCode({});
+      return;
+    }
+    const pairs = new Set<string>();
+    questions.forEach(q => {
+      const sid = q.subject?.id;
+      const gid = q.grade?.id;
+      if (sid) pairs.add(`${sid}:${gid || ''}`);
+    });
+    let cancelled = false;
+    const keys = Array.from(pairs);
+    // Buscar todas em paralelo; cada uma atualiza o estado ao terminar para exibir códigos o mais cedo possível
+    keys.forEach((key) => {
+      const [subjectId, gradeId] = key.split(':');
+      fetchSkills(subjectId, gradeId || undefined)
+        .then((skills) => {
+          if (cancelled) return;
+          const map: Record<string, string> = {};
+          skills.forEach(s => { map[s.id] = s.code; });
+          setSkillIdToCode(prev => ({ ...prev, ...map }));
+        })
+        .catch(() => {});
+    });
+    return () => { cancelled = true; };
+  }, [questions, fetchSkills]);
+
+  // Exibir código da habilidade: skillCode da API ou resolução por id
+  const getSkillCodeDisplay = (question: Question): string => {
+    if (question.skillCode) return question.skillCode;
+    const arr = Array.isArray(question.skills) ? question.skills : [];
+    if (arr.length === 0) return '—';
+    const codes = arr.map(s => {
+      const code = skillIdToCode[s];
+      if (code) return code;
+      // Se parece UUID (hex com hífens), ainda não resolvemos
+      if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(String(s).trim())) return null;
+      return s; // já é código
+    }).filter(Boolean);
+    return codes.length ? codes.join(', ') : '—';
+  };
+
   // Reset page when filters or sort change
   useEffect(() => {
     setCurrentPage(1);
@@ -769,6 +958,17 @@ const QuestionsPage = () => {
   // Event handlers
   const handleFilterChange = (key: keyof Filters, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const hasActiveQuestionFilters = Object.values(filters).some((v) => v !== "all");
+
+  const clearQuestionFilters = () => {
+    setFilters({
+      subject: "all",
+      difficulty: "all",
+      grade: "all",
+      type: "all",
+    });
   };
 
   const handleDelete = async () => {
@@ -1069,62 +1269,92 @@ const QuestionsPage = () => {
   };
 
   const FiltersContent = () => (
-    <div className="space-y-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       <div>
-        <label className="text-sm font-medium mb-1 block">Disciplina</label>
-        <Select onValueChange={(value) => handleFilterChange('subject', value)} value={filters.subject}>
+        <label className="text-sm font-medium mb-1 block text-muted-foreground">
+          Disciplina
+        </label>
+        <Select
+          onValueChange={(value) => handleFilterChange("subject", value)}
+          value={filters.subject}
+        >
           <SelectTrigger className="h-9">
             <SelectValue placeholder="Todas as Disciplinas" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as Disciplinas</SelectItem>
-            {subjects.map((subject) => (
-              <SelectItem key={subject.id} value={subject.id}>{subject.name}</SelectItem>
+            {subjectOptions.map((subject) => (
+              <SelectItem key={subject.id} value={subject.id}>
+                {subject.name}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
 
       <div>
-        <label className="text-sm font-medium mb-1 block">Série</label>
-        <Select onValueChange={(value) => handleFilterChange('grade', value)} value={filters.grade}>
+        <label className="text-sm font-medium mb-1 block text-muted-foreground">
+          Série
+        </label>
+        <Select
+          onValueChange={(value) => handleFilterChange("grade", value)}
+          value={filters.grade}
+        >
           <SelectTrigger className="h-9">
             <SelectValue placeholder="Todas as Séries" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as Séries</SelectItem>
-            {grades.map((grade) => (
-              <SelectItem key={grade.id} value={grade.id}>{grade.name}</SelectItem>
+            {gradeOptions.map((grade) => (
+              <SelectItem key={grade.id} value={grade.id}>
+                {grade.name}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
 
       <div>
-        <label className="text-sm font-medium mb-1 block">Dificuldade</label>
-        <Select onValueChange={(value) => handleFilterChange('difficulty', value)} value={filters.difficulty}>
+        <label className="text-sm font-medium mb-1 block text-muted-foreground">
+          Dificuldade
+        </label>
+        <Select
+          onValueChange={(value) =>
+            handleFilterChange("difficulty", value)
+          }
+          value={filters.difficulty}
+        >
           <SelectTrigger className="h-9">
             <SelectValue placeholder="Todas as Dificuldades" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as Dificuldades</SelectItem>
-            {DIFFICULTIES.map((difficulty) => (
-              <SelectItem key={difficulty} value={difficulty}>{difficulty}</SelectItem>
+            {difficultyOptions.map((difficulty) => (
+              <SelectItem key={difficulty} value={difficulty}>
+                {difficulty}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
 
       <div>
-        <label className="text-sm font-medium mb-1 block">Tipo</label>
-        <Select onValueChange={(value) => handleFilterChange('type', value)} value={filters.type}>
+        <label className="text-sm font-medium mb-1 block text-muted-foreground">
+          Tipo
+        </label>
+        <Select
+          onValueChange={(value) => handleFilterChange("type", value)}
+          value={filters.type}
+        >
           <SelectTrigger className="h-9">
             <SelectValue placeholder="Todos os Tipos" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os Tipos</SelectItem>
-            {QUESTION_TYPES.map((type) => (
-              <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
+            {typeOptions.map((type) => (
+              <SelectItem key={type.value} value={type.value}>
+                {type.label}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -1134,7 +1364,6 @@ const QuestionsPage = () => {
 
   const QuestionCard = React.memo(({ question, index }: { question: Question; index: number }) => {
     const handleView = useCallback(() => setViewQuestion(question), [question]);
-    const handleEdit = useCallback(() => navigate(`/app/cadastros/questao/editar/${question.id}`), [question.id]);
     const handleDeleteClick = useCallback(() => setDeleteQuestionId(question.id), [question.id]);
     const handleDuplicateClick = useCallback(() => handleDuplicate(question), [question]);
     const handleSelect = useCallback((checked: boolean) => handleSelectOne(question.id, checked), [question.id]);
@@ -1179,6 +1408,11 @@ const QuestionsPage = () => {
           >
             {question.difficulty}
           </Badge>
+          {getSkillCodeDisplay(question) !== '—' && (
+            <Badge variant="secondary" className="text-xs font-mono" title="Habilidade vinculada">
+              {getSkillCodeDisplay(question)}
+            </Badge>
+          )}
         </div>
         
         {/* Meta info and actions */}
@@ -1216,11 +1450,13 @@ const QuestionsPage = () => {
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  onClick={handleEdit}
+                  asChild
                   className="h-8 w-8 p-0 hover:bg-orange-100 dark:hover:bg-orange-950/30"
-                  title="Editar"
+                  title="Editar (clique com botão direito para abrir em nova guia)"
                 >
-                  <Pencil className="h-3.5 w-3.5" />
+                  <Link to={`/app/cadastros/questao/editar/${question.id}`}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Link>
                 </Button>
                 <Button 
                   variant="ghost" 
@@ -1255,10 +1491,10 @@ const QuestionsPage = () => {
       )}
       
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <HelpCircle className="w-8 h-8 text-blue-600" />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5 flex items-start gap-2 flex-wrap">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <HelpCircle className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
             Questões
           </h1>
           <div className="flex items-center gap-1">
@@ -1282,7 +1518,7 @@ const QuestionsPage = () => {
             )}
           </div>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex flex-wrap justify-center gap-2 w-full sm:w-auto sm:justify-end">
           {selectedIds.length > 0 && (
             <Button
               variant="destructive"
@@ -1296,6 +1532,16 @@ const QuestionsPage = () => {
             </Button>
           )}
 
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/app/cadastros/habilidades")}
+            className="flex-1 sm:flex-none"
+          >
+            <BookOpen className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">Banco de Habilidades</span>
+            <span className="sm:hidden">Habilidades</span>
+          </Button>
           <Button
             size="sm"
             onClick={() => navigate("/app/cadastros/questao/criar")}
@@ -1366,23 +1612,23 @@ const QuestionsPage = () => {
               </Select>
             </div>
           </div>
+        </div>
 
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="outline" size="sm" className="w-full xs:w-auto">
-                <Filter className="h-4 w-4 mr-2" />
-                Filtros
+        {/* Filters inline (sem abrir aba lateral) */}
+        <div className="mt-2">
+          <FiltersContent />
+          {hasActiveQuestionFilters && (
+            <div className="flex justify-end mt-3">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
+                onClick={clearQuestionFilters}
+              >
+                Limpar filtros
               </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-full sm:w-80">
-              <SheetHeader>
-                <SheetTitle>Filtros</SheetTitle>
-              </SheetHeader>
-              <div className="mt-6">
-                <FiltersContent />
-              </div>
-            </SheetContent>
-          </Sheet>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1425,6 +1671,7 @@ const QuestionsPage = () => {
                   <th className="px-3 py-2 text-left text-sm font-medium">Dificuldade</th>
                   <th className="px-3 py-2 text-left text-sm font-medium">Tipo</th>
                   <th className="px-3 py-2 text-left text-sm font-medium">Valor</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">Habilidade</th>
                   <th className="px-3 py-2 text-left text-sm font-medium">Ações</th>
                 </tr>
               </thead>
@@ -1464,6 +1711,7 @@ const QuestionsPage = () => {
                   <th className="px-3 py-2 text-left text-sm font-medium">Dificuldade</th>
                   <th className="px-3 py-2 text-left text-sm font-medium">Tipo</th>
                   <th className="px-3 py-2 text-left text-sm font-medium">Valor</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">Habilidade</th>
                   <th className="px-3 py-2 text-left text-sm font-medium">Ações</th>
                 </tr>
               </thead>
@@ -1501,41 +1749,50 @@ const QuestionsPage = () => {
                         {question.type === "multipleChoice" ? "Múltipla Escolha" : "Dissertativa"}
                       </td>
                       <td className="px-3 py-2 text-sm font-mono">{question.value}</td>
+                      <td className="px-3 py-2 text-sm text-muted-foreground max-w-[140px] truncate" title={getSkillCodeDisplay(question)}>
+                        {getSkillCodeDisplay(question)}
+                      </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1">
                           <Button 
                             variant="ghost" 
                             size="sm" 
                             onClick={() => setViewQuestion(question)}
+                            className="h-8 w-8 p-0 hover:bg-blue-100 dark:hover:bg-blue-950/30"
                             title="Visualizar"
                           >
-                            <Eye className="h-3 w-3" />
+                            <Eye className="h-3.5 w-3.5" />
                           </Button>
                           <Button 
                             variant="ghost" 
                             size="sm" 
                             onClick={() => handleDuplicate(question)}
+                            className="h-8 w-8 p-0 hover:bg-green-100 dark:hover:bg-green-950/30"
                             title="Duplicar questão"
                           >
-                            <Copy className="h-3 w-3" />
+                            <Copy className="h-3.5 w-3.5" />
                           </Button>
                           {canEditDeleteDesktop && (
                             <>
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                onClick={() => navigate(`/app/cadastros/questao/editar/${question.id}`)}
-                                title="Editar"
+                                asChild
+                                className="h-8 w-8 p-0 hover:bg-orange-100 dark:hover:bg-orange-950/30"
+                                title="Editar (clique com botão direito para abrir em nova guia)"
                               >
-                                <Pencil className="h-3 w-3" />
+                                <Link to={`/app/cadastros/questao/editar/${question.id}`}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Link>
                               </Button>
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
                                 onClick={() => setDeleteQuestionId(question.id)}
+                                className="h-8 w-8 p-0 hover:bg-red-100 dark:hover:bg-red-950/30"
                                 title="Excluir"
                               >
-                                <Trash2 className="h-3 w-3 text-destructive" />
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
                               </Button>
                             </>
                           )}
@@ -1595,14 +1852,21 @@ const QuestionsPage = () => {
 
       {/* Modals */}
       <Dialog open={!!viewQuestion} onOpenChange={(isOpen) => !isOpen && setViewQuestion(null)}>
-        <DialogContent className="w-[95vw] max-w-4xl h-[90vh] max-h-[90vh] overflow-y-auto p-3 sm:p-6">
-          <DialogHeader className="pb-2">
+        <DialogContent className="w-[95vw] max-w-4xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden p-0 sm:p-0">
+          <DialogHeader className="shrink-0 px-4 pt-4 pb-2 sm:px-6 sm:pt-6 border-b border-border">
             <DialogTitle className="text-lg sm:text-xl">Visualizar Questão</DialogTitle>
             <DialogDescription className="sr-only">
               Visualização detalhada da questão selecionada, incluindo enunciado, alternativas e resolução quando disponível.
             </DialogDescription>
           </DialogHeader>
-          <div className="overflow-y-auto flex-1">
+          <div
+            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-4 sm:px-6 sm:pb-6 view-question-scroll
+              [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent
+              [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full
+              dark:[&::-webkit-scrollbar-thumb]:bg-gray-700
+              hover:[&::-webkit-scrollbar-thumb]:bg-gray-400 dark:hover:[&::-webkit-scrollbar-thumb]:bg-gray-600
+              scroll-smooth"
+          >
             {viewQuestion && <QuestionPreview question={viewQuestion} />}
           </div>
         </DialogContent>

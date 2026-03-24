@@ -1,12 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { Button } from "@/components/ui/button";
 import { Check, X, Minus, Eye, CheckCircle2, Target, Gauge, Award, ChevronLeft, ChevronRight, MoreHorizontal, Coins } from "lucide-react";
 import { formatCoins } from "@/utils/coins";
 import { TableHeader } from './results-table/TableHeader';
 import { TableRow } from './results-table/TableRow';
 import { TableLegend } from './results-table/TableLegend';
+import { getSubjectColors } from '@/utils/competitionSubjectColors';
 
 interface TabelaDetalhadaQuestao {
   numero: number;
@@ -296,7 +298,9 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
       : "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400";
 
     return (
-      <div className={`${colorClasses} border-b px-4 py-3 flex items-center justify-between text-sm`}>
+      <div
+        className={`${colorClasses} border-b px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm`}
+      >
         <div className="flex items-center gap-2">
           <span className="font-medium">
             Questões {startQuestion}-{endQuestion} de {totalQuestions}
@@ -395,7 +399,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                 colorScheme="purple"
               />
             )}
-            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 max-w-full">
+            <div className="overflow-x-auto max-w-full results-table-scroll">
               <table className="min-w-full border border-border text-center text-xs sm:text-sm shadow-md rounded-lg border-separate border-spacing-0 bg-card">
                 <TableHeader
                   totalQuestions={allQuestions.length > MAX_QUESTIONS_FOR_FULL_VIEW 
@@ -406,9 +410,9 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                     : 1}
                   visibleFields={{
                     turma: false,
-                    habilidade: allQuestions.length <= 15, // ✅ NOVO: Ocultar habilidades se muitas questões
+                    habilidade: true, // Sempre exibir habilidades na tabela de alunos
                     questoes: true,
-                    percentualTurma: allQuestions.length <= 20, // ✅ NOVO: Ocultar % se muitas questões
+                    percentualTurma: allQuestions.length <= 20,
                     total: true,
                     nota: true,
                     proficiencia: true,
@@ -477,9 +481,9 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                         : allQuestions.length}
                       visibleFields={{
                         turma: false,
-                        habilidade: allQuestions.length <= 15, // ✅ NOVO: Ocultar habilidades se muitas questões
+                        habilidade: true, // Sempre exibir habilidades na tabela de alunos
                         questoes: true,
-                        percentualTurma: allQuestions.length <= 20, // ✅ NOVO: Ocultar % se muitas questões
+                        percentualTurma: allQuestions.length <= 20,
                         total: true,
                         nota: true,
                         proficiencia: true,
@@ -527,7 +531,15 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
       {/* Tabelas por Disciplina */}
       {tabelaDetalhada.disciplinas.map((disciplina) => (
         <Card key={disciplina.id} className="shadow-lg hover:shadow-xl transition-shadow duration-300 overflow-hidden w-full">
-          <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg px-0">
+          <CardHeader
+            className={
+              [
+                "bg-gradient-to-r",
+                getSubjectColors(disciplina.id, disciplina.nome).gradient,
+                "text-white rounded-t-lg px-0"
+              ].join(" ")
+            }
+          >
             <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 sm:px-6 gap-3 sm:gap-0">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
@@ -545,9 +557,11 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                   </p>
                 </div>
               </div>
-              <Badge variant="secondary" className="bg-white/90 dark:bg-white/10 text-blue-700 dark:text-blue-400 font-bold text-xs sm:text-sm flex-shrink-0">
-                {disciplina.nome.toUpperCase()}
-              </Badge>
+              <DisciplineTag
+                subjectId={disciplina.id}
+                name={disciplina.nome.toUpperCase()}
+                className="flex-shrink-0 text-xs font-bold sm:text-sm"
+              />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -564,7 +578,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                 colorScheme="blue"
               />
             )}
-            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 max-w-full">
+            <div className="overflow-x-auto max-w-full results-table-scroll">
               <table className="min-w-full border border-border text-center text-xs sm:text-sm shadow-md rounded-lg border-separate border-spacing-0 bg-card">
                 <TableHeader
                   totalQuestions={disciplina.questoes.length > MAX_QUESTIONS_FOR_FULL_VIEW 
@@ -575,7 +589,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                     : 1}
                   visibleFields={{
                     turma: false,
-                    habilidade: disciplina.questoes.length <= 15, // ✅ NOVO: Ocultar habilidades se muitas questões
+                    habilidade: true, // Sempre exibir habilidades na tabela por disciplina
                     questoes: true,
                     percentualTurma: disciplina.questoes.length <= 20, // ✅ NOVO: Ocultar % se muitas questões
                     total: true,
@@ -643,9 +657,9 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                         : disciplina.questoes.length}
                       visibleFields={{
                         turma: false,
-                        habilidade: disciplina.questoes.length <= 15, // ✅ NOVO: Ocultar habilidades se muitas questões
+                        habilidade: true, // Sempre exibir habilidades na tabela por disciplina
                         questoes: true,
-                        percentualTurma: disciplina.questoes.length <= 20, // ✅ NOVO: Ocultar % se muitas questões
+                        percentualTurma: disciplina.questoes.length <= 20,
                         total: true,
                         nota: true,
                         proficiencia: true,

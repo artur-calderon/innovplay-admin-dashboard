@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/authContext";
-import { UserPlus, Eye, Pencil, Trash2, Edit, Loader2, ArrowLeft, Building, Users, GraduationCap, MapPin, Globe, Calendar, Plus, BookOpen, School, Upload, FileSpreadsheet } from "lucide-react";
+import { UserPlus, Eye, Pencil, Trash2, Edit, Loader2, ArrowLeft, Building, Users, GraduationCap, MapPin, Globe, Calendar, Plus, BookOpen, School, Upload, FileSpreadsheet, MoveRight } from "lucide-react";
 import { AddUserForm } from "./AddUserForm";
 import { CreateClassForm } from "./CreateClassForm";
 import { LinkTeacherModal } from "./LinkTeacherModal";
@@ -13,6 +13,8 @@ import { LinkDirectorCoordinatorModal } from "./LinkDirectorCoordinatorModal";
 import { ManageSchoolLinksModal } from "./ManageSchoolLinksModal";
 import { BulkUploadStudentsModal } from "./BulkUploadStudentsModal";
 import { PasswordReportModal } from "./PasswordReportModal";
+import { SchoolCoursesTab } from "./SchoolCoursesTab";
+import { InstituicaoDisciplinasTab } from "./InstituicaoDisciplinasTab";
 import {
   Table,
   TableBody,
@@ -21,6 +23,31 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { api } from "@/lib/api";
 import SchoolForm from "./SchoolForm";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -104,6 +131,32 @@ export default function SchoolDetails() {
   const [showLinkTeacherModal, setShowLinkTeacherModal] = useState(false);
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
   const [showPasswordReportModal, setShowPasswordReportModal] = useState(false);
+  
+  // Estados para gerenciamento de turmas
+  const [showDeleteClassDialog, setShowDeleteClassDialog] = useState(false);
+  const [showMoveClassDialog, setShowMoveClassDialog] = useState(false);
+  const [classToDelete, setClassToDelete] = useState<Class | null>(null);
+  const [classToMove, setClassToMove] = useState<Class | null>(null);
+  const [targetSchoolId, setTargetSchoolId] = useState<string>("");
+  const [availableSchools, setAvailableSchools] = useState<School[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isMoving, setIsMoving] = useState(false);
+
+  // Lista única de séries (grade_id + nome) a partir das turmas da escola, para o template de importação
+  const schoolGrades = useMemo(() => {
+    const seen = new Set<string>();
+    const list: { id: string; name: string }[] = [];
+    for (const c of classes) {
+      if (!c.grade) continue;
+      const id = typeof c.grade === "object" && c.grade !== null ? (c.grade as { id: string }).id : undefined;
+      const name = typeof c.grade === "object" && c.grade !== null ? (c.grade as { name: string }).name : String(c.grade);
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        list.push({ id, name });
+      }
+    }
+    return list;
+  }, [classes]);
 
   useEffect(() => {
     const fetchSchool = async () => {
@@ -113,7 +166,6 @@ export default function SchoolDetails() {
         const response = await api.get(`/school/${id}`);
         setSchool(response.data);
       } catch (error) {
-        console.error("Error fetching school:", error);
         toast({
           title: "Erro",
           description: user.role === 'professor' 
@@ -121,7 +173,7 @@ export default function SchoolDetails() {
             : "Escola não encontrada",
           variant: "destructive",
         });
-        navigate("/app/cadastros/instituicao");
+        navigate("/app/cadastros/gestao");
       } finally {
         setIsLoadingSchool(false);
       }
@@ -137,10 +189,7 @@ export default function SchoolDetails() {
       
       setIsLoadingClasses(true);
       try {
-        console.log('🏫 Buscando turmas da escola:', id);
         const response = await api.get(`/classes/school/${id}`);
-        console.log('🏫 Response turmas:', response);
-        console.log('🏫 Data turmas:', response.data);
         const classesData = response.data || [];
         setClasses(classesData);
         
@@ -149,7 +198,6 @@ export default function SchoolDetails() {
           await fetchClassDetails(classesData);
         }
       } catch (error) {
-        console.error('Error fetching classes:', error);
         setClasses([]);
       } finally {
         setIsLoadingClasses(false);
@@ -201,7 +249,6 @@ export default function SchoolDetails() {
             students: classStudents
           };
         } catch (error) {
-          console.error(`Erro ao buscar detalhes da turma ${classItem.id}:`, error);
           return {
             classId: classItem.id,
             teachers: [],
@@ -220,10 +267,8 @@ export default function SchoolDetails() {
 
       setClassTeachers(teachersData);
       setClassStudents(studentsData);
-      
-      console.log('📊 Dados das turmas carregados:', { teachersData, studentsData });
     } catch (error) {
-      console.error('Erro ao buscar detalhes das turmas:', error);
+      // Silenciar erro ao buscar detalhes das turmas
     }
   };
 
@@ -232,24 +277,11 @@ export default function SchoolDetails() {
       if (!id) return;
 
       try {
-        console.log('👨‍🏫 Buscando professores da escola:', id);
         const response = await api.get(`/school-teacher`);
-        console.log('👨‍🏫 Response professores:', response);
-        console.log('👨‍🏫 Data professores:', response.data);
-        console.log('👨‍🏫 RETORNO COMPLETO DA API /school-teacher:', JSON.stringify(response.data, null, 2));
-        
-        // A API retorna um objeto com 'vinculos', não um array direto
         const vinculos = response.data?.vinculos || [];
-        console.log('👨‍🏫 Vínculos encontrados:', vinculos);
-        
-        // Mapear os vínculos para o formato esperado pelo componente
         const allTeachers = vinculos.reduce((acc: any[], vinculo: any) => {
           const professor = vinculo?.professor;
-
-          if (!professor) {
-            console.warn("Vínculo de professor sem dados do professor encontrado:", vinculo);
-            return acc;
-          }
+          if (!professor) return acc;
 
           acc.push({
             id: professor.id,
@@ -263,19 +295,9 @@ export default function SchoolDetails() {
 
           return acc;
         }, []);
-        
-        console.log('👨‍🏫 Todos os professores mapeados:', allTeachers);
-        
-        // Filtrar apenas professores da escola específica
-        const teachers = allTeachers.filter(teacher => 
-          teacher.school_id === id
-        );
-        
-        console.log('👨‍🏫 Professores filtrados para a escola:', teachers);
-        
+        const teachers = allTeachers.filter(teacher => teacher.school_id === id);
         setTeachers(teachers);
       } catch (error) {
-        console.error("Error fetching teachers:", error);
         toast({
           title: "Erro",
           description: "Erro ao carregar professores",
@@ -294,26 +316,14 @@ export default function SchoolDetails() {
       if (!id) return;
 
       try {
-        console.log('🔗 Buscando managers da escola:', id);
         const response = await api.get(`/managers/school/${id}`);
-        console.log('🔗 Response managers:', response);
-        console.log('🔗 Data managers:', response.data);
-        
         if (response.data && response.data.managers) {
-          console.log('🔗 Managers da escola:', response.data.managers);
-          
-          // Separar por tipo de usuário
-          const schoolDirectors = response.data.managers.filter((manager: any) => 
+          const schoolDirectors = response.data.managers.filter((manager: any) =>
             manager.user?.role === 'diretor'
           );
-          const schoolCoordinators = response.data.managers.filter((manager: any) => 
+          const schoolCoordinators = response.data.managers.filter((manager: any) =>
             manager.user?.role === 'coordenador'
           );
-          
-          console.log('🔗 Diretores da escola:', schoolDirectors);
-          console.log('🔗 Coordenadores da escola:', schoolCoordinators);
-          
-          // Atualizar estados com os dados dos managers
           const directorsData = schoolDirectors.map((manager: any) => ({
             id: manager.user.id,
             name: manager.user.name,
@@ -334,7 +344,7 @@ export default function SchoolDetails() {
           setCoordinators(coordinatorsData);
         }
       } catch (error) {
-        console.error("Error fetching school managers:", error);
+        // Silenciar erro ao carregar managers
       }
     };
 
@@ -346,17 +356,10 @@ export default function SchoolDetails() {
       if (!id) return;
 
       try {
-        console.log('👥 Buscando alunos da escola:', id);
         const response = await api.get(`/students/school/${id}`);
-        console.log('👥 Response alunos:', response);
-        console.log('👥 Data alunos:', response.data);
-        
         const allStudents = Array.isArray(response.data) ? response.data : [];
-        console.log('👥 Todos os alunos:', allStudents);
-        
         setStudents(allStudents);
       } catch (error) {
-        console.error("Error fetching students:", error);
         toast({
           title: "Erro",
           description: "Erro ao carregar alunos",
@@ -396,13 +399,173 @@ export default function SchoolDetails() {
       );
       setTeachers(teachers);
     } catch (error) {
-      console.error("Erro ao remover professor:", error);
       toast({
         title: "Erro",
         description: "Erro ao remover professor",
         variant: "destructive",
       });
     }
+  };
+
+  // Buscar escolas disponíveis do mesmo município
+  const fetchAvailableSchools = async () => {
+    if (!school) return;
+
+    try {
+      const response = await api.get("/school");
+      const allSchools = response.data || [];
+      
+      // Filtrar escolas do mesmo município, exceto a escola atual
+      const filteredSchools = allSchools.filter(
+        (s: School) => s.city_id === school.city_id && s.id !== school.id
+      );
+      
+      setAvailableSchools(filteredSchools);
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar escolas disponíveis",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Excluir turma
+  const handleDeleteClass = async () => {
+    if (!classToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await api.delete(`/classes/${classToDelete.id}`);
+      
+      toast({
+        title: "Sucesso",
+        description: "Turma excluída com sucesso",
+      });
+      
+      // Recarregar turmas
+      window.location.reload();
+    } catch (error: unknown) {
+      let errorTitle = "Erro ao excluir";
+      let errorMessage = "Ocorreu um erro ao excluir a turma";
+
+      // Verificar se é um erro do Axios com resposta
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { 
+          response?: { 
+            status?: number;
+            data?: { 
+              mensagem?: string; 
+              erro?: string;
+              message?: string;
+            } 
+          } 
+        };
+        
+        if (axiosError.response?.data) {
+          const data = axiosError.response.data;
+          
+          // Se houver mensagem específica do backend, usar ela
+          if (data.mensagem) {
+            errorMessage = data.mensagem;
+            errorTitle = data.erro || "Não é possível excluir";
+          } else if (data.erro) {
+            errorMessage = data.erro;
+          } else if (data.message) {
+            errorMessage = data.message;
+          }
+        }
+      }
+
+      toast({
+        title: errorTitle,
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteClassDialog(false);
+      setClassToDelete(null);
+    }
+  };
+
+  // Mover turma para outra escola
+  const handleMoveClass = async () => {
+    if (!classToMove || !targetSchoolId) return;
+
+    setIsMoving(true);
+    try {
+      const response = await api.put(`/classes/${classToMove.id}`, {
+        school_id: targetSchoolId
+      });
+      
+      let successMessage = "Turma movida com sucesso";
+      
+      // Verificar se houve renomeação automática
+      if (response.data?.auto_renamed) {
+        successMessage = `Turma movida e renomeada de "${response.data.auto_renamed.old_name}" para "${response.data.auto_renamed.new_name}" (nome já existia na escola destino)`;
+      }
+      
+      toast({
+        title: "Sucesso",
+        description: successMessage,
+      });
+      
+      // Recarregar turmas
+      window.location.reload();
+    } catch (error: unknown) {
+      let errorTitle = "Erro ao mover turma";
+      let errorMessage = "Ocorreu um erro ao mover a turma";
+
+      // Verificar se é um erro do Axios com resposta
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { 
+          response?: { 
+            status?: number;
+            data?: { 
+              mensagem?: string; 
+              erro?: string;
+              error?: string;
+              details?: string;
+            } 
+          } 
+        };
+        
+        if (axiosError.response?.data) {
+          const data = axiosError.response.data;
+          
+          if (data.details) {
+            errorMessage = data.details;
+            errorTitle = data.error || "Erro ao mover turma";
+          } else if (data.mensagem) {
+            errorMessage = data.mensagem;
+            errorTitle = data.erro || "Erro ao mover turma";
+          } else if (data.erro) {
+            errorMessage = data.erro;
+          } else if (data.error) {
+            errorMessage = data.error;
+          }
+        }
+      }
+
+      toast({
+        title: errorTitle,
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsMoving(false);
+      setShowMoveClassDialog(false);
+      setClassToMove(null);
+      setTargetSchoolId("");
+    }
+  };
+
+  // Abrir diálogo de mover turma
+  const handleOpenMoveClassDialog = async (classItem: Class) => {
+    setClassToMove(classItem);
+    await fetchAvailableSchools();
+    setShowMoveClassDialog(true);
   };
 
   if (isLoadingSchool) {
@@ -428,9 +591,9 @@ export default function SchoolDetails() {
             ? "A instituição que você está procurando não existe ou você não tem acesso a ela. Entre em contato com o diretor ou coordenador da sua escola."
             : "A escola que você está procurando não existe ou foi removida."}
         </p>
-        <Button onClick={() => navigate("/app/cadastros/instituicao")}>
+        <Button onClick={() => navigate("/app/cadastros/gestao")}>
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Voltar para Instituições
+          Voltar para Gestão Escolar
         </Button>
       </div>
     );
@@ -447,7 +610,7 @@ export default function SchoolDetails() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
           <Button
             variant="outline"
-            onClick={() => navigate("/app/cadastros/instituicao")}
+            onClick={() => navigate("/app/cadastros/gestao")}
             className="shrink-0 w-full sm:w-auto"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -581,9 +744,11 @@ export default function SchoolDetails() {
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="classes">Turmas</TabsTrigger>
+          <TabsTrigger value="courses">Cursos</TabsTrigger>
+          <TabsTrigger value="disciplinas">Disciplinas</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -594,7 +759,7 @@ export default function SchoolDetails() {
               <div>
                 <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                   <Building className="h-5 w-5 text-red-600" />
-                  Gestão da Escola
+                  Gestão Escolar
                 </CardTitle>
                 <CardDescription>
                   Diretores e coordenadores responsáveis pela gestão da instituição
@@ -663,7 +828,9 @@ export default function SchoolDetails() {
                       <div key={director.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted border-border">
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-sm">{director.name}</div>
-                          <div className="text-xs text-muted-foreground">{director.email}</div>
+                          {user.role !== 'professor' && (
+                            <div className="text-xs text-muted-foreground">{director.email}</div>
+                          )}
                         </div>
                         <Badge variant="outline" className="text-xs">Diretor</Badge>
                       </div>
@@ -702,7 +869,9 @@ export default function SchoolDetails() {
                       <div key={coordinator.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted border-border">
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-sm">{coordinator.name}</div>
-                          <div className="text-xs text-muted-foreground">{coordinator.email}</div>
+                          {user.role !== 'professor' && (
+                            <div className="text-xs text-muted-foreground">{coordinator.email}</div>
+                          )}
                         </div>
                         <Badge variant="outline" className="text-xs">Coordenador</Badge>
                       </div>
@@ -838,7 +1007,7 @@ export default function SchoolDetails() {
                             )}
                           </div>
                           {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 flex-wrap">
                               <Button 
                                 variant="outline" 
                                 size="sm"
@@ -849,6 +1018,30 @@ export default function SchoolDetails() {
                               >
                                 <Pencil className="h-4 w-4 mr-2" />
                                 Gerenciar
+                              </Button>
+                              
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => handleOpenMoveClassDialog(classItem)}
+                                title="Mover turma para outra escola"
+                              >
+                                <MoveRight className="h-4 w-4 mr-2" />
+                                Mover
+                              </Button>
+                              
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => {
+                                  setClassToDelete(classItem);
+                                  setShowDeleteClassDialog(true);
+                                }}
+                                className="text-red-600 hover:text-red-700"
+                                title="Excluir turma"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Excluir
                               </Button>
                             </div>
                           )}
@@ -921,6 +1114,14 @@ export default function SchoolDetails() {
 
 
         </TabsContent>
+
+        <TabsContent value="courses" className="space-y-6">
+          <SchoolCoursesTab schoolId={school.id} schoolName={school.name} />
+        </TabsContent>
+
+        <TabsContent value="disciplinas" className="space-y-6">
+          <InstituicaoDisciplinasTab />
+        </TabsContent>
       </Tabs>
 
       {/* Edit Dialog */}
@@ -938,7 +1139,7 @@ export default function SchoolDetails() {
       )}
 
       {/* Manage Class Modal */}
-      {showManageClassModal && selectedClass && (
+      {showManageClassModal && selectedClass && school && (
         <ManageClassModal
           isOpen={showManageClassModal}
           onClose={() => {
@@ -948,11 +1149,11 @@ export default function SchoolDetails() {
           schoolId={school.id}
           classData={selectedClass}
           onSuccess={() => {
-            // Recarregar dados das turmas
             if (classes.length > 0) {
               fetchClassDetails(classes);
             }
           }}
+          schoolCityId={school.city_id}
         />
       )}
 
@@ -1006,6 +1207,7 @@ export default function SchoolDetails() {
           schoolAddress={school.address}
           schoolState={school.city.state}
           schoolMunicipality={school.city.name}
+          grades={schoolGrades}
           onSuccess={() => {
             // Recarregar dados da escola
             window.location.reload();
@@ -1024,6 +1226,124 @@ export default function SchoolDetails() {
           classes={classes}
         />
       )}
+
+      {/* Delete Class Dialog */}
+      <AlertDialog open={showDeleteClassDialog} onOpenChange={setShowDeleteClassDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão de Turma</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir a turma <strong>{classToDelete?.name}</strong>?
+              <br /><br />
+              Esta ação não pode ser desfeita. Todos os alunos e professores serão desvinculados da turma.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteClass}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                "Excluir Turma"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Move Class Dialog */}
+      <Dialog open={showMoveClassDialog} onOpenChange={setShowMoveClassDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Mover Turma para Outra Escola</DialogTitle>
+            <DialogDescription>
+              Mova a turma <strong>{classToMove?.name}</strong> para outra escola do mesmo município.
+              <br /><br />
+              Os alunos da turma serão automaticamente transferidos para a nova escola.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Escola de destino</label>
+              <Select
+                value={targetSchoolId}
+                onValueChange={setTargetSchoolId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma escola" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSchools.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      Nenhuma outra escola disponível no mesmo município
+                    </div>
+                  ) : (
+                    availableSchools.map((school) => (
+                      <SelectItem key={school.id} value={school.id}>
+                        {school.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              {availableSchools.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Apenas escolas do mesmo município ({school?.city.name}) estão disponíveis
+                </p>
+              )}
+            </div>
+
+            {targetSchoolId && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  <strong>Atenção:</strong> Se já existir uma turma com o mesmo nome na escola destino, 
+                  a turma será automaticamente renomeada (ex: "5º Ano A" → "5º Ano A (2)").
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowMoveClassDialog(false);
+                setClassToMove(null);
+                setTargetSchoolId("");
+              }}
+              disabled={isMoving}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleMoveClass}
+              disabled={!targetSchoolId || isMoving}
+            >
+              {isMoving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Movendo...
+                </>
+              ) : (
+                <>
+                  <MoveRight className="h-4 w-4 mr-2" />
+                  Mover Turma
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

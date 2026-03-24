@@ -1,6 +1,17 @@
 import { api, apiWithRetry, apiWithTimeout } from '@/lib/api';
 import { EvaluationResultsData, StudentProficiency, ResultsFilters, calculateProficiency, RelatorioCompleto } from '@/types/evaluation-results';
 
+/** Query param para relatórios baseados em cartão-resposta (gabarito), alinhado ao backend. */
+export const REPORT_ENTITY_TYPE_ANSWER_SHEET = 'answer_sheet' as const;
+export type ReportEntityTypeQuery = typeof REPORT_ENTITY_TYPE_ANSWER_SHEET;
+
+/** Query/header opcionais para `/evaluation-results/avaliacoes/:id` e sub-rotas (`verificar-status`, `status-resumo`). */
+export type AvaliacaoResourceRequestOptions = {
+  report_entity_type?: ReportEntityTypeQuery;
+  city_id?: string;
+  metaCityId?: string;
+};
+
 // ✅ NOVO: Interfaces para status e processamento de relatórios
 interface ReportStatus {
   status: 'ready' | 'processing' | 'not_found';
@@ -43,6 +54,7 @@ interface EstatisticasGerais {
   municipio?: string;
   escola?: string;
   serie?: string;
+  data_aplicacao?: string;
   total_escolas?: number;
   total_series?: number;
   total_turmas?: number;
@@ -67,6 +79,23 @@ interface OpcoesProximosFiltros {
   series?: Array<{ id: string; name: string }>;
   turmas?: Array<{ id: string; name: string }>;
   maximo_alcancado?: boolean;
+}
+
+/** Parâmetros para GET /evaluation-results/evolucao/opcoes-filtros (Evolução: Estado → Município → Escola → Série → Turma) */
+export interface EvolucaoOpcoesFiltrosParams {
+  estado?: string;
+  municipio?: string;
+  escola?: string;
+  serie?: string;
+}
+
+/** Resposta de GET /evaluation-results/evolucao/opcoes-filtros */
+export interface EvolucaoOpcoesFiltrosResponse {
+  estados?: Array<{ id: string; nome?: string; name?: string }>;
+  municipios?: Array<{ id: string; nome?: string; name?: string }>;
+  escolas?: Array<{ id: string; nome?: string; name?: string }>;
+  series?: Array<{ id: string; nome?: string; name?: string }>;
+  turmas?: Array<{ id: string; nome?: string; name?: string }>;
 }
 
 // ✅ NOVO: Interfaces para tabela detalhada
@@ -473,6 +502,77 @@ export class EvaluationResultsApiService {
 
 
 
+  /**
+   * Opções de filtro para a página Evolução (Estado → Município → Escola → Série → Turma).
+   * GET /evaluation-results/evolucao/opcoes-filtros
+   * Sem params → estados; ?estado=X → municipios; +municipio → escolas; +escola → series; +serie → turmas.
+   */
+  static async getEvolucaoOpcoesFiltros(params: EvolucaoOpcoesFiltrosParams = {}): Promise<EvolucaoOpcoesFiltrosResponse> {
+    const search = new URLSearchParams();
+    if (params.estado != null && params.estado !== '') search.set('estado', params.estado);
+    if (params.municipio != null && params.municipio !== '') search.set('municipio', params.municipio);
+    if (params.escola != null && params.escola !== '') search.set('escola', params.escola);
+    if (params.serie != null && params.serie !== '') search.set('serie', params.serie);
+    const query = search.toString();
+    const url = `/evaluation-results/evolucao/opcoes-filtros${query ? `?${query}` : ''}`;
+    const requestConfig = params.municipio ? { meta: { cityId: params.municipio } } : {};
+    const response = await api.get(url, requestConfig);
+    return response.data ?? {};
+  }
+
+  /**
+   * Lista de avaliações para Evolução. GET /evaluation-results/evolucao/avaliacoes
+   * Obrigatórios: estado, municipio. Opcionais: escola, serie, turma, nome (busca).
+   */
+  static async getEvolucaoAvaliacoes(
+    filters: {
+      estado: string;
+      municipio: string;
+      escola?: string;
+      serie?: string;
+      turma?: string;
+      data_inicio?: string;
+      data_fim?: string;
+      nome?: string;
+    },
+    page: number = 1,
+    perPage: number = 100
+  ): Promise<NovaRespostaAPI | null> {
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        per_page: String(perPage),
+        estado: filters.estado,
+        municipio: filters.municipio,
+      });
+      if (filters.escola != null && filters.escola !== '' && filters.escola !== 'all') params.append('escola', filters.escola);
+      if (filters.serie != null && filters.serie !== '' && filters.serie !== 'all') params.append('serie', filters.serie);
+      if (filters.turma != null && filters.turma !== '' && filters.turma !== 'all') params.append('turma', filters.turma);
+      if (filters.data_inicio) params.append('data_inicio', filters.data_inicio);
+      if (filters.data_fim) params.append('data_fim', filters.data_fim);
+      if (filters.nome?.trim()) params.append('nome', filters.nome.trim());
+
+      const requestConfig = { meta: { cityId: filters.municipio } } as const;
+      const response = await api.get(`/evaluation-results/evolucao/avaliacoes?${params}`, requestConfig);
+
+      if (response.data?.resultados_detalhados?.avaliacoes) {
+        response.data.resultados_detalhados.avaliacoes =
+          response.data.resultados_detalhados.avaliacoes.filter((evaluation: any) => {
+            const type = String(evaluation.type ?? evaluation.tipo ?? '').toUpperCase().trim();
+            const title = String(evaluation.titulo ?? evaluation.title ?? '').toUpperCase();
+            if (type === 'OLIMPIADA' || type === 'OLIMPIADAS' || type.includes('OLIMPI')) return false;
+            if (type === 'COMPETICAO' || type === 'COMPETIÇÃO' || type.includes('COMPET')) return false;
+            if (title.includes('[OLIMPÍADA]') || title.includes('OLIMPÍADA') || title.includes('OLIMPIADA')) return false;
+            if (title.includes('COMPETIÇÃO') || title.includes('COMPETICAO')) return false;
+            return type === '' || type === 'AVALIACAO' || type === 'SIMULADO';
+          });
+      }
+      return response.data;
+    } catch {
+      return null;
+    }
+  }
+
   static async getEvaluationsList(
     page: number = 1,
     perPage: number = 10,
@@ -483,6 +583,9 @@ export class EvaluationResultsApiService {
       serie?: string;
       turma?: string;
       avaliacao?: string;
+      report_entity_type?: ReportEntityTypeQuery;
+      /** Somente admin: município selecionado (query). */
+      city_id?: string;
     } = {}
   ): Promise<NovaRespostaAPI | null> {
     try {
@@ -511,19 +614,29 @@ export class EvaluationResultsApiService {
       if (filters.turma && filters.turma !== 'all') {
         params.append('turma', filters.turma);
       }
+      if (filters.report_entity_type) {
+        params.append('report_entity_type', filters.report_entity_type);
+      }
+      if (filters.city_id) {
+        params.append('city_id', filters.city_id);
+      }
 
-      const response = await api.get(`/evaluation-results/avaliacoes?${params}`);
+      const requestConfig = filters.municipio && filters.municipio !== 'all'
+        ? { meta: { cityId: filters.municipio } }
+        : {};
+      const response = await api.get(`/evaluation-results/avaliacoes?${params}`, requestConfig);
 
-      // Filtrar olimpíadas dos resultados
+      // Filtrar olimpíadas e competição dos resultados (manter só AVALIACAO / SIMULADO)
       if (response.data?.resultados_detalhados?.avaliacoes) {
         response.data.resultados_detalhados.avaliacoes = 
           response.data.resultados_detalhados.avaliacoes.filter((evaluation: any) => {
-            const type = evaluation.type || evaluation.tipo;
-            const title = evaluation.titulo || evaluation.title || '';
-            const isOlimpiada = type === 'OLIMPIADA' || 
-                               title.includes('[OLIMPÍADA]') || 
-                               title.toUpperCase().includes('OLIMPÍADA');
-            return !isOlimpiada;
+            const type = String(evaluation.type ?? evaluation.tipo ?? '').toUpperCase().trim();
+            const title = String(evaluation.titulo ?? evaluation.title ?? '').toUpperCase();
+            if (type === 'OLIMPIADA' || type === 'OLIMPIADAS' || type.includes('OLIMPI')) return false;
+            if (type === 'COMPETICAO' || type === 'COMPETIÇÃO' || type.includes('COMPET')) return false;
+            if (title.includes('[OLIMPÍADA]') || title.includes('OLIMPÍADA') || title.includes('OLIMPIADA')) return false;
+            if (title.includes('COMPETIÇÃO') || title.includes('COMPETICAO')) return false;
+            return type === '' || type === 'AVALIACAO' || type === 'SIMULADO';
           });
       }
 
@@ -563,10 +676,29 @@ export class EvaluationResultsApiService {
     }
   }
 
+  private static buildAvaliacaoResourceQuery(options?: AvaliacaoResourceRequestOptions): string {
+    const params = new URLSearchParams();
+    if (options?.report_entity_type) params.append('report_entity_type', options.report_entity_type);
+    if (options?.city_id) params.append('city_id', options.city_id);
+    const qs = params.toString();
+    return qs ? `?${qs}` : '';
+  }
+
+  private static avaliacaoResourceAxiosConfig(options?: AvaliacaoResourceRequestOptions) {
+    return options?.metaCityId ? { meta: { cityId: options.metaCityId } } : {};
+  }
+
   // Buscar avaliação específica por ID
-  static async getEvaluationById(evaluationId: string): Promise<EvaluationResult | null> {
+  static async getEvaluationById(
+    evaluationId: string,
+    options?: AvaliacaoResourceRequestOptions
+  ): Promise<EvaluationResult | null> {
     return apiWithTimeout(async () => {
-      const response = await api.get(`/evaluation-results/avaliacoes/${evaluationId}`);
+      const q = this.buildAvaliacaoResourceQuery(options);
+      const response = await api.get(
+        `/evaluation-results/avaliacoes/${evaluationId}${q}`,
+        this.avaliacaoResourceAxiosConfig(options)
+      );
       return response.data;
     }, 20000); // 20s para dados básicos
   }
@@ -593,13 +725,21 @@ export class EvaluationResultsApiService {
   }
 
   // Verificar e atualizar status da avaliação
-  static async checkEvaluationStatus(evaluationId: string): Promise<{
+  static async checkEvaluationStatus(
+    evaluationId: string,
+    options?: AvaliacaoResourceRequestOptions
+  ): Promise<{
     success: boolean;
     message: string;
     status?: string;
   }> {
     try {
-      const response = await api.post(`/evaluation-results/avaliacoes/${evaluationId}/verificar-status`);
+      const q = this.buildAvaliacaoResourceQuery(options);
+      const response = await api.post(
+        `/evaluation-results/avaliacoes/${evaluationId}/verificar-status${q}`,
+        undefined,
+        this.avaliacaoResourceAxiosConfig(options)
+      );
       return response.data;
     } catch (error) {
               // Erro ao verificar status da avaliação
@@ -611,7 +751,10 @@ export class EvaluationResultsApiService {
   }
 
   // Obter resumo de status da avaliação
-  static async getEvaluationStatusSummary(evaluationId: string): Promise<{
+  static async getEvaluationStatusSummary(
+    evaluationId: string,
+    options?: AvaliacaoResourceRequestOptions
+  ): Promise<{
     total_alunos: number;
     alunos_participantes: number;
     alunos_ausentes: number;
@@ -623,7 +766,11 @@ export class EvaluationResultsApiService {
     overall_status: string;
   } | null> {
     try {
-      const response = await api.get(`/evaluation-results/avaliacoes/${evaluationId}/status-resumo`);
+      const q = this.buildAvaliacaoResourceQuery(options);
+      const response = await api.get(
+        `/evaluation-results/avaliacoes/${evaluationId}/status-resumo${q}`,
+        this.avaliacaoResourceAxiosConfig(options)
+      );
       return response.data;
     } catch (error) {
               // Erro ao obter resumo de status da avaliação
@@ -647,10 +794,21 @@ export class EvaluationResultsApiService {
     }
   }
 
-  // Buscar alunos de uma avaliação específica
-  static async getStudentsByEvaluation(evaluationId: string): Promise<StudentResult[]> {
+  // Buscar alunos de uma avaliação específica (com filtros opcionais para escopo e performance)
+  static async getStudentsByEvaluation(
+    evaluationId: string,
+    filters?: { municipio?: string; escola?: string; serie?: string; turma?: string }
+  ): Promise<StudentResult[]> {
     return apiWithTimeout(async () => {
-      const response = await api.get(`/evaluation-results/alunos?avaliacao_id=${evaluationId}`);
+      const params = new URLSearchParams({ avaliacao_id: evaluationId });
+      if (filters?.municipio && filters.municipio !== 'all') params.append('municipio', filters.municipio);
+      if (filters?.escola && filters.escola !== 'all') params.append('escola', filters.escola);
+      if (filters?.serie && filters.serie !== 'all') params.append('serie', filters.serie);
+      if (filters?.turma && filters.turma !== 'all') params.append('turma', filters.turma);
+      const requestConfig = filters?.municipio && filters.municipio !== 'all'
+        ? { meta: { cityId: filters.municipio } }
+        : {};
+      const response = await api.get(`/evaluation-results/alunos?${params}`, requestConfig);
       return response.data.data || [];
     }, 25000); // 25s para lista de alunos
   }
@@ -725,9 +883,23 @@ export class EvaluationResultsApiService {
   }
 
   // Buscar relatório detalhado de uma avaliação
-  static async getDetailedReport(evaluationId: string): Promise<DetailedReport | null> {
+  static async getDetailedReport(
+    evaluationId: string,
+    options?: { report_entity_type?: ReportEntityTypeQuery; cityId?: string; city_id?: string }
+  ): Promise<DetailedReport | null> {
     return apiWithRetry(async () => {
-      const response = await api.get(`/evaluation-results/relatorio-detalhado/${evaluationId}`);
+      const qs = new URLSearchParams();
+      if (options?.report_entity_type) {
+        qs.append('report_entity_type', options.report_entity_type);
+      }
+      if (options?.city_id) {
+        qs.append('city_id', options.city_id);
+      }
+      const query = qs.toString();
+      const url = `/evaluation-results/relatorio-detalhado/${evaluationId}${query ? `?${query}` : ''}`;
+      const requestConfig =
+        options?.cityId ? { meta: { cityId: options.cityId } } : {};
+      const response = await api.get(url, requestConfig);
       return response.data;
     }, 2, 2000, 90000); // 2 retries, 2s delay, max 90s timeout
   }
@@ -1427,7 +1599,16 @@ export class EvaluationResultsApiService {
   }
 
   // ✅ NOVO: Buscar skills por avaliação (resolve o problema das disciplinas)
-  static async getSkillsByEvaluation(testId: string): Promise<Array<{
+  static async getSkillsByEvaluation(
+    testId: string,
+    options?: {
+      report_entity_type?: ReportEntityTypeQuery;
+      /** Header X-City-ID */
+      cityId?: string;
+      /** Query city_id (somente admin). */
+      city_id?: string;
+    }
+  ): Promise<Array<{
     id: string | null;
     code: string; // ✅ Código real como "LP5L1.2" ou UUID se não cadastrada
     description: string;
@@ -1436,12 +1617,33 @@ export class EvaluationResultsApiService {
     source: 'database' | 'question'; // ✅ Indica se vem do banco ou da questão
   }>> {
     return apiWithRetry(async () => {
-      const response = await api.get(`/skills/evaluation/${testId}`);
+      const params = new URLSearchParams();
+      if (options?.report_entity_type) {
+        params.append('report_entity_type', options.report_entity_type);
+      }
+      if (options?.city_id) {
+        params.append('city_id', options.city_id);
+      }
+      const qs = params.toString();
+      const url = `/skills/evaluation/${testId}${qs ? `?${qs}` : ''}`;
+      const requestConfig = options?.cityId ? { meta: { cityId: options.cityId } } : {};
+      const response = await api.get(url, requestConfig);
       return response.data;
     }, 2, 2000, 90000);
   }
 
   // ===== NOVAS ROTAS DE FILTROS PROGRESSIVOS =====
+
+  /** Backend pode devolver rótulo em `nome` ou `name`; a UI usa sempre `nome`. */
+  private static normalizeFilterEntities(
+    items: Array<{ id: string; nome?: string; name?: string }> | undefined
+  ): Array<{ id: string; nome: string }> {
+    if (!Array.isArray(items) || !items.length) return [];
+    return items.map((item) => ({
+      id: item.id,
+      nome: item.nome ?? item.name ?? '',
+    }));
+  }
 
   // ✅ NOVO: Método privado centralizado para buscar opções de filtros
   private static async getFilterOptions(params: {
@@ -1451,6 +1653,9 @@ export class EvaluationResultsApiService {
     escola?: string;
     serie?: string;
     turma?: string;
+    report_entity_type?: ReportEntityTypeQuery;
+    /** Somente admin: município selecionado (token sem cidade). */
+    city_id?: string;
   }): Promise<FilterOptionsResponse> {
     try {
       const queryParams = new URLSearchParams();
@@ -1460,10 +1665,27 @@ export class EvaluationResultsApiService {
       if (params.escola && params.escola !== 'all') queryParams.append('escola', params.escola);
       if (params.serie && params.serie !== 'all') queryParams.append('serie', params.serie);
       if (params.turma && params.turma !== 'all') queryParams.append('turma', params.turma);
+      if (params.report_entity_type) {
+        queryParams.append('report_entity_type', params.report_entity_type);
+      }
+      if (params.city_id) {
+        queryParams.append('city_id', params.city_id);
+      }
 
       const url = `/evaluation-results/opcoes-filtros${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-      const response = await api.get(url);
-      return response.data || {};
+      const requestConfig = params.municipio && params.municipio !== 'all'
+        ? { meta: { cityId: params.municipio } }
+        : {};
+      const response = await api.get(url, requestConfig);
+      const data = response.data || {};
+      return {
+        ...data,
+        estados: this.normalizeFilterEntities(data.estados),
+        municipios: this.normalizeFilterEntities(data.municipios),
+        escolas: this.normalizeFilterEntities(data.escolas),
+        series: this.normalizeFilterEntities(data.series),
+        turmas: this.normalizeFilterEntities(data.turmas),
+      } as FilterOptionsResponse;
     } catch (error) {
       // ✅ MELHORADO: Log detalhado do erro para debug
       const axiosError = error as { response?: { status?: number; data?: unknown; config?: { url?: string } } };
@@ -1483,12 +1705,18 @@ export class EvaluationResultsApiService {
   }
 
   // ✅ REFATORADO: Buscar estados usando rota unificada
-  static async getFilterStates(): Promise<Array<{
+  static async getFilterStates(
+    reportEntityType?: ReportEntityTypeQuery,
+    cityIdQuery?: string
+  ): Promise<Array<{
     id: string;
     nome: string;
   }>> {
     try {
-      const response = await this.getFilterOptions({});
+      const response = await this.getFilterOptions({
+        ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
+        ...(cityIdQuery ? { city_id: cityIdQuery } : {}),
+      });
       return response.estados || [];
     } catch (error) {
       console.error('Erro ao buscar estados para filtros:', error);
@@ -1498,14 +1726,22 @@ export class EvaluationResultsApiService {
   }
 
   // ✅ REFATORADO: Buscar municípios usando rota unificada com fallback
-  static async getFilterMunicipalities(stateId: string): Promise<Array<{
+  static async getFilterMunicipalities(
+    stateId: string,
+    reportEntityType?: ReportEntityTypeQuery,
+    cityIdQuery?: string
+  ): Promise<Array<{
     id: string;
     nome: string;
   }>> {
     // Tentar primeiro o endpoint de opções de filtros
     try {
       // stateId pode ser nome (ex: "SP", "ALAGOAS") ou ID
-      const response = await this.getFilterOptions({ estado: stateId });
+      const response = await this.getFilterOptions({
+        estado: stateId,
+        ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
+        ...(cityIdQuery ? { city_id: cityIdQuery } : {}),
+      });
       
       if (response.municipios && Array.isArray(response.municipios) && response.municipios.length > 0) {
         return response.municipios;
@@ -1553,6 +1789,8 @@ export class EvaluationResultsApiService {
   static async getFilterSchools(params: {
     municipio: string;
     estado?: string;
+    report_entity_type?: ReportEntityTypeQuery;
+    city_id?: string;
   }): Promise<Array<{
     id: string;
     nome: string;
@@ -1566,7 +1804,9 @@ export class EvaluationResultsApiService {
       
       const response = await this.getFilterOptions({
         estado: params.estado,
-        municipio: params.municipio
+        municipio: params.municipio,
+        ...(params.report_entity_type ? { report_entity_type: params.report_entity_type } : {}),
+        ...(params.city_id ? { city_id: params.city_id } : {}),
       });
       return response.escolas || [];
     } catch (error) {
@@ -1580,6 +1820,8 @@ export class EvaluationResultsApiService {
     estado: string;
     municipio?: string;
     escola?: string;
+    report_entity_type?: ReportEntityTypeQuery;
+    city_id?: string;
   }): Promise<Array<{
     id: string;
     nome: string;
@@ -1588,7 +1830,9 @@ export class EvaluationResultsApiService {
       const response = await this.getFilterOptions({
         estado: filters.estado,
         municipio: filters.municipio,
-        escola: filters.escola
+        escola: filters.escola,
+        ...(filters.report_entity_type ? { report_entity_type: filters.report_entity_type } : {}),
+        ...(filters.city_id ? { city_id: filters.city_id } : {}),
       });
       return response.series || [];
     } catch (error) {
@@ -1603,6 +1847,8 @@ export class EvaluationResultsApiService {
     municipio?: string;
     escola?: string;
     serie?: string;
+    report_entity_type?: ReportEntityTypeQuery;
+    city_id?: string;
   }): Promise<Array<{
     id: string;
     nome: string;
@@ -1612,7 +1858,9 @@ export class EvaluationResultsApiService {
         estado: filters.estado,
         municipio: filters.municipio,
         escola: filters.escola,
-        serie: filters.serie
+        serie: filters.serie,
+        ...(filters.report_entity_type ? { report_entity_type: filters.report_entity_type } : {}),
+        ...(filters.city_id ? { city_id: filters.city_id } : {}),
       });
       return response.turmas || [];
     } catch (error) {
@@ -1626,6 +1874,8 @@ export class EvaluationResultsApiService {
     estado: string;
     municipio: string;
     escola?: string;
+    report_entity_type?: ReportEntityTypeQuery;
+    city_id?: string;
   }): Promise<Array<{
     id: string;
     titulo: string;
@@ -1634,15 +1884,20 @@ export class EvaluationResultsApiService {
       const response = await this.getFilterOptions({
         estado: filters.estado,
         municipio: filters.municipio,
-        escola: filters.escola
+        escola: filters.escola,
+        ...(filters.report_entity_type ? { report_entity_type: filters.report_entity_type } : {}),
+        ...(filters.city_id ? { city_id: filters.city_id } : {}),
       });
       const avaliacoes = response.avaliacoes || [];
       return avaliacoes.filter((evaluation: any) => {
         const raw = (evaluation.type ?? evaluation.tipo ?? '').toString().trim();
         const type = raw.toUpperCase();
+        const title = String(evaluation.titulo ?? evaluation.title ?? '').toUpperCase();
         // Excluir olimpíadas e competições (relatórios e filtros: apenas avaliações/simulados)
         if (type === 'OLIMPIADAS' || type === 'OLIMPIADA' || type.includes('OLIMPI')) return false;
         if (type === 'COMPETICAO' || type === 'COMPETIÇÃO' || type.includes('COMPET')) return false;
+        // Excluir também pelo título quando o backend não envia type (ex.: "OLIMPIADA DE MATEMÁTICA", "SIMULADO OLÍMPICO")
+        if (title.includes('OLIMPI') || title.includes('OLÍMPIC')) return false;
         // Incluir apenas AVALIACAO, SIMULADO ou sem tipo
         return type === '' || type === 'AVALIACAO' || type === 'SIMULADO';
       });
@@ -1657,6 +1912,8 @@ export class EvaluationResultsApiService {
     estado: string;
     municipio: string;
     avaliacao: string;
+    report_entity_type?: ReportEntityTypeQuery;
+    city_id?: string;
   }): Promise<Array<{
     id: string;
     nome: string;
@@ -1665,7 +1922,9 @@ export class EvaluationResultsApiService {
       const response = await this.getFilterOptions({
         estado: filters.estado,
         municipio: filters.municipio,
-        avaliacao: filters.avaliacao
+        avaliacao: filters.avaliacao,
+        ...(filters.report_entity_type ? { report_entity_type: filters.report_entity_type } : {}),
+        ...(filters.city_id ? { city_id: filters.city_id } : {}),
       });
       return response.escolas || [];
     } catch (error) {
@@ -1680,6 +1939,8 @@ export class EvaluationResultsApiService {
     municipio: string;
     avaliacao: string;
     escola: string;
+    report_entity_type?: ReportEntityTypeQuery;
+    city_id?: string;
   }): Promise<Array<{
     id: string;
     nome: string;
@@ -1689,7 +1950,9 @@ export class EvaluationResultsApiService {
         estado: filters.estado,
         municipio: filters.municipio,
         avaliacao: filters.avaliacao,
-        escola: filters.escola
+        escola: filters.escola,
+        ...(filters.report_entity_type ? { report_entity_type: filters.report_entity_type } : {}),
+        ...(filters.city_id ? { city_id: filters.city_id } : {}),
       });
       return response.series || [];
     } catch (error) {
@@ -1705,6 +1968,8 @@ export class EvaluationResultsApiService {
     avaliacao: string;
     escola: string;
     serie: string;
+    report_entity_type?: ReportEntityTypeQuery;
+    city_id?: string;
   }): Promise<Array<{
     id: string;
     nome: string;
@@ -1715,7 +1980,9 @@ export class EvaluationResultsApiService {
         municipio: filters.municipio,
         avaliacao: filters.avaliacao,
         escola: filters.escola,
-        serie: filters.serie
+        serie: filters.serie,
+        ...(filters.report_entity_type ? { report_entity_type: filters.report_entity_type } : {}),
+        ...(filters.city_id ? { city_id: filters.city_id } : {}),
       });
       return response.turmas || [];
     } catch (error) {
@@ -1924,7 +2191,10 @@ export class EvaluationResultsApiService {
   }
 
   // ✅ NOVO: Buscar dados específicos de uma avaliação (endpoint dedicado)
-  static async getEvaluationSpecificData(evaluationId: string): Promise<{
+  static async getEvaluationSpecificData(
+    evaluationId: string,
+    options?: AvaliacaoResourceRequestOptions
+  ): Promise<{
     avaliacao: {
       id: string;
       titulo: string;
@@ -1963,10 +2233,11 @@ export class EvaluationResultsApiService {
     }>;
   } | null> {
     try {
-      
-      const response = await api.get(`/evaluation-results/avaliacoes/${evaluationId}`);
-      
-      
+      const q = this.buildAvaliacaoResourceQuery(options);
+      const response = await api.get(
+        `/evaluation-results/avaliacoes/${evaluationId}${q}`,
+        this.avaliacaoResourceAxiosConfig(options)
+      );
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao buscar dados específicos da avaliação:', error);
@@ -2206,20 +2477,33 @@ export class EvaluationResultsApiService {
   // ✅ ATUALIZADO: Verificar status do relatório (não lança erro em HTTP 5xx para permitir retry)
   static async checkReportStatus(
     evaluationId: string,
-    options?: { schoolId?: string; cityId?: string }
+    options?: {
+      schoolId?: string;
+      cityId?: string;
+      reportEntityType?: ReportEntityTypeQuery;
+      /** Query `city_id` quando admin filtra por escola (token sem cidade). */
+      adminCityIdQuery?: string;
+    }
   ): Promise<ReportStatus> {
     const params = new URLSearchParams();
     
     if (options?.schoolId) {
       params.append('school_id', options.schoolId);
-    } else if (options?.cityId) {
-      params.append('city_id', options.cityId);
+    }
+    // Query `city_id`: somente admin (demais perfis: tenant no JWT)
+    if (options?.adminCityIdQuery) {
+      params.append('city_id', options.adminCityIdQuery);
+    }
+    if (options?.reportEntityType) {
+      params.append('report_entity_type', options.reportEntityType);
     }
     
     const url = `/reports/status/${evaluationId}${params.toString() ? `?${params.toString()}` : ''}`;
+    const metaCity = options?.cityId || options?.adminCityIdQuery;
+    const requestConfig = metaCity ? { meta: { cityId: metaCity } } : {};
     
     try {
-      const response = await api.get(url);
+      const response = await api.get(url, requestConfig);
       return response.data;
     } catch (error: unknown) {
       // ✅ Não lançar erro - deixar o polling continuar tentando
@@ -2234,7 +2518,12 @@ export class EvaluationResultsApiService {
   // ✅ ATUALIZADO: Fazer polling até o relatório ficar pronto (com timeout adequado e tratamento de erros)
   static async pollUntilReady(
     evaluationId: string,
-    options?: { schoolId?: string; cityId?: string },
+    options?: {
+      schoolId?: string;
+      cityId?: string;
+      reportEntityType?: ReportEntityTypeQuery;
+      adminCityIdQuery?: string;
+    },
     maxAttempts: number = 120, // 10 minutos (120 * 5s = 600s)
     pollInterval: number = 5000 // 5 segundos
   ): Promise<RelatorioCompleto> {
@@ -2265,12 +2554,17 @@ export class EvaluationResultsApiService {
           const params = new URLSearchParams();
           if (options?.schoolId) {
             params.append('school_id', options.schoolId);
-          } else if (options?.cityId) {
-            params.append('city_id', options.cityId);
+          }
+          if (options?.adminCityIdQuery) {
+            params.append('city_id', options.adminCityIdQuery);
+          }
+          if (options?.reportEntityType) {
+            params.append('report_entity_type', options.reportEntityType);
           }
           
           const url = `/reports/dados-json/${evaluationId}${params.toString() ? `?${params.toString()}` : ''}`;
-          const response = await api.get(url);
+          const metaCityPoll = options?.cityId || options?.adminCityIdQuery;
+          const response = await api.get(url, metaCityPoll ? { meta: { cityId: metaCityPoll } } : {});
           
           return response.data;
         }
@@ -2326,7 +2620,12 @@ export class EvaluationResultsApiService {
   // ✅ ATUALIZADO: Buscar relatório completo de uma avaliação com suporte a polling
   static async getRelatorioCompleto(
     evaluationId: string, 
-    options?: { schoolId?: string; cityId?: string }
+    options?: {
+      schoolId?: string;
+      cityId?: string;
+      reportEntityType?: ReportEntityTypeQuery;
+      adminCityIdQuery?: string;
+    }
   ): Promise<RelatorioCompleto> {
     try {
       const params = new URLSearchParams();
@@ -2334,13 +2633,19 @@ export class EvaluationResultsApiService {
       // Adicionar parâmetros opcionais baseado no que foi fornecido
       if (options?.schoolId) {
         params.append('school_id', options.schoolId);
-      } else if (options?.cityId) {
-        params.append('city_id', options.cityId);
+      }
+      if (options?.adminCityIdQuery) {
+        params.append('city_id', options.adminCityIdQuery);
+      }
+      if (options?.reportEntityType) {
+        params.append('report_entity_type', options.reportEntityType);
       }
       
       const url = `/reports/dados-json/${evaluationId}${params.toString() ? `?${params.toString()}` : ''}`;
+      const metaCityRel = options?.cityId || options?.adminCityIdQuery;
+      const requestConfig = metaCityRel ? { meta: { cityId: metaCityRel } } : {};
       
-      const response = await api.get(url);
+      const response = await api.get(url, requestConfig);
       
       // ✅ NOVO: Verificar status HTTP
       if (response.status === 202) {
@@ -2393,7 +2698,13 @@ export class EvaluationResultsApiService {
   // ✅ NOVO: Buscar tabela detalhada com dados de alunos por disciplina
   static async getTabelaDetalhada(
     evaluationId: string,
-    options?: { state?: string; municipality?: string; school?: string }
+    options?: {
+      state?: string;
+      municipality?: string;
+      school?: string;
+      report_entity_type?: ReportEntityTypeQuery;
+      city_id?: string;
+    }
   ): Promise<{
     disciplinas: Array<{
       nome: string;
@@ -2452,13 +2763,23 @@ export class EvaluationResultsApiService {
       if (options?.school && options.school !== 'all') {
         params.append('escola', options.school);
       }
+      if (options?.report_entity_type) {
+        params.append('report_entity_type', options.report_entity_type);
+      }
+      if (options?.city_id) {
+        params.append('city_id', options.city_id);
+      }
       
       const url = `/evaluation-results/avaliacoes?${params.toString()}`;
       console.log('📊 URL da requisição:', url);
       console.log('📊 Params.toString():', params.toString());
       console.log('📊 Params.get("estado"):', params.get('estado'));
       
-      const response = await api.get(url);
+      const requestConfig =
+        options.municipality && options.municipality !== 'all'
+          ? { meta: { cityId: options.municipality } }
+          : {};
+      const response = await api.get(url, requestConfig);
       
       console.log('📊 Resposta completa do endpoint avaliacoes:', response.data);
       console.log('📊 tabela_detalhada:', response.data.tabela_detalhada);
@@ -2595,7 +2916,10 @@ export class EvaluationResultsApiService {
   }
 
   // ✅ NOVO: Estatísticas de uma avaliação específica
-  static async getEvaluationSpecificStats(evaluationId: string): Promise<{
+  static async getEvaluationSpecificStats(
+    evaluationId: string,
+    options?: AvaliacaoResourceRequestOptions
+  ): Promise<{
     id: string;
     titulo: string;
     disciplina: string;
@@ -2614,7 +2938,11 @@ export class EvaluationResultsApiService {
     taxa_conclusao: number;
   } | null> {
     try {
-      const response = await api.get(`/evaluation-results/avaliacoes/${evaluationId}`);
+      const q = this.buildAvaliacaoResourceQuery(options);
+      const response = await api.get(
+        `/evaluation-results/avaliacoes/${evaluationId}${q}`,
+        this.avaliacaoResourceAxiosConfig(options)
+      );
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao buscar estatísticas específicas:', error);

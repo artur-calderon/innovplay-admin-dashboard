@@ -18,6 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { getCompetition, publishCompetition, updateCompetition } from '@/services/competitionsApi';
 import { parseISOToDatetimeLocal, convertDateTimeLocalToISONaive } from '@/utils/date';
 import { CalendarDays, CalendarRange, Clock, Loader2 } from 'lucide-react';
+import type { Competition } from '@/types/competition-types';
 
 export interface EditCompetitionApplicationModalProps {
   open: boolean;
@@ -41,24 +42,69 @@ export function EditCompetitionApplicationModal({
   const [expiration, setExpiration] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
+  const [competition, setCompetition] = useState<Competition | null>(null);
 
+  // Carrega competição e preenche o formulário com as datas atuais (editar em cima do que já existe, como em Ver competição).
   useEffect(() => {
-    if (!open || !competitionId) return;
+    if (!open || !competitionId) {
+      setCompetition(null);
+      return;
+    }
     setLoadingData(true);
     getCompetition(competitionId)
       .then((c) => {
+        setCompetition(c);
         setEnrollmentStart(parseISOToDatetimeLocal(c.enrollment_start));
         setEnrollmentEnd(parseISOToDatetimeLocal(c.enrollment_end));
         setApplication(parseISOToDatetimeLocal(c.application));
         setExpiration(parseISOToDatetimeLocal(c.expiration));
       })
-      .catch(() => toast({ title: 'Erro ao carregar competição.', variant: 'destructive' }))
+      .catch(() => {
+        setCompetition(null);
+        toast({ title: 'Erro ao carregar competição.', variant: 'destructive' });
+      })
       .finally(() => setLoadingData(false));
-  }, [open, competitionId, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- toast não deve disparar recarga
+  }, [open, competitionId]);
+
+  /** Verifica se a competição tem questões configuradas (obrigatório para publicar). */
+  function hasQuestions(c: Competition | null): boolean {
+    if (!c) return false;
+    const mode = (c.question_mode ?? 'manual').toLowerCase();
+    if (mode === 'manual') {
+      return (c.question_ids?.length ?? 0) > 0;
+    }
+    if (mode === 'auto_random') {
+      const rules = c.question_rules;
+      if (typeof rules === 'object' && rules != null && 'num_questions' in rules) {
+        return Number((rules as { num_questions?: number }).num_questions) > 0;
+      }
+      if (typeof rules === 'string' && rules.trim()) {
+        try {
+          const parsed = JSON.parse(rules) as { num_questions?: number };
+          return Number(parsed?.num_questions) > 0;
+        } catch {
+          return false;
+        }
+      }
+      return false;
+    }
+    return false;
+  }
 
   const handleSubmit = async () => {
     if (!competitionId) return;
 
+    if (!hasQuestions(competition)) {
+      toast({
+        title: 'Adicione questões antes de publicar',
+        description: 'A competição precisa ter pelo menos uma questão (modo manual: vincule questões; modo aleatório: defina a quantidade).',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Usar exatamente o valor atual dos inputs (state) para enviar ao backend
     const startStr = enrollmentStart.trim();
     const endStr = enrollmentEnd.trim();
     const appStr = application.trim();
@@ -140,6 +186,8 @@ export function EditCompetitionApplicationModal({
 
       await updateCompetition(competitionId, payload);
       await publishCompetition(competitionId);
+      // Reaplicar as datas após publicar: o backend pode resetar datas no publish; editar de novo garante que as escolhidas permaneçam.
+      await updateCompetition(competitionId, payload);
 
       toast({ title: 'Competição agendada e publicada com sucesso.' });
       onSuccess();

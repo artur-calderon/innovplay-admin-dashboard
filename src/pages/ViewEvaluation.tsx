@@ -6,7 +6,9 @@ import { Pencil, Trash2, ArrowLeft, Eye, Users, BookOpen, FileText, Calendar, Us
 import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { useToast } from "@/hooks/use-toast";
+import { getSubjectColors } from "@/utils/competitionSubjectColors";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { OlimpiadasApiService } from "@/services/olimpiadasApi";
 import {
@@ -30,38 +32,10 @@ import {
 import StartEvaluationModal from "@/components/evaluations/StartEvaluationModal";
 import { convertDateTimeLocalToISO } from "@/utils/date";
 import { Evaluation, Subject, Grade, Municipality, SchoolInfo, AppliedClass, Author, Question, getEvaluationSubjects, getEvaluationSubjectsCount } from "@/types/evaluation-types";
+import QuestionPreview from "@/components/evaluations/questions/QuestionPreview";
+import type { Question as EvaluationQuestion } from "@/components/evaluations/types";
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/components/evaluations/results/constants";
 import { useEvaluations } from "@/hooks/use-cache";
-
-// Função para processar HTML e adicionar classes CSS para imagens
-const processHtmlWithImages = (html: string): string => {
-  if (!html) return '';
-  
-  // Adiciona classes CSS para imagens e elementos HTML com suporte a dark mode
-  return html
-    .replace(/<img([^>]*)>/gi, '<img$1 class="max-w-full h-auto rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">')
-    .replace(/<p([^>]*)>/gi, '<p$1 class="mb-4 dark:text-gray-100">')
-    .replace(/<h1([^>]*)>/gi, '<h1$1 class="text-2xl font-bold mb-4 dark:text-gray-100">')
-    .replace(/<h2([^>]*)>/gi, '<h2$1 class="text-xl font-bold mb-3 dark:text-gray-100">')
-    .replace(/<h3([^>]*)>/gi, '<h3$1 class="text-lg font-bold mb-2 dark:text-gray-100">')
-    .replace(/<h4([^>]*)>/gi, '<h4$1 class="text-base font-bold mb-2 dark:text-gray-100">')
-    .replace(/<h5([^>]*)>/gi, '<h5$1 class="text-sm font-bold mb-2 dark:text-gray-100">')
-    .replace(/<h6([^>]*)>/gi, '<h6$1 class="text-xs font-bold mb-2 dark:text-gray-100">')
-    .replace(/<ul([^>]*)>/gi, '<ul$1 class="list-disc list-inside mb-4 space-y-1 dark:text-gray-100">')
-    .replace(/<ol([^>]*)>/gi, '<ol$1 class="list-decimal list-inside mb-4 space-y-1 dark:text-gray-100">')
-    .replace(/<li([^>]*)>/gi, '<li$1 class="mb-1 dark:text-gray-100">')
-    .replace(/<blockquote([^>]*)>/gi, '<blockquote$1 class="border-l-4 border-blue-500 dark:border-blue-400 pl-4 italic text-gray-600 dark:text-gray-200 mb-4">')
-    .replace(/<code([^>]*)>/gi, '<code$1 class="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-sm font-mono dark:text-gray-100">')
-    .replace(/<pre([^>]*)>/gi, '<pre$1 class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto text-sm font-mono mb-4 dark:text-gray-100">')
-    .replace(/<table([^>]*)>/gi, '<table$1 class="w-full border-collapse border border-gray-300 dark:border-gray-700 mb-4">')
-    .replace(/<th([^>]*)>/gi, '<th$1 class="border border-gray-300 dark:border-gray-700 px-4 py-2 bg-gray-100 dark:bg-gray-800 font-bold dark:text-gray-100">')
-    .replace(/<td([^>]*)>/gi, '<td$1 class="border border-gray-300 dark:border-gray-700 px-4 py-2 dark:text-gray-100">')
-    .replace(/<strong([^>]*)>/gi, '<strong$1 class="font-bold dark:text-gray-100">')
-    .replace(/<em([^>]*)>/gi, '<em$1 class="italic dark:text-gray-100">')
-    .replace(/<u([^>]*)>/gi, '<u$1 class="underline dark:text-gray-100">')
-    .replace(/<span([^>]*)>/gi, '<span$1 class="dark:text-gray-100">')
-    .replace(/<div([^>]*)>/gi, '<div$1 class="dark:text-gray-100">');
-};
 
 // Interfaces locais para questões (estendem a interface base)
 interface QuestionOption {
@@ -78,12 +52,25 @@ interface QuestionsBySubject {
   };
 }
 
-export default function ViewEvaluation() {
-  const { id } = useParams<{ id: string }>();
+interface ViewEvaluationProps {
+  /** Usado quando a avaliação é exibida dentro de um modal (sem rota). */
+  evaluationId?: string;
+  /** Fecha o modal quando definido; caso contrário, usa navegação normal. */
+  onClose?: () => void;
+}
+
+export default function ViewEvaluation({
+  evaluationId,
+  onClose,
+}: ViewEvaluationProps = {}) {
+  const { id: routeId } = useParams<{ id: string }>();
+  const id = evaluationId ?? routeId;
   const navigate = useNavigate();
   const { toast } = useToast();
   const { invalidateAfterCRUD } = useEvaluations();
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
+  /** Turmas da avaliação via GET /test/:id/classes (fonte única; evita applied_classes com turmas erradas) */
+  const [testClasses, setTestClasses] = useState<AppliedClass[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -126,6 +113,35 @@ export default function ViewEvaluation() {
           }))
         );
         setEvaluation(data);
+
+        // Buscar turmas da avaliação via GET /test/:id/classes (fonte única; retorna test.classes ou aplicadas)
+        try {
+          const classesRes = await api.get(`/test/${id}/classes`);
+          const raw = classesRes.data;
+          const arr = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' && (raw as any).data ? (raw as any).data : Array.isArray((raw as any)?.results) ? (raw as any).results : []);
+          const normalized: AppliedClass[] = arr.map((item: any) => {
+            const cls = item?.class ?? item;
+            if (typeof cls === 'object' && cls !== null && (cls.id || (item?.class_id))) {
+              return {
+                class_test_id: item?.class_test_id ?? null,
+                class: {
+                  id: String(cls.id ?? item?.class_id ?? ''),
+                  name: String(cls.name ?? ''),
+                  students_count: typeof cls.students_count === 'number' ? cls.students_count : (typeof item?.students_count === 'number' ? item.students_count : 0),
+                  school: cls.school,
+                  grade: cls.grade,
+                },
+                application: item?.application ?? null,
+                expiration: item?.expiration ?? null,
+                status: item?.status,
+              } as AppliedClass;
+            }
+            return null;
+          }).filter((x: AppliedClass | null): x is AppliedClass => x != null);
+          setTestClasses(normalized);
+        } catch {
+          setTestClasses([]);
+        }
 
         // ✅ Se houver aplicação individual, buscar nomes dos alunos para exibir no detalhe
         if (isOlimpiadaFromBase && Array.isArray((data as any).selected_students) && (data as any).selected_students.length > 0) {
@@ -263,6 +279,10 @@ export default function ViewEvaluation() {
 
   // Função auxiliar para navegar de volta baseado no tipo
   const navigateBack = () => {
+    if (onClose) {
+      onClose();
+      return;
+    }
     if (isOlimpiada()) {
       navigate("/app/olimpiadas");
     } else {
@@ -358,6 +378,10 @@ export default function ViewEvaluation() {
   };
 
   const handleBack = () => {
+    if (onClose) {
+      onClose();
+      return;
+    }
     navigateBack();
   };
 
@@ -628,6 +652,7 @@ export default function ViewEvaluation() {
   const entityName = isOlimpiadaType ? 'olimpíada' : 'avaliação';
   const entityNameCapitalized = isOlimpiadaType ? 'Olimpíada' : 'Avaliação';
   const entityNamePlural = isOlimpiadaType ? 'Olimpíadas' : 'Avaliações';
+  const isModalView = Boolean(onClose);
 
   if (!evaluation) {
     return (
@@ -654,79 +679,84 @@ export default function ViewEvaluation() {
     (evaluation as any).selected_students.length > 0;
   const totalStudents = hasIndividualSelected
     ? (evaluation as any).selected_students.length
-    : (evaluation.total_students || 0);
-  const appliedClassesCount = evaluation.applied_classes_count || 0;
+    : (testClasses !== null && testClasses.length > 0
+        ? testClasses.reduce((sum, ac) => sum + (ac.class?.students_count ?? 0), 0)
+        : (evaluation.total_students || 0));
+  const appliedClassesCount = testClasses !== null ? testClasses.length : (evaluation.applied_classes_count ?? 0);
   const isAppliedForDisplay = Boolean((evaluation as any).is_applied) || hasIndividualSelected;
+  const displayClasses = testClasses ?? evaluation.applied_classes ?? [];
 
   return (
     <div className="container mx-auto px-2 md:px-4 py-4 md:py-6 space-y-6">
-      {/* Breadcrumb */}
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink onClick={handleBack} className="cursor-pointer">
-              {entityNamePlural}
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{evaluation.title}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/60 pt-4 pb-4">
+        {/* Breadcrumb */}
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink onClick={handleBack} className="cursor-pointer">
+                {entityNamePlural}
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>{evaluation.title}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleBack}
-              className="hidden sm:flex"
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mt-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleBack}
+                className={isModalView ? "flex" : "hidden sm:flex"}
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                {isModalView ? "Sair" : "Voltar"}
+              </Button>
+            </div>
+            <h1 className="text-xl md:text-2xl font-bold dark:text-gray-100">{evaluation.title}</h1>
+            <p className="text-muted-foreground">
+              Visualize os detalhes e questões da {entityName}
+            </p>
+          </div>
+          
+          <div className="flex flex-wrap gap-2">
+            <Button 
+              variant="default" 
+              size="sm" 
+              onClick={handleStartEvaluation}
+              className={isOlimpiadaType 
+                ? "bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white" 
+                : "bg-green-600 hover:bg-green-700 text-white"
+              }
             >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Voltar
+              <Play className="h-4 w-4 mr-2" />
+              {isOlimpiadaType ? 'Aplicar Olimpíada' : 'Aplicar Avaliação'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleEdit}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Editar
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleDelete} 
+              disabled={isDeleting}
+              className="text-red-600 hover:text-red-700"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              {isDeleting ? "Excluindo..." : "Excluir"}
             </Button>
           </div>
-          <h1 className="text-xl md:text-2xl font-bold dark:text-gray-100">{evaluation.title}</h1>
-          <p className="text-muted-foreground">
-            Visualize os detalhes e questões da {entityName}
-          </p>
-        </div>
-        
-        <div className="flex flex-wrap gap-2">
-          <Button 
-            variant="default" 
-            size="sm" 
-            onClick={handleStartEvaluation}
-            className={isOlimpiadaType 
-              ? "bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white" 
-              : "bg-green-600 hover:bg-green-700 text-white"
-            }
-          >
-            <Play className="h-4 w-4 mr-2" />
-            {isOlimpiadaType ? 'Aplicar Olimpíada' : 'Aplicar Avaliação'}
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleEdit}>
-            <Pencil className="h-4 w-4 mr-2" />
-            Editar
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleDelete} 
-            disabled={isDeleting}
-            className="text-red-600 hover:text-red-700"
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            {isDeleting ? "Excluindo..." : "Excluir"}
-          </Button>
         </div>
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
@@ -754,51 +784,6 @@ export default function ViewEvaluation() {
             <p className="text-xs text-muted-foreground">Total de alunos</p>
           </CardContent>
         </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Disciplinas
-            </CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold dark:text-gray-100">{subjectsCount}</div>
-            <p className="text-xs text-muted-foreground">
-              Disciplinas envolvidas
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Municípios
-            </CardTitle>
-            <MapPin className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold dark:text-gray-100">{municipalitiesCount}</div>
-            <p className="text-xs text-muted-foreground">
-              {municipalitiesCount === 1 ? 'Município selecionado' : 'Municípios selecionados'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Escolas
-            </CardTitle>
-            <School className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold dark:text-gray-100">{schoolsCount}</div>
-            <p className="text-xs text-muted-foreground">
-              {schoolsCount === 1 ? 'Escola participante' : 'Escolas participantes'}
-            </p>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Information Cards */}
@@ -824,9 +809,12 @@ export default function ViewEvaluation() {
                     return (
                       <>
                         {subjects.map((subject) => (
-                          <Badge key={subject.id} variant="outline" className="text-xs bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
-                            {subject.name}
-                          </Badge>
+                          <DisciplineTag
+                            key={subject.id}
+                            subjectId={subject.id}
+                            name={subject.name}
+                            className="text-xs"
+                          />
                         ))}
                         {evaluation.subjects_count && evaluation.subjects_count > subjects.length && (
                           <Badge variant="outline" className="text-xs bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-700">
@@ -896,7 +884,7 @@ export default function ViewEvaluation() {
             </div>
 
             {/* Informações de aplicação */}
-            {evaluation.is_applied && !hasIndividualSelected && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
+            {evaluation.is_applied && !hasIndividualSelected && displayClasses.length > 0 && (
               <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -908,15 +896,13 @@ export default function ViewEvaluation() {
                   Distribuída em {appliedClassesCount} turmas de {schoolsCount} escolas
                 </p>
                 
-                {/* Turmas aplicadas */}
+                {/* Turmas aplicadas (GET /test/:id/classes ou applied_classes; quando is_applied, todas as turmas retornadas são aplicadas) */}
                 <div>
                   <label className="text-sm font-medium text-green-700 dark:text-green-400 mb-2 block">
                     Turmas onde foi aplicada:
                   </label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {evaluation.applied_classes
-                      .filter(appliedClass => appliedClass.class_test_id !== null)
-                      .map((appliedClass, idx) => (
+                  <div className="space-y-2 max-h-48 overflow-y-auto application-scroll pr-1">
+                    {displayClasses.map((appliedClass, idx) => (
                         <div key={appliedClass.class.id || idx} className="bg-white/80 dark:bg-card/80 rounded-lg p-3 border border-green-200 dark:border-green-800">
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-medium text-green-800 dark:text-green-300">
@@ -927,10 +913,12 @@ export default function ViewEvaluation() {
                             </Badge>
                           </div>
                           <div className="text-xs text-green-600 dark:text-green-400 space-y-1">
-                            <div className="flex items-center gap-1">
-                              <School className="h-3 w-3" />
-                              <span>{appliedClass.class.school.name}</span>
-                            </div>
+                            {appliedClass.class.school && (
+                              <div className="flex items-center gap-1">
+                                <School className="h-3 w-3" />
+                                <span>{appliedClass.class.school.name}</span>
+                              </div>
+                            )}
                             {appliedClass.application && appliedClass.expiration && (
                               <div className="flex items-center gap-1">
                                 <Calendar className="h-3 w-3" />
@@ -981,8 +969,8 @@ export default function ViewEvaluation() {
               </div>
             )}
 
-            {/* Turmas pendentes */}
-            {!evaluation.is_applied && !hasIndividualSelected && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
+            {/* Turmas pendentes (GET /test/:id/classes) */}
+            {!evaluation.is_applied && !hasIndividualSelected && displayClasses.length > 0 && (
               <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Users className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
@@ -998,8 +986,8 @@ export default function ViewEvaluation() {
                   <label className="text-sm font-medium text-yellow-700 dark:text-yellow-400 mb-2 block">
                     Turmas agendadas:
                   </label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {evaluation.applied_classes.map((appliedClass, idx) => (
+                  <div className="space-y-2 max-h-48 overflow-y-auto application-scroll pr-1">
+                    {displayClasses.map((appliedClass: AppliedClass, idx: number) => (
                       <div key={appliedClass.class.id || idx} className="bg-white/80 dark:bg-card/80 rounded-lg p-3 border border-yellow-200 dark:border-yellow-800">
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-medium text-yellow-800 dark:text-yellow-300">
@@ -1010,10 +998,12 @@ export default function ViewEvaluation() {
                           </Badge>
                         </div>
                         <div className="text-xs text-yellow-600 dark:text-yellow-400">
-                          <div className="flex items-center gap-1">
-                            <School className="h-3 w-3" />
-                            <span>{appliedClass.class.school.name}</span>
-                          </div>
+                          {appliedClass.class.school && (
+                            <div className="flex items-center gap-1">
+                              <School className="h-3 w-3" />
+                              <span>{appliedClass.class.school.name}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1023,7 +1013,7 @@ export default function ViewEvaluation() {
             )}
 
             {/* Quando não há turmas aplicadas ou agendadas */}
-            {(!evaluation.applied_classes || evaluation.applied_classes.length === 0) && !hasIndividualSelected && (
+            {displayClasses.length === 0 && !hasIndividualSelected && (
               <div className="bg-gray-50 dark:bg-muted/50 border border-gray-200 dark:border-gray-800 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Users className="h-5 w-5 text-gray-500 dark:text-gray-400" />
@@ -1039,9 +1029,9 @@ export default function ViewEvaluation() {
             
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">
-                Municípios ({municipalitiesCount})
+                Municípios
               </label>
-              <div className="max-h-32 overflow-y-auto">
+              <div className="max-h-32 overflow-y-auto application-scroll pr-1">
                 {(evaluation.municipalities && evaluation.municipalities.length > 0) ? (
                   <ul className="space-y-1">
                     {evaluation.municipalities.map((m: Municipality, idx: number) => (
@@ -1059,9 +1049,9 @@ export default function ViewEvaluation() {
             
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">
-                Escolas ({schoolsCount})
+                Escolas
               </label>
-              <div className="max-h-32 overflow-y-auto">
+              <div className="max-h-32 overflow-y-auto application-scroll pr-1">
                 {(evaluation.schools && evaluation.schools.length > 0) ? (
                   <ul className="space-y-1">
                     {evaluation.schools.map((s: SchoolInfo, idx: number) => (
@@ -1076,96 +1066,6 @@ export default function ViewEvaluation() {
                 )}
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Turmas Selecionadas */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Turmas Selecionadas
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {(() => {
-              // Mapear e deduplicar turmas de applied_classes
-              const selectedClasses = (evaluation.applied_classes || [])
-                .map(appliedClass => appliedClass.class)
-                .filter((classItem, index, self) => 
-                  self.findIndex(c => c.id === classItem.id) === index
-                );
-
-              if (selectedClasses.length > 0) {
-                return (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-4">
-                      <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
-                        {selectedClasses.length} turma{selectedClasses.length > 1 ? 's' : ''} selecionada{selectedClasses.length > 1 ? 's' : ''}
-                      </Badge>
-                    </div>
-                    
-                    <div className="max-h-64 overflow-y-auto space-y-3">
-                      {selectedClasses.map((classItem, idx) => (
-                        <div key={classItem.id || idx} className="bg-gray-50 dark:bg-muted/50 rounded-lg p-4 border border-gray-200 dark:border-gray-800">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-medium text-gray-800 dark:text-gray-200">
-                              {classItem.name}
-                            </span>
-                            <Badge variant="outline" className="text-xs bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800">
-                              {classItem.students_count} alunos
-                            </Badge>
-                          </div>
-                          <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                            <div className="flex items-center gap-2">
-                              <School className="h-4 w-4" />
-                              <span>{classItem.school.name}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <BookOpen className="h-4 w-4" />
-                              <span>{classItem.grade.name}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              } else if (evaluation.classes && evaluation.classes.length > 0) {
-                // Fallback: mostrar contagem de turmas pelos IDs
-                return (
-                  <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Users className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                      <span className="font-semibold text-yellow-800 dark:text-yellow-300">
-                        {evaluation.classes.length} turma{evaluation.classes.length > 1 ? 's' : ''} selecionada{evaluation.classes.length > 1 ? 's' : ''}
-                      </span>
-                    </div>
-                    <p className="text-sm text-yellow-700 dark:text-yellow-400">
-                      IDs das turmas: {evaluation.classes.join(', ')}
-                    </p>
-                    <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-2">
-                      Detalhes completos das turmas serão exibidos após a aplicação da {entityName}.
-                    </p>
-                  </div>
-                );
-              } else {
-                // Nenhuma turma selecionada
-                return (
-                  <div className="bg-gray-50 dark:bg-muted/50 border border-gray-200 dark:border-gray-800 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Users className="h-5 w-5 text-gray-500 dark:text-gray-400" />
-                      <span className="font-semibold text-gray-700 dark:text-gray-300">
-                        Nenhuma turma selecionada
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Esta {entityName} ainda não foi associada a nenhuma turma.
-                    </p>
-                  </div>
-                );
-              }
-            })()}
           </CardContent>
         </Card>
       </div>
@@ -1203,9 +1103,16 @@ export default function ViewEvaluation() {
         ) : (
           Object.entries(questionsBySubject).map(([subjectId, subjectData]) => (
             <Card key={subjectId} className="overflow-hidden">
-              <CardHeader className="bg-gradient-to-r from-blue-50 dark:from-blue-950/30 to-indigo-50 dark:to-indigo-950/30 border-b dark:border-gray-800">
+              <CardHeader
+                className={`border-b dark:border-gray-800 bg-muted/30 dark:bg-muted/20 ${getSubjectColors(subjectData.subject.id, subjectData.subject.name).border} border-l-4 pl-3`}
+              >
                 <CardTitle className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-500 dark:bg-blue-600 text-white rounded-lg flex items-center justify-center">
+                  <div
+                    className={`w-10 h-10 rounded-lg flex items-center justify-center ${getSubjectColors(
+                      subjectData.subject.id,
+                      subjectData.subject.name
+                    ).badge}`}
+                  >
                     <BookOpen className="h-5 w-5" />
                   </div>
                   <div className="flex-1">
@@ -1214,7 +1121,13 @@ export default function ViewEvaluation() {
                       {subjectData.questions.length} questões cadastradas
                     </p>
                   </div>
-                  <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
+                  <Badge
+                    variant="outline"
+                    className={`border-transparent ${getSubjectColors(
+                      subjectData.subject.id,
+                      subjectData.subject.name
+                    ).badge}`}
+                  >
                     {subjectData.questions.length} questões
                   </Badge>
                 </CardTitle>
@@ -1222,19 +1135,30 @@ export default function ViewEvaluation() {
               <CardContent className="p-6">
                 <div className="space-y-8">
                   {subjectData.questions.map((question, index) => {
-                    const q = question as Question & { value?: number; solution?: string; skills?: string[]; secondStatement?: string };
-                    const questionData = {
+                    const q = question as Question & { value?: number; solution?: string; skills?: string[]; secondStatement?: string; formattedSolution?: string; grade?: { id: string; name: string }; title?: string };
+                    const opts = q.options || q.alternatives || [];
+                    const previewQuestion: EvaluationQuestion = {
                       id: q.id,
-                      text: q.text,
-                      type: q.type,
-                      difficulty: q.difficulty,
-                      value: q.value,
-                      options: q.options || [],
-                      solution: q.solution || '',
-                      subject: q.subject,
-                      skills: q.skills || []
+                      title: q.title ?? `Questão ${index + 1}`,
+                      text: q.text ?? '',
+                      formattedText: q.formattedText ?? q.text ?? '',
+                      secondStatement: q.secondStatement ?? '',
+                      type: (q.type === 'multiple_choice' ? 'multipleChoice' : q.type === 'open' ? 'dissertativa' : q.type) as 'multipleChoice' | 'dissertativa' | 'trueFalse',
+                      subjectId: q.subject?.id ?? '',
+                      subject: q.subject ?? { id: '', name: '' },
+                      grade: q.grade ?? { id: '', name: '' },
+                      difficulty: String(q.difficulty ?? ''),
+                      value: Number(q.value ?? (q as { points?: number }).points ?? 0),
+                      solution: q.solution ?? '',
+                      formattedSolution: q.formattedSolution ?? q.solution ?? '',
+                      options: opts.map((opt: { id?: string; text: string; isCorrect?: boolean }, i: number) => ({
+                        id: opt.id ?? String.fromCharCode(65 + i),
+                        text: opt.text,
+                        isCorrect: opt.isCorrect ?? false
+                      })),
+                      created_by: ''
                     };
-                    
+
                     return (
                     <div key={q.id} className="question-preview-content bg-white dark:bg-card rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
                       {/* Header da questão */}
@@ -1253,17 +1177,34 @@ export default function ViewEvaluation() {
                                     <div key={skillIndex} className="group relative">
                                       <Badge 
                                         variant="outline" 
-                                        className="text-xs bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 font-medium cursor-help hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                                          className={`text-xs border-transparent font-medium cursor-help ${getSubjectColors(
+                                            subjectData.subject.id,
+                                            subjectData.subject.name
+                                          ).badge} transition-colors`}
                                         title={skillDescription || skillCode}
                                       >
                                         {skillCode}
                                         {skillDescription && (
-                                          <span className="ml-1 text-blue-400 dark:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">ℹ️</span>
+                                            <span
+                                              className={`ml-1 ${getSubjectColors(
+                                                subjectData.subject.id,
+                                                subjectData.subject.name
+                                              ).accent} opacity-0 group-hover:opacity-100 transition-opacity`}
+                                            >
+                                              ℹ️
+                                            </span>
                                         )}
                                       </Badge>
                                       {skillDescription && (
                                         <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-10 bg-gray-900 dark:bg-gray-800 text-white dark:text-gray-100 text-xs rounded-lg p-3 max-w-xs shadow-lg border dark:border-gray-700">
-                                          <div className="font-bold text-blue-200 dark:text-blue-300 mb-1">{skillCode}</div>
+                                            <div
+                                              className={`font-bold ${getSubjectColors(
+                                                subjectData.subject.id,
+                                                subjectData.subject.name
+                                              ).accent} mb-1`}
+                                            >
+                                              {skillCode}
+                                            </div>
                                           <div className="leading-relaxed">{skillDescription}</div>
                                           <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900 dark:border-t-gray-800"></div>
                                         </div>
@@ -1277,118 +1218,20 @@ export default function ViewEvaluation() {
                         </div>
                       </div>
 
-                      {/* Conteúdo da questão */}
+                      {/* Conteúdo da questão — mesmo layout da aplicação da prova */}
                       <div className="p-6 space-y-6">
-                        {/* Enunciado */}
-                        <div className="prose prose-sm dark:prose-invert max-w-none question-statement">
-                          <div
-                            className="text-base leading-relaxed text-gray-700 dark:text-gray-100 p-4 bg-gray-50 dark:bg-muted/50 rounded-lg border border-gray-200 dark:border-gray-800 [&_*]:dark:text-gray-100 [&_p]:dark:text-gray-100 [&_h1]:dark:text-gray-100 [&_h2]:dark:text-gray-100 [&_h3]:dark:text-gray-100 [&_h4]:dark:text-gray-100 [&_h5]:dark:text-gray-100 [&_h6]:dark:text-gray-100 [&_li]:dark:text-gray-100 [&_span]:dark:text-gray-100 [&_strong]:dark:text-gray-100 [&_em]:dark:text-gray-100"
-                            dangerouslySetInnerHTML={{ __html: processHtmlWithImages(q.formattedText || q.text) }}
-                          />
-                        </div>
-
-                        {/* Segundo Enunciado (se houver) */}
-                        {(q.secondStatement || (q.formattedText && q.formattedText !== q.text)) && (
-                          <div className="prose prose-sm dark:prose-invert max-w-none question-continuation">
-                            <div
-                              className="text-base leading-relaxed text-gray-700 dark:text-gray-100 p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800 [&_*]:dark:text-gray-100 [&_p]:dark:text-gray-100 [&_h1]:dark:text-gray-100 [&_h2]:dark:text-gray-100 [&_h3]:dark:text-gray-100 [&_h4]:dark:text-gray-100 [&_h5]:dark:text-gray-100 [&_h6]:dark:text-gray-100 [&_li]:dark:text-gray-100 [&_span]:dark:text-gray-100 [&_strong]:dark:text-gray-100 [&_em]:dark:text-gray-100"
-                              dangerouslySetInnerHTML={{ __html: processHtmlWithImages(q.secondStatement || q.formattedText || '') }}
-                            />
-                          </div>
-                        )}
-
-
-                        {/* Alternativas para questões de múltipla escolha */}
-                        {(q.type === 'multipleChoice' || q.type === 'multiple_choice') && (q.options || q.alternatives) && (q.options?.length > 0 || q.alternatives?.length > 0) && (
-                          <div className="space-y-4">
-                            <h4 className="font-semibold text-lg text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                              <span className="w-6 h-6 bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center text-sm">🔢</span>
-                              Alternativas
-                            </h4>
-                            <div className="space-y-3">
-                              {(q.options || q.alternatives || []).map((option, optionIndex) => (
-                                <div
-                                  key={optionIndex}
-                                  className={`alternative-item flex items-start gap-4 p-5 rounded-xl border transition-all duration-200 ${
-                                    option.isCorrect
-                                      ? "bg-gradient-to-r from-green-50 dark:from-green-950/30 to-emerald-50 dark:to-emerald-950/30 border-green-200 dark:border-green-800 shadow-sm"
-                                      : "bg-white dark:bg-card border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-sm"
-                                  }`}
-                                >
-                                  <div
-                                    className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-bold shrink-0 transition-all duration-200 ${
-                                      option.isCorrect 
-                                        ? 'bg-green-500 dark:bg-green-600 text-white border-green-500 dark:border-green-600 shadow-lg' 
-                                        : 'bg-gray-50 dark:bg-muted border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400'
-                                    }`}
-                                  >
-                                    {option.id || String.fromCharCode(65 + optionIndex)}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className={`text-base leading-relaxed prose prose-sm dark:prose-invert ${
-                                      option.isCorrect ? 'font-medium text-green-800 dark:text-green-300' : 'text-gray-700 dark:text-gray-300'
-                                    }`}>
-                                      <div dangerouslySetInnerHTML={{ __html: processHtmlWithImages(option.text) }} />
-                                    </div>
-                                    {option.isCorrect && (
-                                      <Badge variant="outline" className="mt-3 text-xs bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800">
-                                        ✓ Resposta Correta
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Área de resposta para questões dissertativas */}
-                        {q.type === 'open' && (
-                          <div className="space-y-4">
-                            <h4 className="font-semibold text-lg text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                              <span className="w-6 h-6 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center text-sm">✍️</span>
-                              Área de Resposta
-                            </h4>
-                            <div className="answer-area bg-gradient-to-br from-gray-50 dark:from-muted/50 to-gray-100 dark:to-muted/70 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-6 relative overflow-hidden">
-                              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-400 dark:from-purple-500 to-purple-600 dark:to-purple-700 opacity-60"></div>
-                              <div className="space-y-3">
-                                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                                  Espaço destinado para a resposta do estudante
-                                </p>
-                                <div className="bg-white/80 dark:bg-card/80 backdrop-blur-sm border border-gray-200 dark:border-gray-800 rounded-lg p-4 min-h-[120px] flex items-center justify-center">
-                                  <p className="text-gray-400 dark:text-gray-500 text-sm leading-relaxed text-center">
-                                    📝 O estudante desenvolverá sua resposta neste espaço durante a avaliação, demonstrando conhecimento e raciocínio sobre o tema abordado.
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Resolução/Gabarito (se houver) */}
-                        {q.solution && q.solution.trim() !== '' && (
-                          <div className="space-y-4 border-t border-gray-200 dark:border-gray-800 pt-6">
-                            <h4 className="font-semibold text-lg text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                              <span className="w-6 h-6 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center text-sm">💡</span>
-                              Resolução
-                            </h4>
-                            <div className="resolution-content bg-gradient-to-br from-blue-50 dark:from-blue-950/30 to-indigo-50 dark:to-indigo-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-6 relative overflow-hidden">
-                              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-400 dark:from-blue-500 to-indigo-600 dark:to-indigo-700"></div>
-                              <div className="prose prose-sm dark:prose-invert max-w-none">
-                                <div
-                                  className="text-base leading-relaxed text-gray-700 dark:text-gray-300"
-                                  dangerouslySetInnerHTML={{ __html: processHtmlWithImages(q.solution) }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        )}
+                        <QuestionPreview question={previewQuestion} hideHeader />
 
                         {/* Metadados da questão */}
                         <div className="bg-gray-50 dark:bg-muted/50 rounded-lg p-4 border-t border-gray-200 dark:border-gray-800">
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                             <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 bg-blue-400 dark:bg-blue-500 rounded-full"></span>
+                              <span
+                                className={`w-2 h-2 rounded-full ${getSubjectColors(
+                                  subjectData.subject.id,
+                                  subjectData.subject.name
+                                ).badge}`}
+                              ></span>
                               <span className="font-medium text-gray-600 dark:text-gray-400">Dificuldade:</span> 
                               <span className="text-gray-700 dark:text-gray-300">{q.difficulty}</span>
                             </div>

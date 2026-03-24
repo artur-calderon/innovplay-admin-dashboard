@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { PlusCircle, Search, Trash2, Users, Building, Loader2, AlertCircle, UserPlus, X, Eye, GraduationCap } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/authContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -110,7 +111,12 @@ interface AddStudentFormData {
   birthDate: string;
 }
 
-export default function Turmas() {
+interface TurmasProps {
+  /** Quando true, oculta o título da página (uso dentro de abas) */
+  embedded?: boolean;
+}
+
+export default function Turmas({ embedded = false }: TurmasProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [turmas, setTurmas] = useState<Turma[]>([]);
   const [schools, setSchools] = useState<School[]>([]);
@@ -143,9 +149,13 @@ export default function Turmas() {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [viewingClass, setViewingClass] = useState<Turma | null>(null);
   const [viewStudents, setViewStudents] = useState<Student[]>([]);
+  /** Aba de escola ativa (modo embedded: turmas separadas por escola) */
+  const [activeSchoolTab, setActiveSchoolTab] = useState<string>("");
   const [isLoadingViewStudents, setIsLoadingViewStudents] = useState(false);
 
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canDeleteTurma = user?.role !== "professor";
 
   // Carregamento de alunos vinculado à edição foi removido com o botão Editar
 
@@ -222,6 +232,13 @@ export default function Turmas() {
     fetchSchools();
     fetchGrades();
   }, [fetchTurmas]);
+
+  // Quando embedded, definir primeira escola como aba ativa ao carregar escolas
+  useEffect(() => {
+    if (embedded && schools.length > 0 && !activeSchoolTab) {
+      setActiveSchoolTab(schools[0].id);
+    }
+  }, [embedded, schools, activeSchoolTab]);
 
   const fetchStudentsForView = async (classId: string, schoolId?: string) => {
     console.log('fetchStudentsForView chamada com:', { classId, schoolId });
@@ -625,12 +642,14 @@ export default function Turmas() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <Skeleton className="h-9 w-64 mb-2" />
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1.5">
+            <Skeleton className="h-9 w-64" />
             <Skeleton className="h-5 w-48" />
           </div>
-          <Skeleton className="h-10 w-32" />
+          <div className="flex justify-center sm:justify-end">
+            <Skeleton className="h-10 w-32" />
+          </div>
         </div>
 
         <div className="flex items-center space-x-2">
@@ -663,26 +682,45 @@ export default function Turmas() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Users className="w-8 h-8 text-blue-600" />
-            Gerenciar Turmas
-          </h1>
-          <p className="text-muted-foreground">
-            Cadastre e gerencie as turmas das escolas
-          </p>
+      {!embedded && (
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1.5">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+              <Users className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
+              Gerenciar Turmas
+            </h1>
+            <p className="text-muted-foreground text-sm sm:text-base">
+              Cadastre e gerencie as turmas das escolas
+            </p>
+          </div>
+          <div className="flex justify-center w-full sm:w-auto sm:justify-end">
+            <CreateClassForm
+              showSchoolSelector={true}
+              availableSchools={schools}
+              onSuccess={() => {
+                fetchTurmas();
+              }}
+            />
+          </div>
         </div>
-        <CreateClassForm
-          showSchoolSelector={true}
-          availableSchools={schools}
-          onSuccess={() => {
-            fetchTurmas();
-          }}
-        />
-      </div>
+      )}
+      {embedded && (
+        <></>
+      )}
 
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center space-x-2 flex-wrap gap-2">
+        {embedded && (
+          <div className="flex-shrink-0">
+            <CreateClassForm
+              showSchoolSelector={false}
+              schoolId={activeSchoolTab || schools[0]?.id}
+              availableSchools={schools}
+              onSuccess={() => {
+                fetchTurmas();
+              }}
+            />
+          </div>
+        )}
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -692,96 +730,186 @@ export default function Turmas() {
             className="pl-8"
           />
         </div>
-        {/* Botão de recarregar removido */}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {filteredTurmas.map((turma) => (
-          <Card key={turma.id} className="hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <Users className="h-5 w-5 text-green-600" />
-                {turma.name}
-              </CardTitle>
-              <Badge variant="default">
-                Ativa
-              </Badge>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Building className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">
-                    {turma.school?.name || "Escola não definida"}
-                  </p>
+      {embedded && schools.length > 0 ? (
+        <Tabs value={activeSchoolTab || schools[0]?.id} onValueChange={setActiveSchoolTab} className="w-full">
+          <TabsList className="flex flex-wrap h-auto gap-1 bg-muted/60 p-1 rounded-lg w-full">
+            {schools.map((school) => {
+              const count = filteredTurmas.filter((t) => t.school_id === school.id).length;
+              return (
+                <TabsTrigger
+                  key={school.id}
+                  value={school.id}
+                  className="flex items-start gap-2 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-border rounded-md transition-all"
+                >
+                  <Building className="h-3.5 w-3.5 shrink-0" />
+                  <span className="whitespace-normal break-words max-w-[140px] sm:max-w-[200px] leading-tight">
+                    {school.name}
+                  </span>
+                  <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
+                    {count}
+                  </Badge>
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+          {schools.map((school) => {
+            const turmasDaEscola = filteredTurmas.filter((t) => t.school_id === school.id);
+            return (
+              <TabsContent key={school.id} value={school.id} className="mt-4 space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  {turmasDaEscola.length} turma(s) em <strong className="text-foreground">{school.name}</strong>
+                </p>
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {turmasDaEscola.map((turma) => (
+                    <Card key={turma.id} className="hover:shadow-md transition-shadow">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                          <Users className="h-5 w-5 text-green-600" />
+                          {turma.name}
+                        </CardTitle>
+                        <Badge variant="default">Ativa</Badge>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {turma.grade && (
+                            <div className="flex items-center gap-2">
+                              <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                              <div className="text-sm">
+                                <p><strong>Série:</strong> {turma.grade.name}</p>
+                                {turma.grade.education_stage && (
+                                  <p className="text-xs text-muted-foreground">
+                                    <strong>Curso:</strong> {turma.grade.education_stage.name}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between mt-3">
+                            <div className="flex items-center space-x-1">
+                              <Users className="h-4 w-4 text-muted-foreground" />
+                              {updatingCounters.has(turma.id) ? (
+                                <div className="flex items-center space-x-1">
+                                  <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                                  <span className="text-sm text-blue-600">Atualizando...</span>
+                                </div>
+                              ) : (
+                                <span className="text-sm">{turma.students_count || 0} alunos</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-2 mt-4">
+                            <Button variant="outline" size="sm" onClick={() => openViewDialog(turma)}>
+                              <Eye className="h-3 w-3 mr-1" />
+                              Visualizar
+                            </Button>
+                            {canDeleteTurma && (
+                              <Button variant="outline" size="sm" onClick={() => openDeleteDialog(turma)}>
+                                <Trash2 className="h-3 w-3 mr-1" />
+                                Excluir
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
-                {turma.grade && (
-                  <div className="flex items-center gap-2">
-                    <GraduationCap className="h-4 w-4 text-muted-foreground" />
-                    <div className="text-sm">
-                      <p>
-                        <strong>Série:</strong> {turma.grade.name}
+                {turmasDaEscola.length === 0 && (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-10">
+                      <Users className="h-12 w-12 text-muted-foreground mb-4" />
+                      <h3 className="text-lg font-semibold mb-2">
+                        {searchTerm ? "Nenhuma turma encontrada" : "Nenhuma turma nesta escola"}
+                      </h3>
+                      <p className="text-muted-foreground text-center">
+                        {searchTerm ? "Tente ajustar sua pesquisa" : "Crie uma turma usando o botão acima."}
                       </p>
-                      {turma.grade.education_stage && (
-                        <p className="text-xs text-muted-foreground">
-                          <strong>Curso:</strong> {turma.grade.education_stage.name}
-                        </p>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+            );
+          })}
+        </Tabs>
+      ) : (
+        <>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {filteredTurmas.map((turma) => (
+              <Card key={turma.id} className="hover:shadow-md transition-shadow">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    <Users className="h-5 w-5 text-green-600" />
+                    {turma.name}
+                  </CardTitle>
+                  <Badge variant="default">Ativa</Badge>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Building className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">
+                        {turma.school?.name || "Escola não definida"}
+                      </p>
+                    </div>
+                    {turma.grade && (
+                      <div className="flex items-center gap-2">
+                        <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                        <div className="text-sm">
+                          <p><strong>Série:</strong> {turma.grade.name}</p>
+                          {turma.grade.education_stage && (
+                            <p className="text-xs text-muted-foreground">
+                              <strong>Curso:</strong> {turma.grade.education_stage.name}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between mt-3">
+                      <div className="flex items-center space-x-1">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        {updatingCounters.has(turma.id) ? (
+                          <div className="flex items-center space-x-1">
+                            <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                            <span className="text-sm text-blue-600">Atualizando...</span>
+                          </div>
+                        ) : (
+                          <span className="text-sm">{turma.students_count || 0} alunos</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-4">
+                      <Button variant="outline" size="sm" onClick={() => openViewDialog(turma)}>
+                        <Eye className="h-3 w-3 mr-1" />
+                        Visualizar
+                      </Button>
+                      {canDeleteTurma && (
+                        <Button variant="outline" size="sm" onClick={() => openDeleteDialog(turma)}>
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          Excluir
+                        </Button>
                       )}
                     </div>
                   </div>
-                )}
-                <div className="flex items-center justify-between mt-3">
-                  <div className="flex items-center space-x-1">
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    {updatingCounters.has(turma.id) ? (
-                      <div className="flex items-center space-x-1">
-                        <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-                        <span className="text-sm text-blue-600">Atualizando...</span>
-                      </div>
-                    ) : (
-                      <span className="text-sm">{turma.students_count || 0} alunos</span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-4">
-                  {/* Botões Editar e Atualizar removidos */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openViewDialog(turma)}
-                  >
-                    <Eye className="h-3 w-3 mr-1" />
-                    Visualizar
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openDeleteDialog(turma)}
-                  >
-                    <Trash2 className="h-3 w-3 mr-1" />
-                    Excluir
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {filteredTurmas.length === 0 && !isLoading && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-10">
-            <Users className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">
-              {searchTerm ? "Nenhuma turma encontrada" : "Nenhuma turma cadastrada"}
-            </h3>
-            <p className="text-muted-foreground text-center mb-4">
-              {searchTerm
-                ? "Tente ajustar sua pesquisa"
-                : "Use o botão acima para criar turmas"}
-            </p>
-          </CardContent>
-        </Card>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          {filteredTurmas.length === 0 && !isLoading && (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-10">
+                <Users className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">
+                  {searchTerm ? "Nenhuma turma encontrada" : "Nenhuma turma cadastrada"}
+                </h3>
+                <p className="text-muted-foreground text-center mb-4">
+                  {searchTerm ? "Tente ajustar sua pesquisa" : "Use o botão acima para criar turmas"}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
 
       {/* Modal Criar/Editar com Tabs */}

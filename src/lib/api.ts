@@ -1,8 +1,20 @@
 import axios from 'axios'
 
+// Permitir meta.cityId nas requisições (para admin tenant context)
+declare module 'axios' {
+    interface AxiosRequestConfig {
+        meta?: { cityId?: string }
+    }
+    interface InternalAxiosRequestConfig {
+        meta?: { cityId?: string }
+    }
+}
+
 // Configuração da base URL da API
 // Em desenvolvimento, use o proxy do Vite (\"/api\") para evitar CORS
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
+// Remove barra final para evitar URL duplicada (ex: ...com.br//subdomain/check -> 404)
+const rawBase = import.meta.env.VITE_API_BASE_URL || '/api'
+export const BASE_URL = rawBase.replace(/\/+$/, '') || '/api'
 
 export const api = axios.create({
     baseURL: BASE_URL,
@@ -19,8 +31,35 @@ api.interceptors.request.use((config) => {
         config.headers.Authorization = `Bearer ${token}`
     }
 
-    // ✅ CORRIGIDO: Remover headers de CORS do frontend
-    // Os headers de CORS devem ser configurados apenas no backend
+    // Contexto de município: X-City-ID para backend escopar (competições e demais endpoints)
+    const userJson = localStorage.getItem('user')
+    if (userJson) {
+        try {
+            const user = JSON.parse(userJson) as { role?: string; tenant_id?: string }
+            const cityId = (config as typeof config & { meta?: { cityId?: string } }).meta?.cityId
+            const role = (user?.role ?? '').toLowerCase()
+            const canSendCityId = ['admin', 'tecadm', 'diretor', 'coordenador'].includes(role)
+            const isCompetitionsRequest = typeof config.url === 'string' && config.url.includes('/competitions')
+            const isDashboardRequest = typeof config.url === 'string' && config.url.includes('/dashboard/')
+            // Admin/coordenador/diretor/tecadm: enviar X-City-ID quando informado (meta.cityId)
+            if (canSendCityId && cityId) {
+                config.headers['X-City-ID'] = cityId
+            }
+            // Aluno em competições: enviar tenant do município da escola do aluno para o backend unificar contexto
+            if (role === 'aluno' && isCompetitionsRequest && user?.tenant_id) {
+                config.headers['X-City-ID'] = user.tenant_id
+            }
+            // Aluno em rotas do dashboard (ex.: ranking-alunos): contexto de cidade obrigatório (@requires_city_context)
+            if (role === 'aluno' && isDashboardRequest) {
+                const alunoCityId = cityId ?? user?.tenant_id
+                if (alunoCityId) config.headers['X-City-ID'] = alunoCityId
+            }
+        } catch {
+            // ignore parse error
+        }
+    }
+    const cfg = config as typeof config & { meta?: unknown }
+    if (cfg.meta !== undefined) delete cfg.meta
 
     return config;
 }, (error) => {
@@ -34,10 +73,15 @@ api.interceptors.response.use(
     async (error) => {
         // ✅ CORRIGIDO: Melhorar tratamento de erros
         if (error.response?.status === 401) {
-            // Token expirado ou inválido
-            localStorage.removeItem('token');
-            // Redirecionar para login
-            window.location.href = '/';
+            const reqUrl = String(error.config?.url ?? '')
+            // Falha de credenciais no login também é 401 — não recarregar a página (senão o toast some)
+            const isLoginRequest = /(^|\/)login\/?(\?|$)/i.test(reqUrl)
+            if (isLoginRequest) {
+                return Promise.reject(error)
+            }
+            localStorage.removeItem('token')
+            window.location.href = '/'
+            return Promise.reject(error)
         } else if (error.code === 'ERR_NETWORK') {
             // Erro de rede/CORS
             console.error('Erro de rede/CORS:', error.message)
@@ -47,15 +91,8 @@ api.interceptors.response.use(
             console.error('Timeout na requisição:', error.message)
             throw new Error('A requisição demorou muito para responder. O servidor pode estar sobrecarregado ou processando muitos dados.')
         } else if (error.response?.status === 404) {
-            // Recurso não encontrado - mas não lançar erro genérico para endpoints que podem não estar implementados
-            const url = error.config?.url || '';
-            // Endpoints do Play TV e Skills podem não estar implementados ainda, então preservar o erro original
-            if (url.includes('/play-tv/') || url.includes('/skills/')) {
-                // Preservar o erro original com response para que o código possa detectar o 404
-                return Promise.reject(error);
-            }
-            // Para outros endpoints, lançar erro genérico
-            throw new Error('Recurso não encontrado no servidor.')
+            // Recurso não encontrado - preservar SEMPRE o erro original para que o frontend possa acessar error.response.data.message
+            return Promise.reject(error);
         } else if (error.response?.status >= 500) {
             // ✅ CORRIGIDO: Preservar erro original para endpoints críticos
             // Endpoints que precisam de tratamento específico de erro

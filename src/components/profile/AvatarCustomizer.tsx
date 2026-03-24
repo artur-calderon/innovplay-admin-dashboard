@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -7,16 +8,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { AvatarPreview } from '@/components/profile/AvatarPreview';
-import { AvatarConfig } from '@/context/authContext';
+import { AvatarConfig, useAuth } from '@/context/authContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Save, RotateCcw, Sparkles } from 'lucide-react';
+import { Save, RotateCcw, Sparkles, Circle, Lock, ShoppingBag } from 'lucide-react';
 
 interface AvatarCustomizerProps {
     config: AvatarConfig;
     onConfigChange: (config: Partial<AvatarConfig>) => void;
     onSave: () => Promise<void>;
     isSaving: boolean;
+    /** Quando true, oculta o botão Salvar (ex.: onboarding, onde o save é ao concluir) */
+    hideSaveButton?: boolean;
 }
 
 const HAIR_VARIANTS = Array.from({ length: 48 }, (_, i) => `variant${String(i + 1).padStart(2, '0')}`);
@@ -184,7 +187,9 @@ const getSafeSelectValue = (arrayValue: string[] | undefined | null): string | u
     return arrayValue[0];
 };
 
-export const AvatarCustomizer = ({ config, onConfigChange, onSave, isSaving }: AvatarCustomizerProps) => {
+export const AvatarCustomizer = ({ config, onConfigChange, onSave, isSaving, hideSaveButton }: AvatarCustomizerProps) => {
+    const { user } = useAuth();
+    const ownedFrames = user?.owned_frames ?? [];
     const [previewModal, setPreviewModal] = useState<{
         open: boolean;
         field: string;
@@ -287,6 +292,7 @@ export const AvatarCustomizer = ({ config, onConfigChange, onSave, isSaving }: A
             earrings: [],
             earringsColor: [],
             earringsProbability: 0,
+            frame: undefined,
         });
     };
 
@@ -309,33 +315,37 @@ export const AvatarCustomizer = ({ config, onConfigChange, onSave, isSaving }: A
     };
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold">Personalizar Avatar</h2>
-                <div className="flex gap-2">
-                    <Button variant="outline" onClick={handleRandomize}>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Aleatório
+        <div className="space-y-4 sm:space-y-6 min-w-0">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-xl sm:text-2xl font-bold">Personalizar Avatar</h2>
+                <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0 sm:size-default" onClick={handleRandomize}>
+                        <Sparkles className="h-4 w-4 mr-1.5 sm:mr-2" />
+                        <span>Aleatório</span>
                     </Button>
-                    <Button variant="outline" onClick={handleReset}>
-                        <RotateCcw className="h-4 w-4 mr-2" />
-                        Resetar
+                    <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0 sm:size-default" onClick={handleReset}>
+                        <RotateCcw className="h-4 w-4 mr-1.5 sm:mr-2" />
+                        <span>Resetar</span>
                     </Button>
-                    <Button onClick={handleSave} disabled={isSaving}>
-                        <Save className="h-4 w-4 mr-2" />
-                        {isSaving ? 'Salvando...' : 'Salvar'}
-                    </Button>
+                    {!hideSaveButton && (
+                        <Button size="sm" className="min-h-[44px] sm:min-h-0 sm:size-default" onClick={handleSave} disabled={isSaving}>
+                            <Save className="h-4 w-4 mr-1.5 sm:mr-2" />
+                            {isSaving ? 'Salvando...' : 'Salvar'}
+                        </Button>
+                    )}
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-1">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 min-w-0">
+                <div className="lg:col-span-1 min-w-0">
                     <Card>
-                        <CardHeader>
+                        <CardHeader className="px-4 sm:px-6">
                             <CardTitle>Preview</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <AvatarPreview config={config} size={200} className="py-6" />
+                        <CardContent className="px-4 sm:px-6">
+                            <div className="flex justify-center">
+                                <AvatarPreview config={config} size={200} className="py-4 sm:py-6 max-w-full" />
+                            </div>
                             <div className="text-center mt-4">
                                 <p className="text-sm text-muted-foreground">
                                     Seed: <span className="font-mono text-xs">{config.seed || 'Não definido'}</span>
@@ -345,15 +355,16 @@ export const AvatarCustomizer = ({ config, onConfigChange, onSave, isSaving }: A
                     </Card>
                 </div>
 
-                <div className="lg:col-span-2">
+                <div className="lg:col-span-2 min-w-0 overflow-hidden">
                     <Tabs defaultValue="basic" className="w-full">
-                        <TabsList className="grid w-full grid-cols-6">
-                            <TabsTrigger value="basic">Básico</TabsTrigger>
-                            <TabsTrigger value="face">Rosto</TabsTrigger>
-                            <TabsTrigger value="hair">Cabelo</TabsTrigger>
-                            <TabsTrigger value="accessories">Acessórios</TabsTrigger>
-                            <TabsTrigger value="background">Fundo</TabsTrigger>
-                            <TabsTrigger value="advanced">Avançado</TabsTrigger>
+                        <TabsList className="w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 h-auto gap-1 p-1.5">
+                            <TabsTrigger value="basic" className="text-xs sm:text-sm py-2 px-2">Básico</TabsTrigger>
+                            <TabsTrigger value="face" className="text-xs sm:text-sm py-2 px-2">Rosto</TabsTrigger>
+                            <TabsTrigger value="hair" className="text-xs sm:text-sm py-2 px-2">Cabelo</TabsTrigger>
+                            <TabsTrigger value="accessories" className="text-xs sm:text-sm py-2 px-2">Acess.</TabsTrigger>
+                            <TabsTrigger value="background" className="text-xs sm:text-sm py-2 px-2">Fundo</TabsTrigger>
+                            <TabsTrigger value="frame" className="text-xs sm:text-sm py-2 px-2">Moldura</TabsTrigger>
+                            <TabsTrigger value="advanced" className="text-xs sm:text-sm py-2 px-2">Avançado</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="basic" className="space-y-4 mt-4">
@@ -864,6 +875,54 @@ export const AvatarCustomizer = ({ config, onConfigChange, onSave, isSaving }: A
                                         onValueChange={([value]) => onConfigChange({ backgroundRotation: [value, value] })}
                                     />
                                 </div>
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="frame" className="space-y-4 mt-4">
+                            <Label>Moldura do avatar</Label>
+                            <p className="text-sm text-muted-foreground mb-3">
+                                Escolha uma moldura para exibir ao redor da sua foto de perfil. Molduras premium são desbloqueadas ao comprar na loja.
+                            </p>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                {[
+                                    { value: 'none', label: 'Nenhuma', icon: Circle, color: 'border-muted' },
+                                    { value: 'gold', label: 'Dourada', icon: Circle, color: 'border-amber-400 bg-gradient-to-br from-amber-300 to-amber-500' },
+                                    { value: 'silver', label: 'Prata', icon: Circle, color: 'border-slate-300 bg-gradient-to-br from-slate-200 to-slate-400' },
+                                    { value: 'bronze', label: 'Bronze', icon: Circle, color: 'border-amber-600 bg-gradient-to-br from-amber-600 to-amber-800' },
+                                    { value: 'gradient', label: 'Gradiente', icon: Circle, color: 'border-transparent bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600' },
+                                ].map((opt) => {
+                                    const isNone = opt.value === 'none';
+                                    const owned = isNone || ownedFrames.includes(opt.value);
+                                    const selected = (config.frame || 'none') === opt.value;
+                                    return (
+                                        <div key={opt.value} className="relative flex flex-col">
+                                            <button
+                                                type="button"
+                                                onClick={() => owned && onConfigChange({ frame: isNone ? undefined : opt.value })}
+                                                disabled={!owned}
+                                                className={`flex flex-col items-center gap-2 rounded-lg border-2 p-3 transition-all ${
+                                                    !owned ? 'opacity-60 cursor-not-allowed' : ''
+                                                } ${selected ? 'ring-2 ring-primary ring-offset-2' : 'hover:bg-muted/50'}`}
+                                            >
+                                                {!owned && (
+                                                    <span className="absolute top-2 right-2 rounded-full bg-muted p-1" title="Compre na loja para desbloquear">
+                                                        <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                                                    </span>
+                                                )}
+                                                <div className={`w-12 h-12 rounded-full border-2 ${opt.color} ${!owned ? 'grayscale' : ''}`} />
+                                                <span className="text-xs font-medium">{opt.label}</span>
+                                            </button>
+                                            {!owned && !isNone && (
+                                                <Button variant="link" className="h-auto p-1 text-xs mt-1" asChild>
+                                                    <Link to="/aluno/loja" className="flex items-center gap-1">
+                                                        <ShoppingBag className="h-3 w-3" />
+                                                        Comprar na loja
+                                                    </Link>
+                                                </Button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </TabsContent>
 

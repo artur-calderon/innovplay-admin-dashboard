@@ -138,7 +138,6 @@ export const useTurmaPercentages = (questoes: QuestionData[] | undefined, totalQ
   const turmaPercentages = useMemo(() => {
     // ✅ CALCULAR PORCENTAGENS REAIS baseado nas respostas individuais
     if (!detailedReport?.alunos || detailedReport.alunos.length === 0) {
-      console.warn('❌ Dados de alunos não disponíveis para calcular porcentagens reais da turma');
       return Array.from({ length: totalQuestions }, () => 0);
     }
 
@@ -184,8 +183,6 @@ export const useTurmaPercentages = (questoes: QuestionData[] | undefined, totalQ
         porcentagemReal = -1; // Usar -1 para indicar N/A
       }
       
-      console.log(`📊 Questão ${questionNumber}: ${totalAcertos}/${totalRespondentes} acertos, ${totalNaoRespondidas} não respondidas = ${porcentagemReal === -1 ? 'N/A' : porcentagemReal.toFixed(1) + '%'}`);
-      
       return porcentagemReal;
     });
     
@@ -199,18 +196,15 @@ export const useStudentAnswers = (student: any, totalQuestions: number, detailed
   const answers = useMemo(() => {
     // ✅ Usar APENAS dados do backend
     if (!detailedReport?.alunos) {
-      console.warn('❌ Dados detalhados não disponíveis para processar respostas');
       return Array.from({ length: totalQuestions }, () => null);
     }
 
     const alunoData = detailedReport.alunos.find((a: any) => a.id === student.id);
     if (!alunoData) {
-      console.warn(`❌ Dados do aluno ${student.id} não encontrados`);
       return Array.from({ length: totalQuestions }, () => null);
     }
 
     if (!alunoData.respostas || alunoData.respostas.length === 0) {
-      console.warn(`❌ Nenhuma resposta encontrada para o aluno ${student.nome}`);
       return Array.from({ length: totalQuestions }, () => null);
     }
 
@@ -225,25 +219,17 @@ export const useStudentAnswers = (student: any, totalQuestions: number, detailed
          // ✅ Verificar se a resposta está correta
          // Se resposta_em_branco é true, a questão está errada
          if (resposta.resposta_em_branco) {
-           console.log(`❌ Questão ${questionNumber}: EM BRANCO = ERRADA (backend)`);
            return false; // Questão em branco = errada
          }
-         // Se não está em branco, usar o valor de resposta_correta
          const isCorrect = resposta.resposta_correta;
-         console.log(`✅ Questão ${questionNumber}: ${isCorrect ? 'ACERTOU' : 'ERROU'} (backend) - correta: ${resposta.resposta_correta}, em_branco: ${resposta.resposta_em_branco}`);
          return isCorrect;
        }
       
       // ✅ Se não encontrou resposta, verificar se a questão existe
       const questaoExiste = detailedReport.questoes?.some((q: any) => q.numero === questionNumber);
       if (questaoExiste) {
-        // Questão existe mas não foi respondida
-        console.log(`❌ Questão ${questionNumber}: NÃO RESPONDIDA (backend)`);
         return null;
       }
-      
-      // Questão não existe na avaliação
-      console.log(`❓ Questão ${questionNumber}: NÃO EXISTE (backend)`);
       return undefined;
     });
     
@@ -265,19 +251,7 @@ export const useRealStudentData = (student: any, detailedReport?: any) => {
       return student; // Retornar dados originais se não há dados do aluno
     }
 
-    // ✅ USAR APENAS DADOS DO BACKEND (sem cálculos)
-    console.log(`✅ Usando dados do backend para ${student.nome}:`, {
-      dados_backend: {
-        total_acertos: alunoData.total_acertos,
-        total_erros: alunoData.total_erros,
-        total_em_branco: alunoData.total_em_branco,
-        nota_final: alunoData.nota_final,
-        proficiencia: alunoData.proficiencia,
-        classificacao: alunoData.classificacao
-      }
-    });
-    
-    // ✅ Retornar dados EXATAMENTE como vêm do backend
+    // Retornar dados EXATAMENTE como vêm do backend
     return {
       ...student,
       acertos: alunoData.total_acertos || 0,
@@ -306,10 +280,8 @@ export const useCorrectStudentDataSimple = (student: any, evaluationId: string) 
       try {
         // ✅ CORREÇÃO: Usar o método correto que existe na API
         const response = await EvaluationResultsApiService.getStudentsByEvaluation(evaluationId);
-        
-        console.log('✅ Dados do endpoint de alunos:', response);
-        
-        // ✅ Encontrar o aluno específico nos dados
+
+        // Encontrar o aluno específico nos dados
         const alunoCorreto = response.find((a: any) => {
           const matchById = a.id === student.id;
           const matchByName = a.nome?.toLowerCase() === student.nome?.toLowerCase();
@@ -317,14 +289,6 @@ export const useCorrectStudentDataSimple = (student: any, evaluationId: string) 
         });
         
         if (alunoCorreto) {
-          console.log('✅ Dados do endpoint /alunos encontrados para', student.nome, ':', {
-            acertos: alunoCorreto.acertos,
-            nota: alunoCorreto.nota,
-            proficiencia: alunoCorreto.proficiencia,
-            classificacao: alunoCorreto.classificacao
-          });
-          
-          // ✅ Usar dados EXATAMENTE como vêm do backend (sem cálculos)
           const dadosDoBackend = {
             id: alunoCorreto.id,
             nome: alunoCorreto.nome,
@@ -337,15 +301,11 @@ export const useCorrectStudentDataSimple = (student: any, evaluationId: string) 
             classificacao: alunoCorreto.classificacao || 'Abaixo do Básico',
             status: alunoCorreto.status || 'concluida'
           };
-          
-          console.log('✅ Dados do backend para exibição:', dadosDoBackend);
           setCorrectData(dadosDoBackend);
         } else {
-          console.warn('⚠️ Aluno não encontrado no endpoint de alunos:', student.nome);
           setCorrectData(student);
         }
       } catch (error) {
-        console.error('❌ Erro ao buscar dados do endpoint de alunos:', error);
         setCorrectData(student);
       } finally {
         setLoading(false);
@@ -377,33 +337,17 @@ export const useCorrectStudentAnswers = (student: any, totalQuestions: number, e
         const response = await EvaluationResultsApiService.getStudentDetailedResults(evaluationId, student.id, true);
         
         if (response && response.answers && response.answers.length > 0) {
-          console.log('✅ Processando respostas individuais para', student.nome, ':', response.answers.length, 'respostas');
-          
-          // ✅ Processar respostas do endpoint específico de respostas
           const answersArray = Array.from({ length: totalQuestions }, (_, questionIndex) => {
             const questionNumber = questionIndex + 1;
-            
-            // ✅ Buscar resposta específica para esta questão
-            const answer = response.answers.find((a: any) => {
-              return a.question_number === questionNumber;
-            });
-            
-            if (answer) {
-              const isCorrect = answer.is_correct;
-              console.log(`✅ Questão ${questionNumber}: ${isCorrect ? 'ACERTOU' : 'ERROU'} (resposta: ${answer.student_answer}, correta: ${answer.correct_answer})`);
-              return isCorrect;
-            }
-            
+            const answer = response.answers.find((a: any) => a.question_number === questionNumber);
+            if (answer) return answer.is_correct;
             return null;
           });
-          
           setCorrectAnswers(answersArray);
         } else {
-          console.warn('⚠️ Respostas individuais não encontradas para:', student.nome);
           setCorrectAnswers(Array.from({ length: totalQuestions }, () => null));
         }
       } catch (error) {
-        console.error('❌ Erro ao buscar respostas individuais:', error);
         setCorrectAnswers(Array.from({ length: totalQuestions }, () => null));
       } finally {
         setLoading(false);
@@ -424,19 +368,11 @@ export const useStudentData = (student: any, evaluationId: string) => {
 
   // ✅ FUNÇÃO DE VALIDAÇÃO DE DADOS
   const validateStudentData = (rawData: any): any => {
-    if (!rawData) {
-      console.warn('⚠️ DEBUG: Dados nulos/undefined recebidos');
-      return null;
-    }
+    if (!rawData) return null;
 
-    // ✅ Validar campos obrigatórios
     const requiredFields = ['id', 'nome'];
     const missingFields = requiredFields.filter(field => !rawData[field]);
-    
-    if (missingFields.length > 0) {
-      console.warn(`⚠️ DEBUG: Campos obrigatórios ausentes: ${missingFields.join(', ')}`);
-      return null;
-    }
+    if (missingFields.length > 0) return null;
 
     // ✅ Validar tipos de dados
     const validationErrors: string[] = [];
@@ -472,25 +408,12 @@ export const useStudentData = (student: any, evaluationId: string) => {
       validationErrors.push(`classificacao inválida: ${rawData.classificacao} (deve ser uma das: ${validClassifications.join(', ')})`);
     }
 
-    // ✅ Se há erros de validação, logar e retornar null
-    if (validationErrors.length > 0) {
-      console.error(`❌ DEBUG: Erros de validação para ${rawData.nome}:`, validationErrors);
-      return null;
-    }
+    if (validationErrors.length > 0) return null;
 
-    // ✅ Validar consistência dos dados
     const totalQuestions = (rawData.acertos || 0) + (rawData.erros || 0) + (rawData.em_branco || 0);
-    
-    if (totalQuestions === 0 && rawData.nota > 0) {
-      console.warn(`⚠️ DEBUG: Inconsistência detectada para ${rawData.nome}: nota > 0 mas total de questões = 0`);
-    }
+    if (rawData.acertos > totalQuestions) return null;
 
-    if (rawData.acertos > totalQuestions) {
-      console.error(`❌ DEBUG: Inconsistência crítica para ${rawData.nome}: acertos (${rawData.acertos}) > total de questões (${totalQuestions})`);
-      return null;
-    }
-
-    // ✅ Dados válidos - retornar objeto limpo
+    // Dados válidos - retornar objeto limpo
     const validatedData = {
       id: rawData.id,
       nome: rawData.nome,
@@ -508,25 +431,20 @@ export const useStudentData = (student: any, evaluationId: string) => {
       percentual_acertos: totalQuestions > 0 ? ((rawData.acertos || 0) / totalQuestions * 100).toFixed(1) : '0.0'
     };
 
-    console.log(`✅ DEBUG: Dados validados para ${rawData.nome}:`, validatedData);
     return validatedData;
   };
 
   useEffect(() => {
     const fetchData = async () => {
       if (!evaluationId || !student?.id) {
-        console.log(`⚠️ DEBUG: Dados insuficientes para buscar - evaluationId: ${evaluationId}, student.id: ${student?.id}`);
-        setData(student); // Fallback para dados originais
+        setData(student);
         return;
       }
-      
+
       setLoading(true);
       setError(null);
-      
+
       try {
-        // ✅ DEBUG: Sempre buscar da API (cache desabilitado temporariamente)
-        console.log(`🔍 DEBUG: Buscando dados da API para ${student.nome} (cache desabilitado)`);
-        
         const response = await EvaluationResultsApiService.getStudentsByEvaluation(evaluationId);
         
         // ✅ Encontrar o aluno específico
@@ -543,16 +461,13 @@ export const useStudentData = (student: any, evaluationId: string) => {
           if (validatedData) {
             setData(validatedData);
           } else {
-            console.warn(`⚠️ DEBUG: Dados inválidos para ${student.nome}, usando dados originais`);
             setData(student);
             setError('Dados inválidos recebidos da API');
           }
         } else {
-          console.warn(`⚠️ DEBUG: Aluno ${student.nome} não encontrado no endpoint, usando dados originais`);
           setData(student);
         }
       } catch (error) {
-        console.error(`❌ DEBUG: Erro ao buscar dados do aluno ${student.nome}:`, error);
         setError(error instanceof Error ? error.message : 'Erro desconhecido');
         setData(student); // Fallback para dados originais
       } finally {
@@ -624,28 +539,14 @@ export const useTestWithKnownData = () => {
     ]
   };
 
-  // ✅ FUNÇÃO PARA TESTAR VALIDAÇÃO
   const testValidation = () => {
-    console.log('🧪 TESTE: Iniciando validação com dados conhecidos');
-    
     const results = knownTestData.students.map(student => {
-      console.log(`\n🔍 Testando aluno: ${student.nome}`);
-      
-      // ✅ Testar validação de dados
       const validateStudentData = (rawData: any): any => {
-        if (!rawData) {
-          console.warn('⚠️ TESTE: Dados nulos/undefined recebidos');
-          return null;
-        }
+        if (!rawData) return null;
 
-        // ✅ Validar campos obrigatórios
         const requiredFields = ['id', 'nome'];
         const missingFields = requiredFields.filter(field => !rawData[field]);
-        
-        if (missingFields.length > 0) {
-          console.warn(`⚠️ TESTE: Campos obrigatórios ausentes: ${missingFields.join(', ')}`);
-          return null;
-        }
+        if (missingFields.length > 0) return null;
 
         // ✅ Validar tipos de dados
         const validationErrors: string[] = [];
@@ -681,30 +582,12 @@ export const useTestWithKnownData = () => {
           validationErrors.push(`classificacao inválida: ${rawData.classificacao} (deve ser uma das: ${validClassifications.join(', ')})`);
         }
 
-        // ✅ Se há erros de validação, logar e retornar null
-        if (validationErrors.length > 0) {
-          console.error(`❌ TESTE: Erros de validação para ${rawData.nome}:`, validationErrors);
-          return null;
-        }
+        if (validationErrors.length > 0) return null;
 
-        // ✅ Validar consistência dos dados
         const totalQuestions = (rawData.acertos || 0) + (rawData.erros || 0) + (rawData.em_branco || 0);
-        
-        if (totalQuestions === 0 && rawData.nota > 0) {
-          console.warn(`⚠️ TESTE: Inconsistência detectada para ${rawData.nome}: nota > 0 mas total de questões = 0`);
-        }
+        if (rawData.acertos > totalQuestions) return null;
 
-        if (rawData.acertos > totalQuestions) {
-          console.error(`❌ TESTE: Inconsistência crítica para ${rawData.nome}: acertos (${rawData.acertos}) > total de questões (${totalQuestions})`);
-          return null;
-        }
-
-        // ✅ Validar consistência com total de questões esperado
-        if (totalQuestions !== knownTestData.totalQuestions && totalQuestions > 0) {
-          console.warn(`⚠️ TESTE: Total de questões inconsistente para ${rawData.nome}: ${totalQuestions} vs ${knownTestData.totalQuestions} esperado`);
-        }
-
-        // ✅ Dados válidos - retornar objeto limpo
+        // Dados válidos
         const validatedData = {
           id: rawData.id,
           nome: rawData.nome,
@@ -722,48 +605,16 @@ export const useTestWithKnownData = () => {
           percentual_acertos: totalQuestions > 0 ? ((rawData.acertos || 0) / totalQuestions * 100).toFixed(1) : '0.0'
         };
 
-        console.log(`✅ TESTE: Dados validados para ${rawData.nome}:`, validatedData);
         return validatedData;
       };
 
       const validatedData = validateStudentData(student);
-      
       return {
         student: student.nome,
         isValid: validatedData !== null,
         data: validatedData,
         issues: validatedData ? [] : ['Dados inválidos detectados']
       };
-    });
-
-    // ✅ RESUMO DO TESTE
-    const validCount = results.filter(r => r.isValid).length;
-    const invalidCount = results.filter(r => !r.isValid).length;
-    
-    console.log('\n📊 RESUMO DO TESTE:');
-    console.log(`✅ Alunos válidos: ${validCount}/${results.length}`);
-    console.log(`❌ Alunos inválidos: ${invalidCount}/${results.length}`);
-    
-    if (invalidCount > 0) {
-      console.log('\n❌ ALUNOS COM PROBLEMAS:');
-      results.filter(r => !r.isValid).forEach(r => {
-        console.log(`- ${r.student}: ${r.issues.join(', ')}`);
-      });
-    }
-
-    // ✅ TESTE DE CONSISTÊNCIA MATEMÁTICA
-    console.log('\n🧮 TESTE DE CONSISTÊNCIA MATEMÁTICA:');
-    results.filter(r => r.isValid).forEach(r => {
-      const data = r.data;
-      const totalCalculated = data.acertos + data.erros + data.em_branco;
-      const percentualCalculado = (data.acertos / totalCalculated * 100).toFixed(1);
-      
-      console.log(`${data.nome}:`);
-      console.log(`  - Total questões: ${totalCalculated} (esperado: ${knownTestData.totalQuestions})`);
-      console.log(`  - Percentual acertos: ${percentualCalculado}%`);
-      console.log(`  - Nota esperada: ${(data.acertos / knownTestData.totalQuestions * 10).toFixed(1)}`);
-      console.log(`  - Nota real: ${data.nota}`);
-      console.log(`  - Diferença: ${Math.abs((data.acertos / knownTestData.totalQuestions * 10) - data.nota).toFixed(2)}`);
     });
 
     return results;

@@ -1067,8 +1067,8 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
             const levelColors: Record<string, string> = {
               'Abaixo do Básico': '#DC2626',
               'Básico': '#F59E0B',
-              'Adequado': '#3B82F6',
-              'Avançado': '#10B981',
+              'Adequado': '#4ade80',
+              'Avançado': '#16A34A',
             };
             
             const levelColor = levelColors[levelName] || '#6B7280';

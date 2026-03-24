@@ -48,7 +48,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
     
-    /* Primary Brand Colors */
+    /* Primary Brand Colors - Tema padrão do app é ROXO (#7B3FE4), não azul */
     --primary: 267 84% 65%;
     --primary-foreground: 210 40% 98%;
     
@@ -95,14 +95,15 @@
     --info: 199 89% 48%;
     --info-foreground: 210 40% 98%;
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Sidebar - próximo ao primary #7B3FE4 para modo claro */
+    --sidebar-background: 267 55% 94%;
+    --sidebar-foreground: 267 45% 22%;
+    --sidebar-primary: 267 84% 65%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 267 55% 88%;
+    --sidebar-accent-foreground: 267 50% 18%;
+    --sidebar-border: 267 45% 82%;
+    --sidebar-ring: 267 84% 65%;
 
     /* App Settings - Font and Size */
     --app-font-family: 'Inter';
@@ -122,8 +123,8 @@
     --popover: 220 12% 11%;
     --popover-foreground: 210 20% 98%;
     
-    /* Primary - Azul mais escuro e harmônico */
-    --primary: 217 65% 55%;
+    /* Primary - ROXO (tema padrão do app, alinhado ao #7B3FE4). Não usar azul. */
+    --primary: 267 76% 57%;
     --primary-foreground: 210 20% 98%;
     
     /* Secondary - Cinza escuro com tom azul */
@@ -134,8 +135,8 @@
     --muted: 220 8% 13%;
     --muted-foreground: 215 15% 70%;
     
-    /* Accent - Azul escuro harmonioso */
-    --accent: 217 30% 18%;
+    /* Accent - Tom escuro harmonioso com primary roxo */
+    --accent: 267 30% 18%;
     --accent-foreground: 210 20% 98%;
     
     /* Destructive - Mantém identidade visual */
@@ -145,24 +146,24 @@
     /* Border - Cinza muito escuro com leve azul */
     --border: 220 10% 16%;
     --input: 220 10% 16%;
-    --ring: 217 65% 55%;
+    --ring: 267 76% 57%;
     
-    /* Chart Colors - Ajustados para modo escuro */
-    --chart-1: 217 65% 55%;
+    /* Chart Colors - Ajustados para modo escuro (chart-1 roxo para manter identidade) */
+    --chart-1: 267 76% 57%;
     --chart-2: 200 60% 50%;
     --chart-3: 30 75% 55%;
     --chart-4: 280 60% 55%;
     --chart-5: 340 70% 55%;
     
-    /* Sidebar - Tons escuros harmoniosos */
+    /* Sidebar - Tons escuros harmoniosos; primary ROXO (tema padrão) */
     --sidebar-background: 220 15% 6%;
     --sidebar-foreground: 210 20% 95%;
-    --sidebar-primary: 217 70% 60%;
+    --sidebar-primary: 267 70% 60%;
     --sidebar-primary-foreground: 210 20% 98%;
     --sidebar-accent: 220 10% 14%;
     --sidebar-accent-foreground: 210 20% 95%;
     --sidebar-border: 220 10% 12%;
-    --sidebar-ring: 217 70% 60%;
+    --sidebar-ring: 267 70% 60%;
   }
 }
 
@@ -264,7 +265,161 @@
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background-color: hsl(var(--muted-foreground) / 0.5);
   }
-  
+
+  /* Barra de rolagem do modal Visualizar Questão */
+  .view-question-scroll {
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.45) transparent;
+  }
+  .view-question-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .view-question-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .view-question-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.4);
+    border-radius: 4px;
+  }
+  .view-question-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.6);
+  }
+  .view-question-scroll::-webkit-scrollbar-thumb:active {
+    background: hsl(var(--primary) / 0.75);
+  }
+  .dark .view-question-scroll {
+    scrollbar-color: hsl(var(--primary) / 0.5) transparent;
+  }
+  .dark .view-question-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.45);
+  }
+  .dark .view-question-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.65);
+  }
+
+  /* Barra de rolagem lateral moderna para tabelas (Results / DisciplineTables) */
+  .results-table-scroll {
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.5) hsl(var(--muted) / 0.4);
+  }
+  .results-table-scroll::-webkit-scrollbar {
+    height: 10px;
+    width: 10px;
+  }
+  .results-table-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.25);
+    border-radius: 10px;
+    margin: 0 8px;
+  }
+  .results-table-scroll::-webkit-scrollbar-thumb {
+    background: linear-gradient(90deg, hsl(var(--primary) / 0.6), hsl(var(--primary) / 0.4));
+    border-radius: 10px;
+    border: 2px solid hsl(var(--muted) / 0.25);
+  }
+  .results-table-scroll::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(90deg, hsl(var(--primary) / 0.8), hsl(var(--primary) / 0.6));
+  }
+  .results-table-scroll::-webkit-scrollbar-thumb:active {
+    background: hsl(var(--primary));
+  }
+  .dark .results-table-scroll {
+    scrollbar-color: hsl(var(--primary) / 0.6) hsl(var(--muted) / 0.6);
+  }
+  .dark .results-table-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.4);
+  }
+  .dark .results-table-scroll::-webkit-scrollbar-thumb {
+    background: linear-gradient(90deg, hsl(var(--primary) / 0.7), hsl(var(--primary) / 0.5));
+    border-color: hsl(var(--muted) / 0.4);
+  }
+
+  /* Barra de rolagem moderna - Aplicação da avaliação (turmas, municípios, escolas) */
+  .application-scroll {
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) hsl(var(--muted) / 0.15);
+  }
+  .application-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .application-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.12);
+    border-radius: 8px;
+    margin: 4px 0;
+  }
+  .application-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 8px;
+    border: 2px solid hsl(var(--muted) / 0.12);
+  }
+  .application-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+  .application-scroll::-webkit-scrollbar-thumb:active {
+    background: hsl(var(--primary) / 0.6);
+  }
+  .dark .application-scroll {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.4) hsl(var(--muted) / 0.3);
+  }
+  .dark .application-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.25);
+  }
+  .dark .application-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.35);
+    border-color: hsl(var(--muted) / 0.25);
+  }
+  .dark .application-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+  .dark .application-scroll::-webkit-scrollbar-thumb:active {
+    background: hsl(var(--primary) / 0.5);
+  }
+
+  /* Barra de rolagem moderna - TakeEvaluation painel Questões (tema violeta/roxo) */
+  .take-evaluation-questions-scroll {
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(263 70% 50% / 0.5) hsl(var(--muted) / 0.2);
+  }
+  .take-evaluation-questions-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .take-evaluation-questions-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.2);
+    border-radius: 8px;
+    margin: 4px 0;
+  }
+  .take-evaluation-questions-scroll::-webkit-scrollbar-thumb {
+    background: hsl(263 70% 50% / 0.45);
+    border-radius: 8px;
+    border: 2px solid hsl(var(--muted) / 0.2);
+  }
+  .take-evaluation-questions-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(263 70% 55% / 0.65);
+  }
+  .take-evaluation-questions-scroll::-webkit-scrollbar-thumb:active {
+    background: hsl(263 70% 55% / 0.85);
+  }
+  .dark .take-evaluation-questions-scroll {
+    scrollbar-color: hsl(263 60% 45% / 0.6) hsl(var(--muted) / 0.35);
+  }
+  .dark .take-evaluation-questions-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.3);
+  }
+  .dark .take-evaluation-questions-scroll::-webkit-scrollbar-thumb {
+    background: hsl(263 55% 45% / 0.6);
+    border-color: hsl(var(--muted) / 0.3);
+  }
+  .dark .take-evaluation-questions-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(263 55% 50% / 0.75);
+  }
+  .dark .take-evaluation-questions-scroll::-webkit-scrollbar-thumb:active {
+    background: hsl(263 55% 55% / 0.9);
+  }
+
   /* Enhanced Sidebar Gradient - Afirme Play (modo claro: azul/lilás suaves) */
   .sidebar-gradient {
     background: linear-gradient(
@@ -611,9 +766,9 @@
   opacity: 0.6;
 }
 
-/* Estilos base para todas as imagens - manter proporção */
-.question-preview-content .prose img,
-.question-preview-content img {
+/* Estilos base para imagens sem dimensão explícita */
+.question-preview-content .prose img:not([width]):not([height]),
+.question-preview-content img:not([width]):not([height]) {
   max-width: 100%;
   height: auto;
   object-fit: contain;
@@ -621,6 +776,16 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   margin: 1.2rem 0;
+}
+/* Imagens com tamanho definido pelo usuário na criação/edição */
+.question-preview-content .prose img[width],
+.question-preview-content .prose img[height],
+.question-preview-content img[width],
+.question-preview-content img[height] {
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  margin: 1.2rem 0;
+  max-width: 100%;
 }
 
 /* Hover effect para imagens maiores */
@@ -630,9 +795,9 @@
   cursor: zoom-in;
 }
 
-/* Imagens inline (matemáticas, frações, etc.) - Prioridade alta */
-.question-preview-content p img,
-.question-preview-content .prose p img {
+/* Imagens inline pequenas (matemáticas, frações) - só sem tamanho do usuário */
+.question-preview-content p img:not([width]):not([height]),
+.question-preview-content .prose p img:not([width]):not([height]) {
   display: inline-block !important;
   vertical-align: middle !important;
   margin: 0 0.3rem !important;
@@ -665,8 +830,8 @@
   border: 1px solid rgba(0, 0, 0, 0.05) !important;
 }
 
-/* Imagens maiores (diagramas, gráficos, etc.) */
-.question-preview-content img:not([style*="vertical-align"]):not([style*="inline-block"]) {
+/* Imagens em bloco - sem forçar tamanho quando usuário definiu width/height */
+.question-preview-content img:not([width]):not([height]):not([style*="vertical-align"]):not([style*="inline-block"]) {
   display: block !important;
   margin: 2rem auto !important;
   max-width: 100% !important;
@@ -718,6 +883,61 @@
 .question-preview-content .resolution-content {
   position: relative;
   overflow: hidden;
+}
+
+/* Fluxo de texto como no editor: sem quebra por \n no enunciado */
+.question-preview-content .question-text-block .prose,
+.question-preview-content .question-text-block .prose p,
+.question-preview-content .question-text-block .prose h1,
+.question-preview-content .question-text-block .prose h2,
+.question-preview-content .question-text-block .prose h3 {
+  white-space: normal;
+}
+
+/* Formatação de enunciados na própria avaliação (TakeEvaluation) */
+.evaluation-question-content .question-text-block .prose p {
+  margin-top: 0;
+  margin-bottom: 0.75em;
+  text-align: left;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  line-height: 1.75;
+}
+.evaluation-question-content .question-text-block .prose p:last-child {
+  margin-bottom: 0;
+}
+.evaluation-question-content .question-text-block .prose {
+  text-align: left;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+/* Anula centralização legada (PDF) em enunciados na avaliação */
+.evaluation-question-content .question-text-block .prose p,
+.evaluation-question-content .question-text-block .prose div {
+  text-align: justify !important;
+  hyphens: auto;
+}
+
+/* Mesmo padrão do Visualizar Questão: enunciado na prova do aluno */
+.evaluation-question-content .question-text-block .question-enunciado-html {
+  text-align: left;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  line-height: 1.75;
+}
+.evaluation-question-content .question-text-block .question-enunciado-html p,
+.evaluation-question-content .question-text-block .question-enunciado-html div {
+  margin-top: 0;
+  margin-bottom: 0.75em;
+  text-align: justify !important;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  hyphens: auto;
+}
+.evaluation-question-content .question-text-block .question-enunciado-html p:last-child,
+.evaluation-question-content .question-text-block .question-enunciado-html div:last-child {
+  margin-bottom: 0;
 }
 
 /* Estilos para o editor de texto */
@@ -790,17 +1010,16 @@
     font-size: inherit;
   }
   
-  /* Reduzir tamanho de imagens grandes em mobile */
-  .question-preview-content img:not([style*="vertical-align"]):not([style*="inline-block"]) {
+  /* Reduzir tamanho de imagens grandes em mobile (sem dimensão do usuário) */
+  .question-preview-content img:not([width]):not([height]):not([style*="vertical-align"]):not([style*="inline-block"]) {
     max-height: 320px !important;
     border-radius: 8px !important;
     margin: 1.5rem auto !important;
     padding: 0.25rem !important;
   }
   
-  /* Ajustar imagens inline para mobile */
-  .question-preview-content p img,
-  .question-preview-content .prose p img {
+  .question-preview-content p img:not([width]):not([height]),
+  .question-preview-content .prose p img:not([width]):not([height]) {
     max-height: 2.4em !important;
     max-width: 3.5em !important;
     margin: 0 0.2rem !important;
@@ -817,21 +1036,20 @@
     font-size: 0.95rem;
   }
   
-  /* Imagens ainda menores em telas muito pequenas */
-  .question-preview-content img:not([style*="vertical-align"]):not([style*="inline-block"]) {
+  .question-preview-content img:not([width]):not([height]):not([style*="vertical-align"]):not([style*="inline-block"]) {
     max-height: 280px !important;
     margin: 1rem auto !important;
     border-radius: 6px !important;
   }
   
-  .question-preview-content p img,
-  .question-preview-content .prose p img {
+  .question-preview-content p img:not([width]):not([height]),
+  .question-preview-content .prose p img:not([width]):not([height]) {
     max-height: 2.2em !important;
     max-width: 3em !important;
     margin: 0 0.15rem !important;
   }
   
-  .question-preview-content img[style*="vertical-align: middle"] {
+  .question-preview-content img[style*="vertical-align: middle"]:not([width]):not([height]) {
     max-height: 2em !important;
     max-width: 2.8em !important;
     margin: 0 0.1rem !important;
@@ -844,17 +1062,58 @@
   box-sizing: border-box;
 }
 
-/* Respeitar alinhamento de texto dos parágrafos */
-.question-preview-content p[style*="text-align: center"] {
-  text-align: center;
+/* Forçar alinhamento da edição na visualização (seletores específicos e variações do style) */
+.question-preview-content .question-enunciado-body p[style*="text-align: center"],
+.question-preview-content .question-enunciado-body p[style*="text-align:center"],
+.question-preview-content .question-enunciado-body h1[style*="text-align: center"],
+.question-preview-content .question-enunciado-body h1[style*="text-align:center"],
+.question-preview-content .question-enunciado-body h2[style*="text-align: center"],
+.question-preview-content .question-enunciado-body h3[style*="text-align: center"],
+.question-preview-content .question-enunciado-html p[style*="text-align: center"],
+.question-preview-content .question-enunciado-html p[style*="text-align:center"],
+.question-preview-content .question-enunciado-html h1[style*="text-align: center"],
+.question-preview-content .question-enunciado-html h2[style*="text-align: center"],
+.question-preview-content .question-enunciado-html h3[style*="text-align: center"] {
+  text-align: center !important;
 }
 
-.question-preview-content p[style*="text-align: right"] {
-  text-align: right;
+.question-preview-content .question-enunciado-body p[style*="text-align: right"],
+.question-preview-content .question-enunciado-body p[style*="text-align:right"],
+.question-preview-content .question-enunciado-body h1[style*="text-align: right"],
+.question-preview-content .question-enunciado-body h2[style*="text-align: right"],
+.question-preview-content .question-enunciado-body h3[style*="text-align: right"],
+.question-preview-content .question-enunciado-html p[style*="text-align: right"],
+.question-preview-content .question-enunciado-html p[style*="text-align:right"],
+.question-preview-content .question-enunciado-html h1[style*="text-align: right"],
+.question-preview-content .question-enunciado-html h2[style*="text-align: right"],
+.question-preview-content .question-enunciado-html h3[style*="text-align: right"] {
+  text-align: right !important;
 }
 
-.question-preview-content p[style*="text-align: left"] {
-  text-align: left;
+.question-preview-content .question-enunciado-body p[style*="text-align: left"],
+.question-preview-content .question-enunciado-body p[style*="text-align:left"],
+.question-preview-content .question-enunciado-body h1[style*="text-align: left"],
+.question-preview-content .question-enunciado-body h2[style*="text-align: left"],
+.question-preview-content .question-enunciado-body h3[style*="text-align: left"],
+.question-preview-content .question-enunciado-html p[style*="text-align: left"],
+.question-preview-content .question-enunciado-html p[style*="text-align:left"],
+.question-preview-content .question-enunciado-html h1[style*="text-align: left"],
+.question-preview-content .question-enunciado-html h2[style*="text-align: left"],
+.question-preview-content .question-enunciado-html h3[style*="text-align: left"] {
+  text-align: left !important;
+}
+
+.question-preview-content .question-enunciado-body p[style*="text-align: justify"],
+.question-preview-content .question-enunciado-body p[style*="text-align:justify"],
+.question-preview-content .question-enunciado-body h1[style*="text-align: justify"],
+.question-preview-content .question-enunciado-body h2[style*="text-align: justify"],
+.question-preview-content .question-enunciado-body h3[style*="text-align: justify"],
+.question-preview-content .question-enunciado-html p[style*="text-align: justify"],
+.question-preview-content .question-enunciado-html p[style*="text-align:justify"],
+.question-preview-content .question-enunciado-html h1[style*="text-align: justify"],
+.question-preview-content .question-enunciado-html h2[style*="text-align: justify"],
+.question-preview-content .question-enunciado-html h3[style*="text-align: justify"] {
+  text-align: justify !important;
 }
 
 /* Imagens em parágrafos centralizados */
@@ -877,6 +1136,14 @@
 .question-preview-content p[style*="text-align: left"] img:not([style*="vertical-align"]):not([style*="inline-block"]) {
   display: block !important;
   margin-left: 0 !important;
+  margin-right: auto !important;
+  margin-top: 1.5rem !important;
+  margin-bottom: 1.5rem !important;
+}
+
+.question-preview-content p[style*="text-align: justify"] img:not([style*="vertical-align"]):not([style*="inline-block"]) {
+  display: block !important;
+  margin-left: auto !important;
   margin-right: auto !important;
   margin-top: 1.5rem !important;
   margin-bottom: 1.5rem !important;
@@ -1124,4 +1391,38 @@
   html, body {
     width: 100%;
     max-width: 100vw;
+  }
+
+  /* Barra de rolagem moderna para lista do ranking */
+  .ranking-list-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  }
+  .ranking-list-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .ranking-list-scroll::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 4px;
+  }
+  .ranking-list-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.35);
+    border-radius: 4px;
+  }
+  .ranking-list-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+  .dark .ranking-list-scroll {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent;
+  }
+  .dark .ranking-list-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.25);
+  }
+  .dark .ranking-list-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.4);
+  }
+
+  @keyframes ranking-loading {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(200%); }
   }

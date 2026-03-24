@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { NotificationBell } from "@/components/Notifications/NotificationBell";
 import { useAuth } from "@/context/authContext";
+import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
+import { useGlobalThemeStyles } from "@/hooks/useGlobalThemeStyles";
 
 type LayoutProps = {
   children: ReactNode;
@@ -15,8 +17,11 @@ type LayoutProps = {
 export default function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const { user } = useAuth();
-  
+  const { user, needsOnboarding, onboardingProfile } = useAuth();
+  const globalThemeStyles = useGlobalThemeStyles();
+
+  const showOnboarding = Boolean(user?.id) && needsOnboarding;
+
   // Scroll to top on route change
   useScrollToTop();
 
@@ -50,7 +55,14 @@ export default function Layout() {
   }, [isMobileMenuOpen]);
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen min-h-[100dvh] bg-background" style={Object.keys(globalThemeStyles).length > 0 ? globalThemeStyles : undefined}>
+      {showOnboarding && (
+        <OnboardingModal
+          open={true}
+          onComplete={() => {}}
+          profile={onboardingProfile}
+        />
+      )}
       {/* Mobile Header with Menu Button */}
       <header className={cn(
         "md:hidden fixed top-0 left-0 right-0 z-[60]",
@@ -100,7 +112,10 @@ export default function Layout() {
         isMobileMenuOpen ? "translate-x-0" : "-translate-x-full",
         "md:block"
       )}>
-        <Sidebar onMobileMenuClose={() => setIsMobileMenuOpen(false)} />
+        <Sidebar
+          onMobileMenuClose={() => setIsMobileMenuOpen(false)}
+          isMobileOpen={isMobileMenuOpen}
+        />
       </aside>
 
       {/* Dark overlay when mobile menu is open */}
@@ -112,15 +127,15 @@ export default function Layout() {
         />
       )}
 
-      {/* Main content area */}
+      {/* Main content area - min-h-0 permite scroll em flex; pb evita filtros cortados no mobile */}
       <main className={cn(
-        "flex-1 overflow-y-auto relative",
-        "pt-16 md:pt-0", // Top padding for mobile header
-        "bg-background min-h-screen"
+        "flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative",
+        "pt-16 md:pt-0",
+        "bg-background min-h-screen min-h-[100dvh]"
       )}>
-        {/* Content Container */}
-        <div className="px-4 py-4 md:p-6">
-          <div className="max-w-7xl mx-auto">
+        {/* Content Container - padding-bottom extra no mobile para nada ficar cortado */}
+        <div className="px-4 py-4 pb-10 md:pb-6 md:p-6">
+          <div className="max-w-7xl mx-auto min-w-0">
             <Outlet />
           </div>
         </div>

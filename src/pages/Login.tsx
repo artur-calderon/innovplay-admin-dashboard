@@ -227,14 +227,14 @@ export default function Login() {
               {/* Divisor */}
               <div className="h-px w-full my-2 bg-gradient-to-r from-transparent via-purple-500/30 to-transparent"></div>
 
-              <form 
-                onSubmit={(e) => { 
-                  e.preventDefault(); 
-                  e.stopPropagation(); 
-                  handleLogin(e); 
-                  return false;
-                }} 
-                className="flex flex-col gap-4" 
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  void handleLogin(e)
+                }}
+                className="flex flex-col gap-4"
+                method="post"
                 noValidate
               >
                 <div className="space-y-1">
@@ -339,12 +339,7 @@ export default function Login() {
                 </div>
 
                 <Button
-                  type="button"
-                  onClick={async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    await handleLogin();
-                  }}
+                  type="submit"
                   className={`w-full h-12 mt-4 text-white font-semibold text-base border-none rounded-lg cursor-pointer transition-all duration-300 delay-300 shadow-lg bg-gradient-to-r from-[#573b8a] to-[#6d44b8] hover:from-[#6d44b8] hover:to-[#7d54c8] hover:scale-[1.02] hover:shadow-xl hover:shadow-purple-500/50 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 ${
                     isMounted ? "animate-slide-in-up opacity-100" : "opacity-0 translate-y-4"
                   }`}

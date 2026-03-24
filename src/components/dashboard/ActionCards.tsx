@@ -33,7 +33,7 @@ function ActionCard({ icon, title, description, action, color, bgColor }: Action
             </div>
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-sm mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+            <h3 className="font-semibold text-sm mb-1 group-hover:text-primary transition-colors">
               {title}
             </h3>
             <p className="text-xs text-muted-foreground mb-3 line-clamp-2">
@@ -43,7 +43,7 @@ function ActionCard({ icon, title, description, action, color, bgColor }: Action
               onClick={action}
               size="sm" 
               variant="ghost" 
-              className="h-8 px-2 text-xs group-hover:bg-blue-50 dark:group-hover:bg-blue-950/30 group-hover:text-blue-600 transition-colors"
+              className="h-8 px-2 text-xs group-hover:bg-primary/10 group-hover:text-primary transition-colors"
             >
               Acessar
               <ArrowRight className="h-3 w-3 ml-1 group-hover:translate-x-1 transition-transform" />
@@ -55,7 +55,12 @@ function ActionCard({ icon, title, description, action, color, bgColor }: Action
   );
 }
 
-export default function ActionCards() {
+interface ActionCardsProps {
+  /** Se definido (admin/tecadm), o card "Análise de Dados" abre o modal em vez de navegar */
+  onAnaliseSistemaClick?: () => void;
+}
+
+export default function ActionCards({ onAnaliseSistemaClick }: ActionCardsProps) {
   const navigate = useNavigate();
 
   const actions = [
@@ -64,14 +69,14 @@ export default function ActionCards() {
       title: "Criar Nova Avaliação",
       description: "Crie uma nova avaliação personalizada com questões de múltipla escolha, dissertativas e mais.",
       action: () => navigate('/app/criar-avaliacao'),
-      color: "text-blue-600 dark:text-blue-400",
+      color: "text-primary",
       bgColor: "bg-blue-50 dark:bg-blue-950/30"
     },
     {
       icon: <Upload className="h-5 w-5" />,
       title: "Importar Alunos",
       description: "Importe uma lista de alunos em lote usando planilhas CSV ou Excel para agilizar o cadastro.",
-      action: () => navigate('/app/usuarios'),
+      action: () => navigate('/app/cadastros/gestao?tab=usuarios'),
       color: "text-green-600 dark:text-green-400",
       bgColor: "bg-green-50 dark:bg-green-950/30"
     },
@@ -118,7 +123,7 @@ export default function ActionCards() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
         <Card 
           className="group cursor-pointer transition-all duration-200 hover:shadow-md border border-border"
-          onClick={() => navigate('/app/usuarios')}
+          onClick={() => navigate('/app/cadastros/gestao?tab=usuarios')}
         >
           <CardContent className="p-3">
             <div className="flex items-center gap-2">
@@ -152,7 +157,7 @@ export default function ActionCards() {
 
         <Card 
           className="group cursor-pointer transition-all duration-200 hover:shadow-md border border-border"
-          onClick={() => navigate('/app/resultados')}
+          onClick={onAnaliseSistemaClick ?? (() => navigate('/app/resultados'))}
         >
           <CardContent className="p-3">
             <div className="flex items-center gap-2">

@@ -173,9 +173,7 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
       setEvaluationResult(schoolResult);
 
     } catch (error: unknown) {
-      console.error("Erro ao buscar resultados da avaliação:", error);
-      
-      // ✅ CORRIGIDO: Mensagens de erro mais específicas
+      // Mensagens de erro mais específicas
       let errorMessage = ERROR_MESSAGES.NETWORK_ERROR;
       
       const errorObj = error as { message?: string; code?: string; response?: { status?: number } };
@@ -363,7 +361,6 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
         description: "O relatório da avaliação foi baixado em formato PDF.",
       });
     } catch (error) {
-      console.error('Erro ao gerar PDF:', error);
       toast({
         title: "Erro na exportação",
         description: "Não foi possível gerar o PDF. Verifique se todas as dependências estão instaladas.",
@@ -453,7 +450,6 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
       });
       
     } catch (error) {
-      console.error('Erro ao gerar Excel:', error);
       toast({
         title: "Erro na exportação",
         description: "Não foi possível gerar a planilha Excel. Verifique se todas as dependências estão instaladas.",
@@ -636,7 +632,6 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
         description: "O relatório foi baixado em formato PDF.",
       });
     } catch (error) {
-      console.error('Erro ao gerar PDF:', error);
       toast({
         title: "Erro na exportação",
         description: "Não foi possível gerar o PDF. Verifique se todas as dependências estão instaladas.",
@@ -746,7 +741,6 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
       });
       
     } catch (error) {
-      console.error('Erro ao gerar Excel:', error);
       toast({
         title: "Erro na exportação",
         description: "Não foi possível gerar a planilha Excel. Verifique se todas as dependências estão instaladas.",

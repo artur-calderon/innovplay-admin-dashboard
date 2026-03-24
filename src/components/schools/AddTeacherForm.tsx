@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { UserPlus, Search } from "lucide-react";
+import { UserPlus, Search, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 import {
     Select,
@@ -51,6 +51,7 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
     const [filteredTeachers, setFilteredTeachers] = useState<Teacher[]>([]);
     const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
     const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
+    const [showPassword, setShowPassword] = useState(false);
     const [formData, setFormData] = useState({
         name: "",
         email: "",
@@ -71,7 +72,6 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
                 setAllTeachers(teachers);
                 setFilteredTeachers(teachers);
             } catch (error) {
-                console.error("Error fetching teachers:", error);
                 toast({
                     title: "Erro",
                     description: "Erro ao carregar professores",
@@ -146,7 +146,6 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
             setIsOpen(false);
             onSuccess?.();
         } catch (error) {
-            console.error("Error creating teacher:", error);
             toast({
                 title: "Erro",
                 description: "Erro ao criar professor",
@@ -179,7 +178,6 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
             setIsOpen(false);
             onSuccess?.();
         } catch (error) {
-            console.error("Error linking teacher:", error);
             toast({
                 title: "Erro",
                 description: "Erro ao vincular professor",
@@ -290,16 +288,30 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
                                             Senha
                                             <span className="text-red-500">*</span>
                                         </Label>
-                                        <Input
-                                            id="password"
-                                            type="password"
-                                            value={formData.password}
-                                            onChange={(e) =>
-                                                setFormData({ ...formData, password: e.target.value })
-                                            }
-                                            placeholder="Digite uma senha"
-                                            className="h-11"
-                                        />
+                                        <div className="relative">
+                                            <Input
+                                                id="password"
+                                                type={showPassword ? "text" : "password"}
+                                                value={formData.password}
+                                                onChange={(e) =>
+                                                    setFormData({ ...formData, password: e.target.value })
+                                                }
+                                                placeholder="Digite uma senha"
+                                                className="h-11 pr-10"
+                                            />
+                                            <button
+                                                type="button"
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                                onClick={() => setShowPassword(!showPassword)}
+                                                aria-label={showPassword ? "Ocultar senha" : "Ver senha"}
+                                            >
+                                                {showPassword ? (
+                                                    <EyeOff className="h-4 w-4" />
+                                                ) : (
+                                                    <Eye className="h-4 w-4" />
+                                                )}
+                                            </button>
+                                        </div>
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="registration">Matrícula (opcional)</Label>

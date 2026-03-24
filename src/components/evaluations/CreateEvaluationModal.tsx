@@ -6,11 +6,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { DisciplineTag } from '@/components/ui/discipline-tag';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, FileCheck, Book, Eye, Trash2, Plus, School, Search, X, AlertCircle, Users, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/authContext';
 import { EvaluationFormData, Question, Subject } from './types';
 import { ClassInfo } from '@/types/evaluation-types';
@@ -124,18 +126,7 @@ export function CreateEvaluationModal({
     const loadInitialData = async () => {
       setLoadingData(true);
       try {
-        // PRIMEIRO: Se estiver editando, carregar dados da avaliação (incluindo questões) ANTES de qualquer outra coisa
-        if (evaluationId || initialData) {
-          console.log('🔄 Carregando dados da avaliação para edição...');
-          await loadEvaluationData(evaluationId, initialData);
-        } else {
-          // Apenas limpar questões se não estiver editando
-          console.log('🧹 Limpando questões (criação nova)');
-          clearQuestions();
-          setQuestionsLoaded(false);
-        }
-        
-        // DEPOIS: Carregar dados básicos (cursos, disciplinas, estados)
+        // PRIMEIRO: Carregar opções (cursos, disciplinas, estados) para os Selects terem itens ao aplicar initialData
         const [coursesRes, subjectsRes, statesRes] = await Promise.all([
           api.get('/education_stages'),
           api.get('/subjects'),
@@ -145,9 +136,18 @@ export function CreateEvaluationModal({
         setCourses(coursesRes.data || []);
         setAllSubjects(subjectsRes.data || []);
         setStates(statesRes.data || []);
+        
+        // DEPOIS: Se estiver editando, aplicar dados da avaliação (curso e disciplina aparecem selecionados)
+        if (evaluationId || initialData) {
+          await loadEvaluationData(evaluationId, initialData, {
+            coursesOptions: coursesRes.data || [],
+            subjectsOptions: subjectsRes.data || [],
+          });
+        } else {
+          clearQuestions();
+          setQuestionsLoaded(false);
+        }
       } catch (error) {
-        console.error('❌ Erro ao carregar dados:', error);
-        // ✅ CORREÇÃO: Tratamento de erro mais robusto para evitar crash
         toast({
           title: 'Erro',
           description: error instanceof Error ? error.message : 'Erro ao carregar dados iniciais',
@@ -163,7 +163,6 @@ export function CreateEvaluationModal({
     try {
       loadInitialData();
     } catch (error) {
-      console.error('❌ Erro crítico ao inicializar modal:', error);
       toast({
         title: 'Erro crítico',
         description: 'Não foi possível inicializar o modal. Tente novamente.',
@@ -174,16 +173,21 @@ export function CreateEvaluationModal({
   }, [isOpen, evaluationId, initialData, toast, clearQuestions]);
 
   // Carregar dados da avaliação para edição
-  const loadEvaluationData = async (id?: string, data?: EvaluationFormData | null) => {
-    console.log('🔄 loadEvaluationData chamado:', { id, hasData: !!data, questionsInData: data?.questions?.length || 0 });
+  const loadEvaluationData = async (
+    id?: string,
+    data?: EvaluationFormData | null,
+    options?: { coursesOptions?: Course[]; subjectsOptions?: Subject[] }
+  ) => {
     try {
-      // ✅ CORREÇÃO: Validar dados antes de processar
-      if (!data && !id) {
-        console.warn('⚠️ loadEvaluationData chamado sem dados nem ID');
-        return;
-      }
+      if (!data && !id) return;
       if (data) {
-        // Usar initialData se fornecido
+        const subjectsOptions = options?.subjectsOptions || [];
+        // Enriquecer disciplinas com nome quando vier vazio (ex.: API retorna só id em subjects_info)
+        const subjectsWithNames = (data.subjects || []).map((s) => {
+          const found = subjectsOptions.find((a) => a.id === s.id);
+          return { id: s.id, name: (s.name && s.name.trim()) ? s.name : (found?.name || s.id) };
+        }).filter((s) => s.id);
+
         setTitle(data.title || '');
         setDescription(data.description || '');
         setDuration(data.duration || '60');
@@ -199,19 +203,14 @@ export function CreateEvaluationModal({
             const municipalitiesRes = await api.get(`/city/municipalities/state/${data.state}`);
             setMunicipalities(municipalitiesRes.data || []);
           } catch (err) {
-            console.error('Erro ao carregar municípios:', err);
+            // Silenciar erro ao carregar municípios
           }
         }
-        
+
         setMunicipality(data.municipality || '');
         setSelectedSchools(data.selectedSchools || []);
-        // ✅ CORREÇÃO: Log das turmas ao carregar dados
-        console.log('📋 Carregando turmas do initialData:', {
-          count: data.selectedClasses?.length || 0,
-          classes: data.selectedClasses?.map((c: any) => ({ id: c.id, name: c.name })) || []
-        });
         setSelectedClasses(data.selectedClasses || []);
-        setSelectedSubjects(data.subjects || []);
+        setSelectedSubjects(subjectsWithNames.length > 0 ? subjectsWithNames : (data.subjects || []));
         
         // Carregar questões se disponíveis - PRIORIDADE MÁXIMA
         if (data.questions && data.questions.length > 0) {
@@ -1092,9 +1091,21 @@ export function CreateEvaluationModal({
           
           // ✅ CORREÇÃO: Verificar se as questões e turmas foram salvas
           try {
-            // Verificar questões
+            // Verificar questões (a API pode devolver array direto ou objeto com .data / .results / .items / .total)
             const verifyQuestionsResponse = await api.get(`/questions?test_id=${evaluationId}`);
-            const questionsCount = Array.isArray(verifyQuestionsResponse.data) ? verifyQuestionsResponse.data.length : 0;
+            const raw = verifyQuestionsResponse.data;
+            const questionsList = Array.isArray(raw)
+              ? raw
+              : Array.isArray((raw as any)?.data)
+                ? (raw as any).data
+                : Array.isArray((raw as any)?.results)
+                  ? (raw as any).results
+                  : Array.isArray((raw as any)?.items)
+                    ? (raw as any).items
+                    : [];
+            const questionsCount = questionsList.length > 0
+              ? questionsList.length
+              : (typeof (raw as any)?.total === 'number' ? (raw as any).total : 0);
             const expectedQuestionsCount = backendEvaluationData.questions.length;
             
             // Verificar turmas através da avaliação
@@ -1107,7 +1118,8 @@ export function CreateEvaluationModal({
               questoes: {
                 count: questionsCount,
                 expected: expectedQuestionsCount,
-                isArray: Array.isArray(verifyQuestionsResponse.data)
+                rawIsArray: Array.isArray(raw),
+                listLength: questionsList.length
               },
               turmas: {
                 count: savedClassesCount,
@@ -1994,14 +2006,26 @@ export function CreateEvaluationModal({
                     {allSubjects.map((subject) => {
                       const isSelected = selectedSubjects.some(s => s.id === subject.id);
                       return (
-                        <Badge
+                        <DisciplineTag
                           key={subject.id}
-                          variant={isSelected ? 'default' : 'outline'}
-                          className="cursor-pointer"
+                          subjectId={subject.id}
+                          name={subject.name}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => handleSubjectToggle(subject)}
-                        >
-                          {subject.name}
-                        </Badge>
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleSubjectToggle(subject);
+                            }
+                          }}
+                          className={cn(
+                            'cursor-pointer transition-opacity',
+                            isSelected
+                              ? 'ring-2 ring-primary ring-offset-2 ring-offset-background opacity-100'
+                              : 'opacity-60 hover:opacity-90'
+                          )}
+                        />
                       );
                     })}
                   </div>

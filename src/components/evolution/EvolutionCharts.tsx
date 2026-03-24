@@ -56,6 +56,8 @@ export interface ProcessedEvolutionData {
 interface EvolutionChartsProps {
   data: ProcessedEvolutionData;
   isLoading?: boolean;
+  /** Se true, exibe apenas o conteúdo da aba "Visão Geral" (sem abas Por Disciplina / Por Níveis) */
+  onlyOverviewTab?: boolean;
 }
 
 const colors = {
@@ -334,7 +336,7 @@ function mergeByName(rows: EvolutionData[]): EvolutionDataWithDynamicKeys[] {
   return [...map.values()];
 }
 
-export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProps) {
+export function EvolutionCharts({ data, isLoading = false, onlyOverviewTab = false }: EvolutionChartsProps) {
   const [activeTab, setActiveTab] = useState<'general' | 'subjects' | 'levels'>('general');
   const [hiddenByChart, setHiddenByChart] = useState<Record<string, Set<string>>>({});
   const [collapsedCharts, setCollapsedCharts] = useState<Set<string>>(new Set());
@@ -490,26 +492,14 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
       const chartDataArray: Record<string, unknown>[] = [];
       
       const rTyped = r as EvolutionDataWithDynamicKeys;
-      console.log('🔍 EvolutionCharts - chartData:', {
-        evaluationNames: data.evaluationNames,
-        evaluationNamesCount: data.evaluationNames.length,
-        mergedData: rTyped,
-        etapaKeys: Object.keys(rTyped).filter(k => k.startsWith('etapa')),
-      });
-      
+
       // Construir dados dinamicamente para todas as avaliações
       data.evaluationNames.forEach((evalName, index) => {
         if (hidden.has(evalName)) return;
-        
+
         const etapaKey = `etapa${index + 1}`;
         const etapaValue = safe(typeof rTyped[etapaKey] === 'number' ? rTyped[etapaKey] : undefined);
-        
-        console.log(`🔍 Avaliação ${index + 1} (${evalName}):`, {
-          etapaKey,
-          etapaValue,
-          exists: rTyped[etapaKey] !== undefined,
-        });
-        
+
         if (etapaValue !== undefined) {
           // Calcular variação
           let variacao = 0;
@@ -519,7 +509,6 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
             if (variacaoValue !== undefined) {
               // Validar variação (limitar valores extremos)
               if (Math.abs(variacaoValue) > 1000) {
-                console.warn(`⚠️ Variação extrema detectada: ${variacaoValue}% entre ${index} e ${index + 1}. Limitando a ±1000%`);
                 variacao = variacaoValue > 0 ? 1000 : -1000;
               } else {
                 variacao = variacaoValue;
@@ -532,7 +521,6 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                 variacao = ((etapaValue - prevValue) / prevValue) * 100;
                 // Validar variação calculada
                 if (Math.abs(variacao) > 1000) {
-                  console.warn(`⚠️ Variação calculada extrema: ${variacao}% entre ${index} e ${index + 1}. Limitando a ±1000%`);
                   variacao = variacao > 0 ? 1000 : -1000;
                 }
               }
@@ -822,20 +810,22 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
 
   return (
     <Tabs defaultValue="general" className="w-full">
-      <TabsList className="grid w-full grid-cols-3">
-        <TabsTrigger value="general" className="flex items-center gap-2">
-          <TrendingUp className="h-4 w-4" />
-          Visão Geral
-        </TabsTrigger>
-        <TabsTrigger value="subjects" className="flex items-center gap-2">
-          <BookOpen className="h-4 w-4" />
-          Por Disciplina
-        </TabsTrigger>
-        <TabsTrigger value="levels" className="flex items-center gap-2">
-          <Users className="h-4 w-4" />
-          Por Níveis
-        </TabsTrigger>
-      </TabsList>
+      {!onlyOverviewTab && (
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="general" className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4" />
+            Visão Geral
+          </TabsTrigger>
+          <TabsTrigger value="subjects" className="flex items-center gap-2">
+            <BookOpen className="h-4 w-4" />
+            Por Disciplina
+          </TabsTrigger>
+          <TabsTrigger value="levels" className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            Por Níveis
+          </TabsTrigger>
+        </TabsList>
+      )}
 
       {/* VISÃO GERAL */}
       <TabsContent value="general" className="space-y-6">
@@ -1121,6 +1111,8 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         </div>
       </TabsContent>
 
+      {!onlyOverviewTab && (
+        <>
       {/* POR DISCIPLINA */}
       <TabsContent value="subjects" className="space-y-6">
         {/* Header para disciplinas */}
@@ -1526,8 +1518,8 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                 const levelColors: Record<string, string> = {
                   'Abaixo do Básico': '#DC2626',
                   'Básico': '#F59E0B',
-                  'Adequado': '#3B82F6',
-                  'Avançado': '#10B981',
+                  'Adequado': '#4ade80',
+                  'Avançado': '#16A34A',
                 };
                 
                 const levelColor = levelColors[levelName] || '#6B7280';
@@ -1701,6 +1693,8 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
           </div>
         )}
       </TabsContent>
+        </>
+      )}
     </Tabs>
   );
 }

@@ -36,12 +36,16 @@ import {
   Edit, 
   Trash2, 
   Eye, 
+  EyeOff,
   Users, 
   GraduationCap, 
   Building2, 
   UserCheck,
-  Loader2 
+  Loader2,
+  CheckCircle2,
+  AlertCircle
 } from "lucide-react";
+import { useEmailCheck, generatePasswordFromName } from "@/hooks/useEmailCheck";
 import { useNavigate } from "react-router-dom";
 import {
   AlertDialog,
@@ -108,6 +112,7 @@ export function InstituicaoUserManagement({ schoolId, schoolName, onSuccess }: I
   const [selectedRole, setSelectedRole] = useState<string>("all");
   
   // Estados do formulário
+  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -152,25 +157,20 @@ export function InstituicaoUserManagement({ schoolId, schoolName, onSuccess }: I
     fetchUsers();
   }, [schoolId]);
 
-  const generateEmail = (fullName: string) => {
-    const names = fullName.toLowerCase().split(" ");
-    const initials = names.map(name => name[0]).join("");
-    return `${initials}@${schoolName.toLowerCase().replace(/\s+/g, '')}.com`;
-  };
+  const { checkedEmail, isChecking, isAvailable } = useEmailCheck(formData.name, isModalOpen);
 
-  const generatePassword = (fullName: string) => {
-    const firstName = fullName.split(" ")[0].toLowerCase();
-    return `${firstName}@${schoolName.toLowerCase().replace(/\s+/g, '')}`;
-  };
+  useEffect(() => {
+    if (!isModalOpen || !checkedEmail) return;
+    setFormData(prev => ({ ...prev, email: checkedEmail }));
+  }, [checkedEmail, isModalOpen]);
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newName = e.target.value;
-    setFormData({
-      ...formData,
+    setFormData(prev => ({
+      ...prev,
       name: newName,
-      email: generateEmail(newName),
-      password: generatePassword(newName),
-    });
+      password: generatePasswordFromName(newName),
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -392,26 +392,51 @@ export function InstituicaoUserManagement({ schoolId, schoolName, onSuccess }: I
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="email" className="text-sm text-gray-600">Email (Gerado automaticamente)</Label>
-                  <Input
-                    id="email"
-                    value={formData.email}
-                    readOnly
-                    className="bg-gray-50 border-gray-200 font-mono h-11 cursor-not-allowed"
-                    placeholder="Email será gerado"
-                    disabled={isSubmitting}
-                  />
+                  <div className="relative">
+                    <Input
+                      id="email"
+                      value={formData.email}
+                      readOnly
+                      className="bg-gray-50 border-gray-200 font-mono h-11 cursor-not-allowed pr-8"
+                      placeholder="Email será gerado"
+                      disabled={isSubmitting}
+                    />
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                      {isChecking && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                      {!isChecking && isAvailable === true && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                      {!isChecking && isAvailable === false && <AlertCircle className="h-4 w-4 text-amber-500" />}
+                    </div>
+                  </div>
+                  {!isChecking && isAvailable === false && (
+                    <p className="text-xs text-amber-600">Email original em uso. Usando sugestão disponível.</p>
+                  )}
                 </div>
                 
                 <div className="space-y-2">
                   <Label htmlFor="password" className="text-sm text-gray-600">Senha (Gerada automaticamente)</Label>
-                  <Input
-                    id="password"
-                    value={formData.password}
-                    readOnly
-                    className="bg-gray-50 border-gray-200 font-mono h-11 cursor-not-allowed"
-                    placeholder="Senha será gerada"
-                    disabled={isSubmitting}
-                  />
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      value={formData.password}
+                      readOnly
+                      className="bg-gray-50 border-gray-200 font-mono h-11 cursor-not-allowed pr-10"
+                      placeholder="Senha será gerada"
+                      disabled={isSubmitting}
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? "Ocultar senha" : "Ver senha"}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
               

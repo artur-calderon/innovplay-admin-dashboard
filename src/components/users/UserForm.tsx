@@ -19,10 +19,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Loader2, CheckCircle2, AlertCircle, User, KeyRound, Shield } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { useDataContext } from "@/context/dataContext";
+import { useEmailCheck } from "@/hooks/useEmailCheck";
 
 import { ROLE_DISPLAY_MAPPING } from "@/lib/constants";
 
@@ -70,12 +71,12 @@ type UserFormValues = {
   role: string;
   registration?: string | null;
   city_id?: string | null;
-  id?: number;
+  id?: number | string;
 };
 
 interface UserFormProps {
   user?: {
-    id: number;
+    id: number | string;
     name: string;
     email: string;
     role: string;
@@ -85,9 +86,11 @@ interface UserFormProps {
   onSubmit?: (data: UserFormValues) => Promise<void> | void;
   allowedRoles?: string[]; // Roles permitidas para criação (ex: ["Administrador", "Diretor"])
   showCitySelect?: boolean; // Se deve mostrar o campo de seleção de município
+  /** Layout "modal" agrupa em seções e usa grid para melhor leitura em modais */
+  layout?: "default" | "modal";
 }
 
-export default function UserForm({ user, onSubmit, allowedRoles, showCitySelect = true }: UserFormProps) {
+export default function UserForm({ user, onSubmit, allowedRoles, showCitySelect = true, layout = "default" }: UserFormProps) {
   const isEditing = !!user;
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -112,27 +115,15 @@ export default function UserForm({ user, onSubmit, allowedRoles, showCitySelect 
     },
   });
 
-  // Função para gerar email automaticamente baseado no nome
-  const generateEmailFromName = (name: string) => {
-    if (!name.trim()) return "";
-    
-    const names = name.trim().split(" ");
-    const initials = names
-      .map(n => n.charAt(0).toLowerCase())
-      .join("");
-    
-    return `${initials}@afirmeplay.com.br`;
-  };
-
   // Watch para mudanças no campo nome (apenas para novos usuários)
   const watchedName = form.watch("name");
-  
+  const { checkedEmail, isChecking, isAvailable } = useEmailCheck(watchedName, !isEditing);
+
   useEffect(() => {
-    if (!isEditing && watchedName) {
-      const generatedEmail = generateEmailFromName(watchedName);
-      form.setValue("email", generatedEmail);
+    if (!isEditing && checkedEmail) {
+      form.setValue("email", checkedEmail);
     }
-  }, [watchedName, isEditing, form]);
+  }, [checkedEmail, isEditing, form]);
 
   // Handle form submission
   const handleSubmit = async (data: UserFormValues) => {
@@ -184,210 +175,420 @@ export default function UserForm({ user, onSubmit, allowedRoles, showCitySelect 
     name: municipio.name
   })) : [];
 
+  const isModalLayout = layout === "modal";
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Nome</FormLabel>
-              <FormControl>
-                <Input placeholder="Digite o nome completo" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="email"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Email</FormLabel>
-              <FormControl>
-                <Input 
-                  type="email" 
-                  placeholder={isEditing ? "nome@escola.edu.br" : "Será gerado automaticamente"} 
-                  {...field}
-                  readOnly={!isEditing}
+      <form onSubmit={form.handleSubmit(handleSubmit)} className={isModalLayout ? "space-y-6" : "space-y-4"}>
+        {/* Seção: Dados cadastrais */}
+        {isModalLayout && (
+          <div className="space-y-4">
+            <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <User className="h-4 w-4 text-[#7B3FE4]" />
+              Dados cadastrais
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nome *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Digite o nome completo" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>E-mail *</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input
+                          type="email"
+                          placeholder={isEditing ? "nome@escola.edu.br" : "Será gerado automaticamente"}
+                          {...field}
+                          readOnly={!isEditing}
+                          className={!isEditing ? "pr-8" : ""}
+                        />
+                        {!isEditing && (
+                          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                            {isChecking && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                            {!isChecking && isAvailable === true && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                            {!isChecking && isAvailable === false && <AlertCircle className="h-4 w-4 text-amber-500" />}
+                          </div>
+                        )}
+                      </div>
+                    </FormControl>
+                    {!isEditing && (
+                      <p className="text-xs text-muted-foreground">
+                        {isChecking && "Verificando disponibilidade..."}
+                        {!isChecking && isAvailable === true && "Email disponível."}
+                        {!isChecking && isAvailable === false && "Email original em uso. Usando sugestão disponível."}
+                        {!isChecking && isAvailable === null && "Gerado automaticamente (iniciais + @afirmeplay.com.br)"}
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="registration"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Matrícula (opcional)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Digite a matrícula" {...field} value={field.value || ""} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {showCitySelect && (
+                <FormField
+                  control={form.control}
+                  name="city_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Município</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || undefined}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione um município" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {municipioOptions.map((municipio) => (
+                            <SelectItem key={municipio.id} value={municipio.id}>
+                              {municipio.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </FormControl>
-              {!isEditing && (
-                <p className="text-xs text-muted-foreground">
-                  O email é gerado automaticamente baseado nas iniciais do nome + @afirmeplay.com.br
-                </p>
               )}
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+            </div>
+          </div>
+        )}
 
-        <FormField
-          control={form.control}
-          name="password"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{isEditing ? "Nova senha (opcional)" : "Senha"}</FormLabel>
-              <FormControl>
-                <div className="relative">
-                  <Input 
-                    type={showPassword ? "text" : "password"} 
-                    placeholder={isEditing ? "Deixe em branco para manter a senha atual" : "Digite uma senha"} 
-                    {...field} 
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="confirmPassword"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{isEditing ? "Confirmar nova senha" : "Confirmar Senha"}</FormLabel>
-              <FormControl>
-                <div className="relative">
-                  <Input 
-                    type={showConfirmPassword ? "text" : "password"} 
-                    placeholder={isEditing ? "Repita a nova senha" : "Confirme sua senha"}
-                    {...field} 
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  >
-                    {showConfirmPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </FormControl>
-              {isEditing && (
-                <p className="text-xs text-muted-foreground">Necessário apenas se desejar atualizar a senha.</p>
+        {!isModalLayout && (
+          <>
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nome</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Digite o nome completo" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
               )}
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+            />
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Input
+                        type="email"
+                        placeholder={isEditing ? "nome@escola.edu.br" : "Será gerado automaticamente"}
+                        {...field}
+                        readOnly={!isEditing}
+                        className={!isEditing ? "pr-8" : ""}
+                      />
+                      {!isEditing && (
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                          {isChecking && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                          {!isChecking && isAvailable === true && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                          {!isChecking && isAvailable === false && <AlertCircle className="h-4 w-4 text-amber-500" />}
+                        </div>
+                      )}
+                    </div>
+                  </FormControl>
+                  {!isEditing && (
+                    <p className="text-xs text-muted-foreground">
+                      {isChecking && "Verificando disponibilidade..."}
+                      {!isChecking && isAvailable === true && "Email disponível."}
+                      {!isChecking && isAvailable === false && "Email original em uso. Usando sugestão disponível."}
+                      {!isChecking && isAvailable === null && "O email é gerado automaticamente pelas iniciais do nome + @afirmeplay.com.br"}
+                    </p>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </>
+        )}
 
-        <FormField
-          control={form.control}
-          name="registration"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Matrícula (opcional)</FormLabel>
-              <FormControl>
-                <Input placeholder="Digite a matrícula" {...field} value={field.value || ''} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {!isModalLayout && (
+          <>
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{isEditing ? "Nova senha (opcional)" : "Senha"}</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Input type={showPassword ? "text" : "password"} placeholder={isEditing ? "Deixe em branco para manter a senha atual" : "Digite uma senha"} {...field} />
+                      <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent" onClick={() => setShowPassword(!showPassword)}>
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="confirmPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{isEditing ? "Confirmar nova senha" : "Confirmar Senha"}</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Input type={showConfirmPassword ? "text" : "password"} placeholder={isEditing ? "Repita a nova senha" : "Confirme sua senha"} {...field} />
+                      <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </FormControl>
+                  {isEditing && <p className="text-xs text-muted-foreground">Necessário apenas se desejar atualizar a senha.</p>}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="registration"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Matrícula (opcional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Digite a matrícula" {...field} value={field.value || ""} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {showCitySelect && (
+              <FormField
+                control={form.control}
+                name="city_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Município</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || undefined}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione um município" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {municipioOptions.map((municipio) => (
+                          <SelectItem key={municipio.id} value={municipio.id}>{municipio.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+          </>
+        )}
 
-        {showCitySelect && (
+        {/* Seção Função (modal) ou campo único (default) */}
+        {isModalLayout && (
+          <div className="space-y-4">
+            <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <Shield className="h-4 w-4 text-[#7B3FE4]" />
+              Função
+            </h4>
+            <FormField
+              control={form.control}
+              name="role"
+              render={({ field }) => {
+                const allRoles = [
+                  { value: "Administrador", label: "Administrador" },
+                  { value: "Técnico Administrador", label: "Técnico Administrador" },
+                  { value: "Diretor", label: "Diretor" },
+                  { value: "Coordenador", label: "Coordenador" },
+                  { value: "Professor", label: "Professor" },
+                  { value: "Aluno", label: "Aluno" }
+                ];
+                const availableRoles = allowedRoles?.length ? allRoles.filter((r) => allowedRoles.includes(r.value)) : allRoles;
+                return (
+                  <FormItem>
+                    <FormLabel>Perfil do usuário *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione uma função" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {availableRoles.map((role) => (
+                          <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                );
+              }}
+            />
+          </div>
+        )}
+
+        {/* Seção Senha (modal): ao editar opcional, ao criar obrigatória */}
+        {isModalLayout && (isEditing ? (
+          <div className="space-y-4">
+            <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-[#7B3FE4]" />
+              Alterar senha (opcional)
+            </h4>
+            <p className="text-xs text-muted-foreground">Deixe em branco para manter a senha atual.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nova senha</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input type={showPassword ? "text" : "password"} placeholder="Deixe em branco para manter" {...field} />
+                        <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent" onClick={() => setShowPassword(!showPassword)}>
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Confirmar nova senha</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input type={showConfirmPassword ? "text" : "password"} placeholder="Repita a nova senha" {...field} />
+                        <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
+                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-[#7B3FE4]" />
+              Senha de acesso
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Senha *</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input type={showPassword ? "text" : "password"} placeholder="Digite uma senha" {...field} />
+                        <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent" onClick={() => setShowPassword(!showPassword)}>
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Confirmar senha *</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input type={showConfirmPassword ? "text" : "password"} placeholder="Confirme sua senha" {...field} />
+                        <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
+                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+        ))}
+
+        {!isModalLayout && (
           <FormField
             control={form.control}
-            name="city_id"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Município</FormLabel>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value || undefined}
-                >
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione um município" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {municipioOptions.map((municipio) => (
-                      <SelectItem key={municipio.id} value={municipio.id}>
-                        {municipio.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
+            name="role"
+            render={({ field }) => {
+              const allRoles = [
+                { value: "Administrador", label: "Administrador" },
+                { value: "Técnico Administrador", label: "Técnico Administrador" },
+                { value: "Diretor", label: "Diretor" },
+                { value: "Coordenador", label: "Coordenador" },
+                { value: "Professor", label: "Professor" },
+                { value: "Aluno", label: "Aluno" }
+              ];
+              const availableRoles = allowedRoles?.length ? allRoles.filter((r) => allowedRoles.includes(r.value)) : allRoles;
+              return (
+                <FormItem>
+                  <FormLabel>Função</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione uma função" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {availableRoles.map((role) => (
+                        <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              );
+            }}
           />
         )}
 
-        <FormField
-          control={form.control}
-          name="role"
-          render={({ field }) => {
-            // Lista completa de roles disponíveis
-            const allRoles = [
-              { value: "Administrador", label: "Administrador" },
-              { value: "Professor", label: "Professor" },
-              { value: "Coordenador", label: "Coordenador" },
-              { value: "Diretor", label: "Diretor" },
-              { value: "Técnico Administrador", label: "Técnico Administrador" }
-            ];
-
-            // Se estiver editando, mostrar todas as roles (para não quebrar edição)
-            // Se estiver criando, filtrar baseado em allowedRoles
-            const availableRoles = isEditing 
-              ? allRoles 
-              : (allowedRoles && allowedRoles.length > 0 
-                  ? allRoles.filter(role => allowedRoles.includes(role.value))
-                  : allRoles);
-
-            return (
-              <FormItem>
-                <FormLabel>Função</FormLabel>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                >
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione uma função" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {availableRoles.map((role) => (
-                      <SelectItem key={role.value} value={role.value}>
-                        {role.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            );
-          }}
-        />
-
-        <div className="flex justify-end">
+        <div className={isModalLayout ? "flex justify-end gap-2 pt-2 border-t" : "flex justify-end"}>
           <Button type="submit" disabled={isLoading}>
-            {isLoading ? "Processando..." : isEditing ? "Atualizar" : "Cadastrar"}
+            {isLoading ? "Salvando..." : isEditing ? "Salvar alterações" : "Cadastrar"}
           </Button>
         </div>
       </form>

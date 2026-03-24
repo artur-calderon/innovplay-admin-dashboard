@@ -27,6 +27,7 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
+import { api } from '@/lib/api';
 import { getCompetitionDetails, getMyCompetitionSession, unenrollCompetition, startCompetition } from '@/services/competitionsApi';
 import type { Competition } from '@/types/competition-types';
 import { EnrollConfirmationModal } from '@/components/competitions/EnrollConfirmationModal';
@@ -35,6 +36,7 @@ import { SlotsProgress } from '@/components/competitions/SlotsProgress';
 import { Countdown } from '@/components/competitions/Countdown';
 import { CompetitionRanking } from '@/components/competitions/CompetitionRanking';
 import { formatCompetitionLevel } from '@/utils/competitionLevel';
+import { getCompetitionSubjectDisplay } from '@/utils/competitionSubjectName';
 import { getSubjectColors } from '@/utils/competitionSubjectColors';
 
 function formatDate(value: string | undefined): string {
@@ -85,6 +87,12 @@ function canUnenroll(c: Competition): boolean {
   return true;
 }
 
+/** Competição finalizada (encerrada pelo admin); resultados/ranking só após isso. */
+function isCompetitionFinalized(c: Competition): boolean {
+  const s = String(c.status ?? '').toLowerCase();
+  return s === 'completed' || s === 'encerrada' || c.is_finished === true;
+}
+
 export default function CompetitionStudentDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -95,6 +103,15 @@ export default function CompetitionStudentDetail() {
   const [unenrolling, setUnenrolling] = useState(false);
   const [startingProva, setStartingProva] = useState(false);
   const [enrollModalOpen, setEnrollModalOpen] = useState(false);
+  const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get<{ id: string; name: string }[]>('/subjects').then((res) => {
+      if (!cancelled && Array.isArray(res.data)) setSubjects(res.data);
+    }).catch(() => { if (!cancelled) setSubjects([]); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -257,26 +274,21 @@ export default function CompetitionStudentDetail() {
     });
   };
 
-  const handleVerResultado = () => {
-    if (!testId) return;
-    navigate(`/aluno/avaliacao/${testId}/resultado`);
-  };
-
   if (loading) {
     return (
-      <div className="container mx-auto py-12 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="container mx-auto py-12 flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-violet-600" />
       </div>
     );
   }
 
   if (error || !competition) {
     return (
-      <div className="container mx-auto py-12">
-        <Button variant="ghost" onClick={() => navigate('/aluno/competitions')} className="mb-4">
+      <div className="container mx-auto py-12 min-h-screen">
+        <Button variant="ghost" onClick={() => navigate('/aluno/competitions')} className="mb-4 rounded-full border-violet-300 dark:border-violet-500/50 hover:bg-violet-500/15">
           <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
         </Button>
-        <Card>
+        <Card className="rounded-2xl border-2 border-violet-200/50 dark:border-violet-500/30 overflow-hidden">
           <CardContent className="py-12 text-center text-destructive">
             {error || 'Competição não encontrada.'}
           </CardContent>
@@ -289,7 +301,8 @@ export default function CompetitionStudentDetail() {
     competition.selected_question_ids ?? competition.question_ids ?? [];
   const totalQuestions = selectedQuestionIds.length;
 
-  const showRankingFinal = rankingVisibility === 'final' && ended;
+  const competitionFinalized = competition ? isCompetitionFinalized(competition) : false;
+  const showRankingFinal = rankingVisibility === 'final' && ended && competitionFinalized;
 
   /** Badge de status da prova (padrão StudentEvaluations/OlimpiadasStudent). */
   const getProofStatusBadge = () => {
@@ -337,16 +350,17 @@ export default function CompetitionStudentDetail() {
     return null;
   };
 
-  const subjectColors = getSubjectColors(competition.subject_id ?? '', competition.subject_name);
+  const subjectDisplayName = getCompetitionSubjectDisplay(competition, subjects);
+  const subjectColors = getSubjectColors(competition.subject_id ?? '', subjectDisplayName);
   const hasRewards =
     competition.reward_config?.participation_coins != null ||
     competition.reward_participation != null ||
     (competition.reward_config?.ranking_rewards?.length ?? 0) > 0;
 
   return (
-    <div className="container mx-auto space-y-6 py-6 px-4">
+    <div className="container mx-auto space-y-6 py-6 px-4 min-h-screen">
       {/* Hero gamificado + CTA único */}
-      <Card className={`overflow-hidden border-l-4 ${subjectColors.border} ${subjectColors.bg}`}>
+      <Card className={`overflow-hidden rounded-2xl border-2 border-l-4 ${subjectColors.border} ${subjectColors.bg} transition-all duration-300 hover:shadow-lg hover:shadow-violet-500/10 animate-fade-in-up`}>
         <CardContent className="p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
@@ -361,7 +375,7 @@ export default function CompetitionStudentDetail() {
               </h1>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Badge variant="secondary" className={subjectColors.badge}>
-                  {competition.subject_name ?? competition.subject_id}
+                  {subjectDisplayName}
                 </Badge>
                 <Badge variant="outline">{formatCompetitionLevel(competition.level)}</Badge>
                 <EnrollmentStatusBadge status={enrollmentStatus} />
@@ -400,16 +414,20 @@ export default function CompetitionStudentDetail() {
               )}
               {isEnrolled && (
                 <div className="flex flex-col gap-2">
-                  {attemptStatus === 'completed' && (
-                    <Button size="lg" onClick={handleVerResultado} className="bg-emerald-600 hover:bg-emerald-700">
+                  {attemptStatus === 'completed' && competitionFinalized && (
+                    <Button size="lg" onClick={() => navigate('/aluno/resultados?tab=competicao')} className="bg-emerald-600 hover:bg-emerald-700">
                       <CheckCircle className="mr-2 h-4 w-4" />
                       Ver resultado
                     </Button>
                   )}
                   {attemptStatus === 'in_progress' && testId && (inApplication || ended) && (
-                    <Button size="lg" onClick={ended ? handleVerResultado : handleContinuarProva}>
+                    <Button
+                      size="lg"
+                      onClick={ended ? (competitionFinalized ? () => navigate('/aluno/resultados?tab=competicao') : undefined) : handleContinuarProva}
+                      disabled={ended && !competitionFinalized}
+                    >
                       <Clock className="mr-2 h-4 w-4" />
-                      {ended ? 'Ver resultado' : `Continuar prova${elapsedTimeText ? ` (${elapsedTimeText})` : ''}`}
+                      {ended ? (competitionFinalized ? 'Ver resultado' : 'Resultado após finalização da competição') : `Continuar prova${elapsedTimeText ? ` (${elapsedTimeText})` : ''}`}
                     </Button>
                   )}
                   {inApplication && attemptStatus !== 'completed' && attemptStatus !== 'in_progress' && (

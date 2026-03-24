@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { 
@@ -643,7 +644,7 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
                   <TableRow key={result.id}>
                     <TableCell className="font-medium">{result.evaluationTitle}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{result.subject}</Badge>
+                      <DisciplineTag name={result.subject} />
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">

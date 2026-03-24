@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { Progress } from "@/components/ui/progress";
 import {
   Download,
@@ -25,13 +26,16 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import { EvaluationResultsApiService, REPORT_ENTITY_TYPE_ANSWER_SHEET } from "@/services/evaluationResultsApi";
 import { RelatorioCompleto } from "@/types/evaluation-results";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { BarChartComponent, DonutChartComponent } from "@/components/ui/charts";
 import { FilterComponentAnalise } from "@/components/filters";
-import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext } from "@/utils/userHierarchy";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext, cityIdQueryParamForAdmin } from "@/utils/userHierarchy";
+import { normalizeRelatorioCompletoForAnaliseUI } from "@/utils/relatorioCompletoNormalize";
 
 // Interfaces para os dados da API
 interface EvaluationResult {
@@ -139,6 +143,7 @@ export default function AnaliseAvaliacoes() {
   const [selectedMunicipality, setSelectedMunicipality] = useState<string>('all');
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [selectedEvaluation, setSelectedEvaluation] = useState<string>('all');
+  const [reportAnswerSheet, setReportAnswerSheet] = useState(false);
 
   // Estados para hierarquia do usuário
   const [userHierarchyContext, setUserHierarchyContext] = useState<UserHierarchyContext | null>(null);
@@ -148,6 +153,11 @@ export default function AnaliseAvaliacoes() {
   const [renderMode, setRenderMode] = useState<'escola' | 'turma'>('turma');
   const normalizedRole = user?.role?.toLowerCase();
   const roleRequiresSpecificSchool = normalizedRole ? ['diretor', 'coordenador', 'professor'].includes(normalizedRole) : false;
+
+  const adminCityIdQuery = useMemo(
+    () => cityIdQueryParamForAdmin(user?.role, selectedMunicipality === 'all' ? undefined : selectedMunicipality),
+    [user?.role, selectedMunicipality]
+  );
 
   const handleStateChange = useCallback((stateId: string) => {
     if (stateId === selectedState) return;
@@ -334,18 +344,29 @@ export default function AnaliseAvaliacoes() {
       // Determinar qual tipo de relatório gerar baseado na seleção da escola
       let apiUrl: string;
       if (selectedSchool === 'all') {
-        // Relatório para município inteiro (todas as escolas)
-        apiUrl = `/reports/relatorio-pdf/${selectedEvaluation}?city_id=${selectedMunicipality}`;
+        // Município inteiro: `city_id` na query só para admin (demais: tenant no JWT)
+        const pdfMunicipal = new URLSearchParams();
+        if (adminCityIdQuery) {
+          pdfMunicipal.append('city_id', adminCityIdQuery);
+        }
+        const municipalQs = pdfMunicipal.toString();
+        apiUrl = `/reports/relatorio-pdf/${selectedEvaluation}${municipalQs ? `?${municipalQs}` : ''}`;
       } else {
         // Relatório para escola específica
         apiUrl = `/reports/relatorio-pdf/${selectedEvaluation}?school_id=${selectedSchool}`;
+        if (adminCityIdQuery) {
+          apiUrl += `&city_id=${encodeURIComponent(adminCityIdQuery)}`;
+        }
+      }
+      if (reportAnswerSheet) {
+        apiUrl += `&report_entity_type=${REPORT_ENTITY_TYPE_ANSWER_SHEET}`;
       }
       
-      // Buscar o relatório PDF diretamente do backend
-      const response = await api.get(apiUrl, {
-        responseType: 'blob', // Importante: receber como blob
-        timeout: 120000 // Aumenta o tempo limite especificamente para geração do PDF (2 minutos)
-      });
+      // Buscar o relatório PDF diretamente do backend (admin: enviar contexto de cidade)
+      const pdfConfig = selectedMunicipality !== 'all'
+        ? { responseType: 'blob' as const, timeout: 120000, meta: { cityId: selectedMunicipality } }
+        : { responseType: 'blob' as const, timeout: 120000 };
+      const response = await api.get(apiUrl, pdfConfig);
       
       // Criar URL do blob
       const blob = new Blob([response.data], { type: 'application/pdf' });
@@ -400,16 +421,25 @@ export default function AnaliseAvaliacoes() {
           
           // Buscar relatório completo da avaliação selecionada
           // Determinar qual tipo de relatório buscar baseado na seleção da escola
-          const options = selectedSchool !== 'all' 
-            ? { schoolId: selectedSchool }
-            : { cityId: selectedMunicipality };
+          const options =
+            selectedSchool !== 'all'
+              ? {
+                  schoolId: selectedSchool,
+                  ...(selectedMunicipality !== 'all' ? { cityId: selectedMunicipality } : {}),
+                }
+              : { cityId: selectedMunicipality };
+          const reportOptions = {
+            ...options,
+            ...(adminCityIdQuery ? { adminCityIdQuery } : {}),
+            ...(reportAnswerSheet ? { reportEntityType: REPORT_ENTITY_TYPE_ANSWER_SHEET as const } : {}),
+          };
           
           // ✅ NOVO: Verificar status antes de buscar (para mostrar feedback visual)
           let wasProcessing = false;
           let timerInterval: NodeJS.Timeout | null = null;
           
           try {
-            const status = await EvaluationResultsApiService.checkReportStatus(selectedEvaluation, options);
+            const status = await EvaluationResultsApiService.checkReportStatus(selectedEvaluation, reportOptions);
             if (status.status === 'processing') {
               wasProcessing = true;
               setIsProcessingReport(true);
@@ -432,7 +462,7 @@ export default function AnaliseAvaliacoes() {
           
           try {
             // Buscar relatório (método já implementa polling internamente)
-            const relatorio = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation, options);
+            const relatorio = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation, reportOptions);
             
             // ✅ LOG: Ver o que está sendo retornado pela API
             console.log('📊 LOG - Resultado da rota getRelatorioCompleto:');
@@ -458,7 +488,7 @@ export default function AnaliseAvaliacoes() {
             
             setIsProcessingReport(false);
             setProcessingTime(0);
-            setApiData(relatorio);
+            setApiData(normalizeRelatorioCompletoForAnaliseUI(relatorio));
             
             // ✅ CORREÇÃO: Determinar o modo de renderização baseado na seleção da escola
             // Se uma escola específica foi selecionada (não "all"), mostrar turmas
@@ -507,27 +537,27 @@ export default function AnaliseAvaliacoes() {
     };
 
     loadData();
-  }, [allRequiredFiltersSelected, selectedState, selectedMunicipality, selectedSchool, selectedEvaluation, toast]);
+  }, [allRequiredFiltersSelected, selectedState, selectedMunicipality, selectedSchool, selectedEvaluation, reportAnswerSheet, adminCityIdQuery, toast]);
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <RefreshCw className="h-8 w-8 animate-spin text-blue-600" />
+        <RefreshCw className="h-8 w-8 animate-spin text-primary" />
         <span className="ml-2">Carregando...</span>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <BarChart3 className="w-8 h-8 text-blue-600" />
+    <div className="w-full min-w-0 space-y-6">
+      {/* Header — mobile: título/desc alinhados, badge centralizado abaixo */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <BarChart3 className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
             Análise das Avaliações
           </h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-muted-foreground text-sm sm:text-base">
             Análise detalhada das avaliações do seu município
           </p>
           {user?.role && (
@@ -536,14 +566,30 @@ export default function AnaliseAvaliacoes() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex justify-center w-full sm:w-auto sm:justify-end">
           <Badge variant="outline" className="text-sm">
-            {user?.role === 'admin' ? 'Administrador' : 
+            {user?.role === 'admin' ? 'Administrador' :
              user?.role === 'professor' ? 'Professor' :
              user?.role === 'diretor' ? 'Diretor' :
              user?.role === 'coordenador' ? 'Coordenador' : 'Técnico Administrativo'}
           </Badge>
         </div>
+      </div>
+
+      <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-4">
+        <Checkbox
+          id="report-answer-sheet-analise"
+          checked={reportAnswerSheet}
+          onCheckedChange={(v) => {
+            const checked = v === true;
+            setReportAnswerSheet(checked);
+            setSelectedEvaluation('all');
+            setApiData(null);
+          }}
+        />
+        <Label htmlFor="report-answer-sheet-analise" className="text-sm font-normal leading-snug cursor-pointer">
+          Marque para ver relatórios de um cartão resposta
+        </Label>
       </div>
 
       {/* Filtros */}
@@ -570,6 +616,8 @@ export default function AnaliseAvaliacoes() {
         }}
         isLoadingFilters={isLoadingFilters}
         onLoadingChange={setIsLoadingFilters}
+        reportEntityType={reportAnswerSheet ? REPORT_ENTITY_TYPE_ANSWER_SHEET : undefined}
+        adminCityIdQuery={adminCityIdQuery}
         // Props para hierarquia
         userRole={user?.role}
         canSelectState={userHierarchyContext?.restrictions.canSelectState}
@@ -591,7 +639,8 @@ export default function AnaliseAvaliacoes() {
               Selecione todos os filtros para continuar
             </h3>
             <p className="text-muted-foreground text-center max-w-md">
-              Para visualizar a análise das avaliações, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong>. A <strong>Escola</strong> pode ser "Todas" para ver todas as escolas do município.
+              Para visualizar a análise das avaliações, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e{" "}
+              <strong>{reportAnswerSheet ? "cartão resposta" : "Avaliação"}</strong>. A <strong>Escola</strong> pode ser "Todas" para ver todas as escolas do município.
             </p>
           </CardContent>
         </Card>
@@ -601,7 +650,7 @@ export default function AnaliseAvaliacoes() {
       {allRequiredFiltersSelected && isLoadingData && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mb-4" />
+            <RefreshCw className="h-8 w-8 animate-spin text-primary mb-4" />
             {isProcessingReport ? (
               <>
                 <p className="text-lg font-medium text-foreground mb-2">Gerando relatório...</p>
@@ -757,8 +806,8 @@ export default function AnaliseAvaliacoes() {
                              </th>
                              <th className="border border-border px-4 py-2 text-center font-medium bg-red-100 dark:bg-red-950/30">Abaixo do Básico</th>
                              <th className="border border-border px-4 py-2 text-center font-medium bg-yellow-100 dark:bg-yellow-950/30">Básico</th>
-                             <th className="border border-border px-4 py-2 text-center font-medium bg-blue-100 dark:bg-blue-950/30">Adequado</th>
-                             <th className="border border-border px-4 py-2 text-center font-medium bg-green-100 dark:bg-green-950/30">Avançado</th>
+                             <th className="border border-border px-4 py-2 text-center font-medium bg-green-100 dark:bg-green-700/35 text-green-900 dark:text-green-200">Adequado</th>
+                             <th className="border border-border px-4 py-2 text-center font-medium bg-green-600/20 dark:bg-green-950/60 text-green-900 dark:text-green-100">Avançado</th>
                              <th className="border border-border px-4 py-2 text-center font-medium">Total</th>
                            </tr>
                          </thead>
@@ -769,8 +818,8 @@ export default function AnaliseAvaliacoes() {
                                    <td className="border border-border px-4 py-2 font-medium">{escola.escola}</td>
                                    <td className="border border-border px-4 py-2 text-center bg-red-50 dark:bg-red-950/20">{escola.abaixo_do_basico}</td>
                                    <td className="border border-border px-4 py-2 text-center bg-yellow-50 dark:bg-yellow-950/20">{escola.basico}</td>
-                                   <td className="border border-border px-4 py-2 text-center bg-blue-50 dark:bg-blue-950/20">{escola.adequado}</td>
-                                   <td className="border border-border px-4 py-2 text-center bg-green-50 dark:bg-green-950/20">{escola.avancado}</td>
+                                  <td className="border border-border px-4 py-2 text-center bg-green-50 dark:bg-green-700/25 text-green-900 dark:text-green-200">{escola.adequado}</td>
+                                   <td className="border border-border px-4 py-2 text-center bg-green-600/25 dark:bg-green-950/55 text-green-900 dark:text-green-100">{escola.avancado}</td>
                                    <td className="border border-border px-4 py-2 text-center font-medium">{escola.total}</td>
                                  </tr>
                                ))
@@ -779,12 +828,12 @@ export default function AnaliseAvaliacoes() {
                                    <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
                                    <td className="border border-border px-4 py-2 text-center bg-red-50 dark:bg-red-950/20">{turma.abaixo_do_basico}</td>
                                    <td className="border border-border px-4 py-2 text-center bg-yellow-50 dark:bg-yellow-950/20">{turma.basico}</td>
-                                   <td className="border border-border px-4 py-2 text-center bg-blue-50 dark:bg-blue-950/20">{turma.adequado}</td>
-                                   <td className="border border-border px-4 py-2 text-center bg-green-50 dark:bg-green-950/20">{turma.avancado}</td>
+                                  <td className="border border-border px-4 py-2 text-center bg-green-50 dark:bg-green-700/25 text-green-900 dark:text-green-200">{turma.adequado}</td>
+                                  <td className="border border-border px-4 py-2 text-center bg-green-600/25 dark:bg-green-950/55 text-green-900 dark:text-green-100">{turma.avancado}</td>
                                    <td className="border border-border px-4 py-2 text-center font-medium">{turma.total}</td>
                                  </tr>
                                ))}
-                           <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">
+                           <tr className="bg-muted dark:bg-muted/50 font-semibold">
                              <td className="border border-border px-4 py-2">TOTAL GERAL</td>
                              <td className="border border-border px-4 py-2 text-center bg-red-100 dark:bg-red-950/30">
                                {dadosDisciplina.total_geral?.abaixo_do_basico ?? dadosDisciplina.geral?.abaixo_do_basico ?? 
@@ -798,13 +847,13 @@ export default function AnaliseAvaliacoes() {
                                   ? dadosDisciplina.por_escola?.reduce((sum, e) => sum + (e.basico || 0), 0) ?? 0
                                   : dadosDisciplina.por_turma?.reduce((sum, t) => sum + (t.basico || 0), 0) ?? 0)}
                              </td>
-                             <td className="border border-border px-4 py-2 text-center bg-blue-100 dark:bg-blue-950/30">
+                             <td className="border border-border px-4 py-2 text-center bg-green-100 dark:bg-green-700/35 text-green-900 dark:text-green-200">
                                {dadosDisciplina.total_geral?.adequado ?? dadosDisciplina.geral?.adequado ?? 
                                 (renderMode === 'escola' 
                                   ? dadosDisciplina.por_escola?.reduce((sum, e) => sum + (e.adequado || 0), 0) ?? 0
                                   : dadosDisciplina.por_turma?.reduce((sum, t) => sum + (t.adequado || 0), 0) ?? 0)}
                              </td>
-                             <td className="border border-border px-4 py-2 text-center bg-green-100 dark:bg-green-950/30">
+                             <td className="border border-border px-4 py-2 text-center bg-green-600/25 dark:bg-green-950/55 text-green-900 dark:text-green-100">
                                {dadosDisciplina.total_geral?.avancado ?? dadosDisciplina.geral?.avancado ?? 
                                 (renderMode === 'escola' 
                                   ? dadosDisciplina.por_escola?.reduce((sum, e) => sum + (e.avancado || 0), 0) ?? 0
@@ -862,7 +911,7 @@ export default function AnaliseAvaliacoes() {
                              : dadosDisciplina.por_turma?.map((turma, index: number) => (
                                  <tr key={index} className="hover:bg-muted transition-colors">
                                    <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
-                                   <td className="border border-border px-4 py-2 text-center">{formatDecimal(turma.proficiencia)}</td>
+                                   <td className="border border-border px-4 py-2 text-center">{formatDecimal(turma.proficiencia ?? (turma as { media?: number }).media)}</td>
                                  </tr>
                                ))}
                            <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">
@@ -920,7 +969,7 @@ export default function AnaliseAvaliacoes() {
                              : dadosDisciplina.por_turma?.map((turma, index: number) => (
                                  <tr key={index} className="hover:bg-muted transition-colors">
                                    <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
-                                   <td className="border border-border px-4 py-2 text-center">{formatDecimal(turma.nota)}</td>
+                                   <td className="border border-border px-4 py-2 text-center">{formatDecimal(turma.nota ?? (turma as { media?: number }).media)}</td>
                                  </tr>
                                ))}
                            <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">
@@ -952,7 +1001,15 @@ export default function AnaliseAvaliacoes() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-8">
-                  {Object.entries(apiData.acertos_por_habilidade).map(([disciplina, dadosDisciplina]) => (
+                  {Object.entries(apiData.acertos_por_habilidade)
+                    .sort(([aKey, aVal], [bKey, bVal]) => {
+                      if (aKey === 'GERAL') return -1;
+                      if (bKey === 'GERAL') return 1;
+                      const aMin = Math.min(...(aVal.questoes?.map((q) => q.numero_questao) ?? [Infinity]));
+                      const bMin = Math.min(...(bVal.questoes?.map((q) => q.numero_questao) ?? [Infinity]));
+                      return aMin - bMin;
+                    })
+                    .map(([disciplina, dadosDisciplina]) => (
                     <div key={disciplina} className="space-y-4">
                       <h4 className="text-xl font-bold text-foreground text-center uppercase">
                         {disciplina}

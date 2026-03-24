@@ -10,6 +10,7 @@ import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import type { NovaRespostaAPI, StudentDetailedResult } from "@/services/evaluationResultsApi";
 import { Question, TestData } from "@/types/evaluation-types";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 
 // Helper robusto para extrair série e turma de uma string de turma
@@ -236,6 +237,7 @@ export default function StudentBulletin({ testId, studentId, initialDisciplineSt
   const [studentGrade, setStudentGrade] = useState<string | null>(null);
   const [studentClass, setStudentClass] = useState<string | null>(null);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const studentNameRef = useRef<string | null>(null);
   const studentGradeRef = useRef<string | null>(null);
   const studentClassRef = useRef<string | null>(null);
@@ -707,16 +709,44 @@ export default function StudentBulletin({ testId, studentId, initialDisciplineSt
 
   const isLoading = loadingState.questions || loadingState.answers;
 
+  // Animação da barra de carregamento (0 → 75% → 0) enquanto carrega
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingProgress(0);
+      return;
+    }
+    let cancelled = false;
+    let value = 0;
+    let direction = 1;
+    const step = 8;
+    const interval = setInterval(() => {
+      if (cancelled) return;
+      value += direction * step;
+      if (value >= 75) {
+        value = 75;
+        direction = -1;
+      } else if (value <= 0) {
+        value = 0;
+        direction = 1;
+      }
+      setLoadingProgress(Math.max(0, Math.min(75, value)));
+    }, 120);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isLoading]);
+
   // Se há erro mas temos questões carregadas, mostrar com aviso
   if (error && bulletinQuestions.length === 0) {
     return (
-      <Card>
+      <Card className="bg-card border-border">
         <CardContent className="p-6 text-center">
-          <div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
-            <XCircle className="w-8 h-8 text-red-600" />
+          <div className="w-16 h-16 mx-auto mb-4 bg-red-100 dark:bg-red-900/40 rounded-full flex items-center justify-center">
+            <XCircle className="w-8 h-8 text-red-600 dark:text-red-400" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Erro ao Carregar Boletim</h3>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <h3 className="text-lg font-semibold text-foreground mb-2">Erro ao Carregar Boletim</h3>
+          <p className="text-muted-foreground mb-4">{error}</p>
         </CardContent>
       </Card>
     );
@@ -724,9 +754,12 @@ export default function StudentBulletin({ testId, studentId, initialDisciplineSt
 
   if (isLoading) {
     return (
-      <Card>
+      <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle>Boletim de Questões</CardTitle>
+          <CardTitle className="text-foreground">Boletim de Questões</CardTitle>
+          <div className="mt-3 w-full" role="progressbar" aria-label="Carregando boletim" aria-valuenow={loadingProgress} aria-valuemin={0} aria-valuemax={100} aria-valuetext="Carregando">
+            <Progress value={loadingProgress} className="h-2 bg-muted" />
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-8">
@@ -748,20 +781,20 @@ export default function StudentBulletin({ testId, studentId, initialDisciplineSt
 
   if (bulletinQuestions.length === 0) {
     return (
-      <Card>
+      <Card className="bg-card border-border">
         <CardContent className="p-6 text-center">
-          <p className="text-gray-600">Nenhuma questão encontrada nesta avaliação.</p>
+          <p className="text-muted-foreground">Nenhuma questão encontrada nesta avaliação.</p>
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <Card ref={cardRef}>
-      <CardHeader data-pdf-header className="border-b border-gray-200 pb-4">
+    <Card ref={cardRef} className="bg-card border-border">
+      <CardHeader data-pdf-header className="border-b border-border pb-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex-1 min-w-0">
-            <CardTitle className="text-lg font-semibold text-gray-900">Boletim de Questões</CardTitle>
+            <CardTitle className="text-lg font-semibold text-foreground">Boletim de Questões</CardTitle>
             {error && bulletinQuestions.length > 0 && (
               <p className="text-xs text-amber-600 mt-1">
                 Algumas informações podem estar incompletas
@@ -782,9 +815,9 @@ export default function StudentBulletin({ testId, studentId, initialDisciplineSt
               {isExportingPDF ? 'Exportando...' : 'Exportar PDF'}
             </Button>
             <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-gray-400" />
+              <Filter className="h-4 w-4 text-muted-foreground" />
               <Select value={filter} onValueChange={(value: FilterType) => setFilter(value)}>
-                <SelectTrigger className="w-44 h-9 border-gray-300">
+                <SelectTrigger className="w-44 h-9 border-border">
                   <SelectValue placeholder="Filtrar" />
                 </SelectTrigger>
                 <SelectContent>

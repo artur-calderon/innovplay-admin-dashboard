@@ -186,7 +186,6 @@ export default function CoinsAdmin() {
         })).filter((s) => s.id);
         setStates(data);
       } catch (err) {
-        console.error('Erro ao carregar estados:', err);
         toast({ title: 'Erro', description: 'Não foi possível carregar os estados.', variant: 'destructive' });
       } finally {
         setLoadingStates(false);
@@ -249,8 +248,9 @@ export default function CoinsAdmin() {
       return;
     }
     setLoadingSchools(true);
+    const schoolConfig = selectedCityId ? { meta: { cityId: selectedCityId } } : {};
     api
-      .get<School[] | { schools: School[] }>(`/school/city/${selectedCityId}`)
+      .get<School[] | { schools: School[] }>(`/school/city/${selectedCityId}`, schoolConfig)
       .then((res) => {
         const raw = res.data;
         const list = Array.isArray(raw) ? raw : (raw as { schools?: School[] })?.schools ?? [];
@@ -269,8 +269,9 @@ export default function CoinsAdmin() {
       return;
     }
     setLoadingClasses(true);
+    const classesConfig = selectedCityId ? { meta: { cityId: selectedCityId } } : {};
     api
-      .get<ClassItem[]>(`/classes/school/${selectedSchoolId}`)
+      .get<ClassItem[]>(`/classes/school/${selectedSchoolId}`, classesConfig)
       .then((res) => {
         const list = Array.isArray(res.data) ? res.data : [];
         setClasses(list);
@@ -292,8 +293,9 @@ export default function CoinsAdmin() {
       const schoolName = school?.name ?? '';
 
       if (selectedClassId) {
-        const res = await api.get(`/classes/${selectedClassId}/students`).catch(() =>
-          api.get(`/students/classes/${selectedClassId}`)
+        const studentConfig = selectedCityId ? { meta: { cityId: selectedCityId } } : {};
+        const res = await api.get(`/classes/${selectedClassId}/students`, studentConfig).catch(() =>
+          api.get(`/students/classes/${selectedClassId}`, studentConfig)
         );
         const data = res.data as Record<string, unknown>[] | { students?: Record<string, unknown>[] };
         rawList = Array.isArray(data) ? data : (data as { students?: Record<string, unknown>[] }).students ?? [];
@@ -311,7 +313,8 @@ export default function CoinsAdmin() {
           }))
         );
       } else {
-        const res = await api.get(`/students/school/${selectedSchoolId}`);
+        const schoolStudentsConfig = selectedCityId ? { meta: { cityId: selectedCityId } } : {};
+        const res = await api.get(`/students/school/${selectedSchoolId}`, schoolStudentsConfig);
         const data = Array.isArray(res.data) ? res.data : [];
         setStudents(
           data.map((s: Record<string, unknown>) => ({
@@ -326,13 +329,12 @@ export default function CoinsAdmin() {
         );
       }
     } catch (err) {
-      console.error('Erro ao carregar alunos:', err);
       setStudents([]);
       toast({ title: 'Erro', description: 'Não foi possível carregar os alunos.', variant: 'destructive' });
     } finally {
       setLoadingStudents(false);
     }
-  }, [selectedSchoolId, selectedClassId, schools, classes, toast]);
+  }, [selectedSchoolId, selectedClassId, selectedCityId, schools, classes, toast]);
 
   useEffect(() => {
     loadStudents();
@@ -348,10 +350,11 @@ export default function CoinsAdmin() {
     (async () => {
       for (let i = 0; i < toFetch.length && !cancelled; i += BATCH_SIZE) {
         const batch = toFetch.slice(i, i + BATCH_SIZE);
+        const avatarConfig = selectedCityId ? { meta: { cityId: selectedCityId } } : {};
         const results = await Promise.all(
           batch.map(({ id: studentId, user_id: userId }) =>
             api
-              .get<{ user?: { avatar_config?: AvatarConfig }; avatar_config?: AvatarConfig }>(`/users/${userId}`)
+              .get<{ user?: { avatar_config?: AvatarConfig }; avatar_config?: AvatarConfig }>(`/users/${userId}`, avatarConfig)
               .then((res) => {
                 const data = res.data?.user ?? res.data;
                 const config = data?.avatar_config;
@@ -414,7 +417,7 @@ export default function CoinsAdmin() {
     const descriptionToSend = creditDescription.trim() || selectedCreditReason.label;
     setIsSubmittingCredit(true);
     try {
-      await credit(selectedStudent.id, num, selectedCreditReason.apiReason, descriptionToSend);
+      await credit(selectedStudent.id, num, selectedCreditReason.apiReason, descriptionToSend, selectedCityId || undefined);
       toast({ title: 'Sucesso', description: `${formatCoins(num)} moedas creditadas.` });
       setCreditAmount('');
       setCreditDescription('');
@@ -443,7 +446,7 @@ export default function CoinsAdmin() {
     const descriptionToSend = debitDescription.trim() || selectedDebitReason.label;
     setIsSubmittingDebit(true);
     try {
-      await debit(selectedStudent.id, num, selectedDebitReason.apiReason, descriptionToSend);
+      await debit(selectedStudent.id, num, selectedDebitReason.apiReason, descriptionToSend, selectedCityId || undefined);
       toast({ title: 'Sucesso', description: `${formatCoins(num)} moedas debitadas.` });
       setDebitAmount('');
       setDebitDescription('');
@@ -460,12 +463,12 @@ export default function CoinsAdmin() {
 
   return (
     <div className="container max-w-6xl mx-auto py-6 px-4 space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-          <Coins className="h-8 w-8 text-primary" />
+      <div className="space-y-1.5">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+          <Coins className="h-7 w-7 sm:h-8 sm:w-8 text-primary shrink-0" />
           {pageTitle}
         </h1>
-        <p className="text-muted-foreground">
+        <p className="text-muted-foreground text-sm sm:text-base">
           {canEdit
             ? 'Filtre os alunos, selecione um e credite ou debite moedas.'
             : 'Consulte saldos dos alunos conforme seu escopo de acesso.'}

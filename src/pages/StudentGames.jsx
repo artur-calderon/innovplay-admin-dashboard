@@ -243,9 +243,9 @@ const StudentGames = () => {
 
     if (isLoading || isLoadingStudentInfo) {
         return (
-            <div className="container mx-auto py-6">
+            <div className="container mx-auto py-6 min-h-screen">
                 <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-8 h-8 animate-spin mr-2" />
+                    <Loader2 className="w-8 h-8 animate-spin mr-2 text-primary" />
                     <span>Carregando jogos...</span>
                 </div>
             </div>
@@ -253,13 +253,15 @@ const StudentGames = () => {
     }
 
     return (
-        <div className="container mx-auto py-6 space-y-6">
-            <div>
-                <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                    <Gamepad2 className="w-8 h-8 text-blue-600" />
-                    Meus Jogos
+        <div className="container mx-auto py-6 space-y-6 min-h-screen">
+            <div className="animate-fade-in-up space-y-1.5">
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3" id="games-page-title">
+                    <span className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110 shrink-0">
+                        <Gamepad2 className="w-5 h-5 text-white drop-shadow" />
+                    </span>
+                    <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">Meus Jogos</span>
                 </h2>
-                <p className="text-muted-foreground">Jogue e aprenda com seus jogos educativos</p>
+                <p className="text-muted-foreground text-sm sm:text-base font-medium">Jogue e aprenda com seus jogos educativos</p>
             </div>
 
             {/* Campo de Busca */}

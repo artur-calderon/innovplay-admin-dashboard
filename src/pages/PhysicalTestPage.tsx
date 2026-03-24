@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,12 +68,41 @@ import {
   Upload,
   Images,
   X,
-  Loader2
+  Loader2,
+  AlertTriangle,
+  ChevronRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useBatchCorrection } from "@/hooks/useBatchCorrection";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
+import { MultiSelect } from "@/components/ui/multi-select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+
+/** Resposta GET /physical-tests/test/<test_id>/scope */
+interface TestScopeClass {
+  id: string;
+  name: string;
+}
+interface TestScopeGrade {
+  id: string;
+  name: string;
+  classes: TestScopeClass[];
+}
+interface TestScopeSchool {
+  id: string;
+  name: string;
+  grades: TestScopeGrade[];
+}
+interface TestScopeResponse {
+  test_id: string;
+  test_title: string;
+  schools: TestScopeSchool[];
+}
 
 interface PhysicalTestStatus {
   applied_applications: number;
@@ -121,11 +150,354 @@ interface GeneratedForm {
   answer_sheet_sent_at?: string | null;
 }
 
+/** Resposta GET /physical-tests/task/<task_id>/status */
+interface TaskStatusProgress {
+  current: number;
+  total: number;
+  percentage: number;
+}
+interface TaskStatusSummary {
+  total_classes: number;
+  completed_classes: number;
+  successful_classes: number;
+  failed_classes: number;
+  total_students: number;
+  completed_students: number;
+  successful_students: number;
+  failed_students: number;
+  zip_minio_url?: string | null;
+  can_download: boolean;
+}
+interface TaskStatusClassError {
+  student_id?: string;
+  student_name?: string;
+  error: string;
+}
+interface TaskStatusClass {
+  class_id: string;
+  class_name: string;
+  school_name: string;
+  status: "pending" | "processing" | "completed" | "completed_with_errors";
+  total_students: number;
+  completed: number;
+  successful: number;
+  failed: number;
+  errors: TaskStatusClassError[];
+}
+interface TaskStatusErrorItem {
+  class_id?: string;
+  class_name?: string;
+  school_name?: string;
+  student_id?: string;
+  student_name?: string;
+  error: string;
+}
+interface TaskStatusResult {
+  success?: boolean;
+  test_id?: string;
+  test_title?: string;
+  total_questions?: number;
+  total_students?: number;
+  generated_forms?: number;
+  minio_url?: string;
+  download_size_bytes?: number;
+  forms?: Array<{
+    student_id?: string;
+    student_name?: string;
+    form_id?: string;
+    form_type?: string;
+    created_at?: string;
+  }>;
+  message?: string;
+}
+type TaskStatusPhase = "generating" | "saving" | "zipping" | "uploading" | "done";
+interface TaskStatusResponse {
+  task_id: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  message?: string;
+  phase?: TaskStatusPhase;
+  error?: string;
+  progress?: TaskStatusProgress;
+  summary?: TaskStatusSummary | null;
+  classes?: TaskStatusClass[];
+  errors?: TaskStatusErrorItem[] | null;
+  result?: TaskStatusResult;
+}
+
+const getGenerationStorageKey = (testId: string) =>
+  `physical-test-generation:${testId}`;
+
+function classStatusLabel(status: TaskStatusClass["status"]) {
+  switch (status) {
+    case "pending":
+      return "Aguardando";
+    case "processing":
+      return "Processando";
+    case "completed":
+      return "Concluída";
+    case "completed_with_errors":
+      return "Concluída com erros";
+    default:
+      return status;
+  }
+}
+
+function classStatusVariant(status: TaskStatusClass["status"]) {
+  switch (status) {
+    case "pending":
+      return "secondary";
+    case "processing":
+      return "default";
+    case "completed":
+      return "default";
+    case "completed_with_errors":
+      return "destructive";
+    default:
+      return "secondary";
+  }
+}
+
+function phaseLabel(phase: TaskStatusPhase | undefined) {
+  switch (phase) {
+    case "generating":
+      return "Gerando PDFs";
+    case "saving":
+      return "Salvando no banco de dados";
+    case "zipping":
+      return "Criando ZIP para download";
+    case "uploading":
+      return "Enviando arquivos para o servidor";
+    case "done":
+      return "Concluído";
+    default:
+      return null;
+  }
+}
+
+function phaseTone(phase: TaskStatusPhase | undefined) {
+  switch (phase) {
+    case "generating":
+      return "text-primary";
+    case "saving":
+      return "text-primary";
+    case "zipping":
+      return "text-amber-700 dark:text-amber-300";
+    case "uploading":
+      return "text-amber-700 dark:text-amber-300";
+    case "done":
+      return "text-green-700 dark:text-green-300";
+    default:
+      return "text-muted-foreground";
+  }
+}
+
+function GenerationProgressPanel({
+  taskStatusData,
+  isGenerating,
+  correctionProgress,
+  onDownloadAll,
+  canDownloadAll,
+  onDismiss,
+}: {
+  taskStatusData: TaskStatusResponse | null;
+  isGenerating: boolean;
+  correctionProgress: number;
+  onDownloadAll: () => void;
+  canDownloadAll: boolean;
+  onDismiss?: () => void;
+}) {
+  const [errorsOpen, setErrorsOpen] = useState(true);
+  const progressPct = taskStatusData?.progress?.percentage ?? correctionProgress;
+  const summary = taskStatusData?.summary;
+  const classesList = taskStatusData?.classes ?? [];
+  const errorsList = taskStatusData?.errors ?? [];
+  const status = taskStatusData?.status;
+  const isCompleted = status === "completed";
+  const isFailed = status === "failed";
+  const canDownload = !!(summary?.can_download && canDownloadAll);
+  const phase = taskStatusData?.phase;
+  const phaseText = phaseLabel(phase);
+  const showPhasePill =
+    !!phaseText &&
+    (status === "processing" || status === "completed") &&
+    (progressPct >= 100 || phase !== "generating");
+
+  return (
+    <div className="mb-6 rounded-xl border bg-muted/30 p-5 space-y-5">
+      {/* Mensagem e barra de progresso */}
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <p className="text-sm font-medium text-foreground">
+            {taskStatusData?.message ?? (isGenerating ? "Conectando ao servidor..." : "Status da geração")}
+          </p>
+          {showPhasePill && (
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border bg-background px-2 py-0.5 text-[11px] font-medium ${phaseTone(phase)}`}
+              title={phaseText ?? undefined}
+            >
+              {phaseText}
+              {status === "processing" && <Loader2 className="h-3 w-3 animate-spin" />}
+            </span>
+          )}
+        </div>
+        <Progress value={progressPct} className="h-2.5 w-full" />
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>{progressPct}%</span>
+          {taskStatusData?.progress && (
+            <span>
+              {taskStatusData.progress.current} / {taskStatusData.progress.total} alunos
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Resumo (turmas e alunos) */}
+      {summary && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="rounded-lg border bg-background p-3">
+            <p className="text-xs text-muted-foreground">Turmas</p>
+            <p className="text-lg font-semibold">
+              {summary.completed_classes}/{summary.total_classes}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-background p-3">
+            <p className="text-xs text-muted-foreground">Alunos processados</p>
+            <p className="text-lg font-semibold">
+              {summary.completed_students}/{summary.total_students}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-background p-3">
+            <p className="text-xs text-muted-foreground">Sucesso</p>
+            <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+              {summary.successful_students}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-background p-3">
+            <p className="text-xs text-muted-foreground">Falhas</p>
+            <p className="text-lg font-semibold text-red-600 dark:text-red-400">
+              {summary.failed_students}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Lista de turmas */}
+      {classesList.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-foreground">Turmas</p>
+          <ScrollArea className="h-[180px] rounded-lg border p-2">
+            <ul className="space-y-1.5">
+              {classesList.map((c) => (
+                <li
+                  key={c.class_id}
+                  className="flex items-center justify-between gap-2 rounded-md bg-background px-3 py-2 text-sm"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {c.status === "processing" && (
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+                    )}
+                    {c.status === "completed" && (
+                      <CheckCircle className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                    )}
+                    {c.status === "completed_with_errors" && (
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    )}
+                    {c.status === "pending" && (
+                      <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="font-medium truncate">{c.class_name}</span>
+                    <span className="text-muted-foreground truncate text-xs hidden sm:inline">
+                      {c.school_name}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-muted-foreground text-xs">
+                      {c.completed}/{c.total_students}
+                    </span>
+                    <Badge variant={classStatusVariant(c.status)} className="text-xs">
+                      {classStatusLabel(c.status)}
+                    </Badge>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </ScrollArea>
+        </div>
+      )}
+
+      {/* Erros (lista única turma + aluno) */}
+      {errorsList.length > 0 && (
+        <Collapsible open={errorsOpen} onOpenChange={setErrorsOpen}>
+          <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-destructive hover:underline">
+            <ChevronRight
+              className={`h-4 w-4 shrink-0 transition-transform duration-200 ${errorsOpen ? "rotate-90" : ""}`}
+            />
+            Erros na geração ({errorsList.length})
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ScrollArea className="h-[140px] mt-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2">
+              <ul className="space-y-2 text-sm">
+                {errorsList.map((err, i) => (
+                  <li key={i} className="rounded bg-background/80 px-2 py-1.5">
+                    <span className="font-medium">
+                      {err.class_name && `${err.class_name} · `}
+                      {err.student_name ?? "Aluno"}:{" "}
+                    </span>
+                    <span className="text-muted-foreground text-xs">{err.error}</span>
+                  </li>
+                ))}
+              </ul>
+            </ScrollArea>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
+      {/* Falha global */}
+      {isFailed && taskStatusData?.error && (
+        <Alert variant="destructive">
+          <XCircle className="h-4 w-4" />
+          <AlertDescription>{taskStatusData.error}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Concluído: mensagem + Baixar ZIP + Fechar */}
+      {isCompleted && (
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
+          <p className="text-sm text-green-600 dark:text-green-400 font-medium flex-1 min-w-0">
+            {taskStatusData?.message ?? "Geração concluída."}
+          </p>
+          <div className="flex items-center gap-2">
+            {canDownload && (
+              <Button onClick={onDownloadAll} size="sm" className="bg-green-600 hover:bg-green-700">
+                <Download className="h-4 w-4 mr-2" />
+                Baixar ZIP
+              </Button>
+            )}
+            {onDismiss && (
+              <Button variant="ghost" size="sm" onClick={onDismiss}>
+                Fechar
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isGenerating && !isCompleted && !isFailed && (
+        <p className="text-xs text-muted-foreground flex items-center gap-1">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Não feche esta página.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function PhysicalTestPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+  const isCorretor = Boolean(user?.email?.toLowerCase().includes('corretor'));
 
   // Estados principais
   const [isLoading, setIsLoading] = useState(true);
@@ -137,13 +509,21 @@ export default function PhysicalTestPage() {
   const [correctionProgress, setCorrectionProgress] = useState(0);
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [taskId, setTaskId] = useState<string | null>(null);
+  const [taskStatusData, setTaskStatusData] = useState<TaskStatusResponse | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Estados para configuração de blocos
   const [useBlocks, setUseBlocks] = useState(false);
   const [numBlocks, setNumBlocks] = useState(2);
   const [questionsPerBlock, setQuestionsPerBlock] = useState(5);
+  const [minutesPerBlock, setMinutesPerBlock] = useState(30);
   const [separateBySubject, setSeparateBySubject] = useState(false);
+
+  // Escopo da prova (GET /scope) e seleção para geração
+  const [testScope, setTestScope] = useState<TestScopeResponse | null>(null);
+  const [generateScopeSchoolIds, setGenerateScopeSchoolIds] = useState<string[]>([]);
+  const [generateScopeGradeIds, setGenerateScopeGradeIds] = useState<string[]>([]);
+  const [generateScopeClassIds, setGenerateScopeClassIds] = useState<string[]>([]);
 
   // Estados para informações da avaliação (para validação)
   const [testTotalQuestions, setTestTotalQuestions] = useState<number | null>(null);
@@ -173,6 +553,7 @@ export default function PhysicalTestPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isMarkingAsSent, setIsMarkingAsSent] = useState<string | null>(null);
+  const [formsSearchTerm, setFormsSearchTerm] = useState("");
 
   // Estados para alunos
   const [students, setStudents] = useState<any[]>([]);
@@ -183,10 +564,95 @@ export default function PhysicalTestPage() {
   const [totalStudents, setTotalStudents] = useState(0);
   const [classes, setClasses] = useState<any[]>([]);
 
+  // Listas planas do escopo (para multi-selects), deduplicadas por id
+  const scopeSchoolsList = useMemo(() => {
+    if (!testScope?.schools?.length) return [];
+    return testScope.schools.map((s) => ({ id: s.id, name: s.name }));
+  }, [testScope]);
+
+  const scopeGradesList = useMemo(() => {
+    if (!testScope?.schools?.length) return [];
+    const seen = new Set<string>();
+    const list: { id: string; name: string }[] = [];
+    for (const school of testScope.schools) {
+      for (const g of school.grades || []) {
+        if (!seen.has(g.id)) {
+          seen.add(g.id);
+          list.push({ id: g.id, name: g.name });
+        }
+      }
+    }
+    return list;
+  }, [testScope]);
+
+  const scopeClassesList = useMemo(() => {
+    if (!testScope?.schools?.length) return [];
+    const seen = new Set<string>();
+    const list: { id: string; name: string }[] = [];
+    for (const school of testScope.schools) {
+      for (const g of school.grades || []) {
+        for (const c of g.classes || []) {
+          if (!seen.has(c.id)) {
+            seen.add(c.id);
+            list.push({ id: c.id, name: c.name });
+          }
+        }
+      }
+    }
+    return list;
+  }, [testScope]);
+
+  const filteredGeneratedForms = useMemo(() => {
+    if (!formsSearchTerm.trim()) return generatedForms;
+    const term = formsSearchTerm.trim().toLowerCase();
+    return generatedForms.filter(
+      (form) =>
+        (form.student_name ?? "").toLowerCase().includes(term)
+    );
+  }, [generatedForms, formsSearchTerm]);
+
+  const checkPendingGeneration = async () => {
+    if (!id) return;
+    if (typeof window === "undefined") return;
+
+    try {
+      const storageKey = getGenerationStorageKey(id);
+      const stored = window.localStorage.getItem(storageKey);
+      if (!stored) return;
+
+      const parsed = JSON.parse(stored) as { taskId?: string | null };
+      if (!parsed?.taskId) {
+        window.localStorage.removeItem(storageKey);
+        return;
+      }
+
+      const response = await api.get(`/physical-tests/task/${parsed.taskId}/status`);
+      const data = response.data as TaskStatusResponse;
+
+      if (data.status === "processing" || data.status === "pending") {
+        setIsGenerating(true);
+        setTaskStatusData(data);
+        setCorrectionProgress(data.progress?.percentage ?? 0);
+        startPolling(parsed.taskId);
+        return;
+      }
+
+      window.localStorage.removeItem(storageKey);
+    } catch (error: any) {
+      const status = error?.response?.status;
+      if (status === 404 && id) {
+        window.localStorage.removeItem(getGenerationStorageKey(id));
+      } else {
+        console.error("Erro ao verificar geração pendente:", error);
+      }
+    }
+  };
+
   // Carregar dados iniciais
   useEffect(() => {
     if (id) {
       loadTestData();
+      checkPendingGeneration();
     }
   }, [id]);
 
@@ -219,6 +685,15 @@ export default function PhysicalTestPage() {
         answer_sheet_sent_at: form.answer_sheet_sent_at || null
       }));
       setGeneratedForms(forms);
+
+      // Carregar escopo da prova (escolas/séries/turmas) para filtro de geração
+      try {
+        const scopeResponse = await api.get(`/physical-tests/test/${id}/scope`);
+        setTestScope(scopeResponse.data as TestScopeResponse);
+      } catch (scopeErr) {
+        console.warn("Não foi possível carregar escopo da prova:", scopeErr);
+        setTestScope(null);
+      }
 
       // Buscar informações da avaliação para validação de blocos
       try {
@@ -292,8 +767,6 @@ export default function PhysicalTestPage() {
   const startPolling = (taskId: string) => {
     if (!id) return;
 
-    setCorrectionProgress(20);
-
     // Limpar intervalo anterior se existir
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
@@ -303,17 +776,14 @@ export default function PhysicalTestPage() {
     pollingIntervalRef.current = setInterval(async () => {
       try {
         const response = await api.get(`/physical-tests/task/${taskId}/status`);
-        const data = response.data;
+        const data = response.data as TaskStatusResponse;
 
-        console.log("📊 Status do polling:", data.status);
-
-        // Atualizar progresso visual
-        if (data.status === 'processing') {
-          setCorrectionProgress(prev => Math.min(prev + 5, 80));
-        }
+        setTaskStatusData(data);
+        const pct = data.progress?.percentage ?? 0;
+        setCorrectionProgress(pct);
 
         // SUCESSO: parar polling e exibir resultado
-        if (data.status === 'completed') {
+        if (data.status === "completed") {
           if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
             pollingIntervalRef.current = null;
@@ -322,31 +792,32 @@ export default function PhysicalTestPage() {
           setCorrectionProgress(100);
           setIsGenerating(false);
 
-          // Processar resultado
-          const result = data.result;
+          if (typeof window !== "undefined" && id) {
+            window.localStorage.removeItem(getGenerationStorageKey(id));
+          }
 
-          // Mapear form_id para id para compatibilidade
-          const mappedForms = (result.forms || []).map((form: any) => ({
+          const result = data.result;
+          const mappedForms = (result?.forms || []).map((form: any) => ({
             ...form,
             id: form.form_id || form.id,
             created_at: form.created_at || new Date().toISOString(),
             updated_at: form.created_at || new Date().toISOString(),
-            status: 'gerado',
-            answer_sheet_sent_at: form.answer_sheet_sent_at || null
+            status: "gerado",
+            answer_sheet_sent_at: form.answer_sheet_sent_at || null,
           }));
-
           setGeneratedForms(mappedForms);
 
+          const total = result?.generated_forms ?? result?.forms?.length ?? mappedForms.length;
+          const totalStudents = result?.total_students ?? data.summary?.total_students;
           toast({
             title: "✅ Avaliações geradas com sucesso!",
-            description: `${result.generated_forms || result.forms?.length || 0} avaliações foram geradas para ${result.total_students} alunos.`,
+            description: data.message || `${total} avaliações foram geradas${totalStudents ? ` para ${totalStudents} alunos` : ""}.`,
           });
-
           setCorrectionProgress(0);
         }
 
         // ERRO: parar polling e exibir erro
-        if (data.status === 'failed') {
+        if (data.status === "failed") {
           if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
             pollingIntervalRef.current = null;
@@ -355,18 +826,21 @@ export default function PhysicalTestPage() {
           setIsGenerating(false);
           setCorrectionProgress(0);
 
+          if (typeof window !== "undefined" && id) {
+            window.localStorage.removeItem(getGenerationStorageKey(id));
+          }
+
           toast({
             title: "❌ Erro ao gerar formulários",
-            description: data.error || "Erro desconhecido ao gerar avaliações",
+            description: data.error || data.message || "Erro desconhecido ao gerar avaliações",
             variant: "destructive",
           });
         }
 
-        // RETRYING: mostrar mensagem
-        if (data.status === 'retrying') {
+        if (data.status === "retrying") {
           toast({
             title: "🔄 Tentando novamente...",
-            description: `Erro detectado. Tentativa ${data.retry_count || 1}/2...`,
+            description: data.message || "Erro detectado. Nova tentativa em andamento.",
           });
         }
 
@@ -380,6 +854,11 @@ export default function PhysicalTestPage() {
 
         setIsGenerating(false);
         setCorrectionProgress(0);
+        setTaskStatusData(null);
+
+        if (typeof window !== "undefined" && id) {
+          window.localStorage.removeItem(getGenerationStorageKey(id));
+        }
 
         toast({
           title: "Erro",
@@ -400,6 +879,10 @@ export default function PhysicalTestPage() {
         setIsGenerating(false);
         setCorrectionProgress(0);
 
+        if (typeof window !== "undefined" && id) {
+          window.localStorage.removeItem(getGenerationStorageKey(id));
+        }
+
         toast({
           title: "⚠️ Timeout",
           description: "A geração está demorando mais do que o esperado. Por favor, verifique o status manualmente ou tente novamente.",
@@ -414,7 +897,8 @@ export default function PhysicalTestPage() {
 
     try {
       setIsGenerating(true);
-      setCorrectionProgress(10);
+      setTaskStatusData(null);
+      setCorrectionProgress(0);
       setShowGenerateDialog(false); // Fechar dialog ao iniciar geração
 
       // Preparar payload com parâmetros de blocos no formato esperado pelo backend
@@ -426,7 +910,8 @@ export default function PhysicalTestPage() {
         // Se separar por disciplina, enviar blocks_config com separate_by_subject
         payload.blocks_config = {
           use_blocks: true,
-          separate_by_subject: true
+          separate_by_subject: true,
+          minutes_per_block: minutesPerBlock
         };
       } else if (useBlocks) {
         // Se usar blocos normais, enviar configurações de blocos
@@ -434,7 +919,8 @@ export default function PhysicalTestPage() {
           use_blocks: true,
           num_blocks: numBlocks,
           questions_per_block: questionsPerBlock,
-          separate_by_subject: false
+          separate_by_subject: false,
+          minutes_per_block: minutesPerBlock
         };
       } else {
         // Se não usar blocos, enviar blocks_config com use_blocks: false
@@ -445,6 +931,10 @@ export default function PhysicalTestPage() {
 
       // Adicionar use_hybrid ao payload
       payload.use_hybrid = true;
+
+      if (generateScopeSchoolIds.length > 0) payload.school_ids = generateScopeSchoolIds;
+      if (generateScopeGradeIds.length > 0) payload.grade_ids = generateScopeGradeIds;
+      if (generateScopeClassIds.length > 0) payload.class_ids = generateScopeClassIds;
 
       // 1. DISPARAR GERAÇÃO (retorna imediatamente com 202)
       const response = await api.post(`/physical-tests/test/${id}/generate-forms`, payload, {
@@ -457,6 +947,20 @@ export default function PhysicalTestPage() {
       if (response.status === 202) {
         const data = response.data;
         setTaskId(data.task_id);
+
+        if (typeof window !== "undefined" && id) {
+          try {
+            window.localStorage.setItem(
+              getGenerationStorageKey(id),
+              JSON.stringify({
+                taskId: data.task_id,
+                startedAt: new Date().toISOString(),
+              })
+            );
+          } catch (storageError) {
+            console.warn("Não foi possível salvar geração no localStorage:", storageError);
+          }
+        }
 
         toast({
           title: "⏳ Geração iniciada",
@@ -1084,11 +1588,11 @@ export default function PhysicalTestPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="forms" className="space-y-6">
+      <Tabs defaultValue={isCorretor ? "correction" : "forms"} className="space-y-6">
         <TabsList>
-          <TabsTrigger value="forms">Avaliações Geradas</TabsTrigger>
+          {!isCorretor && <TabsTrigger value="forms">Avaliações Geradas</TabsTrigger>}
           <TabsTrigger value="correction">Correção</TabsTrigger>
-          <TabsTrigger value="students">Alunos</TabsTrigger>
+          {!isCorretor && <TabsTrigger value="students">Alunos</TabsTrigger>}
         </TabsList>
 
         {/* Tab: Avaliações Geradas */}
@@ -1138,14 +1642,105 @@ export default function PhysicalTestPage() {
                         Gerar Avaliações
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[500px]">
+                    <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
                         <DialogTitle>Configurar Geração de Avaliações</DialogTitle>
                         <DialogDescription>
-                          Configure as opções de blocos para a geração das avaliações físicas.
+                          Escolha para qual escopo gerar e configure as opções de blocos.
                         </DialogDescription>
                       </DialogHeader>
                       <div className="space-y-6 py-4">
+                        {/* Gerar para escopo (escolas/séries/turmas) */}
+                        {testScope && (
+                          <div className="space-y-4 rounded-lg border border-slate-200 dark:border-slate-800 p-4 bg-slate-50/50 dark:bg-slate-900/30">
+                            <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Gerar para escopo</h4>
+                            <p className="text-xs text-muted-foreground">
+                              Deixe em branco para gerar para todo o escopo da prova. Selecione escolas, séries ou turmas para gerar apenas para elas.
+                            </p>
+                            {scopeSchoolsList.length === 0 ? (
+                              <p className="text-xs text-muted-foreground">Nenhuma turma com aplicação para esta prova.</p>
+                            ) : (
+                              <>
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <Label className="text-sm">Escola(s)</Label>
+                                    {scopeSchoolsList.length > 0 && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                                        onClick={() => setGenerateScopeSchoolIds(scopeSchoolsList.map((o) => o.id))}
+                                      >
+                                        Selecionar todas
+                                      </Button>
+                                    )}
+                                  </div>
+                                  <MultiSelect
+                                    options={scopeSchoolsList}
+                                    selected={generateScopeSchoolIds}
+                                    onChange={setGenerateScopeSchoolIds}
+                                    placeholder="Todas as escolas"
+                                    label=""
+                                    mode="popover"
+                                    className="w-full"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <Label className="text-sm">Série(s)/Ano(s)</Label>
+                                    {scopeGradesList.length > 0 && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                                        onClick={() => setGenerateScopeGradeIds(scopeGradesList.map((o) => o.id))}
+                                      >
+                                        Selecionar todas
+                                      </Button>
+                                    )}
+                                  </div>
+                                  <MultiSelect
+                                    options={scopeGradesList}
+                                    selected={generateScopeGradeIds}
+                                    onChange={setGenerateScopeGradeIds}
+                                    placeholder="Todas as séries"
+                                    label=""
+                                    mode="popover"
+                                    className="w-full"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <Label className="text-sm">Turma(s)</Label>
+                                    {scopeClassesList.length > 0 && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                                        onClick={() => setGenerateScopeClassIds(scopeClassesList.map((o) => o.id))}
+                                      >
+                                        Selecionar todas
+                                      </Button>
+                                    )}
+                                  </div>
+                                  <MultiSelect
+                                    options={scopeClassesList}
+                                    selected={generateScopeClassIds}
+                                    onChange={setGenerateScopeClassIds}
+                                    placeholder="Todas as turmas"
+                                    label=""
+                                    mode="popover"
+                                    className="w-full"
+                                  />
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+
                         {/* Opção de usar blocos */}
                         <div className="flex items-center space-x-2">
                           <Checkbox
@@ -1188,6 +1783,23 @@ export default function PhysicalTestPage() {
                           <p className="text-xs text-muted-foreground pl-6">
                             Quando ativado, cada disciplina terá seu próprio bloco.
                           </p>
+                        )}
+
+                        {/* Minutos por bloco (quando usar blocos ou separar por disciplina) */}
+                        {(useBlocks || separateBySubject) && (
+                          <div className="space-y-2 pl-6">
+                            <Label htmlFor="minutes-per-block">Minutos por Bloco</Label>
+                            <Input
+                              id="minutes-per-block"
+                              type="number"
+                              min="1"
+                              value={minutesPerBlock}
+                              onChange={(e) => setMinutesPerBlock(parseInt(e.target.value) || 30)}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Tempo em minutos disponível para cada bloco na aplicação da prova.
+                            </p>
+                          </div>
                         )}
 
                         {/* Configurações de blocos (apenas se useBlocks estiver ativado) */}
@@ -1310,16 +1922,15 @@ export default function PhysicalTestPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {isGenerating && (
-                <div className="mb-4 space-y-2">
-                  <Progress value={correctionProgress} className="w-full" />
-                  <p className="text-sm text-muted-foreground text-center">
-                    ⏳ Gerando formulários PDF em background... {correctionProgress}%
-                  </p>
-                  <p className="text-xs text-muted-foreground text-center">
-                    Isso pode levar alguns minutos. Não feche esta página.
-                  </p>
-                </div>
+              {(isGenerating || taskStatusData) && (
+                <GenerationProgressPanel
+                  taskStatusData={taskStatusData}
+                  isGenerating={isGenerating}
+                  correctionProgress={correctionProgress}
+                  onDownloadAll={handleDownloadAll}
+                  canDownloadAll={!!id}
+                  onDismiss={() => setTaskStatusData(null)}
+                />
               )}
 
               {generatedForms.length === 0 ? (
@@ -1332,6 +1943,22 @@ export default function PhysicalTestPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  <div className="relative max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                    <Input
+                      type="search"
+                      placeholder="Pesquisar aluno para baixar..."
+                      value={formsSearchTerm}
+                      onChange={(e) => setFormsSearchTerm(e.target.value)}
+                      className="pl-9"
+                      aria-label="Pesquisar aluno"
+                    />
+                    {formsSearchTerm && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                        {filteredGeneratedForms.length} {filteredGeneratedForms.length === 1 ? "resultado" : "resultados"}
+                      </span>
+                    )}
+                  </div>
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1344,7 +1971,14 @@ export default function PhysicalTestPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {generatedForms.map((form) => (
+                      {filteredGeneratedForms.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                            Nenhum aluno encontrado para &quot;{formsSearchTerm}&quot;.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredGeneratedForms.map((form) => (
                         <TableRow key={form.id}>
                           <TableCell className="font-medium">
                             {form.student_name}
@@ -1417,7 +2051,8 @@ export default function PhysicalTestPage() {
                             </DropdownMenu>
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ))
+                    )}
                     </TableBody>
                   </Table>
                 </div>

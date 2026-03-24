@@ -10,9 +10,11 @@ import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import { AvatarPreview } from "@/components/profile/AvatarPreview";
 import { AvatarCustomizer } from "@/components/profile/AvatarCustomizer";
+import { RewardsPreferencesSection } from "@/components/profile/RewardsPreferencesSection";
 import { ChangePasswordForm } from "@/components/profile/ChangePasswordForm";
 import { PersonalDataForm } from "@/components/profile/PersonalDataForm";
 import { useAvatarConfig } from "@/hooks/useAvatarConfig";
+import { useStudentPreferences } from "@/context/StudentPreferencesContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface StudentData {
@@ -132,6 +134,7 @@ interface UserData {
 const Profile = () => {
   const user = useAuth((state) => state.user);
   const navigate = useNavigate();
+  const studentPrefs = useStudentPreferences();
   const [profileData, setProfileData] = useState<StudentData | TeacherData | UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [userTraits, setUserTraits] = useState<string[]>([]);
@@ -162,11 +165,10 @@ const Profile = () => {
             const traits = detailedUser.traits || detailedUser.characteristics || [];
             setUserTraits(Array.isArray(traits) ? traits : []);
           }
-        } catch (error) {
-          console.error('Erro ao carregar características:', error);
+        } catch {
+          // Ignorar erro ao carregar características
         }
-      } catch (error) {
-        console.error('Erro ao buscar dados do perfil:', error);
+      } catch {
         toast.error('Erro ao carregar dados do perfil');
       } finally {
         setLoading(false);
@@ -213,27 +215,17 @@ const Profile = () => {
     "Email": studentData?.email || user?.email || "usuario@exemplo.com",
   };
 
-  const accountDetails = {
-    "Nome de exibição": user?.name || "s_wilson_168920",
-    "Conta criada": formatDate(user?.created_at) || "Data não informada",
-    "Último login": "August 22, 2024",
-    "Status da assinatura": "Membro Premium",
-    "Verificação da conta": "Verificada",
-    "Preferência de idioma": "Português",
-    "Fuso horário": "GMT-3 (Brasília)",
-  };
-
   const renderDetailSection = (title: string, details: Record<string, string>) => (
-    <Card className="mb-6">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-xl">{title}</CardTitle>
+    <Card className="mb-4 sm:mb-6 overflow-hidden">
+      <CardHeader className="pb-2 px-4 sm:px-6">
+        <CardTitle className="text-lg sm:text-xl break-words">{title}</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <CardContent className="px-4 sm:px-6 min-w-0">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           {Object.entries(details).map(([key, value]) => (
-            <div key={key} className="flex flex-col space-y-1">
-              <div className="text-sm text-muted-foreground">{key}:</div>
-              <div className="font-medium">
+            <div key={key} className="flex flex-col space-y-1 min-w-0">
+              <div className="text-sm text-muted-foreground shrink-0">{key}:</div>
+              <div className="font-medium min-w-0 break-words overflow-hidden">
                 {key === "Verificação da conta" && value === "Verificada" ? (
                   <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-md bg-green-100 text-green-800">
                     {value}
@@ -265,61 +257,61 @@ const Profile = () => {
     const estadoNome = data.city?.state || data.estado || "";
 
     return (
-      <div className="space-y-6">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <School className="h-5 w-5 text-innov-blue" />
+      <div className="space-y-6 min-w-0">
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-3 px-4 sm:px-6">
+            <CardTitle className="flex items-center gap-2 text-xl break-words">
+              <School className="h-5 w-5 text-innov-blue shrink-0" />
               Informações Escolares
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 sm:px-6 min-w-0">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Escola:</span>
-                  <span className="font-medium">{data.school?.name || "Não informado"}</span>
+              <div className="space-y-3 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                  <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground shrink-0">Escola:</span>
+                  <span className="font-medium break-words min-w-0">{data.school?.name || "Não informado"}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <BookOpen className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Série:</span>
-                  <span className="font-medium">{serie?.name || "Não informado"}</span>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                  <BookOpen className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground shrink-0">Série:</span>
+                  <span className="font-medium break-words min-w-0">{serie?.name || "Não informado"}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Turma:</span>
-                  <span className="font-medium">{turma?.name || "Não informado"}</span>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                  <Users className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground shrink-0">Turma:</span>
+                  <span className="font-medium break-words min-w-0">{turma?.name || "Não informado"}</span>
                 </div>
                 {data.school?.address && (
-                  <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Endereço da Escola:</span>
-                    <span className="font-medium">{data.school.address}</span>
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-2 min-w-0">
+                    <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-sm text-muted-foreground shrink-0">Endereço da Escola:</span>
+                    <span className="font-medium break-words min-w-0">{data.school.address}</span>
                   </div>
                 )}
               </div>
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Data de Nascimento:</span>
-                  <span className="font-medium">{formatDate(data.birth_date)}</span>
+              <div className="space-y-3 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                  <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground shrink-0">Data de Nascimento:</span>
+                  <span className="font-medium break-words min-w-0">{formatDate(data.birth_date)}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Matrícula:</span>
-                  <span className="font-medium">{data.registration || "Não informado"}</span>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                  <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground shrink-0">Matrícula:</span>
+                  <span className="font-medium break-words min-w-0">{data.registration || "Não informado"}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Cadastrado em:</span>
-                  <span className="font-medium">{formatDate(data.created_at)}</span>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                  <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground shrink-0">Cadastrado em:</span>
+                  <span className="font-medium break-words min-w-0">{formatDate(data.created_at)}</span>
                 </div>
                 {(cidadeNome !== "Não informado" || estadoNome) && (
-                  <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Cidade:</span>
-                    <span className="font-medium">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                    <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-sm text-muted-foreground shrink-0">Cidade:</span>
+                    <span className="font-medium break-words min-w-0">
                       {cidadeNome}{estadoNome ? ` - ${estadoNome}` : ""}
                     </span>
                   </div>
@@ -329,41 +321,41 @@ const Profile = () => {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <User className="h-5 w-5 text-innov-blue" />
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-3 px-4 sm:px-6">
+            <CardTitle className="flex items-center gap-2 text-xl break-words">
+              <User className="h-5 w-5 text-innov-blue shrink-0" />
               Dados da Conta
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 sm:px-6 min-w-0">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Email:</span>
-                  <span className="font-medium">{data.email || "Não informado"}</span>
+              <div className="space-y-3 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                  <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground shrink-0">Email:</span>
+                  <span className="font-medium break-words min-w-0">{data.email || "Não informado"}</span>
                 </div>
                 {data.full_name && (
-                  <div className="flex items-center gap-2">
-                    <User className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Nome Completo:</span>
-                    <span className="font-medium">{data.full_name}</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                    <User className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-sm text-muted-foreground shrink-0">Nome Completo:</span>
+                    <span className="font-medium break-words min-w-0">{data.full_name}</span>
                   </div>
                 )}
                 {data.address && (
-                  <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Endereço:</span>
-                    <span className="font-medium">{data.address}</span>
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-2 min-w-0">
+                    <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-sm text-muted-foreground shrink-0">Endereço:</span>
+                    <span className="font-medium break-words min-w-0">{data.address}</span>
                   </div>
                 )}
               </div>
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Conta criada:</span>
-                  <span className="font-medium">{formatDate(data.created_at)}</span>
+              <div className="space-y-3 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                  <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground shrink-0">Conta criada:</span>
+                  <span className="font-medium break-words min-w-0">{formatDate(data.created_at)}</span>
                 </div>
               </div>
             </div>
@@ -371,22 +363,19 @@ const Profile = () => {
         </Card>
 
         {professores.length > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <Users className="h-5 w-5 text-innov-blue" />
+          <Card className="overflow-hidden">
+            <CardHeader className="pb-3 px-4 sm:px-6">
+              <CardTitle className="flex items-center gap-2 text-xl break-words">
+                <Users className="h-5 w-5 text-innov-blue shrink-0" />
                 Professores
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-4 sm:px-6 min-w-0">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {professores.map((professor, index) => (
-                  <div key={professor.id || index} className="p-4 border rounded-lg bg-muted/50">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold">{professor.name || "Nome não informado"}</h4>
-                      <Badge variant="secondary">{professor.registration || "N/A"}</Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{professor.email || "Email não informado"}</p>
+                  <div key={professor.id || index} className="p-4 border rounded-lg bg-muted/50 min-w-0 overflow-hidden">
+                    <h4 className="font-semibold mb-2 break-words">{professor.name || "Nome não informado"}</h4>
+                    <p className="text-sm text-muted-foreground break-all">{professor.email || "Email não informado"}</p>
                   </div>
                 ))}
               </div>
@@ -398,24 +387,24 @@ const Profile = () => {
   };
 
   const renderTeacherProfile = (data: TeacherData) => (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className="bg-gradient-to-r from-innov-blue to-innov-purple text-white">
+        <Card className="bg-gradient-to-r from-innov-blue to-innov-purple text-white overflow-hidden">
           <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <Building2 className="h-8 w-8" />
-              <div>
+            <div className="flex items-center gap-3 min-w-0">
+              <Building2 className="h-8 w-8 shrink-0" />
+              <div className="min-w-0">
                 <p className="text-sm opacity-90">Total de Escolas</p>
                 <p className="text-2xl font-bold">{data.estatisticas?.total_escolas || 0}</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-r from-innov-purple to-pink-500 text-white">
+        <Card className="bg-gradient-to-r from-innov-purple to-pink-500 text-white overflow-hidden">
           <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <Users className="h-8 w-8" />
-              <div>
+            <div className="flex items-center gap-3 min-w-0">
+              <Users className="h-8 w-8 shrink-0" />
+              <div className="min-w-0">
                 <p className="text-sm opacity-90">Total de Turmas</p>
                 <p className="text-2xl font-bold">{data.estatisticas?.total_turmas || 0}</p>
               </div>
@@ -424,62 +413,62 @@ const Profile = () => {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-xl">
-            <User className="h-5 w-5 text-innov-blue" />
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-3 px-4 sm:px-6">
+          <CardTitle className="flex items-center gap-2 text-xl break-words">
+            <User className="h-5 w-5 text-innov-blue shrink-0" />
             Informações Pessoais
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4 sm:px-6 min-w-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Data de Nascimento:</span>
-                <span className="font-medium">{formatDate(data.professor?.birth_date)}</span>
+            <div className="space-y-3 min-w-0">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="text-sm text-muted-foreground shrink-0">Data de Nascimento:</span>
+                <span className="font-medium break-words min-w-0">{formatDate(data.professor?.birth_date)}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Matrícula:</span>
-                <span className="font-medium">{data.professor?.registration || "Não informado"}</span>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="text-sm text-muted-foreground shrink-0">Matrícula:</span>
+                <span className="font-medium break-words min-w-0">{data.professor?.registration || "Não informado"}</span>
               </div>
             </div>
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Email:</span>
-                <span className="font-medium">{data.usuario?.email || "Não informado"}</span>
+            <div className="space-y-3 min-w-0">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="text-sm text-muted-foreground shrink-0">Email:</span>
+                <span className="font-medium break-words min-w-0">{data.usuario?.email || "Não informado"}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Cidade:</span>
-                <span className="font-medium">{data.municipio?.name || "Não informado"} - {data.municipio?.state || "Não informado"}</span>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="text-sm text-muted-foreground shrink-0">Cidade:</span>
+                <span className="font-medium break-words min-w-0">{data.municipio?.name || "Não informado"} - {data.municipio?.state || "Não informado"}</span>
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-xl">
-            <Building2 className="h-5 w-5 text-innov-blue" />
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-3 px-4 sm:px-6">
+          <CardTitle className="flex items-center gap-2 text-xl break-words">
+            <Building2 className="h-5 w-5 text-innov-blue shrink-0" />
             Escolas Vinculadas
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4 sm:px-6 min-w-0">
           <div className="space-y-4">
             {data.vinculos_escolares?.map((vinculo, index) => (
-              <div key={index} className="p-4 border rounded-lg bg-muted/50">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold text-lg">{vinculo.school_name || "Nome não informado"}</h4>
-                  <Badge variant="secondary">{vinculo.school_domain || "Domínio não informado"}</Badge>
+              <div key={index} className="p-4 border rounded-lg bg-muted/50 min-w-0 overflow-hidden">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2 min-w-0">
+                  <h4 className="font-semibold text-lg break-words min-w-0">{vinculo.school_name || "Nome não informado"}</h4>
+                  <Badge variant="secondary" className="w-fit shrink-0 break-all">{vinculo.school_domain || "Domínio não informado"}</Badge>
                 </div>
-                <p className="text-sm text-muted-foreground mb-2">{vinculo.school_address || "Endereço não informado"}</p>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <MapPin className="h-3 w-3" />
-                  <span>Matrícula: {vinculo.registration || "Não informado"}</span>
+                <p className="text-sm text-muted-foreground mb-2 break-words min-w-0">{vinculo.school_address || "Endereço não informado"}</p>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+                  <MapPin className="h-3 w-3 shrink-0" />
+                  <span className="break-words">Matrícula: {vinculo.registration || "Não informado"}</span>
                 </div>
               </div>
             )) || <p className="text-muted-foreground">Nenhum vínculo escolar encontrado</p>}
@@ -487,22 +476,22 @@ const Profile = () => {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-xl">
-            <Users className="h-5 w-5 text-innov-blue" />
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-3 px-4 sm:px-6">
+          <CardTitle className="flex items-center gap-2 text-xl break-words">
+            <Users className="h-5 w-5 text-innov-blue shrink-0" />
             Turmas
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4 sm:px-6 min-w-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {data.turmas?.map((turma, index) => (
-              <div key={index} className="p-4 border rounded-lg bg-muted/50">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold">{turma.class_name || "Nome não informado"}</h4>
-                  <Badge variant="outline">{turma.grade_name || "Série não informada"}</Badge>
+              <div key={index} className="p-4 border rounded-lg bg-muted/50 min-w-0 overflow-hidden">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2 min-w-0">
+                  <h4 className="font-semibold break-words min-w-0">{turma.class_name || "Nome não informado"}</h4>
+                  <Badge variant="outline" className="w-fit shrink-0">{turma.grade_name || "Série não informada"}</Badge>
                 </div>
-                <p className="text-sm text-muted-foreground">{turma.school_name || "Escola não informada"}</p>
+                <p className="text-sm text-muted-foreground break-words min-w-0">{turma.school_name || "Escola não informada"}</p>
               </div>
             )) || <p className="text-muted-foreground">Nenhuma turma encontrada</p>}
           </div>
@@ -512,39 +501,39 @@ const Profile = () => {
   );
 
   const renderAdminProfile = (data: UserData) => (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0">
       {data.student_details && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <GraduationCap className="h-5 w-5 text-innov-blue" />
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-3 px-4 sm:px-6">
+            <CardTitle className="flex items-center gap-2 text-xl break-words">
+              <GraduationCap className="h-5 w-5 text-innov-blue shrink-0" />
               Dados do Estudante
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 sm:px-6 min-w-0">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Escola:</span>
-                  <span className="font-medium">{data.student_details?.school?.name || "Não informado"}</span>
+              <div className="space-y-3 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                  <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground shrink-0">Escola:</span>
+                  <span className="font-medium break-words min-w-0">{data.student_details?.school?.name || "Não informado"}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <BookOpen className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Série:</span>
-                  <span className="font-medium">{data.student_details?.grade?.name || "Não informado"}</span>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                  <BookOpen className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground shrink-0">Série:</span>
+                  <span className="font-medium break-words min-w-0">{data.student_details?.grade?.name || "Não informado"}</span>
                 </div>
               </div>
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Turma:</span>
-                  <span className="font-medium">{data.student_details?.class?.name || "Não informado"}</span>
+              <div className="space-y-3 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                  <Users className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground shrink-0">Turma:</span>
+                  <span className="font-medium break-words min-w-0">{data.student_details?.class?.name || "Não informado"}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Data de Nascimento:</span>
-                  <span className="font-medium">{formatDate(data.student_details?.birth_date)}</span>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                  <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground shrink-0">Data de Nascimento:</span>
+                  <span className="font-medium break-words min-w-0">{formatDate(data.student_details?.birth_date)}</span>
                 </div>
               </div>
             </div>
@@ -558,15 +547,14 @@ const Profile = () => {
     try {
       await saveConfig();
       toast.success('Avatar personalizado salvo com sucesso!');
-    } catch (error) {
-      console.error('Erro ao salvar avatar:', error);
+    } catch {
       toast.error('Erro ao salvar configurações do avatar. Tente novamente.');
     }
   };
 
   if (loading) {
     return (
-      <div className="container max-w-6xl mx-auto py-6">
+      <div className="container max-w-6xl mx-auto px-4 sm:px-6 py-6 min-h-[50vh]">
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-innov-blue"></div>
         </div>
@@ -575,22 +563,30 @@ const Profile = () => {
   }
 
   return (
-    <div className="container max-w-6xl mx-auto py-6">
+    <div className="container max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6 min-h-[50vh] overflow-x-hidden">
       <Tabs defaultValue="personalization" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-6">
-          <TabsTrigger value="personalization">Personalização</TabsTrigger>
-          <TabsTrigger value="personal-data">Dados Pessoais</TabsTrigger>
-          <TabsTrigger value="password">Senha</TabsTrigger>
-          <TabsTrigger value="profile">Perfil</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-4 sm:mb-6 h-auto gap-1.5 p-1.5 sm:p-1.5">
+          <TabsTrigger value="personalization" className="text-xs sm:text-sm py-3 sm:py-2.5 px-2 sm:px-3 whitespace-nowrap min-h-[44px] sm:min-h-0">
+            Personalização
+          </TabsTrigger>
+          <TabsTrigger value="personal-data" className="text-xs sm:text-sm py-3 sm:py-2.5 px-2 sm:px-3 whitespace-nowrap min-h-[44px] sm:min-h-0">
+            Dados Pessoais
+          </TabsTrigger>
+          <TabsTrigger value="password" className="text-xs sm:text-sm py-3 sm:py-2.5 px-2 sm:px-3 min-h-[44px] sm:min-h-0">
+            Senha
+          </TabsTrigger>
+          <TabsTrigger value="profile" className="text-xs sm:text-sm py-3 sm:py-2.5 px-2 sm:px-3 min-h-[44px] sm:min-h-0">
+            Perfil
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="personalization" className="space-y-6">
+        <TabsContent value="personalization" className="space-y-4 sm:space-y-6 mt-4">
           <Card>
-            <CardHeader>
-              <div className="flex items-center gap-4">
-                <AvatarPreview config={config} size={80} />
-                <div>
-                  <CardTitle className="text-2xl">{user?.name || "Usuário"}</CardTitle>
+            <CardHeader className="pb-2 sm:pb-6">
+              <div className="flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
+                <AvatarPreview config={config} size={80} className="flex-shrink-0" />
+                <div className="min-w-0">
+                  <CardTitle className="text-xl sm:text-2xl break-words">{user?.name || "Usuário"}</CardTitle>
                   <Badge className="mt-2 bg-gradient-to-r from-innov-blue to-innov-purple text-white border-0">
                     {getRoleDisplayName(user?.role || "")}
                   </Badge>
@@ -604,36 +600,43 @@ const Profile = () => {
             onSave={handleSaveAvatar}
             isSaving={isSaving}
           />
+          {user?.role === 'aluno' && <RewardsPreferencesSection />}
         </TabsContent>
 
-        <TabsContent value="personal-data" className="space-y-6">
+        <TabsContent value="personal-data" className="space-y-4 sm:space-y-6 mt-4">
           <PersonalDataForm />
         </TabsContent>
 
-        <TabsContent value="password" className="space-y-6">
+        <TabsContent value="password" className="space-y-4 sm:space-y-6 mt-4">
           <ChangePasswordForm />
         </TabsContent>
 
-        <TabsContent value="profile" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-1">
-              <Card className="sticky top-6">
-                <CardContent className="pt-8 pb-6">
-                  <div className="flex flex-col items-center mb-6">
+        <TabsContent value="profile" className="space-y-4 sm:space-y-6 mt-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+            <div className="lg:col-span-1 order-2 lg:order-1 min-w-0">
+              <Card className="lg:sticky lg:top-6 overflow-hidden">
+                <CardContent className="pt-6 sm:pt-8 pb-6 min-w-0">
+                  <div className="flex flex-col items-center mb-4 sm:mb-6">
                     {user?.avatar_config ? (
-                      <AvatarPreview config={user.avatar_config} size={128} className="mb-4" />
+                      <AvatarPreview config={user.avatar_config} size={128} className="mb-4 flex-shrink-0" />
                     ) : (
-                      <div className="w-32 h-32 rounded-full bg-gradient-to-r from-innov-blue to-innov-purple flex items-center justify-center mb-4 shadow-lg">
-                        <span className="text-white text-5xl font-bold">
+                      <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-gradient-to-r from-innov-blue to-innov-purple flex items-center justify-center mb-4 shadow-lg flex-shrink-0">
+                        <span className="text-white text-4xl sm:text-5xl font-bold">
                           {user?.name?.charAt(0) || "U"}
                         </span>
                       </div>
                     )}
-                    <h1 className="text-2xl font-bold text-center mb-2">{user?.name || "Usuário"}</h1>
-                    <p className="text-muted-foreground text-center mb-3">{user?.email || "usuario@exemplo.com"}</p>
+                    <h1 className="text-xl sm:text-2xl font-bold text-center mb-2 break-words px-1">{user?.name || "Usuário"}</h1>
+                    <p className="text-sm sm:text-base text-muted-foreground text-center mb-3 break-all px-1">{user?.email || "usuario@exemplo.com"}</p>
                     <Badge className="text-sm px-4 py-2 bg-gradient-to-r from-innov-blue to-innov-purple text-white border-0 mb-4">
                       {getRoleDisplayName(user?.role || "")}
                     </Badge>
+                    {user?.role === 'aluno' && studentPrefs?.preferences?.stamp_id && (
+                      <Badge variant="secondary" className="mb-4 flex items-center gap-1">
+                        <Shield className="h-3 w-3" />
+                        Selo ativo
+                      </Badge>
+                    )}
                   </div>
 
                   <div className="space-y-4">
@@ -695,10 +698,9 @@ const Profile = () => {
               </Card>
             </div>
 
-            <div className="lg:col-span-2">
-              <div className="space-y-6">
+            <div className="lg:col-span-2 order-1 lg:order-2 min-w-0">
+              <div className="space-y-4 sm:space-y-6">
                 {renderDetailSection("Dados Pessoais", personalDetails)}
-                {renderDetailSection("Detalhes da Conta", accountDetails)}
 
                 {profileData && (
                   <>

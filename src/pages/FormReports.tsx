@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+import { FormResultsFiltersApiService } from '@/services/formResultsFiltersApi';
 import { FormFiltersApiService } from '@/services/formFiltersApi';
 import { FormMultiSelect } from '@/components/ui/form-multi-select';
 import { 
@@ -60,6 +61,11 @@ interface Grade {
 }
 
 interface Class {
+  id: string;
+  name: string;
+}
+
+interface FormOption {
   id: string;
   name: string;
 }
@@ -109,19 +115,39 @@ interface ProfileData {
   dados: Record<string, ProfileQuestion>;
 }
 
+/** Normaliza resposta de índices (agregado usa indicesConsolidados; resultado de um formulário pode vir em outro campo) */
+function normalizeIndicesResponse(data: any): any {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const consolidated =
+    data.indicesConsolidados ?? data.indices ?? data;
+  if (typeof consolidated !== 'object' || consolidated === null) return null;
+  return { ...data, indicesConsolidados: consolidated };
+}
+
+/** Normaliza resposta de perfis (agregado usa perfisConsolidados; resultado de um formulário pode vir em outro campo) */
+function normalizeProfilesResponse(data: any): any {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const consolidated =
+    data.perfisConsolidados ?? data.perfis ?? data;
+  if (typeof consolidated !== 'object' || consolidated === null) return null;
+  return { ...data, perfisConsolidados: consolidated };
+}
+
 const FormReports = () => {
   const { toast } = useToast();
 
-  // Estados dos filtros
+  // Estados dos filtros (formulário é obrigatório: 'all' = agregado ou UUID do formulário)
   const [selectedState, setSelectedState] = useState<string>('all');
   const [selectedMunicipality, setSelectedMunicipality] = useState<string>('all');
+  const [selectedForm, setSelectedForm] = useState<string>('');
   const [selectedSchools, setSelectedSchools] = useState<string[]>([]);
   const [selectedGrades, setSelectedGrades] = useState<string[]>([]);
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
 
-  // Estados dos dados dos filtros
+  // Estados dos dados dos filtros (nova cascata: Estado → Município → Formulário → Escola → Série → Turma)
   const [states, setStates] = useState<State[]>([]);
   const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
+  const [forms, setForms] = useState<FormOption[]>([]);
   const [schools, setSchools] = useState<School[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -148,18 +174,14 @@ const FormReports = () => {
   const [studentsPagination, setStudentsPagination] = useState<any>(null);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
 
-  // Carregar estados iniciais
+  // Carregar estados iniciais (rota de resultados: GET /forms/results/filter-options)
   useEffect(() => {
     const loadInitialFilters = async () => {
       try {
         setIsLoadingFilters(true);
-        const statesData = await FormFiltersApiService.getFormFilterStates();
-        if (statesData && statesData.length > 0) {
-          setStates(statesData.map(state => ({
-            id: state.id,
-            name: state.nome,
-            uf: state.id
-          })));
+        const options = await FormResultsFiltersApiService.getFilterOptions({});
+        if (options.estados.length > 0) {
+          setStates(options.estados.map((e) => ({ id: e.id, name: e.name, uf: e.uf ?? e.id })));
         }
       } catch (error) {
         console.error("Erro ao carregar filtros iniciais:", error);
@@ -183,25 +205,26 @@ const FormReports = () => {
         try {
           setIsLoadingFilters(true);
           setSelectedMunicipality('all');
+          setSelectedForm('');
           setSelectedSchools([]);
           setSelectedGrades([]);
           setSelectedClasses([]);
-          
-          const municipalitiesData = await FormFiltersApiService.getFormFilterMunicipalities(selectedState);
-          setMunicipalities(municipalitiesData.map(municipality => ({
-            id: municipality.id,
-            name: municipality.nome,
-            state: selectedState
-          })));
+          const options = await FormResultsFiltersApiService.getFilterOptions({ estado: selectedState });
+          setMunicipalities(options.municipios.map((m) => ({ id: m.id, name: m.name, state: selectedState })));
+          setForms([]);
+          setSchools([]);
         } catch (error) {
           console.error("Erro ao carregar municípios:", error);
           setMunicipalities([]);
+          setForms([]);
         } finally {
           setIsLoadingFilters(false);
         }
       } else {
         setMunicipalities([]);
+        setForms([]);
         setSelectedMunicipality('all');
+        setSelectedForm('');
         setSelectedSchools([]);
         setSelectedGrades([]);
         setSelectedClasses([]);
@@ -211,43 +234,90 @@ const FormReports = () => {
     loadMunicipalities();
   }, [selectedState]);
 
-  // Carregar escolas quando município for selecionado
+  // Carregar formulários quando município for selecionado
   useEffect(() => {
-    const loadSchools = async () => {
+    const loadForms = async () => {
       if (selectedState !== 'all' && selectedMunicipality !== 'all') {
         try {
           setIsLoadingFilters(true);
-          const schoolsData = await FormFiltersApiService.getFormFilterSchools({
+          setSelectedForm('');
+          setSelectedSchools([]);
+          setSelectedGrades([]);
+          setSelectedClasses([]);
+          const options = await FormResultsFiltersApiService.getFilterOptions({
             estado: selectedState,
-            municipio: selectedMunicipality
+            municipio: selectedMunicipality,
           });
-          
-          const uniqueSchoolsById = new Map<string, { id: string; name: string }>();
-          const uniqueSchoolsByName = new Map<string, string>();
-          
-          schoolsData.forEach(school => {
-            const schoolName = school.nome?.trim() || '';
-            const normalizedName = schoolName.toLowerCase().trim();
-            
-            if (!uniqueSchoolsById.has(school.id) && !uniqueSchoolsByName.has(normalizedName)) {
-              uniqueSchoolsById.set(school.id, {
-                id: school.id,
-                name: schoolName
-              });
-              uniqueSchoolsByName.set(normalizedName, school.id);
-            }
+          setForms(options.formularios);
+          setSchools([]);
+        } catch (error) {
+          console.error("Erro ao carregar formulários:", error);
+          setForms([]);
+          setSchools([]);
+        } finally {
+          setIsLoadingFilters(false);
+        }
+      } else {
+        setForms([]);
+        setSelectedForm('');
+        setSchools([]);
+      }
+    };
+
+    loadForms();
+  }, [selectedState, selectedMunicipality]);
+
+  // Carregar escolas quando formulário for selecionado (obrigatório)
+  useEffect(() => {
+    const loadSchools = async () => {
+      if (
+        selectedState !== 'all' &&
+        selectedMunicipality !== 'all' &&
+        selectedForm &&
+        selectedForm !== 'all'
+      ) {
+        try {
+          setIsLoadingFilters(true);
+          setSelectedSchools([]);
+          setSelectedGrades([]);
+          setSelectedClasses([]);
+          const options = await FormResultsFiltersApiService.getFilterOptions({
+            estado: selectedState,
+            municipio: selectedMunicipality,
+            formulario: selectedForm,
           });
-          
-          const uniqueSchools = Array.from(uniqueSchoolsById.values()).sort((a, b) => 
-            a.name.localeCompare(b.name)
-          );
-          
-          setSchools(uniqueSchools);
+          const sorted = [...options.escolas].sort((a, b) => a.name.localeCompare(b.name));
+          setSchools(sorted);
         } catch (error) {
           console.error("Erro ao carregar escolas:", error);
           setSchools([]);
         } finally {
           setIsLoadingFilters(false);
+        }
+      } else if (selectedForm === 'all') {
+        // Agregado: rota de resultados exige formulário para retornar escolas; usa rota antiga só para escolas
+        if (selectedState !== 'all' && selectedMunicipality !== 'all') {
+          try {
+            setIsLoadingFilters(true);
+            setSelectedSchools([]);
+            setSelectedGrades([]);
+            setSelectedClasses([]);
+            const schoolsData = await FormFiltersApiService.getFormFilterSchools({
+              estado: selectedState,
+              municipio: selectedMunicipality,
+            });
+            const uniqueSchools = Array.from(
+              new Map(schoolsData.map((s) => [s.id, { id: s.id, name: s.nome || s.name || '' }])).values()
+            ).sort((a, b) => a.name.localeCompare(b.name));
+            setSchools(uniqueSchools);
+          } catch (error) {
+            console.error("Erro ao carregar escolas (agregado):", error);
+            setSchools([]);
+          } finally {
+            setIsLoadingFilters(false);
+          }
+        } else {
+          setSchools([]);
         }
       } else {
         setSchools([]);
@@ -256,45 +326,68 @@ const FormReports = () => {
     };
 
     loadSchools();
-  }, [selectedMunicipality, selectedState]);
+  }, [selectedState, selectedMunicipality, selectedForm]);
 
   // Carregar séries quando escola(s) for(em) selecionada(s)
   useEffect(() => {
     const loadGrades = async () => {
-      if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchools.length > 0) {
+      if (
+        selectedState !== 'all' &&
+        selectedMunicipality !== 'all' &&
+        selectedForm &&
+        selectedSchools.length > 0
+      ) {
         try {
           setIsLoadingFilters(true);
           const allGradesById = new Map<string, { id: string; name: string }>();
           const allGradesByName = new Map<string, string>();
-          
-          for (const schoolId of selectedSchools) {
-            try {
-              const gradesData = await FormFiltersApiService.getFormFilterGrades({
-                estado: selectedState,
-                municipio: selectedMunicipality,
-                escola: schoolId
-              });
-              gradesData.forEach(grade => {
-                const gradeName = grade.nome?.trim() || '';
-                const normalizedName = gradeName.toLowerCase().trim();
-                
-                if (!allGradesById.has(grade.id) && !allGradesByName.has(normalizedName)) {
-                  allGradesById.set(grade.id, {
-                    id: grade.id,
-                    name: gradeName
-                  });
-                  allGradesByName.set(normalizedName, grade.id);
-                }
-              });
-            } catch (error) {
-              console.error(`Erro ao carregar séries da escola ${schoolId}:`, error);
+
+          if (selectedForm === 'all') {
+            for (const schoolId of selectedSchools) {
+              try {
+                const gradesData = await FormFiltersApiService.getFormFilterGrades({
+                  estado: selectedState,
+                  municipio: selectedMunicipality,
+                  escola: schoolId,
+                });
+                gradesData.forEach((grade) => {
+                  const gradeName = grade.nome?.trim() || '';
+                  const normalizedName = gradeName.toLowerCase().trim();
+                  if (!allGradesById.has(grade.id) && !allGradesByName.has(normalizedName)) {
+                    allGradesById.set(grade.id, { id: grade.id, name: gradeName });
+                    allGradesByName.set(normalizedName, grade.id);
+                  }
+                });
+              } catch (error) {
+                console.error(`Erro ao carregar séries da escola ${schoolId}:`, error);
+              }
+            }
+          } else {
+            for (const schoolId of selectedSchools) {
+              try {
+                const options = await FormResultsFiltersApiService.getFilterOptions({
+                  estado: selectedState,
+                  municipio: selectedMunicipality,
+                  formulario: selectedForm,
+                  escola: schoolId,
+                });
+                (options.series || []).forEach((grade) => {
+                  const gradeName = grade.name?.trim() || '';
+                  const normalizedName = gradeName.toLowerCase().trim();
+                  if (!allGradesById.has(grade.id) && !allGradesByName.has(normalizedName)) {
+                    allGradesById.set(grade.id, { id: grade.id, name: gradeName });
+                    allGradesByName.set(normalizedName, grade.id);
+                  }
+                });
+              } catch (error) {
+                console.error(`Erro ao carregar séries da escola ${schoolId}:`, error);
+              }
             }
           }
-          
-          const uniqueGrades = Array.from(allGradesById.values()).sort((a, b) => 
+
+          const uniqueGrades = Array.from(allGradesById.values()).sort((a, b) =>
             a.name.localeCompare(b.name)
           );
-          
           setGrades(uniqueGrades);
         } catch (error) {
           console.error("Erro ao carregar séries:", error);
@@ -308,48 +401,81 @@ const FormReports = () => {
     };
 
     loadGrades();
-  }, [selectedSchools, selectedState, selectedMunicipality]);
+  }, [selectedSchools, selectedState, selectedMunicipality, selectedForm]);
 
   // Carregar turmas quando série(s) for(em) selecionada(s)
   useEffect(() => {
     const loadClasses = async () => {
-      if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchools.length > 0 && selectedGrades.length > 0) {
+      if (
+        selectedState !== 'all' &&
+        selectedMunicipality !== 'all' &&
+        selectedForm &&
+        selectedSchools.length > 0 &&
+        selectedGrades.length > 0
+      ) {
         try {
           setIsLoadingFilters(true);
           const allClassesById = new Map<string, { id: string; name: string }>();
           const allClassesByName = new Map<string, string>();
-          
-          for (const schoolId of selectedSchools) {
-            for (const gradeId of selectedGrades) {
-              try {
-                const classesData = await FormFiltersApiService.getFormFilterClasses({
-                  estado: selectedState,
-                  municipio: selectedMunicipality,
-                  escola: schoolId,
-                  serie: gradeId
-                });
-                classesData.forEach(classItem => {
-                  const className = classItem.nome?.trim() || '';
-                  const normalizedName = className.toLowerCase().trim();
-                  
-                  if (!allClassesById.has(classItem.id) && !allClassesByName.has(normalizedName)) {
-                    allClassesById.set(classItem.id, {
-                      id: classItem.id,
-                      name: className
-                    });
-                    allClassesByName.set(normalizedName, classItem.id);
-                  }
-                });
-              } catch (error) {
-                console.error(`Erro ao carregar turmas da escola ${schoolId} e série ${gradeId}:`, error);
+
+          if (selectedForm === 'all') {
+            for (const schoolId of selectedSchools) {
+              for (const gradeId of selectedGrades) {
+                try {
+                  const classesData = await FormFiltersApiService.getFormFilterClasses({
+                    estado: selectedState,
+                    municipio: selectedMunicipality,
+                    escola: schoolId,
+                    serie: gradeId,
+                  });
+                  classesData.forEach((classItem) => {
+                    const className = classItem.nome?.trim() || '';
+                    const normalizedName = className.toLowerCase().trim();
+                    if (!allClassesById.has(classItem.id) && !allClassesByName.has(normalizedName)) {
+                      allClassesById.set(classItem.id, { id: classItem.id, name: className });
+                      allClassesByName.set(normalizedName, classItem.id);
+                    }
+                  });
+                } catch (error) {
+                  console.error(
+                    `Erro ao carregar turmas da escola ${schoolId} e série ${gradeId}:`,
+                    error
+                  );
+                }
+              }
+            }
+          } else {
+            for (const schoolId of selectedSchools) {
+              for (const gradeId of selectedGrades) {
+                try {
+                  const options = await FormResultsFiltersApiService.getFilterOptions({
+                    estado: selectedState,
+                    municipio: selectedMunicipality,
+                    formulario: selectedForm,
+                    escola: schoolId,
+                    serie: gradeId,
+                  });
+                  (options.turmas || []).forEach((classItem) => {
+                    const className = classItem.name?.trim() || '';
+                    const normalizedName = className.toLowerCase().trim();
+                    if (!allClassesById.has(classItem.id) && !allClassesByName.has(normalizedName)) {
+                      allClassesById.set(classItem.id, { id: classItem.id, name: className });
+                      allClassesByName.set(normalizedName, classItem.id);
+                    }
+                  });
+                } catch (error) {
+                  console.error(
+                    `Erro ao carregar turmas da escola ${schoolId} e série ${gradeId}:`,
+                    error
+                  );
+                }
               }
             }
           }
-          
-          const uniqueClasses = Array.from(allClassesById.values()).sort((a, b) => 
+
+          const uniqueClasses = Array.from(allClassesById.values()).sort((a, b) =>
             a.name.localeCompare(b.name)
           );
-          
           setClasses(uniqueClasses);
         } catch (error) {
           console.error("Erro ao carregar turmas:", error);
@@ -363,12 +489,98 @@ const FormReports = () => {
     };
 
     loadClasses();
-  }, [selectedGrades, selectedSchools, selectedState, selectedMunicipality]);
+  }, [selectedGrades, selectedSchools, selectedState, selectedMunicipality, selectedForm]);
 
+  // Polling via endpoint de status (apenas relatório agregado)
+  const startPollingStatus = useCallback(
+    (taskId: string, type: 'indices' | 'profiles') => {
+      const statusPath = `/forms/aggregated/results/status/${taskId}`;
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusConfig =
+            selectedMunicipality !== 'all' ? { meta: { cityId: selectedMunicipality } } : {};
+          const statusResponse = await api.get(statusPath, statusConfig);
+          const status = statusResponse.data;
 
-  // Função para buscar relatório agregado (índices e perfis)
-  const fetchAggregatedReport = useCallback(async () => {
-    if (selectedState === 'all' || selectedMunicipality === 'all' || selectedSchools.length === 0) {
+          if (status.status === 'completed') {
+            clearInterval(pollInterval);
+            setIsPolling(false);
+            setPollingTaskId(null);
+            if (type === 'indices') {
+              setIndicesData(normalizeIndicesResponse(status.result));
+            } else {
+              setProfilesData(normalizeProfilesResponse(status.result));
+            }
+            toast({
+              title: "Relatório processado",
+              description: "O relatório foi gerado com sucesso!",
+            });
+          } else if (status.status === 'failed') {
+            clearInterval(pollInterval);
+            setIsPolling(false);
+            setPollingTaskId(null);
+            toast({
+              title: "Erro ao processar relatório",
+              description: status.error || "Ocorreu um erro ao processar o relatório.",
+              variant: "destructive",
+            });
+          }
+        } catch (error) {
+          console.error("Erro ao verificar status da task:", error);
+          clearInterval(pollInterval);
+          setIsPolling(false);
+          setPollingTaskId(null);
+        }
+      }, 2000);
+    },
+    [toast, selectedMunicipality]
+  );
+
+  // Polling repetindo o mesmo GET até 200 (resultados de um formulário; não usa endpoint de status)
+  const startPollingSameGet = useCallback(
+    (
+      basePath: string,
+      type: 'indices' | 'profiles',
+      requestConfig: { params: any; meta?: { cityId: string } }
+    ) => {
+      const url = `${basePath}/${type}`;
+      const pollInterval = setInterval(async () => {
+        try {
+          const response = await api.get(url, requestConfig);
+          if (response.status === 200) {
+            clearInterval(pollInterval);
+            setIsPolling(false);
+            setPollingTaskId(null);
+            if (type === 'indices') {
+              setIndicesData(normalizeIndicesResponse(response.data));
+            } else {
+              setProfilesData(normalizeProfilesResponse(response.data));
+            }
+            toast({
+              title: "Relatório processado",
+              description: "O relatório foi gerado com sucesso!",
+            });
+          }
+          // 202: continua o intervalo
+        } catch (error) {
+          console.error("Erro ao buscar relatório (polling):", error);
+          clearInterval(pollInterval);
+          setIsPolling(false);
+          setPollingTaskId(null);
+        }
+      }, 2500);
+    },
+    [toast]
+  );
+
+  // Função para buscar relatório (agregado ou de um formulário); formulário é obrigatório
+  const fetchReport = useCallback(async () => {
+    if (
+      selectedState === 'all' ||
+      selectedMunicipality === 'all' ||
+      !selectedForm ||
+      selectedSchools.length === 0
+    ) {
       return;
     }
 
@@ -376,62 +588,62 @@ const FormReports = () => {
     setIndicesData(null);
     setProfilesData(null);
 
+    const params: any = {
+      state: selectedState,
+      municipio: selectedMunicipality,
+      page: 1,
+      limit: 20,
+    };
+    if (selectedSchools.length > 0) params.escola = selectedSchools.join(',');
+    if (selectedGrades.length > 0) params.serie = selectedGrades.join(',');
+    if (selectedClasses.length > 0) params.turma = selectedClasses.join(',');
+
+    const isAggregated = selectedForm === 'all';
+    const basePath = isAggregated
+      ? '/forms/aggregated/results'
+      : `/forms/${selectedForm}/results`;
+    const requestConfig =
+      selectedMunicipality !== 'all' ? { params, meta: { cityId: selectedMunicipality } } : { params };
+
     try {
-      // Construir parâmetros da query
-      const params: any = {
-        state: selectedState,
-        municipio: selectedMunicipality,
-        page: 1,
-        limit: 20
-      };
-
-      if (selectedSchools.length > 0) {
-        params.escola = selectedSchools.join(',');
-      }
-
-      if (selectedGrades.length > 0) {
-        params.serie = selectedGrades.join(',');
-      }
-
-      if (selectedClasses.length > 0) {
-        params.turma = selectedClasses.join(',');
-      }
-
-      // Buscar índices agregados
-      const indicesResponse = await api.get('/forms/aggregated/results/indices', { params });
-
+      const indicesResponse = await api.get(`${basePath}/indices`, requestConfig);
       if (indicesResponse.status === 200) {
-        // Cache pronto
-        setIndicesData(indicesResponse.data);
+        setIndicesData(normalizeIndicesResponse(indicesResponse.data));
       } else if (indicesResponse.status === 202) {
-        // Processando - iniciar polling
-        const taskId = indicesResponse.data.taskId;
-        setPollingTaskId(taskId);
-        setIsPolling(true);
-        startPolling(taskId, 'indices');
+        if (isAggregated) {
+          const taskId = indicesResponse.data.taskId;
+          setPollingTaskId(taskId);
+          setIsPolling(true);
+          startPollingStatus(taskId, 'indices');
+        } else {
+          setIsPolling(true);
+          startPollingSameGet(basePath, 'indices', requestConfig);
+        }
       }
 
-      // Buscar perfis agregados
-      const profilesResponse = await api.get('/forms/aggregated/results/profiles', { params });
-
+      const profilesResponse = await api.get(`${basePath}/profiles`, requestConfig);
       if (profilesResponse.status === 200) {
-        // Cache pronto
-        setProfilesData(profilesResponse.data);
+        setProfilesData(normalizeProfilesResponse(profilesResponse.data));
       } else if (profilesResponse.status === 202) {
-        // Processando - iniciar polling
-        const taskId = profilesResponse.data.taskId;
-        startPolling(taskId, 'profiles');
+        if (isAggregated) {
+          const taskId = profilesResponse.data.taskId;
+          startPollingStatus(taskId, 'profiles');
+        } else {
+          startPollingSameGet(basePath, 'profiles', requestConfig);
+        }
       }
-
     } catch (error: any) {
       console.error("Erro ao buscar relatório:", error);
-      
-      // Verificar se é 202 (pode estar no catch em algumas versões do axios)
       if (error.response?.status === 202) {
-        const taskId = error.response.data.taskId;
-        setPollingTaskId(taskId);
-        setIsPolling(true);
-        startPolling(taskId, 'indices');
+        if (isAggregated) {
+          const taskId = error.response.data.taskId;
+          setPollingTaskId(taskId);
+          setIsPolling(true);
+          startPollingStatus(taskId, 'indices');
+        } else {
+          setIsPolling(true);
+          startPollingSameGet(basePath, 'indices', requestConfig);
+        }
       } else {
         toast({
           title: "Erro ao carregar relatório",
@@ -442,88 +654,53 @@ const FormReports = () => {
     } finally {
       setIsLoadingReport(false);
     }
-  }, [selectedState, selectedMunicipality, selectedSchools, selectedGrades, selectedClasses, toast]);
+  }, [
+    selectedState,
+    selectedMunicipality,
+    selectedForm,
+    selectedSchools,
+    selectedGrades,
+    selectedClasses,
+    toast,
+    startPollingStatus,
+    startPollingSameGet,
+  ]);
 
-  // Função de polling para verificar status da task
-  const startPolling = useCallback((taskId: string, type: 'indices' | 'profiles') => {
-    const pollInterval = setInterval(async () => {
-      try {
-        const statusResponse = await api.get(`/forms/aggregated/results/status/${taskId}`);
-        const status = statusResponse.data;
-
-        if (status.status === 'completed') {
-          clearInterval(pollInterval);
-          setIsPolling(false);
-          setPollingTaskId(null);
-          
-          // Resultado pronto
-          if (type === 'indices') {
-            setIndicesData(status.result);
-          } else {
-            setProfilesData(status.result);
-          }
-
-          toast({
-            title: "Relatório processado",
-            description: "O relatório foi gerado com sucesso!",
-          });
-        } else if (status.status === 'failed') {
-          clearInterval(pollInterval);
-          setIsPolling(false);
-          setPollingTaskId(null);
-          
-          toast({
-            title: "Erro ao processar relatório",
-            description: status.error || "Ocorreu um erro ao processar o relatório.",
-            variant: "destructive",
-          });
-        }
-        // Se status === 'processing', continua esperando
-      } catch (error) {
-        console.error("Erro ao verificar status da task:", error);
-        clearInterval(pollInterval);
-        setIsPolling(false);
-        setPollingTaskId(null);
-      }
-    }, 2000); // Polling a cada 2 segundos
-  }, [toast]);
-
-  // Buscar relatório automaticamente quando filtros mínimos forem preenchidos
+  // Buscar relatório automaticamente quando filtros mínimos forem preenchidos (formulário obrigatório)
   useEffect(() => {
-    // Limpar timeout anterior
-    if (filterDebounce) {
-      clearTimeout(filterDebounce);
-    }
+    if (filterDebounce) clearTimeout(filterDebounce);
 
-    // Validar que pelo menos 3 filtros estão preenchidos
-    const hasMinimumFilters = 
-      selectedState !== 'all' && 
-      selectedMunicipality !== 'all' && 
+    const hasMinimumFilters =
+      selectedState !== 'all' &&
+      selectedMunicipality !== 'all' &&
+      selectedForm !== '' &&
       selectedSchools.length > 0;
 
     if (hasMinimumFilters) {
-      // Aguardar 500ms após última mudança de filtro (debounce)
-      const timeoutId = setTimeout(() => {
-        fetchAggregatedReport();
-      }, 500);
-      
+      const timeoutId = setTimeout(() => fetchReport(), 500);
       setFilterDebounce(timeoutId);
     } else {
-      // Limpar dados se filtros mínimos não estão preenchidos
       setIndicesData(null);
       setProfilesData(null);
     }
 
     return () => {
-      if (filterDebounce) {
-        clearTimeout(filterDebounce);
-      }
+      if (filterDebounce) clearTimeout(filterDebounce);
     };
-  }, [selectedState, selectedMunicipality, selectedSchools, selectedGrades, selectedClasses, fetchAggregatedReport]);
+  }, [
+    selectedState,
+    selectedMunicipality,
+    selectedForm,
+    selectedSchools,
+    selectedGrades,
+    selectedClasses,
+    fetchReport,
+  ]);
 
   // Função para abrir modal de alunos
   const handleOpenStudentModal = async (indexType: string, page: number = 1) => {
-    if (!indicesData?.indicesConsolidados?.[indexType]) return;
+    const indicesMap = indicesData?.indicesConsolidados ?? indicesData?.indices;
+    if (!indicesMap?.[indexType]) return;
 
     setSelectedIndexType(indexType);
     setCurrentStudentPage(page);
@@ -551,12 +728,19 @@ const FormReports = () => {
         params.turma = selectedClasses.join(',');
       }
 
-      const response = await api.get('/forms/aggregated/results/indices', { params });
+      const listConfig =
+        selectedMunicipality !== 'all' ? { params, meta: { cityId: selectedMunicipality } } : { params };
+      const basePath =
+        selectedForm === 'all' ? '/forms/aggregated/results' : `/forms/${selectedForm}/results`;
+      const response = await api.get(`${basePath}/indices`, listConfig);
 
-      if (response.status === 200 && response.data.indicesConsolidados?.[indexType]) {
-        const indexData = response.data.indicesConsolidados[indexType];
-        setStudentsData(indexData.alunos.data);
-        setStudentsPagination(indexData.alunos.pagination);
+      if (response.status === 200) {
+        const raw = response.data;
+        const indexData = raw?.indicesConsolidados?.[indexType] ?? raw?.indices?.[indexType];
+        if (indexData?.alunos) {
+          setStudentsData(indexData.alunos.data ?? []);
+          setStudentsPagination(indexData.alunos.pagination ?? null);
+        }
       }
     } catch (error) {
       console.error("Erro ao buscar alunos:", error);
@@ -604,19 +788,22 @@ const FormReports = () => {
 
   // Renderizar gráfico de uma questão
   const renderQuestionChart = (questionData: ProfileQuestion, questionId: string) => {
+    if (!questionData || typeof questionData !== 'object') return null;
+    const contagem = questionData.contagem && typeof questionData.contagem === 'object' ? questionData.contagem : {};
+    const totalRespostas = questionData.totalRespostas ?? 0;
     // Preparar dados para o gráfico
-    const chartData = Object.entries(questionData.contagem).map(([label, value]) => ({
+    const chartData = Object.entries(contagem).map(([label, value]) => ({
       name: label.length > 30 ? label.substring(0, 30) + '...' : label,
       fullName: label,
       valor: value,
-      porcentagem: ((value / questionData.totalRespostas) * 100).toFixed(1)
+      porcentagem: totalRespostas > 0 ? ((value / totalRespostas) * 100).toFixed(1) : '0'
     }));
 
     const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
     return (
       <div className="mb-8">
-        <h4 className="font-medium text-base mb-4">{questionData.textoPergunta}</h4>
+        <h4 className="font-medium text-base mb-4">{questionData.textoPergunta ?? questionId}</h4>
         <div className="w-full h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
             <RechartsBarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
@@ -663,7 +850,7 @@ const FormReports = () => {
           </ResponsiveContainer>
         </div>
         <div className="mt-2 text-sm text-muted-foreground">
-          Total de respostas: {questionData.totalRespostas}
+          Total de respostas: {totalRespostas}
         </div>
       </div>
     );
@@ -671,10 +858,12 @@ const FormReports = () => {
 
   // Renderizar subperguntas (matriz de seleção)
   const renderSubQuestions = (subperguntas: Record<string, { texto: string; contagem: Record<string, number> }>) => {
+    if (!subperguntas || typeof subperguntas !== 'object') return null;
     return (
       <div className="space-y-6">
         {Object.entries(subperguntas).map(([subId, subData]) => {
-          const chartData = Object.entries(subData.contagem).map(([label, value]) => ({
+          const subContagem = subData?.contagem && typeof subData.contagem === 'object' ? subData.contagem : {};
+          const chartData = Object.entries(subContagem).map(([label, value]) => ({
             name: label,
             valor: value
           }));
@@ -713,13 +902,13 @@ const FormReports = () => {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <BarChart3 className="w-8 h-8 text-blue-600" />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <BarChart3 className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
             Relatórios de Formulários Socioeconômicos
           </h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-muted-foreground text-sm sm:text-base">
             Visualize os resultados dos questionários socioeconômicos aplicados
           </p>
         </div>
@@ -737,7 +926,7 @@ const FormReports = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
             {/* Estado */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Estado *</label>
@@ -751,7 +940,7 @@ const FormReports = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  {states.map(state => (
+                  {states.map((state) => (
                     <SelectItem key={state.id} value={state.id}>
                       {state.name}
                     </SelectItem>
@@ -769,19 +958,51 @@ const FormReports = () => {
                 disabled={isLoadingFilters || selectedState === 'all'}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={
-                    isLoadingFilters 
-                      ? "Carregando municípios..." 
-                      : municipalities.length === 0 
-                        ? "Nenhum município disponível" 
-                        : "Selecione o município"
-                  } />
+                  <SelectValue
+                    placeholder={
+                      isLoadingFilters
+                        ? "Carregando municípios..."
+                        : municipalities.length === 0
+                          ? "Nenhum município disponível"
+                          : "Selecione o município"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  {municipalities.map(municipality => (
+                  {municipalities.map((municipality) => (
                     <SelectItem key={municipality.id} value={municipality.id}>
                       {municipality.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Formulário (obrigatório) */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Formulário *</label>
+              <Select
+                value={selectedForm}
+                onValueChange={setSelectedForm}
+                disabled={isLoadingFilters || selectedState === 'all' || selectedMunicipality === 'all'}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      isLoadingFilters
+                        ? "Carregando formulários..."
+                        : forms.length === 0 && selectedMunicipality !== 'all'
+                          ? "Nenhum formulário disponível"
+                          : "Selecione o formulário"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos (agregado)</SelectItem>
+                  {forms.map((form) => (
+                    <SelectItem key={form.id} value={form.id}>
+                      {form.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -792,10 +1013,12 @@ const FormReports = () => {
             <div className="space-y-2">
               <label className="text-sm font-medium">Escola(s) *</label>
               <FormMultiSelect
-                options={schools.map(school => ({ id: school.id, name: school.name }))}
+                options={schools.map((school) => ({ id: school.id, name: school.name }))}
                 selected={selectedSchools}
                 onChange={setSelectedSchools}
-                placeholder={selectedSchools.length === 0 ? "Selecione escolas" : `${selectedSchools.length} selecionada(s)`}
+                placeholder={
+                  selectedSchools.length === 0 ? "Selecione escolas" : `${selectedSchools.length} selecionada(s)`
+                }
               />
             </div>
 
@@ -918,23 +1141,25 @@ const FormReports = () => {
                   </TabsList>
 
                   {Object.entries(profilesData.perfisConsolidados).map(([profileKey, profileData]: [string, any]) => (
-                    <TabsContent key={profileKey} value={profileKey} className="space-y-6 mt-6">
+                    <TabsContent key={profileKey} value={profileKey} className="mt-6">
                       <div>
-                        <h3 className="text-xl font-bold mb-4">{profileData.nome}</h3>
+                        <h3 className="text-xl font-bold mb-4">{profileData?.nome ?? profileKey}</h3>
                         
-                        {/* Renderizar gráficos de cada questão */}
-                        {Object.entries(profileData.dados).map(([questionId, questionData]: [string, any]) => (
-                          <div key={questionId}>
-                            {questionData.tipo === 'multipla_escolha' && questionData.subperguntas ? (
-                              <div className="mb-8">
-                                <h4 className="font-medium text-base mb-4">{questionData.textoPergunta}</h4>
-                                {renderSubQuestions(questionData.subperguntas)}
-                              </div>
-                            ) : (
-                              renderQuestionChart(questionData, questionId)
-                            )}
-                          </div>
-                        ))}
+                        {/* Gráficos em duas colunas */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {Object.entries(profileData?.dados ?? {}).map(([questionId, questionData]: [string, any]) => (
+                            <div key={questionId} className="min-w-0">
+                              {questionData?.subperguntas && Object.keys(questionData.subperguntas).length > 0 ? (
+                                <div className="md:col-span-2">
+                                  <h4 className="font-medium text-base mb-4">{questionData.textoPergunta ?? questionId}</h4>
+                                  {renderSubQuestions(questionData.subperguntas)}
+                                </div>
+                              ) : (
+                                renderQuestionChart(questionData, questionId)
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </TabsContent>
                   ))}

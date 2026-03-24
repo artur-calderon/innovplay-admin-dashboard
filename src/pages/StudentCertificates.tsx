@@ -26,8 +26,7 @@ export default function StudentCertificates() {
       try {
         const data = await CertificatesApiService.getMyCertificates();
         setCertificates(data);
-      } catch (error) {
-        console.error('Erro ao carregar certificados:', error);
+      } catch {
         toast({
           title: 'Erro',
           description: 'Não foi possível carregar seus certificados.',
@@ -53,25 +52,27 @@ export default function StudentCertificates() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6 space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Award className="w-8 h-8 text-blue-600" />
-            Meus Certificados
+      <div className="container mx-auto p-6 space-y-6 min-h-screen">
+        <div className="animate-fade-in-up space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <span className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 shrink-0">
+              <Award className="w-5 h-5 text-white drop-shadow" />
+            </span>
+            <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">Meus Certificados</span>
           </h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-muted-foreground text-sm sm:text-base font-medium">
             Visualize e imprima seus certificados de desempenho
           </p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
-            <Card key={i}>
+            <Card key={i} className="rounded-2xl border-2 border-violet-200/40 dark:border-violet-500/20 overflow-hidden">
               <CardHeader>
-                <Skeleton className="h-6 w-3/4" />
+                <Skeleton className="h-6 w-3/4 rounded-lg" />
               </CardHeader>
               <CardContent>
-                <Skeleton className="h-4 w-full mb-2" />
-                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-4 w-full mb-2 rounded" />
+                <Skeleton className="h-4 w-2/3 rounded" />
               </CardContent>
             </Card>
           ))}
@@ -82,20 +83,24 @@ export default function StudentCertificates() {
 
   if (certificates.length === 0) {
     return (
-      <div className="container mx-auto p-6 space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Award className="w-8 h-8 text-blue-600" />
-            Meus Certificados
+      <div className="container mx-auto p-6 space-y-6 min-h-screen">
+        <div className="animate-fade-in-up space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <span className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110 shrink-0">
+              <Award className="w-5 h-5 text-white drop-shadow" />
+            </span>
+            <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">Meus Certificados</span>
           </h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-muted-foreground text-sm sm:text-base font-medium">
             Visualize e imprima seus certificados de desempenho
           </p>
         </div>
-        <Card>
+        <Card className="rounded-2xl border-2 border-dashed border-violet-200/60 dark:border-violet-500/40 overflow-hidden bg-gradient-to-br from-violet-500/5 to-transparent animate-fade-in-up">
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <Award className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground text-center mb-2">
+            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center mb-4">
+              <Award className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+            </div>
+            <p className="font-medium text-foreground text-center mb-2">
               Você ainda não possui certificados.
             </p>
             <p className="text-sm text-muted-foreground text-center">
@@ -108,19 +113,25 @@ export default function StudentCertificates() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Meus Certificados</h1>
-        <p className="text-muted-foreground mt-2">
+    <div className="container mx-auto p-6 space-y-6 min-h-screen">
+      <div className="animate-fade-in-up space-y-1.5">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3" id="certificates-page-title">
+          <span className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110 shrink-0">
+            <Award className="w-5 h-5 text-white drop-shadow" />
+          </span>
+          <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">Meus Certificados</span>
+        </h1>
+        <p className="text-muted-foreground text-sm sm:text-base font-medium">
           Você possui {certificates.length} certificado{certificates.length > 1 ? 's' : ''} de desempenho
         </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {certificates.map((certificate) => (
+        {certificates.map((certificate, i) => (
           <Card
             key={certificate.id}
-            className="cursor-pointer hover:shadow-md transition-shadow"
+            className="cursor-pointer rounded-2xl border-2 border-violet-200/60 dark:border-violet-500/30 bg-gradient-to-br from-violet-500/10 to-transparent transition-all duration-300 hover:scale-[1.03] hover:-translate-y-1 hover:shadow-xl hover:shadow-violet-500/20 overflow-hidden animate-fade-in-up"
+            style={{ animationDelay: `${i * 0.05}s` }}
           >
             <CardHeader>
               <div className="flex items-start justify-between">

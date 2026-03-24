@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,6 +27,10 @@ import { EvaluationTimer } from "../EvaluationTimer";
 import { useEvaluation } from "@/hooks/useEvaluation";
 import { Question } from "@/types/evaluation-types";
 import { CompetitionSubmitSuccessModal } from "@/components/competitions/CompetitionSubmitSuccessModal";
+import { BASE_URL } from "@/lib/api";
+import { resolveQuestionImageSrc, getQuestionHtmlForDisplay } from "@/utils/questionImages";
+import { cleanLegacyText, isLikelyPlainText } from "@/utils/textFormatter";
+import { QuestionRenderer } from "@/components/evaluations/questions/QuestionRenderer";
 
 /** State passado quando a prova é feita no contexto de uma competição. */
 interface CompetitionLocationState {
@@ -37,12 +42,22 @@ interface CompetitionLocationState {
   showRankingButton?: boolean;
 }
 
+/** Retorna o tipo de contexto da prova para redirecionar ao concluir: avaliação, competição ou olimpíada. */
+function getEvaluationContext(pathname: string, state: CompetitionLocationState | null): 'avaliacao' | 'competicao' | 'olimpiada' {
+  if (state?.fromCompetition) return 'competicao';
+  if (pathname.includes('/aluno/olimpiada/')) return 'olimpiada';
+  return 'avaliacao';
+}
+
 
 export default function TakeEvaluation() {
     const { id: evaluationId } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const location = useLocation();
     const competitionState = (location.state ?? null) as CompetitionLocationState | null;
+    const evaluationContext = getEvaluationContext(location.pathname, competitionState);
+    const returnPath = evaluationContext === 'olimpiada' ? '/aluno/olimpiadas' : evaluationContext === 'competicao' ? '/aluno/competitions' : '/aluno/avaliacoes';
+    const returnLabel = evaluationContext === 'olimpiada' ? 'Voltar às Olimpíadas' : evaluationContext === 'competicao' ? 'Voltar às Competições' : 'Voltar às Avaliações';
     const { toast } = useToast();
     const [showSubmitDialog, setShowSubmitDialog] = useState(false);
     const [showCompletionDialog, setShowCompletionDialog] = useState(false);
@@ -63,7 +78,6 @@ export default function TakeEvaluation() {
         // Buscar a questão embaralhada
         const shuffledQuestion = shuffledQuestions.find(q => q.id === questionId);
         if (!shuffledQuestion?.positionMapping) {
-            console.warn('⚠️ Questão não tem mapeamento de posições:', questionId);
             return textToMap; // Fallback para resposta direta
         }
         
@@ -86,37 +100,20 @@ export default function TakeEvaluation() {
         }
         
         if (!selectedOption) {
-            console.warn('⚠️ Opção selecionada não encontrada:', textToMap, {
-                availableOptions: shuffledQuestion.options?.map(opt => ({ id: opt.id, text: opt.text?.substring(0, 50) }))
-            });
             return textToMap; // Fallback para resposta direta
         }
         
         // Encontrar o índice embaralhado da opção selecionada
         const shuffledIndex = shuffledQuestion.options?.findIndex(opt => opt.id === selectedOption.id);
         if (shuffledIndex === -1 || shuffledIndex === undefined) {
-            console.warn('⚠️ Índice embaralhado não encontrado para opção:', selectedOption.id);
             return textToMap; // Fallback para resposta direta
         }
         
         // Buscar o mapeamento para essa posição
         const mapping = shuffledQuestion.positionMapping[shuffledIndex];
         if (!mapping) {
-            console.warn('⚠️ Mapeamento não encontrado para índice:', shuffledIndex);
             return textToMap; // Fallback para resposta direta
         }
-        
-        console.log('✅ Mapeamento de resposta para letra original:', {
-            questionId,
-            selectedText: textToMap,
-            selectedOptionId: selectedOption.id,
-            shuffledIndex,
-            originalIndex: mapping.originalIndex,
-            shuffledLetter: mapping.shuffledLetter, // A, B, C, D... (posição no frontend)
-            originalLetter: mapping.originalLetter, // A, B, C, D... (posição original)
-            originalText: mapping.originalText,
-            shuffledText: mapping.shuffledText
-        });
         
         // Retornar a letra da posição original (A, B, C, D...)
         return mapping.originalLetter;
@@ -130,6 +127,7 @@ export default function TakeEvaluation() {
         answers,
         isSubmitting,
         isSaving,
+        isSavingPartial,
         results,
         timeRemaining,
         isTimeUp,
@@ -145,18 +143,8 @@ export default function TakeEvaluation() {
     // ✅ Verificar se avaliação já foi enviada antes de iniciar
     useEffect(() => {
         if (evaluationState === 'completed' && !results) {
-            console.log('⚠️ Avaliação já foi enviada anteriormente - bloqueando acesso');
-            console.log('🔍 Debug do estado:', {
-                evaluationState,
-                hasResults: !!results,
-                testData: !!testData,
-                session: !!session
-            });
-            
-            // ✅ NOVO: Verificação adicional para evitar falsos positivos
-            // Se não há dados da avaliação ou sessão, pode ser um erro de carregamento
+            // Verificação adicional: se não há dados da avaliação ou sessão, pode ser erro de carregamento
             if (!testData || !session) {
-                console.log('⚠️ Dados incompletos - pode ser erro de carregamento, não bloqueando acesso');
                 return;
             }
             
@@ -166,17 +154,16 @@ export default function TakeEvaluation() {
                 variant: "destructive",
             });
             const timer = setTimeout(() => {
-                navigate("/aluno/avaliacoes");
+                navigate(returnPath);
             }, 2000);
             
             return () => clearTimeout(timer);
         }
-    }, [evaluationState, results, testData, session, navigate, toast]);
+    }, [evaluationState, results, testData, session, navigate, toast, returnPath]);
 
     // ✅ Auto-iniciar avaliação automaticamente
     useEffect(() => {
         if (evaluationState === 'instructions' && testData && !session) {
-            console.log('🚀 Auto-iniciando avaliação...');
             startTestSession();
         }
     }, [evaluationState, testData, session, startTestSession]);
@@ -242,19 +229,6 @@ export default function TakeEvaluation() {
     // ✅ REMOVIDO: useEffect que fechava automaticamente o fullscreen ao navegar
     // Agora o modo tela cheia persiste durante a navegação entre questões
 
-    // Log para debug da questão atual (apenas quando muda)
-    useEffect(() => {
-        if (currentQuestionIndex >= 0 && shuffledQuestions?.[currentQuestionIndex]) {
-            const currentQuestion = shuffledQuestions[currentQuestionIndex];
-            console.log('🔍 Questão atual:', {
-                index: currentQuestionIndex,
-                questionId: currentQuestion?.id,
-                currentAnswer: answers[currentQuestion?.id]?.answer,
-                questionType: currentQuestion?.type
-            });
-        }
-    }, [currentQuestionIndex, shuffledQuestions, answers]);
-
     // ✅ NOVO: Scroll automático para o topo da questão quando mudar
     useEffect(() => {
         if (currentQuestionIndex >= 0) {
@@ -290,13 +264,17 @@ export default function TakeEvaluation() {
         }
     }, [answers, shuffledQuestions.length, showFullscreenQuestion]);
 
+    /** Normaliza questão para o mesmo modelo da prévia (QuestionBank): texto 1 = formattedText/text, texto 2 = secondStatement. */
+    const normalizeQuestionForDisplay = useCallback((q: Question & { formatted_text?: string; second_statement?: string }): Question => {
+        const text = q.text ?? '';
+        const formattedText = q.formattedText ?? (q as { formatted_text?: string }).formatted_text ?? text;
+        const secondStatement = (q.secondStatement ?? (q as { second_statement?: string }).second_statement ?? q.secondstatement ?? '').trim();
+        return { ...q, text, formattedText: formattedText || text, secondStatement: secondStatement || '' };
+    }, []);
+
     // ✅ Organizar questões por disciplina e embaralhar alternativas
     useEffect(() => {
         if (testData?.questions?.length && shuffledQuestions.length === 0) {
-            console.log('🔄 Organizando questões por disciplina...', testData.questions.length);
-            
-
-            
             // Agrupar questões por disciplina
             const questionsBySubject = testData.questions.reduce((acc, question) => {
                 const subjectName = question.subject?.name || 'Sem disciplina';
@@ -307,65 +285,49 @@ export default function TakeEvaluation() {
                 return acc;
             }, {} as Record<string, Question[]>);
 
-            console.log('📚 Questões agrupadas por disciplina:', Object.keys(questionsBySubject));
-
-            // Processar questões de cada disciplina
+            // Processar questões de cada disciplina (normalizar texto 1 / texto 2 como na prévia do QuestionBank)
             const processedQuestions: Question[] = [];
-            
-            Object.entries(questionsBySubject).forEach(([subject, questions]) => {
-                console.log(`📖 Processando disciplina: ${subject} (${questions.length} questões)`);
-                
-                const processedSubjectQuestions = questions.map((q, questionIndex) => {
-                    console.log(`Questão ${questionIndex + 1} de ${subject}:`, q.type, q.options?.length);
-                    
-                    if (
-                        ["multiple_choice", "multipleChoice", "multiple_choice"].includes(q.type) &&
-                        (q.options || q.alternatives) &&
-                        Array.isArray(q.options || q.alternatives) &&
-                        (q.options || q.alternatives).length > 0
-                    ) {
-                        const optionsToShuffle = q.options || q.alternatives || [];
-                                    // ✅ NOVO: Embaralhar opções mantendo referência às originais
-            const shuffledOptions = [...optionsToShuffle].sort(() => Math.random() - 0.5);
-            
-            // ✅ NOVO: Criar mapeamento de posições embaralhadas para originais
-            const positionMapping = shuffledOptions.map((shuffledOpt, shuffledIndex) => {
-                const originalIndex = optionsToShuffle.findIndex(originalOpt => originalOpt.id === shuffledOpt.id);
-                return {
-                    shuffledIndex,
-                    originalIndex,
-                    originalLetter: String.fromCharCode(65 + originalIndex), // A, B, C, D...
-                    shuffledLetter: String.fromCharCode(65 + shuffledIndex), // A, B, C, D... (pode ser diferente)
-                    originalText: optionsToShuffle[originalIndex].text,
-                    shuffledText: shuffledOpt.text
-                };
-            });
-            
-            console.log(`✅ Questão ${questionIndex + 1} de ${subject} embaralhada:`, {
-                original: optionsToShuffle.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
-                shuffled: shuffledOptions.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
-                positionMapping: positionMapping.map(m => `${m.shuffledLetter}→${m.originalLetter}`),
-                totalOptions: shuffledOptions.length
-            });
 
-            return {
-                ...q,
-                options: shuffledOptions,
-                alternatives: shuffledOptions, // Manter compatibilidade
-                // ✅ NOVO: Adicionar mapeamento de posições
-                positionMapping: positionMapping
-            } as Question;
+            Object.entries(questionsBySubject).forEach(([subject, questions]) => {
+                const processedSubjectQuestions = questions.map((q, questionIndex) => {
+                    const normalized = normalizeQuestionForDisplay(q as Question & { formatted_text?: string; second_statement?: string });
+                    if (
+                        ["multiple_choice", "multipleChoice", "multiple_choice"].includes(normalized.type) &&
+                        (normalized.options || normalized.alternatives) &&
+                        Array.isArray(normalized.options || normalized.alternatives) &&
+                        (normalized.options || normalized.alternatives).length > 0
+                    ) {
+                        const optionsToShuffle = normalized.options || normalized.alternatives || [];
+                        const shuffledOptions = [...optionsToShuffle].sort(() => Math.random() - 0.5);
+
+                        const positionMapping = shuffledOptions.map((shuffledOpt, shuffledIndex) => {
+                            const originalIndex = optionsToShuffle.findIndex(originalOpt => originalOpt.id === shuffledOpt.id);
+                            return {
+                                shuffledIndex,
+                                originalIndex,
+                                originalLetter: String.fromCharCode(65 + originalIndex),
+                                shuffledLetter: String.fromCharCode(65 + shuffledIndex),
+                                originalText: optionsToShuffle[originalIndex].text,
+                                shuffledText: shuffledOpt.text
+                            };
+                        });
+
+                        return {
+                            ...normalized,
+                            options: shuffledOptions,
+                            alternatives: shuffledOptions,
+                            positionMapping
+                        } as Question;
                     }
-                    return q;
+                    return normalized;
                 });
 
                 processedQuestions.push(...processedSubjectQuestions);
             });
 
-            console.log('🎯 Questões organizadas por disciplina definidas:', processedQuestions.length);
             setShuffledQuestions(processedQuestions);
         }
-    }, [testData, shuffledQuestions.length]);
+    }, [testData, shuffledQuestions.length, normalizeQuestionForDisplay]);
 
 
 
@@ -382,12 +344,18 @@ export default function TakeEvaluation() {
                     images.forEach((img) => {
                         const parent = img.parentElement;
 
-                        if (parent && parent.tagName === 'P') {
-                            const before = img.previousSibling?.textContent?.trim() || '';
-                            const after = img.nextSibling?.textContent?.trim() || '';
-                            const hasTextAround = before.length > 0 || after.length > 0;
-
-                            if (hasTextAround) {
+                        // Marcar como inline: dentro de <p> com texto ao redor OU dentro de <p>/<li> (fórmulas, raiz, símbolos pequenos)
+                        if (parent) {
+                            const isInP = parent.tagName === 'P';
+                            const isInLi = parent.tagName === 'LI';
+                            if (isInP) {
+                                const before = img.previousSibling?.textContent?.trim() || '';
+                                const after = img.nextSibling?.textContent?.trim() || '';
+                                const hasTextAround = before.length > 0 || after.length > 0;
+                                if (hasTextAround) img.classList.add('inline-image');
+                                // Imagem sozinha no parágrafo (ex.: raiz, fórmula) também fica pequena
+                                else img.classList.add('inline-image');
+                            } else if (isInLi) {
                                 img.classList.add('inline-image');
                             }
                         }
@@ -418,7 +386,6 @@ export default function TakeEvaluation() {
             });
             
             if (allAnswered) {
-                console.log('🎉 Todas as questões foram respondidas!');
                 setShowCompletionDialog(true);
                 setHasSeenCompletionDialog(true);
             }
@@ -427,60 +394,34 @@ export default function TakeEvaluation() {
 
     // ✅ Quando conclusão é de prova de competição, abrir modal de sucesso em vez de redirecionar
     useEffect(() => {
-        if (evaluationState === 'completed' && competitionState?.fromCompetition) {
+        if (evaluationState === 'completed' && evaluationContext === 'competicao') {
             setShowFullscreenQuestion(false);
             setShowCompletionDialog(false);
             setShowSubmitDialog(false);
             setIsCompletionDialogClosed(false);
             setShowCompetitionSuccessModal(true);
         }
-    }, [evaluationState, competitionState?.fromCompetition]);
+    }, [evaluationState, evaluationContext]);
 
-    // ✅ Redirecionamento automático quando avaliação é concluída (exceto competição)
+    // ✅ Redirecionamento automático quando avaliação é concluída (avaliação ou olimpíada; competição usa modal)
     useEffect(() => {
-        console.log('🔍 Verificando redirecionamento:', {
-            evaluationState,
-            hasResults: !!results,
-            fromCompetition: competitionState?.fromCompetition,
-            shouldRedirect: evaluationState === 'completed' && !competitionState?.fromCompetition
-        });
-        
-        if (evaluationState === 'completed' && !competitionState?.fromCompetition) {
-            console.log('📊 Avaliação enviada com sucesso, redirecionando...', {
-                evaluationState,
-                hasResults: !!results,
-                resultsData: results
-            });
-            
+        if (evaluationState === 'completed' && evaluationContext !== 'competicao') {
             setShowFullscreenQuestion(false);
             setShowCompletionDialog(false);
             setShowSubmitDialog(false);
             setIsCompletionDialogClosed(false);
-            
+            const targetLabel = evaluationContext === 'olimpiada' ? 'olimpíadas' : 'avaliações';
+            const targetPath = evaluationContext === 'olimpiada' ? '/aluno/olimpiadas' : '/aluno/avaliacoes';
             toast({
-                title: "✅ Avaliação enviada com sucesso!",
-                description: "Redirecionando para a listagem de avaliações...",
+                title: "✅ Prova enviada com sucesso!",
+                description: `Redirecionando para ${targetLabel}...`,
             });
-            
             const timer = setTimeout(() => {
-                console.log('🔄 Executando redirecionamento para /aluno/avaliacoes');
-                navigate("/aluno/avaliacoes");
+                navigate(targetPath);
             }, 1500);
-            
             return () => clearTimeout(timer);
         }
-    }, [evaluationState, results, navigate, toast, competitionState?.fromCompetition]);
-
-    // ✅ NOVO: Log para debug do estado da avaliação
-    useEffect(() => {
-        console.log('🔍 Estado da avaliação mudou:', {
-            evaluationState,
-            hasResults: !!results,
-            showCompletionDialog,
-            showSubmitDialog,
-            showFullscreenQuestion
-        });
-    }, [evaluationState, results, showCompletionDialog, showSubmitDialog, showFullscreenQuestion]);
+    }, [evaluationState, results, navigate, toast, evaluationContext]);
 
     // ✅ REMOVIDO: useEffect duplicado que estava causando conflitos
 
@@ -593,9 +534,9 @@ export default function TakeEvaluation() {
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => navigate("/aluno/avaliacoes")}
+                                        onClick={() => navigate(returnPath)}
                                     >
-                                        Voltar às Avaliações
+                                        {returnLabel}
                                     </Button>
                                 </div>
                             </div>
@@ -608,18 +549,26 @@ export default function TakeEvaluation() {
 
     // Results screen - Mostrar resultados imediatos (ou modal de competição)
     if (evaluationState === 'completed') {
-        const isCompetition = Boolean(competitionState?.fromCompetition);
+        const isCompetition = evaluationContext === 'competicao';
+        const isOlimpiada = evaluationContext === 'olimpiada';
+        const backPath = isOlimpiada ? '/aluno/olimpiadas' : '/aluno/avaliacoes';
+        const backLabel = isOlimpiada ? 'Voltar às Olimpíadas' : 'Voltar às Avaliações';
         return (
             <div className="flex items-center justify-center min-h-screen w-screen bg-background p-4">
                 <div className="max-w-lg w-full">
                     <Card>
                         <CardHeader>
                             <CardTitle className="text-center">
-                                {results ? "✅ Avaliação Concluída!" : "⚠️ Avaliação Já Enviada"}
+                                {results ? "✅ Prova Concluída!" : "⚠️ Prova Já Enviada"}
                             </CardTitle>
                             <div className="text-center space-y-2">
                                 <h2 className="text-xl font-semibold">{competitionState?.competitionName ?? testData?.title}</h2>
-                                {testData?.subject && <Badge variant="outline">{testData.subject.name}</Badge>}
+                                {testData?.subject && (
+                                  <DisciplineTag
+                                    subjectId={testData.subject.id ?? ''}
+                                    name={testData.subject.name}
+                                  />
+                                )}
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-6">
@@ -638,8 +587,8 @@ export default function TakeEvaluation() {
                                         results ? 'text-green-800' : 'text-yellow-800'
                                     }`}>
                                         {results 
-                                            ? "Avaliação Enviada com Sucesso!" 
-                                            : "Avaliação Já Foi Enviada Anteriormente"
+                                            ? "Prova Enviada com Sucesso!" 
+                                            : "Prova Já Foi Enviada Anteriormente"
                                         }
                                     </h3>
                                     {!isCompetition && (
@@ -655,11 +604,11 @@ export default function TakeEvaluation() {
                             {!isCompetition && (
                                 <div className="text-center">
                                     <Button
-                                        onClick={() => navigate("/aluno/avaliacoes")}
+                                        onClick={() => navigate(backPath)}
                                         className="bg-purple-600 hover:bg-purple-700"
                                     >
                                         <Home className="h-4 w-4 mr-2" />
-                                        Voltar às Avaliações
+                                        {backLabel}
                                     </Button>
                                 </div>
                             )}
@@ -683,7 +632,6 @@ export default function TakeEvaluation() {
     if (evaluationState === 'active' && testData && session) {
         // ✅ Verificação adicional para garantir que os dados estão carregados
         if (!shuffledQuestions || shuffledQuestions.length === 0) {
-            console.log('⚠️ shuffledQuestions vazio, usando testData.questions como fallback');
             if (testData?.questions?.length) {
                 setShuffledQuestions(testData.questions);
                 return null; // Aguardar re-render
@@ -726,9 +674,9 @@ export default function TakeEvaluation() {
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => navigate("/aluno/avaliacoes")}
+                                        onClick={() => navigate(returnPath)}
                                     >
-                                        Voltar às Avaliações
+                                        {returnLabel}
                                     </Button>
                                 </div>
                             </div>
@@ -770,9 +718,9 @@ export default function TakeEvaluation() {
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => navigate("/aluno/avaliacoes")}
+                                        onClick={() => navigate(returnPath)}
                                     >
-                                        Voltar às Avaliações
+                                        {returnLabel}
                                     </Button>
                                 </div>
                             </div>
@@ -786,44 +734,66 @@ export default function TakeEvaluation() {
             <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
 <style>
   {`
-    /* Imagens principais - tamanho médio/grande com tamanho mínimo */
-    .evaluation-question-content img:not(.inline-image) {
-        display: block;
-        margin: 2rem auto;
-        width: auto;
-        min-width: 300px;
-        max-width: 90%;
-        max-height: 450px;
-        height: auto;
+    /* Respeitar tamanho definido pelo usuário ao criar/editar (atributos width/height ou style) */
+    .evaluation-question-content img[width],
+    .evaluation-question-content img[height],
+    .evaluation-question-content img[style*="width"],
+    .evaluation-question-content img[style*="height"] {
+        display: block !important;
+        margin: 1.2rem auto !important;
+        max-width: 100% !important;
+        max-height: none !important;
+        object-fit: contain !important;
+        border-radius: 8px !important;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
     }
 
-    /* Imagens inline (pequenas no meio do texto) */
-    .evaluation-question-content img.inline-image {
+    /* Padrão: imagens sem dimensão explícita ficam no tamanho de fórmula/símbolo */
+    .evaluation-question-content img:not([width]):not([height]) {
         display: inline-block !important;
         vertical-align: middle !important;
-        margin: 0 0.3rem !important;
-        max-height: 2.8em !important;
-        max-width: 4em !important;
+        max-height: 1.4em !important;
+        max-width: 2em !important;
         width: auto !important;
         height: auto !important;
         object-fit: contain !important;
-        border-radius: 4px !important;
-        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.1) !important;
+        margin: 0 0.2rem !important;
     }
 
-    /* Ajustes opcionais por alinhamento */
-    .evaluation-question-content p[style*="text-align: center"] img:not(.inline-image) {
+    /* Apenas imagens com classe .block-image (sem width/height) podem ser grandes */
+    .evaluation-question-content img.block-image:not([width]):not([height]) {
+        display: block !important;
+        margin: 2rem auto !important;
+        min-width: unset !important;
+        max-height: 350px !important;
+        max-width: 90% !important;
+    }
+
+    /* Imagens inline (reforço do padrão) */
+    .evaluation-question-content img.inline-image {
+        max-height: 1.4em !important;
+        max-width: 2em !important;
+        border-radius: 4px !important;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08) !important;
+    }
+
+    /* Ajustes por alinhamento só para block-image */
+    .evaluation-question-content p[style*="text-align: center"] img.block-image {
         max-width: 80% !important;
     }
-
-    .evaluation-question-content p[style*="text-align: right"] img:not(.inline-image) {
+    .evaluation-question-content p[style*="text-align: right"] img.block-image {
         margin: 2rem 0 2rem auto !important;
         max-width: 60% !important;
     }
-
-    .evaluation-question-content p[style*="text-align: left"] img:not(.inline-image) {
+    .evaluation-question-content p[style*="text-align: left"] img.block-image {
         margin: 2rem auto 2rem 0 !important;
         max-width: 60% !important;
+    }
+    .evaluation-question-content p[style*="text-align: justify"] img.block-image {
+        display: block;
+        max-width: 80%;
+        margin-left: auto;
+        margin-right: auto;
     }
 
     /* Modal fullscreen customizado */
@@ -852,32 +822,73 @@ export default function TakeEvaluation() {
         overflow: hidden;
     }
 
-    /* Media queries para responsividade */
+    /* Fluxo de texto como no editor: parágrafos contínuos, sem quebra por \\n */
+    .evaluation-question-content .question-text-block .prose,
+    .evaluation-question-content .question-text-block .prose p,
+    .evaluation-question-content .question-text-block .prose h1,
+    .evaluation-question-content .question-text-block .prose h2,
+    .evaluation-question-content .question-text-block .prose h3 {
+        white-space: normal;
+    }
+    /* Pouco espaçamento entre quebras de linha (parágrafos) — igual ao editor */
+    .evaluation-question-content .question-text-block p {
+        margin-top: 0.35rem;
+    }
+    .evaluation-question-content .question-text-block p:first-of-type {
+        margin-top: 0;
+    }
+    /* Separação extra antes da referência bibliográfica (último parágrafo do Texto 2) */
+    .evaluation-question-content .question-second-statement p:last-of-type {
+        margin-top: 1.75rem;
+    }
+
+    /* Forçar alinhamento da edição na prova (sobrepõe .prose e temas) */
+    .evaluation-question-content .question-text-block p[style*="text-align: center"],
+    .evaluation-question-content .question-text-block h1[style*="text-align: center"],
+    .evaluation-question-content .question-text-block h2[style*="text-align: center"],
+    .evaluation-question-content .question-text-block h3[style*="text-align: center"] {
+        text-align: center !important;
+    }
+    .evaluation-question-content .question-text-block p[style*="text-align: right"],
+    .evaluation-question-content .question-text-block h1[style*="text-align: right"],
+    .evaluation-question-content .question-text-block h2[style*="text-align: right"],
+    .evaluation-question-content .question-text-block h3[style*="text-align: right"] {
+        text-align: right !important;
+    }
+    .evaluation-question-content .question-text-block p[style*="text-align: left"],
+    .evaluation-question-content .question-text-block h1[style*="text-align: left"],
+    .evaluation-question-content .question-text-block h2[style*="text-align: left"],
+    .evaluation-question-content .question-text-block h3[style*="text-align: left"] {
+        text-align: left !important;
+    }
+    .evaluation-question-content .question-text-block p[style*="text-align: justify"],
+    .evaluation-question-content .question-text-block h1[style*="text-align: justify"],
+    .evaluation-question-content .question-text-block h2[style*="text-align: justify"],
+    .evaluation-question-content .question-text-block h3[style*="text-align: justify"] {
+        text-align: justify !important;
+    }
+
+    /* Media queries para responsividade (não alterar imagens com tamanho do usuário) */
     @media (max-width: 768px) {
-      .evaluation-question-content img:not(.inline-image) {
-        max-width: 100% !important;
-        min-width: 150px !important;
-        max-height: 300px !important;
-        margin: 1rem auto !important;
+      .evaluation-question-content img:not([width]):not([height]) {
+        max-height: 1.35em !important;
+        max-width: 1.85em !important;
       }
-      
-      .evaluation-question-content img.inline-image {
-        max-height: 2em !important;
-        max-width: 3em !important;
+      .evaluation-question-content img.block-image:not([width]):not([height]) {
+        max-height: 280px !important;
+        margin: 1rem auto !important;
       }
     }
 
     @media (min-width: 769px) and (max-width: 1024px) {
-      .evaluation-question-content img:not(.inline-image) {
-        min-width: 250px !important;
-        max-height: 350px !important;
+      .evaluation-question-content img.block-image:not([width]):not([height]) {
+        max-height: 320px !important;
       }
     }
 
     @media (min-width: 1536px) {
-      .evaluation-question-content img:not(.inline-image) {
-        min-width: 400px !important;
-        max-height: 550px !important;
+      .evaluation-question-content img.block-image:not([width]):not([height]) {
+        max-height: 450px !important;
       }
     }
 
@@ -957,14 +968,13 @@ export default function TakeEvaluation() {
                                         timeRemaining={timeRemaining}
                                         isTimeUp={isTimeUp}
                                         isPaused={isPaused}
-                                        timeLimitMinutes={testData?.duration}
-                                        remainingMinutes={session?.remaining_time_minutes}
+                                        timeLimitMinutes={testData?.duration ?? testData?.duration_minutes}
                                     />
 
-                                    {isSaving && (
+                                    {(isSaving || isSavingPartial) && (
                                         <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
                                             <Loader2 className="h-3 w-3 animate-spin" />
-                                            <span className="hidden md:inline">Salvando...</span>
+                                            <span className="hidden md:inline">{isSavingPartial ? 'Salvando respostas...' : 'Salvando...'}</span>
                                         </div>
                                     )}
                                 </div>
@@ -975,25 +985,30 @@ export default function TakeEvaluation() {
 
                 <div className="flex-1 overflow-hidden">
                     <div className="h-full flex">
-                        {/* ✅ Navegação lateral - escondida em mobile */}
-                        <div className="hidden md:flex md:w-64 lg:w-72 xl:w-80 bg-card border-r border-border flex-col">
-                            {/* Header da navegação */}
-                            <div className="p-3 lg:p-4 border-b border-border">
-                                <div className="flex items-center justify-between mb-3">
-                                    <div className="flex items-center gap-2 lg:gap-3">
-                                        <h3 className="text-xs lg:text-sm font-semibold text-foreground">Navegação</h3>
-                                        <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                                            {Object.keys(answers).length}/{shuffledQuestions.length}
+                        {/* Navegação lateral - design moderno */}
+                        <div className="hidden md:flex md:w-64 lg:w-72 xl:w-80 flex-col shrink-0 bg-gradient-to-b from-card to-card/95 dark:from-card dark:to-card/90 border-r border-border/80 shadow-[4px_0_24px_-8px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_24px_-8px_rgba(0,0,0,0.3)]">
+                            {/* Header */}
+                            <div className="p-4 lg:p-5 border-b border-border/60">
+                                <div className="flex items-center justify-between gap-2 mb-4">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 dark:bg-primary/20">
+                                            <Menu className="h-4 w-4 text-primary" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-semibold text-foreground tracking-tight">Questões</h3>
+                                            <p className="text-[11px] text-muted-foreground">
+                                                {Object.keys(answers).length} de {shuffledQuestions.length} respondidas
+                                            </p>
                                         </div>
                                     </div>
                                     <Button
                                         size="sm"
                                         onClick={() => setShowSubmitDialog(true)}
                                         disabled={isTimeUp || isSubmitting || Object.keys(answers).length < shuffledQuestions.length}
-                                        className={`px-2 lg:px-3 py-1 h-7 lg:h-8 text-xs ${
+                                        className={`shrink-0 h-8 px-3 text-xs font-medium rounded-xl shadow-sm transition-all ${
                                             Object.keys(answers).length >= shuffledQuestions.length
-                                                ? 'bg-green-600 hover:bg-green-700 text-white'
-                                                : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white hover:shadow-md'
+                                                : 'bg-muted text-muted-foreground cursor-not-allowed'
                                         }`}
                                         title={
                                             Object.keys(answers).length < shuffledQuestions.length
@@ -1001,30 +1016,26 @@ export default function TakeEvaluation() {
                                                 : 'Enviar avaliação'
                                         }
                                     >
-                                        <Send className="h-3 w-3 mr-1" />
-                                        <span className="hidden lg:inline">Enviar</span>
+                                        <Send className="h-3.5 w-3 mr-1.5" />
+                                        Enviar
                                     </Button>
                                 </div>
-                                
-                                {/* Progresso visual */}
-                                <div className="mb-3 lg:mb-4">
-                                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                                {/* Barra de progresso */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
                                         <span>Progresso</span>
-                                        <span>{Math.round((Object.keys(answers).length / shuffledQuestions.length) * 100)}%</span>
+                                        <span className="tabular-nums text-foreground/80">{Math.round((Object.keys(answers).length / shuffledQuestions.length) * 100)}%</span>
                                     </div>
-                                    <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
-                                        <div 
-                                            className="bg-gradient-to-r from-purple-500 to-blue-600 h-full transition-all duration-300 ease-out"
-                                            style={{ 
-                                                width: `${(Object.keys(answers).length / shuffledQuestions.length) * 100}%` 
-                                            }}
+                                    <div className="w-full h-2 bg-muted/80 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full rounded-full bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 transition-all duration-500 ease-out shadow-sm"
+                                            style={{ width: `${(Object.keys(answers).length / shuffledQuestions.length) * 100}%` }}
                                         />
                                     </div>
                                 </div>
                             </div>
-                            
-                            {/* Grid de navegação */}
-                            <div className="flex-1 overflow-y-auto p-3 lg:p-4">
+                            {/* Grid de questões */}
+                            <div className="flex-1 overflow-y-auto p-3 lg:p-4 min-h-0 take-evaluation-questions-scroll pr-1">
                                 <div className="grid grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
                                     {shuffledQuestions.map((question, index) => {
                                         const hasAnswer = answers[question.id]?.answer && answers[question.id]?.answer !== "";
@@ -1034,12 +1045,13 @@ export default function TakeEvaluation() {
                                             <button
                                                 key={question.id}
                                                 className={`
-                                                    relative w-10 h-10 lg:w-11 lg:h-11 xl:w-12 xl:h-12 rounded-lg text-xs lg:text-sm font-medium flex items-center justify-center transition-all
-                                                    ${isCurrent 
-                                                        ? 'bg-purple-600 text-white ring-2 ring-purple-300 shadow-lg scale-105' 
-                                                        : hasAnswer 
-                                                            ? 'bg-green-100 dark:bg-green-950/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-800 hover:bg-green-200 dark:hover:bg-green-950/50 hover:scale-105' 
-                                                            : 'bg-muted text-muted-foreground border border-border hover:bg-muted/80 hover:scale-105'
+                                                    relative w-10 h-10 lg:w-11 lg:h-11 xl:w-12 xl:h-12 rounded-xl text-xs lg:text-sm font-semibold flex items-center justify-center
+                                                    transition-all duration-200 ease-out
+                                                    ${isCurrent
+                                                        ? 'bg-gradient-to-br from-violet-600 to-purple-600 text-white shadow-lg shadow-violet-500/30 ring-2 ring-violet-400/50 scale-105'
+                                                        : hasAnswer
+                                                            ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-400/40 dark:border-emerald-500/40 hover:bg-emerald-500/25 dark:hover:bg-emerald-500/30 hover:scale-105'
+                                                            : 'bg-muted/70 dark:bg-muted/50 text-muted-foreground border border-transparent hover:bg-muted hover:text-foreground hover:scale-105 hover:border-border'
                                                     }
                                                     ${isTimeUp ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
                                                 `}
@@ -1049,7 +1061,10 @@ export default function TakeEvaluation() {
                                             >
                                                 {index + 1}
                                                 {hasAnswer && !isCurrent && (
-                                                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full border border-white"></div>
+                                                    <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                                                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                                                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-background" />
+                                                    </span>
                                                 )}
                                             </button>
                                         );
@@ -1067,8 +1082,8 @@ export default function TakeEvaluation() {
                                             <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
                                                 <div className="flex items-center gap-1 sm:gap-2">
                                                     <Badge variant="outline" className="bg-white dark:bg-purple-950/30 border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300 text-xs sm:text-sm">
-                                                        <span className="hidden sm:inline">Questão </span>
-                                                        {currentQuestionIndex + 1}
+                                                        <span className="hidden sm:inline">{`Questão ${currentQuestionIndex + 1}`}</span>
+                                                        <span className="sm:hidden">{currentQuestionIndex + 1}</span>
                                                     </Badge>
                                                     {currentQuestion?.subject?.name && (
                                                         <Badge variant="outline" className="bg-white dark:bg-blue-950/30 border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs sm:text-sm truncate max-w-[120px] sm:max-w-none">
@@ -1093,29 +1108,49 @@ export default function TakeEvaluation() {
                                         </div>
                                     </CardHeader>
                                     <CardContent className="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8 md:space-y-10 dark:bg-card">
-                                        {/* Conteúdo da Questão */}
-                                        <div className="evaluation-question-content space-y-4 sm:space-y-6">
-                                            {/* Primeiro Enunciado */}
-                                            {(currentQuestion?.formattedText || currentQuestion?.text) && (
-                                                <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
-                                                    <div
-                                                        dangerouslySetInnerHTML={{
-                                                            __html: currentQuestion?.formattedText || currentQuestion?.text || '',
-                                                        }}
-                                                    />
-                                                </div>
-                                            )}
+                                        {/* Conteúdo da Questão — Texto 1, Texto 2 e referência com espaço entre cada um */}
+                                        <div className="evaluation-question-content space-y-8 sm:space-y-10">
+                                            {/* Texto 1 — Primeiro enunciado */}
+                                            {(currentQuestion?.formattedText || currentQuestion?.text) && (() => {
+                                                const str = currentQuestion?.formattedText || currentQuestion?.text || '';
+                                                return (
+                                                    <div className="question-text-block rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
+                                                        <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
+                                                            {isLikelyPlainText(str) ? (
+                                                                <QuestionRenderer rawText={cleanLegacyText(str)} />
+                                                            ) : (
+                                                                <div
+                                                                    className="question-enunciado-html"
+                                                                    dangerouslySetInnerHTML={{
+                                                                        __html: getQuestionHtmlForDisplay(str, BASE_URL),
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
 
-                                            {/* Segundo Enunciado */}
-                                            {currentQuestion?.secondStatement?.trim() && (
-                                                <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
-                                                    <div
-                                                        dangerouslySetInnerHTML={{
-                                                            __html: currentQuestion.secondStatement.trim(),
-                                                        }}
-                                                    />
-                                                </div>
-                                            )}
+                                            {/* Texto 2 — Segundo enunciado (referência bibliográfica ganha espaço no final) */}
+                                            {currentQuestion?.secondStatement?.trim() && (() => {
+                                                const str = currentQuestion.secondStatement.trim();
+                                                return (
+                                                    <div className="question-text-block question-second-statement rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
+                                                        <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
+                                                            {isLikelyPlainText(str) ? (
+                                                                <QuestionRenderer rawText={cleanLegacyText(str)} />
+                                                            ) : (
+                                                                <div
+                                                                    className="question-enunciado-html"
+                                                                    dangerouslySetInnerHTML={{
+                                                                        __html: getQuestionHtmlForDisplay(str, BASE_URL),
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
 
                                         {/* Opções de Resposta */}
@@ -1125,26 +1160,8 @@ export default function TakeEvaluation() {
                                                 answer={answers[currentQuestion?.id]?.answer}
                                                 onAnswerChange={(newAnswer) => {
                                                     if (currentQuestion?.id) {
-                                                        console.log('💾 Salvando resposta:', {
-                                                            questionId: currentQuestion.id,
-                                                            interfaceAnswer: newAnswer,
-                                                            questionType: currentQuestion.type,
-                                                            currentAnswers: Object.keys(answers)
-                                                        });
-                                                        
-                                                        // ✅ NOVO: Mapear resposta para letra original antes de salvar
                                                         const displayAnswer = Array.isArray(newAnswer) ? newAnswer[0] : newAnswer;
                                                         const originalLetter = mapAnswerToOriginalLetter(currentQuestion.id, displayAnswer);
-                                                        
-                                                        console.log('💾 Salvando resposta mapeada:', {
-                                                            questionId: currentQuestion.id,
-                                                            interfaceAnswer: displayAnswer,
-                                                            originalLetter: originalLetter,
-                                                            questionType: currentQuestion.type,
-                                                            currentAnswers: Object.keys(answers)
-                                                        });
-                                                        
-                                                        // Salvar a letra original (A, B, C, D...) no backend
                                                         saveAnswer(currentQuestion.id, originalLetter);
 
                                                         // Avanço automático
@@ -1260,19 +1277,28 @@ export default function TakeEvaluation() {
                              }}
                          />
                          
-                         {/* Modal de navegação na FRENTE */}
-                         <div className="fixed inset-x-0 bottom-0 z-50 bg-card rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col animate-slide-up">
-                             {/* Header do modal */}
-                             <div className="p-4 border-b border-border flex items-center justify-between">
+                         {/* Modal de navegação - design moderno */}
+                         <div className="fixed inset-x-0 bottom-0 z-50 bg-gradient-to-b from-card to-card/98 dark:from-card dark:to-card/95 rounded-t-3xl shadow-[0_-8px_40px_-12px_rgba(0,0,0,0.15)] dark:shadow-[0_-8px_40px_-12px_rgba(0,0,0,0.4)] border-t border-border/60 max-h-[85vh] flex flex-col animate-slide-up">
+                             {/* Alça visual */}
+                             <div className="flex justify-center pt-3 pb-1">
+                                 <div className="w-12 h-1 rounded-full bg-muted-foreground/20" />
+                             </div>
+                             {/* Header */}
+                             <div className="px-4 pb-4 flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <h3 className="text-base font-bold text-foreground">Navegação</h3>
-                                    <div className="text-xs text-muted-foreground bg-muted px-3 py-1.5 rounded-full font-semibold">
-                                        {Object.keys(answers).length}/{shuffledQuestions.length}
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 dark:bg-primary/20">
+                                        <Menu className="h-5 w-5 text-primary" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-semibold text-foreground tracking-tight">Questões</h3>
+                                        <p className="text-xs text-muted-foreground">
+                                            {Object.keys(answers).length} de {shuffledQuestions.length} respondidas
+                                        </p>
                                     </div>
                                 </div>
                                 <Button
                                     variant="ghost"
-                                    size="sm"
+                                    size="icon"
                                     onClick={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
@@ -1283,32 +1309,26 @@ export default function TakeEvaluation() {
                                         e.stopPropagation();
                                         setShowMobileNav(false);
                                     }}
-                                    className="h-8 w-8 p-0 rounded-full touch-manipulation"
+                                    className="h-9 w-9 rounded-xl touch-manipulation"
                                 >
                                     <X className="h-5 w-5" />
                                 </Button>
                              </div>
-                             
-                             {/* Progresso */}
-                             <div className="px-4 pt-3 pb-2">
-                                <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-                                    <span className="font-medium">Progresso da Avaliação</span>
-                                    <span className="font-bold text-purple-600">
-                                        {Math.round((Object.keys(answers).length / shuffledQuestions.length) * 100)}%
-                                    </span>
+                             {/* Barra de progresso */}
+                             <div className="px-4 pb-4">
+                                <div className="flex items-center justify-between text-xs font-medium text-muted-foreground mb-2">
+                                    <span>Progresso</span>
+                                    <span className="tabular-nums text-foreground/80">{Math.round((Object.keys(answers).length / shuffledQuestions.length) * 100)}%</span>
                                 </div>
-                                <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
-                                    <div 
-                                        className="bg-gradient-to-r from-purple-500 to-blue-600 h-full transition-all duration-300 ease-out"
-                                        style={{ 
-                                            width: `${(Object.keys(answers).length / shuffledQuestions.length) * 100}%` 
-                                        }}
+                                <div className="w-full h-2.5 bg-muted/80 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full rounded-full bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 transition-all duration-500 ease-out"
+                                        style={{ width: `${(Object.keys(answers).length / shuffledQuestions.length) * 100}%` }}
                                     />
                                 </div>
                              </div>
-                             
-                             {/* Grid de navegação */}
-                             <div className="flex-1 overflow-y-auto p-4">
+                             {/* Grid de questões */}
+                             <div className="flex-1 overflow-y-auto px-4 pb-4 min-h-0 take-evaluation-questions-scroll pr-1">
                                 <div className="grid grid-cols-5 sm:grid-cols-6 gap-2.5">
                                     {shuffledQuestions.map((question, index) => {
                                         const hasAnswer = answers[question.id]?.answer && answers[question.id]?.answer !== "";
@@ -1318,12 +1338,13 @@ export default function TakeEvaluation() {
                                             <button
                                                 key={question.id}
                                                 className={`
-                                                    relative w-full aspect-square rounded-xl text-sm font-bold flex items-center justify-center transition-all
-                                                    ${isCurrent 
-                                                        ? 'bg-purple-600 text-white ring-2 ring-purple-300 shadow-lg scale-105' 
-                                                        : hasAnswer 
-                                                            ? 'bg-green-100 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-2 border-green-400 dark:border-green-800 hover:bg-green-200 dark:hover:bg-green-950/50 hover:scale-105' 
-                                                            : 'bg-muted text-muted-foreground border-2 border-border hover:bg-muted/80 hover:scale-105'
+                                                    relative w-full aspect-square rounded-xl text-sm font-semibold flex items-center justify-center
+                                                    transition-all duration-200 ease-out
+                                                    ${isCurrent
+                                                        ? 'bg-gradient-to-br from-violet-600 to-purple-600 text-white shadow-lg shadow-violet-500/30 ring-2 ring-violet-400/50 scale-105'
+                                                        : hasAnswer
+                                                            ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-400/40 dark:border-emerald-500/40 hover:bg-emerald-500/25 dark:hover:bg-emerald-500/30 hover:scale-105'
+                                                            : 'bg-muted/70 dark:bg-muted/50 text-muted-foreground border border-transparent hover:bg-muted hover:text-foreground hover:scale-105 hover:border-border'
                                                     }
                                                     ${isTimeUp ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
                                                 `}
@@ -1347,16 +1368,18 @@ export default function TakeEvaluation() {
                                             >
                                                 {index + 1}
                                                 {hasAnswer && !isCurrent && (
-                                                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                                                    <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
+                                                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                                                        <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500 border-2 border-background" />
+                                                    </span>
                                                 )}
                                             </button>
                                         );
                                     })}
                                 </div>
                              </div>
-                             
-                             {/* Botão de enviar */}
-                             <div className="p-4 border-t border-border bg-muted">
+                             {/* Botão enviar */}
+                             <div className="p-4 pt-3 border-t border-border/60 bg-muted/30 dark:bg-muted/20">
                                 <Button
                                     onClick={(e) => {
                                         e.preventDefault();
@@ -1371,16 +1394,16 @@ export default function TakeEvaluation() {
                                         setShowSubmitDialog(true);
                                     }}
                                     disabled={isTimeUp || isSubmitting || Object.keys(answers).length < shuffledQuestions.length}
-                                    className={`w-full py-4 text-base font-bold rounded-xl touch-manipulation ${
+                                    className={`w-full py-4 text-base font-semibold rounded-xl touch-manipulation transition-all ${
                                         Object.keys(answers).length >= shuffledQuestions.length
-                                            ? 'bg-green-600 hover:bg-green-700 active:bg-green-800 text-white shadow-lg'
-                                            : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                                            ? 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-lg hover:shadow-md'
+                                            : 'bg-muted text-muted-foreground cursor-not-allowed'
                                     }`}
                                 >
                                     <Send className="h-5 w-5 mr-2" />
-                                    Enviar Avaliação ({Object.keys(answers).length}/{shuffledQuestions.length})
+                                    Enviar ({Object.keys(answers).length}/{shuffledQuestions.length})
                                 </Button>
-                                    {Object.keys(answers).length < shuffledQuestions.length && (
+                                {Object.keys(answers).length < shuffledQuestions.length && (
                                     <p className="text-xs text-center text-muted-foreground mt-2">
                                         Responda todas as questões para enviar
                                     </p>
@@ -1531,7 +1554,6 @@ export default function TakeEvaluation() {
                                      <button
                                          className="w-full sm:w-auto order-2 sm:order-1 bg-muted hover:bg-muted/80 text-foreground font-medium py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors text-sm sm:text-base"
                                          onClick={() => {
-                                             console.log('🔍 Fechando modal de conclusão para permitir revisão...');
                                              setShowCompletionDialog(false);
                                              setHasSeenCompletionDialog(false);
                                              setIsCompletionDialogClosed(true);
@@ -1545,17 +1567,13 @@ export default function TakeEvaluation() {
                                          className="w-full sm:w-auto order-1 sm:order-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors shadow-lg hover:shadow-xl text-sm sm:text-base flex items-center justify-center"
                                          onClick={() => {
                                              if (isSubmitting) {
-                                                 console.log('⚠️ Tentativa de envio bloqueada - já está enviando');
                                                  return;
                                              }
-                                             // ✅ NOVO: Verificar se já foi enviada
                                              if (evaluationState !== 'active') {
-                                                 console.log('⚠️ Tentativa de envio bloqueada - avaliação não está ativa');
                                                  return;
                                              }
-                                             console.log('🚀 Modal de conclusão: Enviando avaliação...');
-                                             
-                                             // ✅ CORRIGIDO: Não fechar modal imediatamente - deixar o hook gerenciar
+
+                                             // Não fechar modal imediatamente - deixar o hook gerenciar - deixar o hook gerenciar
                                              // Apenas marcar que está enviando
                                              setHasSeenCompletionDialog(false);
                                              
@@ -1647,40 +1665,60 @@ export default function TakeEvaluation() {
                            {/* Lado esquerdo/topo - Questão */}
                            <div className="fullscreen-question-container flex-1 bg-card overflow-y-auto md:w-1/2 lg:w-3/5 xl:w-2/3">
                                <div className="p-4 sm:p-5 md:p-6 lg:p-8 xl:p-10 max-w-4xl mx-auto">
-                                   <div className="evaluation-question-content space-y-3 sm:space-y-4 md:space-y-6">
-                                       {/* Primeiro Enunciado */}
-                                       {(currentQuestion?.formattedText || currentQuestion?.text) && (
-                                           <div 
-                                               className="prose dark:prose-invert prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground dark:text-gray-100 [&_*]:dark:text-gray-100"
-                                               style={{ 
-                                                   fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
-                                                   lineHeight: '1.75' 
-                                               }}
-                                           >
-                                               <div
-                                                   dangerouslySetInnerHTML={{
-                                                       __html: currentQuestion?.formattedText || currentQuestion?.text || '',
-                                                   }}
-                                               />
-                                           </div>
-                                       )}
+                                   <div className="evaluation-question-content space-y-8 sm:space-y-10">
+                                       {/* Texto 1 — Primeiro enunciado */}
+                                       {(currentQuestion?.formattedText || currentQuestion?.text) && (() => {
+                                           const str = currentQuestion?.formattedText || currentQuestion?.text || '';
+                                           return (
+                                               <div className="question-text-block rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
+                                                   <div 
+                                                       className="prose dark:prose-invert prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground dark:text-gray-100 [&_*]:dark:text-gray-100"
+                                                       style={{ 
+                                                           fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
+                                                           lineHeight: '1.75' 
+                                                       }}
+                                                   >
+                                                       {isLikelyPlainText(str) ? (
+                                                           <QuestionRenderer rawText={cleanLegacyText(str)} />
+                                                       ) : (
+                                                           <div
+                                                               className="question-enunciado-html"
+                                                               dangerouslySetInnerHTML={{
+                                                                   __html: getQuestionHtmlForDisplay(str, BASE_URL),
+                                                               }}
+                                                           />
+                                                       )}
+                                                   </div>
+                                               </div>
+                                           );
+                                       })()}
 
-                                       {/* Segundo Enunciado */}
-                                       {currentQuestion?.secondStatement?.trim() && (
-                                           <div 
-                                               className="prose dark:prose-invert prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground dark:text-gray-100 pt-3 sm:pt-4 md:pt-6 mt-3 sm:mt-4 md:mt-6 border-t-2 border-border [&_*]:dark:text-gray-100"
-                                               style={{ 
-                                                   fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
-                                                   lineHeight: '1.75' 
-                                               }}
-                                           >
-                                               <div
-                                                   dangerouslySetInnerHTML={{
-                                                       __html: currentQuestion.secondStatement.trim(),
-                                                   }}
-                                               />
-                                           </div>
-                                       )}
+                                       {/* Texto 2 — Segundo enunciado (referência bibliográfica com espaço abaixo) */}
+                                       {currentQuestion?.secondStatement?.trim() && (() => {
+                                           const str = currentQuestion.secondStatement.trim();
+                                           return (
+                                               <div className="question-text-block question-second-statement rounded-xl border border-border bg-muted/30 dark:bg-muted/10 p-5 sm:p-6 md:p-7">
+                                                   <div 
+                                                       className="prose dark:prose-invert prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground dark:text-gray-100 [&_*]:dark:text-gray-100"
+                                                       style={{ 
+                                                           fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
+                                                           lineHeight: '1.75' 
+                                                       }}
+                                                   >
+                                                       {isLikelyPlainText(str) ? (
+                                                           <QuestionRenderer rawText={cleanLegacyText(str)} />
+                                                       ) : (
+                                                           <div
+                                                               className="question-enunciado-html"
+                                                               dangerouslySetInnerHTML={{
+                                                                   __html: getQuestionHtmlForDisplay(str, BASE_URL),
+                                                               }}
+                                                           />
+                                                       )}
+                                                   </div>
+                                               </div>
+                                           );
+                                       })()}
                                    </div>
                                </div>
                            </div>
@@ -1832,20 +1870,10 @@ function QuestionOptions({
                         return optionId;
                     })()}
                     onValueChange={(val) => {
-                        console.log('🔄 RadioGroup onValueChange:', val);
-                        // ✅ CORRIGIDO: Enviar diretamente o ID da opção (letra A, B, C, D)
                         const option = questionOptions.find(opt => opt.id === val);
                         if (option) {
-                            console.log('📝 Resposta selecionada:', {
-                                selectedValue: val,
-                                selectedId: option.id,
-                                selectedText: option.text,
-                                totalOptions: questionOptions.length
-                            });
-                            // Enviar o ID da opção (letra) diretamente
                             onAnswerChange(option.id);
                         } else {
-                            console.log('❌ Opção não encontrada:', val);
                             onAnswerChange("");
                         }
                     }}
@@ -1880,7 +1908,7 @@ function QuestionOptions({
                                         <span className="font-bold text-foreground min-w-[24px] sm:min-w-[30px] text-base sm:text-lg md:text-xl flex-shrink-0">
                                             {String.fromCharCode(65 + index)})
                                         </span>
-                                        <div className="text-sm sm:text-base md:text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: optionText }} />
+                                        <div className="text-sm sm:text-base md:text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: resolveQuestionImageSrc(typeof optionText === 'string' ? optionText : '', BASE_URL) }} />
                                     </div>
                                 </Label>
                             </div>
@@ -1983,7 +2011,7 @@ function QuestionOptions({
                                         <span className="font-medium text-muted-foreground min-w-[20px] flex-shrink-0">
                                             {String.fromCharCode(65 + index)})
                                         </span>
-                                        <div className="text-xs sm:text-sm" dangerouslySetInnerHTML={{ __html: optionText }} />
+                                        <div className="text-xs sm:text-sm" dangerouslySetInnerHTML={{ __html: resolveQuestionImageSrc(typeof optionText === 'string' ? optionText : '', BASE_URL) }} />
                                     </div>
                                 </Label>
                             </div>

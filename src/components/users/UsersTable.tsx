@@ -153,7 +153,7 @@ const useDebounce = (value: string, delay: number) => {
 };
 
 type User = {
-  id: number;
+  id: number | string; // API pode retornar UUID (string) ou id numérico
   name: string;
   email: string;
   role: string;
@@ -167,7 +167,12 @@ interface Filters {
   city: string;
 }
 
-export default function UsersTable() {
+interface UsersTableProps {
+  /** Quando true, oculta o título da página (uso dentro de abas) */
+  embedded?: boolean;
+}
+
+export default function UsersTable({ embedded = false }: UsersTableProps) {
   const { municipios, getMunicipios } = useDataContext();
   const { user: currentUser } = useAuth();
   
@@ -181,7 +186,7 @@ export default function UsersTable() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [userToDelete, setUserToDelete] = useState<number | null>(null);
+  const [userToDelete, setUserToDelete] = useState<number | string | null>(null);
   
   // Estados de filtros e pesquisa
   const [searchTerm, setSearchTerm] = useState('');
@@ -195,8 +200,8 @@ export default function UsersTable() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
   
-  // Estados de seleção múltipla
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  // Estados de seleção múltipla (id pode ser UUID string ou número)
+  const [selectedIds, setSelectedIds] = useState<(number | string)[]>([]);
   
   // Estado de ordenação
   const [sortConfig, setSortConfig] = useState<SortConfig>(() => loadSortConfig());
@@ -419,7 +424,7 @@ export default function UsersTable() {
     }
   };
 
-  const handleSelectOne = (id: number, checked: boolean) => {
+  const handleSelectOne = (id: number | string, checked: boolean) => {
     setSelectedIds(prev =>
       checked ? [...prev, id] : prev.filter(selectedId => selectedId !== id)
     );
@@ -501,11 +506,16 @@ export default function UsersTable() {
   };
 
   const handleEditUser = async (userData: User) => {
+    const id = userData.id;
+    const idStr = id != null && id !== '' ? String(id) : null;
+    if (!idStr || idStr === 'undefined' || idStr === 'NaN') {
+      toast.error('ID do usuário inválido. Não foi possível atualizar.');
+      return;
+    }
     try {
-      await api.put(`/users/${userData.id}`, userData);
+      await api.put(`/users/${idStr}`, userData);
       toast.success('Usuário atualizado com sucesso!');
       closeEditModal();
-      // Refresh the list after editing
       await fetchUsers();
     } catch (error) {
       console.error('Error updating user:', error);
@@ -543,7 +553,7 @@ export default function UsersTable() {
     setDeleteDialogOpen(false);
   };
 
-  const confirmDelete = (userId: number) => {
+  const confirmDelete = (userId: number | string) => {
     setUserToDelete(userId);
     setDeleteDialogOpen(true);
   };
@@ -659,14 +669,17 @@ export default function UsersTable() {
   );
 
   return (
-    <div className="container mx-auto py-4 space-y-4">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <User className="w-8 h-8 text-blue-600" />
-            Usuários
-          </h1>
+    <div className={embedded ? "space-y-4" : "container mx-auto py-4 space-y-4"}>
+      {/* Header — mobile: título alinhado, botões centralizados abaixo */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 flex-wrap">
+          {!embedded && (
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+              <User className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
+              Usuários
+            </h1>
+          )}
+          {embedded && <div className="flex items-center gap-2" />}
           {error && (
             <Badge variant="destructive" className="text-xs">
               Erro de Conexão
@@ -681,7 +694,7 @@ export default function UsersTable() {
             </Badge>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-center gap-2 w-full sm:w-auto sm:justify-end">
           {selectedIds.length > 0 && (
             <Button
               variant="destructive"

@@ -28,10 +28,9 @@ import {
   Menu,
   ChevronLeft,
   FileText,
+  FilePlus,
   Target,
   TrendingUp,
-  GraduationCap,
-  BookMarked,
   Layers,
   Library,
   FolderTree,
@@ -41,26 +40,35 @@ import {
   FileBarChart,
   ClipboardList,
   NotebookPen,
-  Users,
   MapPin,
+  ScanLine,
   Sparkles,
   Medal,
   Star,
-  Coins
+  Coins,
+  ShoppingBag
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/context/authContext";
+import { useStudentPreferences } from "@/context/StudentPreferencesContext";
 import { Button } from "@/components/ui/button";
 import { useGamesCount } from "@/hooks/useGamesCount";
-import { useUnreadAvisos } from "@/hooks/useUnreadAvisos";
 import { useOpenCompetitionsCount } from "@/hooks/useOpenCompetitionsCount";
+import { DashboardApiService } from "@/services/dashboardApi";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getRoleDisplayName } from "@/lib/constants";
 import { AvatarPreview } from "@/components/profile/AvatarPreview";
 import { CoinBalance } from "@/components/coins/CoinBalance";
 import { NotificationBell } from "@/components/Notifications/NotificationBell";
+import { StudentBandBadge } from "@/components/competitions/StudentBandBadge";
+import {
+  getSidebarThemeStyles,
+  getNonStudentSidebarThemeFromStorage,
+  SIDEBAR_THEME_CHANGE_EVENT,
+} from "@/constants/sidebarThemes";
+import type { SidebarThemeId } from "@/constants/sidebarThemes";
 
 type SidebarLink = {
   icon: React.ElementType;
@@ -87,32 +95,62 @@ const isLinkActive = (link: SidebarLink, currentPath: string): boolean => {
 
 interface SidebarProps {
   onMobileMenuClose?: () => void;
+  isMobileOpen?: boolean;
 }
 
-export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
+export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: SidebarProps = {}) {
   const currentPath = useLocation().pathname;
   const isMobile = useIsMobile();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [avisoIds, setAvisoIds] = useState<string[]>([]);
+  const [avisosQuantidade, setAvisosQuantidade] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   const navigate = useNavigate();
   const { logout, user } = useAuth();
+  const isCorretor = Boolean(user?.email?.toLowerCase().includes('corretor'));
+  // Contas "corretor(n)@afirmeplay.com.br" devem ver apenas Agenda e Cartão Resposta.
+  const corretorAllowedHrefs = new Set([
+    '/app',
+    '/app/avaliacoes',
+    '/logout',
+    '/app/agenda',
+    '/app/configuracoes',
+    '/app/cartao-resposta/cadastrar',
+    '/app/cartao-resposta/gerar',
+    '/app/cartao-resposta/corrigir',
+  ]);
+  const studentPrefs = useStudentPreferences();
+  const [nonStudentThemeId, setNonStudentThemeId] = useState<SidebarThemeId>(() =>
+    user?.role !== 'aluno' ? getNonStudentSidebarThemeFromStorage() : null
+  );
+  const sidebarThemeId = (user?.role === 'aluno'
+    ? (studentPrefs?.preferences?.sidebar_theme_id ?? null)
+    : nonStudentThemeId) as SidebarThemeId;
+
+  useEffect(() => {
+    if (user?.role !== 'aluno') {
+      setNonStudentThemeId(getNonStudentSidebarThemeFromStorage());
+      const onThemeChange = () => setNonStudentThemeId(getNonStudentSidebarThemeFromStorage());
+      window.addEventListener(SIDEBAR_THEME_CHANGE_EVENT, onThemeChange);
+      return () => window.removeEventListener(SIDEBAR_THEME_CHANGE_EVENT, onThemeChange);
+    }
+  }, [user?.role]);
+
+  const themeStyles = getSidebarThemeStyles(sidebarThemeId, isDarkMode);
   useGamesCount();
-  const { getUnreadCount } = useUnreadAvisos();
   const openCompetitionsCount = useOpenCompetitionsCount();
 
   useEffect(() => {
-    const loadAvisoIds = async () => {
+    const loadAvisosQuantidade = async () => {
       try {
-        const mockAvisoIds = ['1', '2', '3', '4', '5', '6', '7', '8'];
-        setAvisoIds(mockAvisoIds);
+        const quantidade = await DashboardApiService.getAvisosQuantidade();
+        setAvisosQuantidade(quantidade);
       } catch (error) {
-        console.error('Erro ao carregar avisos:', error);
+        console.error('Erro ao carregar quantidade de avisos:', error);
       }
     };
 
-    if (user.id) loadAvisoIds();
+    if (user.id) loadAvisosQuantidade();
   }, [user.id, user.role]);
 
   useEffect(() => {
@@ -130,7 +168,6 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
     return () => observer.disconnect();
   }, []);
 
-  const unreadAvisosCount = useMemo(() => getUnreadCount(avisoIds), [avisoIds, getUnreadCount]);
 
   function handleLogout() {
     logout().then(() => navigate("/"));
@@ -163,6 +200,12 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           icon: ClipboardList,
           label: "Avaliações",
           href: `${user.role === 'aluno' ? "/aluno/avaliacoes" : "/app/avaliacoes"}`,
+          role: ["aluno"]
+        },
+        {
+          icon: BarChart3,
+          label: "Resultados",
+          href: "/aluno/resultados",
           role: ["aluno"]
         },
         {
@@ -203,8 +246,8 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       links: [
         {
           icon: Building,
-          label: "Instituição",
-          href: "/app/cadastros/instituicao",
+          label: "Gestão Escolar",
+          href: "/app/cadastros/gestao",
           role: ["professor", "diretor", "coordenador"]
         },
         {
@@ -220,37 +263,49 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           role: ["professor", "diretor", "coordenador"]
         },
         {
+          icon: Building,
+          label: "Gestão Escolar",
+          href: "/app/cadastros/gestao",
+          role: ["admin", "tecadm"]
+        },
+        {
           icon: FolderTree,
           label: "Cadastros",
           role: ["admin", "tecadm"],
           children: [
-            {
-              icon: Building,
-              label: "Instituição",
-              role: ["admin", "tecadm"],
-              children: [
-                { icon: Building, label: "Instituição", href: "/app/cadastros/instituicao", role: ["admin", "tecadm"] },
-                { icon: GraduationCap, label: "Curso", href: "/app/cadastros/curso", role: ["admin", "tecadm"] },
-                { icon: Layers, label: "Série", href: "/app/cadastros/serie", role: ["admin", "tecadm"] },
-                { icon: BookMarked, label: "Disciplina", href: "/app/cadastros/disciplina", role: ["admin", "tecadm"] },
-                { icon: Users2, label: "Turma", href: "/app/cadastros/turma", role: ["admin", "tecadm"] },
-              ]
-            },
             { icon: FileCheck, label: "Avaliações", href: "/app/avaliacoes", role: ["admin", "tecadm"] },
             { icon: MapPin, label: "Municípios", href: "/app/city", role: ["admin", "tecadm"] },
             { icon: HelpCircle, label: "Questão", href: "/app/cadastros/questao", role: ["admin", "tecadm"] },
-            { icon: Users, label: "Usuário", href: "/app/usuarios", role: ["admin", "tecadm"] },
           ]
         },
         {
           icon: Ticket,
           label: "Cartão Resposta",
-          href: "/app/cartao-resposta",
+          role: ["admin", "professor", "diretor", "coordenador", "tecadm"],
+          children: [
+            { icon: FilePlus, label: "Cadastrar Cartão Resposta", href: "/app/cartao-resposta/cadastrar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: Ticket, label: "Gerar cartões", href: "/app/cartao-resposta/gerar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: ScanLine, label: "Corrigir cartões", href: "/app/cartao-resposta/corrigir", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: BarChart3, label: "Resultados (Cartão)", href: "/app/cartao-resposta/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: FileText, label: "Acerto e Níveis (cartão)", href: "/app/relatorios/acerto-niveis-cartao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: School, label: "Relatório Escolar (Cartão)", href: "/app/relatorios/relatorio-escolar-cartao-resposta", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+          ]
+        },
+        {
+          icon: ClipboardList,
+          label: "Lista de Frequência",
+          href: "/app/lista-frequencia",
           role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
         },
-        { icon: Calculator, label: "Calculadora SAEB", href: "/app/calculadora-saeb", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-        { icon: Coins, label: "Administração de moedas", href: "/app/moedas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-        { icon: Target, label: "Cálculo de Metas", href: "/app/calculo-metas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+        {
+          icon: Target,
+          label: "Projeção de Metas",
+          role: ["admin", "professor", "diretor", "coordenador", "tecadm"],
+          children: [
+            { icon: Calculator, label: "Calculadora SAEB", href: "/app/calculadora-saeb", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: Target, label: "Cálculo de Metas", href: "/app/calculo-metas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+          ]
+        },
         { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: TrendingUp, label: "Evolução", href: "/app/evolucao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
@@ -261,6 +316,8 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           children: [
             { icon: FileText, label: "Cadastro de questionários", href: "/app/questionarios/cadastro", role: ["admin", "tecadm"] },
             { icon: Presentation, label: "Relatórios Socio-Econômicos", href: "/app/questionarios/relatorios-socio-economicos", role: ["admin", "tecadm"] },
+            { icon: BarChart3, label: "Resultados Socioeconomicos", href: "/app/questionarios/resultados-socioeconomicos", role: ["admin", "tecadm"] },
+            { icon: BarChart3, label: "INSE x SAEB", href: "/app/questionarios/inse-saeb", role: ["admin", "tecadm"] },
           ]
         },
         {
@@ -270,7 +327,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           children: [
             { icon: Target, label: "Acerto e Níveis", href: "/app/relatorios/acerto-niveis", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: PieChart, label: "Análise das Avaliações", href: "/app/relatorios/analise-avaliacoes", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-            { icon: School, label: "Relatório Escolar", href: "/app/relatorios/relatorio-escolar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] }
+            { icon: School, label: "Relatório Escolar", href: "/app/relatorios/relatorio-escolar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
           ]
         },
       ]
@@ -281,8 +338,17 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       links: [
         { icon: Award, label: "Certificados", href: `${user.role === 'aluno' ? "/aluno/certificados" : "/app/certificados"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
         { icon: Sparkles, label: "Olimpíadas", href: `${user.role === 'aluno' ? "/aluno/olimpiadas" : "/app/olimpiadas"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
-        { icon: Trophy, label: "Competições", href: `${user.role === 'aluno' ? "/aluno/competitions" : "/app/competitions"}`, role: ["admin", "coordenador", "diretor", "tecadm", "aluno"], badge: user.role === 'aluno' && openCompetitionsCount > 0 ? String(openCompetitionsCount) : undefined },
+      ]
+    },
+    {
+      name: "Recomposição",
+      role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
+      links: [
+        { icon: Trophy, label: "Competições", href: `${user.role === 'aluno' ? "/aluno/competitions" : "/app/competitions"}`, role: ["admin", "professor", "coordenador", "diretor", "tecadm", "aluno"], badge: user.role === 'aluno' && openCompetitionsCount > 0 ? String(openCompetitionsCount) : undefined },
         { icon: Coins, label: "Histórico de Moedas", href: "/aluno/moedas/historico", role: ["aluno"] },
+        { icon: Coins, label: "Administração de moedas", href: "/app/moedas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+        { icon: ShoppingBag, label: "Loja", href: "/aluno/loja", role: ["aluno"] },
+        { icon: ShoppingBag, label: "Itens da loja", href: "/app/loja/gerenciar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
       ]
     },
     {
@@ -294,13 +360,80 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           label: "Avisos",
           href: `${user.role === 'aluno' ? "/aluno/avisos" : "/app/avisos"}`,
           role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
-          badge: unreadAvisosCount > 0 ? unreadAvisosCount.toString() : undefined
+          badge: avisosQuantidade > 0 ? avisosQuantidade.toString() : undefined
         },
         { icon: Settings, label: "Configurações", href: `${user.role === 'aluno' ? "/aluno/configuracoes" : "/app/configuracoes"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
         { icon: LogOut, label: "Sair", href: "/logout", role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"], divider: true },
       ]
     }
   ];
+
+  // Para contas "corretor(n)@afirmeplay.com.br": sidebar simplificada.
+  // Objetivo: mostrar apenas "Principal" e evitar duplicidades em "Cadastros"
+  // e o dropdown de "Cartão Resposta" (funções como links separados).
+  const corretorRole = user.role ?? 'tecadm';
+  const corretorSidebarCategories: SidebarCategory[] = [
+    {
+      name: "Principal",
+      role: [corretorRole],
+      links: [
+        {
+          icon: LayoutDashboard,
+          label: "Painel",
+          href: "/app",
+          role: [corretorRole],
+        },
+        {
+          icon: CalendarDays,
+          label: "Agenda",
+          href: "/app/agenda",
+          role: [corretorRole],
+        },
+        {
+          icon: ClipboardList,
+          label: "Avaliações",
+          href: "/app/avaliacoes",
+          role: [corretorRole],
+        },
+        // Funções de cartão resposta fora do dropdown "Cartão Resposta"
+        {
+          icon: FilePlus,
+          label: "Cadastrar Cartão Resposta",
+          href: "/app/cartao-resposta/cadastrar",
+          role: [corretorRole],
+        },
+        {
+          icon: Ticket,
+          label: "Gerar cartões",
+          href: "/app/cartao-resposta/gerar",
+          role: [corretorRole],
+        },
+        {
+          icon: ScanLine,
+          label: "Corrigir cartões",
+          href: "/app/cartao-resposta/corrigir",
+          role: [corretorRole],
+        },
+        {
+          icon: Settings,
+          label: "Configurações",
+          href: "/app/configuracoes",
+          role: [corretorRole],
+        },
+        {
+          icon: LogOut,
+          label: "Sair",
+          href: "/logout",
+          role: [corretorRole],
+          divider: true,
+        },
+      ],
+    },
+  ];
+
+  const sidebarCategoriesToRender = isCorretor
+    ? corretorSidebarCategories
+    : sidebarCategories;
 
   const UserInfo = () => {
     const handleProfileClick = () => {
@@ -310,8 +443,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
 
     return (
       <div className="px-2 pt-1 pb-0.5 md:px-3 lg:px-3">
-        <div className="rounded-xl border bg-white/90 border-[#E5D5EA] text-slate-900 shadow-sm
-                        dark:bg-white/5 dark:border-white/10 dark:text-white">
+        <div
+          className="rounded-xl border shadow-sm transition-all duration-300 ease-out hover:scale-[1.03] hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0"
+          style={{ backgroundColor: 'var(--sidebar-user-card-bg)', borderColor: 'var(--sidebar-user-card-border)', color: 'var(--sidebar-text)' }}
+        >
           <div className="px-2 py-1.5 md:px-3 md:py-2 lg:px-3 lg:py-1.5 flex items-center gap-2 md:gap-3">
             {user?.avatar_config ? (
               <div className="flex-shrink-0">
@@ -322,19 +457,21 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                 />
               </div>
             ) : (
-              <div className={cn(
-                "rounded-full bg-[#EDE9FF] text-slate-900 flex items-center justify-center font-semibold flex-shrink-0",
-                "dark:bg-white/20 dark:text-white",
-                isMobile ? "w-9 h-9" : "w-10 h-10"
-              )}>
+              <div
+                className={cn("rounded-full flex items-center justify-center font-semibold flex-shrink-0", isMobile ? "w-9 h-9" : "w-10 h-10")}
+                style={{ backgroundColor: 'var(--sidebar-icon-bg-hover)', color: 'var(--sidebar-text)' }}
+              >
                 {user?.name ? user.name.charAt(0).toUpperCase() : "U"}
               </div>
             )}
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <p className="font-semibold text-xs md:text-sm truncate text-slate-900 dark:text-white">
-                  {user?.name || "Usuário"}
+                <p className="font-semibold text-xs md:text-sm truncate flex items-center gap-1" style={{ color: 'var(--sidebar-text)' }}>
+                  <span className="truncate">{user?.name || "Usuário"}</span>
+                  {user?.role === 'aluno' && user?.competition_band && (
+                    <StudentBandBadge band={user.competition_band} />
+                  )}
                 </p>
 
                 <TooltipProvider>
@@ -342,11 +479,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                     <TooltipTrigger asChild>
                       <button
                         onClick={handleProfileClick}
-                        className="flex-shrink-0 p-1 rounded-full transition-colors
-                                   hover:bg-[#EDE9FF] dark:hover:bg-white/10"
+                        className="flex-shrink-0 p-1 rounded-full transition-transform duration-300 ease-out hover:bg-[var(--sidebar-button-hover-bg)] hover:scale-125 active:scale-90 text-[var(--sidebar-icon-color)] hover:text-[var(--sidebar-icon-color-active)]"
                         aria-label="Editar perfil"
                       >
-                        <Edit className="h-3.5 w-3.5 md:h-4 md:w-4 text-slate-800 hover:text-[#7B3FE4] dark:text-white/70 dark:hover:text-white" />
+                        <Edit className="h-3.5 w-3.5 md:h-4 md:w-4" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="right">
@@ -357,7 +493,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
               </div>
 
               <div className="mt-0.5 md:mt-1">
-                <p className="text-[10px] md:text-xs truncate text-slate-700 dark:text-white/70">
+                <p className="text-[10px] md:text-xs truncate" style={{ color: 'var(--sidebar-text-muted)' }}>
                   {user?.role ? getRoleDisplayName(user.role) : "Usuário"}
                 </p>
               </div>
@@ -402,22 +538,15 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
           <div
             className={cn(
-              "flex items-center justify-center rounded-full transition-colors",
-              // fundo do ícone ajustado p/ tema claro
-              "bg-[#F5F0F7] group-hover:bg-[#EDE9FF]",
-              "dark:bg-white/5 dark:group-hover:bg-white/10",
-              isCollapsed 
-                ? "h-10 w-10" 
-                : "h-8 w-8 md:h-9 md:w-9 lg:h-9 lg:w-9"
+              "flex items-center justify-center rounded-full transition-all duration-300 ease-out bg-[var(--sidebar-icon-bg)] group-hover:bg-[var(--sidebar-icon-bg-hover)] group-hover:scale-125",
+              isCollapsed ? "h-10 w-10" : "h-8 w-8 md:h-9 md:w-9 lg:h-9 lg:w-9"
             )}
           >
             <link.icon
               size={isCollapsed ? 18 : 16}
               className={cn(
-                "flex-shrink-0 transition-colors md:w-[18px] md:h-[18px] lg:w-[18px] lg:h-[18px]",
-                isActive
-                  ? "text-[#7B3FE4]"
-                  : "text-slate-800 group-hover:text-[#7B3FE4] dark:text-white/80 dark:group-hover:text-white"
+                "flex-shrink-0 transition-all duration-300 ease-out md:w-[18px] md:h-[18px] lg:w-[18px] lg:h-[18px]",
+                isActive ? "text-[var(--sidebar-icon-color-active)]" : "text-[var(--sidebar-icon-color)] group-hover:text-[var(--sidebar-icon-color-active)]"
               )}
             />
           </div>
@@ -425,10 +554,8 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           {!isCollapsed && (
             <span
               className={cn(
-                "truncate text-xs md:text-sm font-medium transition-colors",
-                isActive
-                  ? "text-slate-900 dark:text-[#1B1F4A]"
-                  : "text-slate-800 group-hover:text-slate-900 dark:text-white/80 dark:group-hover:text-white"
+                "line-clamp-2 whitespace-normal break-words text-xs md:text-sm font-medium transition-all duration-300 ease-out",
+                isActive ? "text-[var(--sidebar-link-active-text)]" : "text-[var(--sidebar-text)] group-hover:text-[var(--sidebar-link-active-text)]"
               )}
             >
               {link.label}
@@ -450,8 +577,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
               <ChevronDown
                 size={isMobile ? 12 : 14}
                 className={cn(
-                  "transition-transform duration-200",
-                  "text-slate-700 group-hover:text-[#7B3FE4] dark:text-white/70 dark:group-hover:text-white",
+                  "transition-transform duration-300 ease-out text-[var(--sidebar-icon-color)] group-hover:text-[var(--sidebar-icon-color-active)]",
                   isSubmenuOpen && "rotate-180"
                 )}
               />
@@ -472,28 +598,29 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
 
     const itemClasses = cn(
       "sidebar-link w-full text-left group relative",
-      "flex items-center gap-2 md:gap-3 transition-all duration-200",
+      "flex items-center gap-2 md:gap-3 transition-all duration-300 ease-out",
+      "hover:translate-x-2 active:translate-x-1 active:scale-[0.98]",
       isCollapsed 
         ? "justify-center px-0 py-1" 
         : "px-2 py-2 md:px-3 md:py-2.5 lg:px-3 lg:py-2.5 rounded-full text-xs md:text-sm",
 
-      // ✅ HOVER: forçado (important) para NÃO virar branco estourado (mesmo que exista CSS externo)
-      "hover:!bg-[#EDE9FF]/50 dark:hover:!bg-white/10",
+      "hover:!bg-[var(--sidebar-link-hover-bg)]",
+      isActive && !isCollapsed && "!bg-[var(--sidebar-link-active-bg)] font-semibold shadow-sm",
+      isActive && isCollapsed && "bg-[var(--sidebar-link-hover-bg)]",
 
-      // ✅ Active (tema claro e escuro)
-      isActive && !isCollapsed && "bg-[#EDE9FF] text-slate-900 shadow-sm font-semibold dark:bg-[#E3DFFF] dark:text-[#1B1F4A] dark:shadow-lg",
-      isActive && isCollapsed && "bg-slate-900/10 dark:bg-white/20",
-
-      // níveis
       level > 0 && !isCollapsed && "ml-3 md:ml-4 text-xs md:text-sm",
       level > 1 && !isCollapsed && "ml-6 md:ml-8 text-[10px] md:text-xs",
 
-      // foco bonito
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B3FE4]/40"
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sidebar-focus-ring)]"
     );
 
+    const liStyle: React.CSSProperties = link.divider ? { borderColor: 'var(--sidebar-border)' } : undefined;
+
     return (
-      <li className={cn(link.divider && "border-t border-[#E5D5EA] pt-2 mt-2 dark:border-white/10")}>
+      <li
+        className={cn(link.divider && "border-t pt-2 mt-2")}
+        style={liStyle}
+      >
         {link.label === "Sair" ? (
           <TooltipProvider>
             <Tooltip>
@@ -502,11 +629,9 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                   {linkContent}
                 </button>
               </TooltipTrigger>
-              {isCollapsed && (
-                <TooltipContent side="right">
-                  <p>{link.label}</p>
-                </TooltipContent>
-              )}
+              <TooltipContent side="right">
+                <p>{link.label}</p>
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : link.children && link.children.length > 0 ? (
@@ -517,11 +642,9 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                   {linkContent}
                 </button>
               </TooltipTrigger>
-              {isCollapsed && (
-                <TooltipContent side="right">
-                  <p>{link.label}</p>
-                </TooltipContent>
-              )}
+              <TooltipContent side="right">
+                <p>{link.label}</p>
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : (
@@ -532,17 +655,15 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                   {linkContent}
                 </Link>
               </TooltipTrigger>
-              {isCollapsed && (
-                <TooltipContent side="right">
-                  <p>{link.label}</p>
-                </TooltipContent>
-              )}
+              <TooltipContent side="right">
+                <p>{link.label}</p>
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
 
         {link.children && isSubmenuOpen && !isCollapsed && (
-          <ul className="space-y-1 ml-1.5 md:ml-2 mt-1 border-l border-[#E5D5EA] pl-2 md:pl-3 dark:border-white/10">
+          <ul className="space-y-1 ml-1.5 md:ml-2 mt-1 border-l pl-2 md:pl-3" style={{ borderColor: 'var(--sidebar-border)' }}>
             {link.children.map((child, index) => (
               <RenderMenuItem
                 key={`${child.label}-${child.href || child.role.join('-')}-${index}`}
@@ -561,12 +682,9 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   }
 
   const CategorySeparator = ({ name }: { name: string }) => (
-    <div className={cn(
-      "px-2 pt-1.5 pb-0.5 first:pt-0.5 md:px-3 lg:px-3", 
-      isCollapsed && "px-2"
-    )}>
+    <div className={cn("px-2 pt-1.5 pb-0.5 first:pt-0.5 md:px-3 lg:px-3 transition-opacity duration-200", isCollapsed && "px-2")}>
       {!isCollapsed && (
-        <h3 className="text-[10px] md:text-[10px] lg:text-[10px] font-medium uppercase tracking-[0.18em] text-slate-700 dark:text-white/40">
+        <h3 className="text-[10px] md:text-[10px] lg:text-[10px] font-medium uppercase tracking-[0.18em] transition-colors duration-200" style={{ color: 'var(--sidebar-category-text)' }}>
           {name}
         </h3>
       )}
@@ -576,26 +694,30 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   return (
     <div
       className={cn(
-        "min-h-screen h-full flex flex-col transition-all duration-300 ease-in-out z-50 relative",
+        "min-h-screen h-full flex flex-col z-50 relative",
         "border-r shadow-xl",
-        "dark:from-[#0B0F2B] dark:via-[#070A1E] dark:to-[#050617] dark:bg-gradient-to-b",
+        "transition-[width] duration-300",
+        isMobile && isMobileOpen && "animate-sidebar-slide-in",
         isMobile 
           ? "w-screen" 
           : isCollapsed 
             ? "w-16 md:w-16 lg:w-16" 
-            : "w-64 md:w-72 lg:w-64"
+            : "w-64 md:w-72 lg:w-72"
       )}
       style={{
-        ...(!isDarkMode && {
-          background: 'linear-gradient(to bottom, #f0e8f5, #e8daf0, #dcc5e8, #d0b0e0)'
-        })
+        ...themeStyles,
+        background: 'var(--sidebar-bg)',
+        transitionTimingFunction: 'cubic-bezier(0.32, 0.72, 0, 1)',
       }}
     >
       {/* Header */}
-      <div className={cn(
-        "border-b overflow-hidden border-[#E5D5EA] dark:border-white/10",
-        "px-2 py-2 md:px-3 md:py-2 lg:px-3 lg:py-1"
-      )}>
+      <div
+        className={cn(
+          "border-b overflow-hidden px-2 py-2 md:px-3 md:py-2 lg:px-3 lg:py-1",
+          "transition-colors duration-200"
+        )}
+        style={{ borderColor: 'var(--sidebar-border)' }}
+      >
           <div className={cn(
             "flex items-center gap-2 md:gap-3", 
             isCollapsed && !isMobile 
@@ -606,17 +728,15 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
               // Quando colapsado, mostra apenas a logo centralizada (substitui o botão de menu)
               <button
                 onClick={handleToggleCollapse}
-                className="flex items-center justify-center p-1 rounded-full transition-colors
-                           hover:bg-[#EDE9FF] dark:hover:bg-white/10
-                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B3FE4]/40"
+                className="flex items-center justify-center p-1 rounded-full transition-transform duration-300 ease-out hover:bg-[var(--sidebar-button-hover-bg)] hover:scale-[1.15] active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sidebar-focus-ring)]"
                 aria-label="Expandir menu"
               >
                 <img
-                  width="90px"
-                  height="90px"
+                  width="40px"
+                  height="40px"
                   src="/AFIRME-PLAY-ico.png"
                   alt="Afirme Play"
-                  className="object-contain transition-all duration-300"
+                  className="object-contain transition-transform duration-300 w-10 h-10"
                 />
               </button>
             ) : (
@@ -628,11 +748,9 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                   )}
                 >
                   <img
-                    width={isMobile ? "40px" : "48px"}
-                    height={isMobile ? "40px" : "48px"}
                     src="/AFIRME-PLAY-ico.png"
                     alt="Afirme Play"
-                    className="object-contain transition-all duration-300"
+                    className="object-contain transition-transform duration-300 ease-out hover:scale-110 w-8 h-8 md:w-9 md:h-9"
                   />
                 </div>
 
@@ -640,24 +758,20 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 md:h-10 md:w-10 rounded-full border transition-colors
-                               border-[#E5D5EA] text-slate-800 hover:bg-[#EDE9FF] hover:text-[#7B3FE4]
-                               dark:border-white/10 dark:text-white/70 dark:hover:text-white dark:hover:bg-white/10"
+                    className="group h-9 w-9 md:h-10 md:w-10 rounded-full border transition-transform duration-300 ease-out border-[var(--sidebar-button-border)] text-[var(--sidebar-icon-color)] hover:bg-[var(--sidebar-button-hover-bg)] hover:text-[var(--sidebar-button-hover-text)] hover:scale-110 active:scale-90"
                     onClick={onMobileMenuClose}
                   >
-                    <X className="h-5 w-5 md:h-6 md:w-6" />
+                    <X className="h-5 w-5 md:h-6 md:w-6 transition-transform duration-300 ease-out group-hover:rotate-90" />
                     <span className="sr-only">Fechar menu</span>
                   </Button>
                 ) : (
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 md:h-9 md:w-9 lg:h-8 lg:w-8 rounded-full border transition-colors
-                               border-[#E5D5EA] text-slate-800 hover:bg-[#EDE9FF] hover:text-[#7B3FE4]
-                               dark:border-white/10 dark:text-white/70 dark:hover:text-white dark:hover:bg-white/10"
+                    className="group h-8 w-8 md:h-9 md:w-9 lg:h-8 lg:w-8 rounded-full border transition-transform duration-300 ease-out border-[var(--sidebar-button-border)] text-[var(--sidebar-icon-color)] hover:bg-[var(--sidebar-button-hover-bg)] hover:text-[var(--sidebar-button-hover-text)] hover:scale-110 active:scale-90"
                     onClick={handleToggleCollapse}
                   >
-                    <ChevronLeft className="h-4 w-4 md:h-5 md:w-5 lg:h-4 lg:w-4" />
+                    <ChevronLeft className="h-4 w-4 md:h-5 md:w-5 lg:h-4 lg:w-4 transition-transform duration-300 ease-out group-hover:-translate-x-1" />
                     <span className="sr-only">Alternar menu</span>
                   </Button>
                 )}
@@ -682,7 +796,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="rounded-lg border border-[#E5D5EA] dark:border-white/10 bg-white/80 dark:bg-white/5 px-2 py-1.5">
+                    <div className="rounded-lg border px-2 py-1.5 transition-all duration-300 ease-out hover:scale-[1.04] hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98]" style={{ borderColor: 'var(--sidebar-border)', backgroundColor: 'var(--sidebar-user-card-bg)' }}>
                       <CoinBalance studentId={user.id} size="small" showLabel={false} />
                     </div>
                   </TooltipTrigger>
@@ -694,7 +808,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
             </Link>
           </div>
         )}
-        {!isCollapsed && !isMobile && <UserInfo />}
+        {(isMobile || !isCollapsed) && <UserInfo />}
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto custom-scrollbar">
@@ -702,14 +816,37 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
             "px-1.5 pb-2 md:px-2 md:pb-3 lg:px-2 lg:pb-2", 
             isMobile && "pb-4"
           )}>
-            {sidebarCategories.map(category => {
+            {sidebarCategoriesToRender.map(category => {
               if (!category.role.includes(user.role)) return null;
+
+              const filterLink = (link: SidebarLink): SidebarLink | null => {
+                // Mantém compatibilidade com o role-based do RenderMenuItem.
+                if (!link.role.includes(user.role)) return null;
+
+                if (link.children && link.children.length > 0) {
+                  const filteredChildren = link.children
+                    .map(filterLink)
+                    .filter((c): c is SidebarLink => Boolean(c));
+
+                  if (filteredChildren.length === 0) return null;
+                  return { ...link, children: filteredChildren };
+                }
+
+                if (link.href && corretorAllowedHrefs.has(link.href)) return link;
+                return null;
+              };
+
+              const visibleLinks = isCorretor
+                ? category.links.map(filterLink).filter((l): l is SidebarLink => Boolean(l))
+                : category.links;
+
+              if (isCorretor && visibleLinks.length === 0) return null;
 
               return (
                 <div key={category.name}>
                   <CategorySeparator name={category.name} />
                   <ul className="space-y-1 md:space-y-1.5">
-                    {category.links.map((link, index) => (
+                    {visibleLinks.map((link, index) => (
                       <RenderMenuItem
                         key={`${link.label}-${link.href || link.role.join('-')}-${index}`}
                         link={link}

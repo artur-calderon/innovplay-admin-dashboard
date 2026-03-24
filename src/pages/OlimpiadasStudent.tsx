@@ -38,9 +38,8 @@ export default function OlimpiadasStudent() {
       const active = sessions.filter((s: any) => s.status === 'em_andamento');
       
       setActiveSessions(active);
-    } catch (error) {
-      console.error('Erro ao carregar sessões ativas:', error);
-      // Não mostrar erro ao usuário, apenas logar
+    } catch {
+      // Silenciar erro ao carregar sessões
     } finally {
       setLoadingSessions(false);
     }
@@ -59,11 +58,11 @@ export default function OlimpiadasStudent() {
       await loadActiveSessions();
       // Recarregar olimpíadas para atualizar status
       await loadOlimpiadas();
-    } catch (error: any) {
-      console.error('Erro ao encerrar sessão:', error);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
       toast({
         title: 'Erro',
-        description: error?.response?.data?.message || 'Erro ao encerrar sessão',
+        description: err?.response?.data?.message || 'Erro ao encerrar sessão',
         variant: 'destructive',
       });
     }
@@ -73,46 +72,9 @@ export default function OlimpiadasStudent() {
     setLoading(true);
     try {
       const response = await OlimpiadasApiService.getStudentOlimpiadas();
-      
-      // Log SUPER detalhado para debug de timezone no aluno
-      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const userOffset = new Date().getTimezoneOffset();
-      
-      console.log('👨‍🎓 [ALUNO] Timezone do navegador do aluno:', {
-        timezone: userTimezone,
-        offset_minutos: userOffset,
-        offset_horas: userOffset / 60,
-        hora_atual: new Date().toLocaleString('pt-BR')
-      });
-      
-      console.log('📋 [ALUNO] Olimpíadas recebidas:');
-      response.forEach((o, index) => {
-        const timeZone = getOlimpiadaTimeZone(o);
-        const startDate = o.startDateTime ? new Date(o.startDateTime) : null;
-        const endDate = o.endDateTime ? new Date(o.endDateTime) : null;
-        
-        console.log(`\n${index + 1}. ${o.title} (${o.id}):`);
-        console.log('   📅 Datas recebidas do backend:');
-        console.log('      - startDateTime:', o.startDateTime);
-        console.log('      - endDateTime:', o.endDateTime);
-        console.log('      - timeZone da olimpíada:', timeZone);
-        console.log('      - applicationTimeZone:', o.applicationTimeZone);
-        
-        if (startDate) {
-          console.log('   🕐 Interpretação da data de início:');
-          console.log('      - Como string:', o.startDateTime);
-          console.log('      - Como Date.toISOString():', startDate.toISOString());
-          console.log('      - Como Date.getHours():', startDate.getHours());
-          console.log('      - toLocaleString (sem TZ):', startDate.toLocaleString('pt-BR'));
-          console.log('      - toLocaleString (com TZ da olimpíada):', startDate.toLocaleString('pt-BR', { timeZone: timeZone }));
-          console.log('      - toLocaleString (com TZ do navegador):', startDate.toLocaleString('pt-BR', { timeZone: userTimezone }));
-          console.log('      - formatDateTimeForDisplay:', formatDateTimeForDisplay(o.startDateTime, timeZone));
-        }
-      });
-      
-      setOlimpiadas(response);
+      setOlimpiadas(response ?? []);
     } catch (error) {
-      console.error('Erro ao carregar olimpíadas:', error);
+      setOlimpiadas([]);
       toast({
         title: 'Erro',
         description: 'Erro ao carregar olimpíadas',
@@ -166,10 +128,6 @@ export default function OlimpiadasStudent() {
         ? value.split('.')[0] + 'Z' // Remover microsegundos e adicionar Z
         : value + 'Z';
       
-      console.log('⚠️ Data sem timezone detectada, assumindo UTC:', {
-        original: value,
-        corrigida: dateString
-      });
     }
 
     const date = new Date(dateString);
@@ -258,116 +216,45 @@ export default function OlimpiadasStudent() {
 
   if (loading) {
     return (
-      <div className="container mx-auto py-6 px-4">
+      <div className="container mx-auto py-6 px-4 min-h-screen">
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-yellow-600" />
+          <Loader2 className="h-8 w-8 animate-spin text-violet-600" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto py-6 px-4 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-          <Trophy className="w-8 h-8 text-blue-600" />
-          Olimpíadas Disponíveis
+    <div className="container mx-auto py-6 px-4 space-y-6 min-h-screen">
+      <div className="animate-fade-in-up space-y-1.5">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3" id="olimpiadas-page-title">
+          <span className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110 shrink-0">
+            <Trophy className="w-5 h-5 text-white drop-shadow" />
+          </span>
+          <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">Olimpíadas Disponíveis</span>
         </h1>
-        <p className="text-muted-foreground mt-1">
+        <p className="text-muted-foreground text-sm sm:text-base font-medium">
           Participe das olimpíadas e teste seus conhecimentos
         </p>
       </div>
 
-      {/* ✅ TEMPORÁRIO: Card para encerrar sessões ativas */}
-      {activeSessions.length > 0 && (
-        <Card className="border-orange-300 bg-orange-50 dark:bg-orange-950/20">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-orange-600" />
-              <CardTitle className="text-lg text-orange-900 dark:text-orange-100">
-                ⚠️ TEMPORÁRIO: Sessões Ativas Encontradas
-              </CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-orange-800 dark:text-orange-200">
-              Você tem {activeSessions.length}{' '}
-              {activeSessions.length === 1 ? 'sessão ativa' : 'sessões ativas'} que podem
-              estar impedindo o início de novas avaliações ou olimpíadas.
-            </p>
-            <div className="space-y-2">
-              {activeSessions.map((session) => (
-                <div
-                  key={session.session_id}
-                  className="flex items-center justify-between p-3 bg-card rounded-md border border-orange-200 dark:border-orange-800"
-                >
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-foreground">
-                      Sessão: {session.session_id.substring(0, 8)}...
-                    </p>
-                    {session.test_title && (
-                      <p className="text-xs text-muted-foreground">
-                        {session.test_title}
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    onClick={() => handleEndSession(session.session_id)}
-                    variant="destructive"
-                    size="sm"
-                    className="ml-4"
-                  >
-                    <X className="h-4 w-4 mr-2" />
-                    Encerrar Sessão
-                  </Button>
-                </div>
-              ))}
-            </div>
-            <Button
-              onClick={loadActiveSessions}
-              variant="outline"
-              size="sm"
-              disabled={loadingSessions}
-            >
-              {loadingSessions ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Carregando...
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="h-4 w-4 mr-2" />
-                  Atualizar
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
       {olimpiadas.length === 0 ? (
-        <Card>
+        <Card className="rounded-2xl border-2 border-dashed border-violet-200/60 dark:border-violet-500/40 overflow-hidden bg-gradient-to-br from-violet-500/5 to-transparent animate-fade-in-up">
           <CardContent className="py-12 text-center">
-            <Trophy className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">
+            <div className="w-14 h-14 rounded-full bg-amber-500/20 flex items-center justify-center mx-auto mb-4">
+              <Trophy className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+            </div>
+            <p className="font-medium text-foreground">
               Nenhuma olimpíada disponível no momento
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Quando houver olimpíadas abertas, elas aparecerão aqui.
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {olimpiadas.map((olimpiada) => {
-            // Log para debug
-            console.log('🔍 [OlimpiadasStudent] Renderizando olimpíada:', {
-              id: olimpiada.id,
-              title: olimpiada.title,
-              has_completed: olimpiada.student_status?.has_completed,
-              status: olimpiada.student_status?.status,
-              score: olimpiada.student_status?.score,
-              student_status: olimpiada.student_status
-            });
-
-            return (
+          {olimpiadas.map((olimpiada) => (
             <Card
               key={olimpiada.id}
               className="group relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:scale-[1.02] bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-50 dark:from-yellow-950/20 dark:via-amber-950/20 dark:to-orange-950/20 border-yellow-200 dark:border-yellow-800"
@@ -381,7 +268,7 @@ export default function OlimpiadasStudent() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2">
                       <Trophy className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                      <CardTitle className="text-xl font-bold text-foreground truncate">
+                      <CardTitle className="text-xl font-bold text-foreground break-words whitespace-normal">
                         {olimpiada.title}
                       </CardTitle>
                     </div>
@@ -420,17 +307,6 @@ export default function OlimpiadasStudent() {
                           const timeZone = getOlimpiadaTimeZone(olimpiada);
                           const formatted = formatDateTimeForDisplay(olimpiada.startDateTime, timeZone);
                           
-                          // Log para debug
-                          if (olimpiada.id) {
-                            console.log(`📅 Formatando data para olimpíada ${olimpiada.id}:`, {
-                              original: olimpiada.startDateTime,
-                              timeZone: timeZone,
-                              formatted: formatted,
-                              dateObj: new Date(olimpiada.startDateTime).toISOString(),
-                              localString: new Date(olimpiada.startDateTime).toLocaleString('pt-BR', { timeZone: timeZone })
-                            });
-                          }
-                          
                           return formatted || "Data não definida";
                         })()}
                       </span>
@@ -455,7 +331,7 @@ export default function OlimpiadasStudent() {
                   </Button>
                 ) : olimpiada.student_status?.has_completed ? (
                   <Button
-                    onClick={() => navigate(`/aluno/olimpiada/${olimpiada.id}/resultado`)}
+                    onClick={() => navigate('/aluno/resultados?tab=olimpiada')}
                     className="w-full bg-gradient-to-r from-yellow-600 to-amber-600 hover:from-yellow-700 hover:to-amber-700 text-white"
                   >
                     <Trophy className="h-4 w-4 mr-2" />
@@ -475,8 +351,7 @@ export default function OlimpiadasStudent() {
                 )}
               </CardContent>
             </Card>
-            );
-          })}
+          ))}
         </div>
       )}
     </div>

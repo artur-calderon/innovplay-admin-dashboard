@@ -11,7 +11,7 @@ import ptBrLocale from '@fullcalendar/core/locales/pt-br';
 import '../styles/fullcalendar.css';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Calendar } from 'lucide-react';
+import { CalendarDays } from 'lucide-react';
 import { CalendarApi as CalendarService } from "@/services/calendarApi";
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
@@ -80,21 +80,7 @@ export default function StudentAgendaOptimized() {
 
   const handleEventClick = async (clickInfo: EventClickArg) => {
     const e = clickInfo.event;
-    
-    // Log para ver os dados do evento retornado
-    console.log('=== DADOS DO EVENTO RETORNADO (StudentAgendaOptimized) ===');
-    console.log('ID:', e.id);
-    console.log('Title:', e.title);
-    console.log('Start (string):', e.startStr);
-    console.log('End (string):', e.endStr);
-    console.log('Start (Date):', e.start);
-    console.log('End (Date):', e.end);
-    console.log('allDay:', e.allDay);
-    console.log('extendedProps:', e.extendedProps);
-    console.log('Has time in start:', hasTimeInfo(e.startStr));
-    console.log('Has time in end:', hasTimeInfo(e.endStr));
-    console.log('===========================================================');
-    
+
     setSelected({
       id: e.id,
       title: e.title,
@@ -107,21 +93,26 @@ export default function StudentAgendaOptimized() {
     if (!e.extendedProps?.read) {
       try { 
         await CalendarService.markRead(e.id); 
-      } catch (error) {
-        // Silenciosamente ignora erros ao marcar como lido
-        console.error('Erro ao marcar evento como lido:', error);
+      } catch {
+        // Silenciar erro ao marcar como lido
       }
     }
   };
 
   return (
     <div className="p-4">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3 mb-2">
-          <Calendar className="w-8 h-8 text-blue-600" />
-          Minha Agenda
-        </h1>
-        <p className="text-muted-foreground">Acompanhe seus eventos e atividades escolares</p>
+      <div className="mb-6 space-y-2 animate-fade-in-up">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3" id="agenda-page-title">
+            <span className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110 shrink-0">
+              <CalendarDays className="w-5 h-5 text-white drop-shadow" />
+            </span>
+            <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">Minha Agenda</span>
+          </h1>
+          <p className="text-muted-foreground text-sm sm:text-base font-medium">
+            Acompanhe seus eventos e atividades escolares
+          </p>
+        </div>
       </div>
 
       <div className="bg-card rounded-lg shadow-sm border">

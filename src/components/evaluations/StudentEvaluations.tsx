@@ -42,7 +42,7 @@ import {
   AlertTriangle
 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationApiService } from "@/services/evaluationApi";
@@ -105,7 +105,8 @@ interface StudentEvaluation {
   course: { id: string; name: string };
   startDateTime: string;
   endDateTime?: string;
-  duration: number; // em minutos
+  duration: number; // em minutos (duration ou duration_minutes da API)
+  duration_minutes?: number; // alternativo da API
   totalQuestions: number;
   maxScore: number;
   type: string;
@@ -193,9 +194,9 @@ export default function StudentEvaluations() {
 
   const { user } = useAuth();
   const { toast } = useToast();
-  const navigate = useNavigate();
+  const navigate = useNavigate(); // único uso de useNavigate neste componente
 
-const DEFAULT_TIME_ZONE = (() => {
+  const DEFAULT_TIME_ZONE = (() => {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo";
   } catch (error) {
@@ -303,11 +304,7 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
           throw error;
         }
         
-        // Calcular delay com backoff exponencial: 1s, 2s, 4s
         const delay = baseDelay * Math.pow(2, attempt - 1);
-        console.log(`🔄 Retry ${attempt}/${maxAttempts} após ${delay}ms...`);
-        
-        // Aguardar antes da próxima tentativa
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
@@ -316,76 +313,32 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
   };
 
   const fetchStudentEvaluations = useCallback(async () => {
-    console.log('🚀 Iniciando busca de avaliações...');
     try {
       setIsLoading(true);
 
-      // Usar retry com backoff exponencial para erros de rede
       await retryWithBackoff(async () => {
-        // ✅ NOVO: Usar o endpoint /test/my-class/tests
         const response = await api.get('/test/my-class/tests');
-      console.log('Resposta da API de avaliações:', response);
+        const testsData = response.data?.tests ?? [];
 
-      const testsData = response.data.tests || [];
-      console.log('📊 Dados brutos das avaliações:', testsData);
-
-      if (!testsData || !Array.isArray(testsData)) {
-        console.log('Nenhuma avaliação encontrada ou formato inválido');
-        setEvaluations([]);
-        return;
-      }
-
-      // ✅ CORRIGIDO: Log para debug - verificar estrutura dos dados
-      testsData.forEach((testData: MyClassTestItem, index: number) => {
-        console.log(`📋 Avaliação ${index}:`, {
-          testId: testData.test_id,
-          title: testData.title,
-          duration: testData.duration,
-          subject: testData.subject,
-          subjects_info: testData.subjects_info,
-          subjectsCount: testData.subjects_info?.length || 1,
-          hasAvailability: !!testData.availability,
-          hasStudentStatus: !!testData.student_status,
-          availability: testData.availability,
-          studentStatus: testData.student_status
-        });
-      });
-
-      // ✅ CORRIGIDO: Mostrar todas as avaliações (incluindo as já realizadas)
-      const filteredTests = testsData.filter((testData: MyClassTestItem) => {
-        // ✅ CORRIGIDO: Verificar se os campos obrigatórios existem
-        if (!testData.availability || !testData.student_status) {
-          console.warn('Dados de avaliação incompletos:', testData);
-          return false;
+        if (!Array.isArray(testsData)) {
+          setEvaluations([]);
+          return [];
         }
-        // Excluir olimpíadas, competições e avaliações sem tipo (têm suas próprias interfaces)
-        const type = (testData.type || '').toUpperCase();
-        if (!testData.type || 
-            type === 'OLIMPIADAS' || 
-            type === 'OLIMPIADA' || 
-            type === 'COMPETICAO' || 
-            type === 'COMPETIÇÃO') {
-          return false;
-        }
-        // ✅ NOVO: Incluir todas as avaliações, não apenas as não concluídas
-        return true;
-      });
 
-      console.log('Avaliações filtradas:', filteredTests.length, 'de', testsData.length);
-
-      // Transformar e adicionar as avaliações encontradas
-      const evaluationsWithStatus = filteredTests.map((testData: MyClassTestItem) => {
-        console.log('📊 Dados da avaliação da API:', {
-          id: testData.test_id,
-          title: testData.title,
-          duration: testData.duration,
-          subject: testData.subject,
-          subjects_info: testData.subjects_info,
-          subjects_count: testData.subjects_info?.length || 1,
-          availability: testData.availability,
-          student_status: testData.student_status
+        const filteredTests = testsData.filter((testData: MyClassTestItem) => {
+          if (!testData.availability || !testData.student_status) return false;
+          const type = (testData.type || '').toUpperCase();
+          if (!testData.type ||
+              type === 'OLIMPIADAS' ||
+              type === 'OLIMPIADA' ||
+              type === 'COMPETICAO' ||
+              type === 'COMPETIÇÃO') {
+            return false;
+          }
+          return true;
         });
 
+        const evaluationsWithStatus = filteredTests.map((testData: MyClassTestItem) => {
         const applicationTimeZone =
           testData.application_info?.timezone ||
           testData.application_info?.time_zone ||
@@ -406,7 +359,8 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
           course: { id: 'course', name: 'Curso' },
           startDateTime: testData.application_info?.application || new Date().toISOString(),
           endDateTime: testData.application_info?.expiration,
-          duration: testData.duration || 60, // em minutos - usar o valor da API
+          duration: testData.duration ?? testData.duration_minutes ?? 60,
+          duration_minutes: testData.duration_minutes,
           totalQuestions: testData.total_questions || 0,
           maxScore: testData.max_score || 0,
           type: testData.type || 'AVALIACAO',
@@ -421,23 +375,13 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
         return evaluation;
       });
 
-        console.log('🔍 Avaliações processadas:', evaluationsWithStatus);
         setEvaluations(evaluationsWithStatus);
-        
-        return evaluationsWithStatus; // Retornar para retryWithBackoff
-      }, 3, 1000); // 3 tentativas, começando com 1 segundo
+        return evaluationsWithStatus;
+      }, 2, 500);
 
     } catch (error: unknown) {
       const apiError = error as { message?: string; response?: { data?: unknown; status?: number }; stack?: string };
-      
-      console.error("❌ Erro ao buscar avaliações do aluno após retries:", error);
-      console.error("Detalhes do erro:", {
-        message: apiError.message,
-        response: apiError.response?.data,
-        status: apiError.response?.status,
-        stack: apiError.stack
-      });
-      
+
       // Verificar se é erro de rede após todas as tentativas
       const isNetworkError = 
         !apiError.response || 
@@ -485,9 +429,8 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
       const active = sessions.filter((s: any) => s.status === 'em_andamento');
       
       setActiveSessions(active);
-    } catch (error) {
-      console.error('Erro ao carregar sessões ativas:', error);
-      // Não mostrar erro ao usuário, apenas logar
+    } catch {
+      // Silenciar erro ao carregar sessões
     } finally {
       setLoadingSessions(false);
     }
@@ -506,11 +449,11 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
       await loadActiveSessions();
       // Recarregar avaliações para atualizar status
       await fetchStudentEvaluations();
-    } catch (error: any) {
-      console.error('Erro ao encerrar sessão:', error);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
       toast({
         title: 'Erro',
-        description: error?.response?.data?.message || 'Erro ao encerrar sessão',
+        description: err?.response?.data?.message || 'Erro ao encerrar sessão',
         variant: 'destructive',
       });
     }
@@ -534,19 +477,17 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
         } else {
           localStorage.removeItem("evaluation_in_progress");
         }
-      } catch (error) {
-        console.error("Erro ao carregar avaliação em progresso:", error);
+      } catch {
         localStorage.removeItem("evaluation_in_progress");
       }
     } else if (inProgress && evaluations.length === 0) {
-      // Se não há avaliações ainda, apenas definir o currentTaking se houver dados no localStorage
       try {
         const data = JSON.parse(inProgress);
         if (data && data.evaluationId) {
           setCurrentTaking(data);
         }
-      } catch (error) {
-        console.error("Erro ao carregar avaliação em progresso:", error);
+      } catch {
+        // Ignorar parse inválido
       }
     }
   }, [evaluations]);
@@ -554,45 +495,16 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
   const handleStartEvaluation = async (evaluation: StudentEvaluation) => {
     setSelectedEvaluation(evaluation);
 
-    // ✅ DEBUG: Log dos dados da avaliação antes de verificar
-    console.log("🔍 Dados da avaliação para verificação:", {
-      id: evaluation.id,
-      title: evaluation.title,
-      availability: evaluation.availability,
-      student_status: evaluation.student_status,
-      startDateTime: evaluation.startDateTime,
-      endDateTime: evaluation.endDateTime,
-      currentTime: new Date().toISOString()
-    });
-
-    // ✅ DEBUG: Verificação de data para debug
-    if (evaluation.endDateTime) {
-      const endDate = new Date(evaluation.endDateTime);
-      const currentDate = new Date();
-      const isExpired = currentDate > endDate;
-
-      console.log("🔍 Verificação de data:", {
-        endDate: endDate.toISOString(),
-        currentDate: currentDate.toISOString(),
-        isExpired,
-        timeDifference: endDate.getTime() - currentDate.getTime()
-      });
-    }
-
-    // ✅ NOVO: Verificar se pode iniciar usando o endpoint can-start
+    // Verificar se pode iniciar usando o endpoint can-start
     try {
       // ✅ CORRIGIDO: Usar o endpoint correto para verificar se pode iniciar
       const response = await api.get(`/student-answers/student/${evaluation.id}/can-start`);
       const canStartData = response.data;
 
-      console.log("🔍 Resposta do can-start:", canStartData);
-
       if (canStartData.can_start) {
         setShowInstructions(true);
       } else {
-        // ✅ NOVO: Mostrar mensagem de erro usando o reason
         setCanStartReason(canStartData.reason || "Não foi possível iniciar a avaliação");
-        console.log("❌ Não pode iniciar:", canStartData.reason);
         toast({
           title: "Não é possível iniciar",
           description: canStartData.reason || "Não foi possível iniciar a avaliação",
@@ -601,14 +513,6 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
       }
     } catch (error: unknown) {
       const apiError = error as { message?: string; response?: { data?: { error?: string; message?: string }; status?: number }; config?: { url?: string } };
-      
-      console.error("Erro ao verificar se pode iniciar:", error);
-      console.error("Detalhes do erro:", {
-        message: apiError.message,
-        response: apiError.response?.data,
-        status: apiError.response?.status,
-        url: apiError.config?.url
-      });
 
       let errorMessage = "Erro ao verificar disponibilidade da avaliação";
 
@@ -629,48 +533,13 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
   const handleConfirmStart = async () => {
     if (!selectedEvaluation) return;
 
-    console.log("🚀 Iniciando avaliação:", {
-      evaluationId: selectedEvaluation.id,
-      title: selectedEvaluation.title,
-      availability: selectedEvaluation.availability,
-      student_status: selectedEvaluation.student_status,
-      startDateTime: selectedEvaluation.startDateTime,
-      endDateTime: selectedEvaluation.endDateTime
-    });
-
     try {
-      // Usar a API real para iniciar a sessão da avaliação
       const testId = selectedEvaluation.id;
-      console.log("📡 Fazendo POST para /test/${testId}/start-session");
-
-      // ✅ DEBUG: Log dos dados que serão enviados
-      console.log("📤 Dados para start-session:", {
-        testId,
-        evaluationData: {
-          availability: selectedEvaluation.availability,
-          student_status: selectedEvaluation.student_status,
-          startDateTime: selectedEvaluation.startDateTime,
-          endDateTime: selectedEvaluation.endDateTime
-        }
-      });
-
-      // ✅ CORRIGIDO: Usar o serviço EvaluationApiService para iniciar a sessão
-      console.log("📤 Iniciando sessão usando EvaluationApiService");
-
       const sessionData = await EvaluationApiService.startSession(testId, selectedEvaluation.duration);
-
-      console.log('✅ Resposta da API de iniciar sessão:', sessionData);
-
-      // Buscar os dados completos da avaliação usando o serviço
-      console.log("📤 Buscando dados da avaliação usando EvaluationApiService");
       const evaluationData = await EvaluationApiService.getTestData(testId);
 
-      // Salvar os dados completos da avaliação no sessionStorage
       sessionStorage.setItem("current_evaluation", JSON.stringify(evaluationData));
       sessionStorage.setItem("evaluation_session", JSON.stringify(sessionData));
-
-      console.log("📁 Dados da avaliação salvos:", evaluationData);
-      console.log("📁 Dados da sessão salvos:", sessionData);
 
       const takingData: EvaluationTaking = {
         evaluationId: testId,
@@ -697,16 +566,6 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
 
     } catch (error: unknown) {
       const apiError = error as { message?: string; response?: { data?: { error?: string; message?: string }; status?: number }; config?: { url?: string; method?: string }; stack?: string };
-      
-      console.error("❌ Erro ao iniciar avaliação:", error);
-      console.error("Detalhes completos do erro:", {
-        message: apiError.message,
-        response: apiError.response?.data,
-        status: apiError.response?.status,
-        url: apiError.config?.url,
-        method: apiError.config?.method,
-        stack: apiError.stack
-      });
 
       let errorMessage = "Não foi possível iniciar a avaliação";
 
@@ -727,8 +586,6 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
         errorMessage = apiError.message;
       }
 
-      console.log("🚨 Mensagem de erro final:", errorMessage);
-
       toast({
         title: "Erro",
         description: errorMessage,
@@ -737,46 +594,9 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
     }
   };
 
-  const handleContinueEvaluation = async (evaluation: StudentEvaluation) => {
-    console.log("🔄 Continuando avaliação:", evaluation.id);
-
-    try {
-      // Buscar dados da avaliação usando o serviço
-      console.log("📤 Buscando dados da avaliação para continuar");
-      const evaluationData = await EvaluationApiService.getTestData(evaluation.id);
-
-      // Salvar os dados da avaliação no sessionStorage
-      sessionStorage.setItem("current_evaluation", JSON.stringify(evaluationData));
-
-      console.log("📁 Dados da avaliação carregados:", evaluationData);
-
-      // Redirecionar para tela de avaliação
-      window.location.href = `/app/avaliacao/${evaluation.id}/fazer`;
-
-    } catch (error: unknown) {
-      const apiError = error as { response?: { data?: { error?: string }; status?: number } };
-      
-      console.error("❌ Erro ao continuar avaliação:", error);
-
-      let errorMessage = "Não foi possível continuar a avaliação";
-
-      if (apiError.response?.status === 403) {
-        errorMessage = ERROR_MESSAGES.FORBIDDEN;
-      } else if (apiError.response?.status === 404) {
-        errorMessage = ERROR_MESSAGES.EVALUATION_NOT_FOUND;
-      } else if (apiError.response?.data?.error) {
-        errorMessage = apiError.response.data.error;
-      }
-
-      toast({
-        title: "Erro",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    }
+  const handleContinueEvaluation = (evaluation: StudentEvaluation) => {
+    navigate(`/aluno/avaliacao/${evaluation.id}/fazer`);
   };
-
-
 
   // ✅ NOVO: Função para obter badge baseado no student_status
   const getStatusBadge = (evaluation: StudentEvaluation) => {
@@ -913,16 +733,26 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
     return evaluation.subjects_info?.length || 1;
   };
 
+  // Na página de Avaliações: mostrar apenas expiradas e as aplicadas que o aluno pode iniciar.
+  // Avaliações com resultado (concluídas) ficam apenas em Resultados.
+  const evaluationsForList = React.useMemo(() => {
+    return evaluations.filter((e) => {
+      const expirada = e.availability?.status === "expired" || e.student_status?.status === "expirada";
+      const podeIniciar = e.student_status?.can_start && !e.student_status?.has_completed;
+      return expirada || podeIniciar;
+    });
+  }, [evaluations]);
+
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-6 space-y-6">
+      <div className="container mx-auto px-4 py-6 space-y-6 min-h-screen">
         <div className="space-y-4">
-          <Skeleton className="h-8 w-64" />
-          <Skeleton className="h-4 w-96" />
+          <Skeleton className="h-8 w-64 rounded-lg" />
+          <Skeleton className="h-4 w-96 rounded" />
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[...Array(6)].map((_, i) => (
-            <Skeleton key={i} className="h-64" />
+            <Skeleton key={i} className="h-64 rounded-2xl" />
           ))}
         </div>
       </div>
@@ -930,101 +760,45 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
-      {/* Header */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-              <BookOpen className="w-8 h-8 text-blue-600" />
-              Minhas Avaliações
+    <div className="container mx-auto px-4 py-6 space-y-6 min-h-screen">
+      {/* Header — gamificado (padrão Resultados) */}
+      <div className="space-y-2 animate-fade-in-up">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1.5">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3" id="avaliacoes-page-title">
+              <span className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/30 transition-transform duration-300 hover:scale-110 shrink-0">
+                <BookOpen className="w-5 h-5 text-white drop-shadow" />
+              </span>
+              <span className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 dark:from-violet-400 dark:via-fuchsia-400 dark:to-pink-400 bg-clip-text text-transparent">Minhas Avaliações</span>
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground text-sm sm:text-base font-medium">
               Acompanhe suas avaliações agendadas e resultados
             </p>
+            <Link
+              to="/aluno/resultados"
+              className="text-sm text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 hover:underline inline-flex items-center gap-1 mt-1 font-medium transition-colors"
+              aria-label="Ver todos os meus resultados em página dedicada"
+            >
+              <Trophy className="h-4 w-4" />
+              Ver todos os meus resultados
+            </Link>
           </div>
-
-          {/* Botão de atualizar */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchStudentEvaluations}
-            disabled={isLoading}
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Atualizar
-          </Button>
+          <div className="flex justify-center w-full sm:w-auto sm:justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchStudentEvaluations}
+              disabled={isLoading}
+              className="rounded-full border-violet-300 dark:border-violet-500/50 hover:bg-violet-500/15 hover:border-violet-400 transition-all"
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Atualizar
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* ✅ TEMPORÁRIO: Card para encerrar sessões ativas */}
-      {activeSessions.length > 0 && (
-        <Card className="border-orange-300 bg-orange-50 dark:bg-orange-950/20">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-orange-600" />
-              <CardTitle className="text-lg text-orange-900 dark:text-orange-100">
-                ⚠️ TEMPORÁRIO: Sessões Ativas Encontradas
-              </CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-orange-800 dark:text-orange-200">
-              Você tem {activeSessions.length}{' '}
-              {activeSessions.length === 1 ? 'sessão ativa' : 'sessões ativas'} que podem
-              estar impedindo o início de novas avaliações ou olimpíadas.
-            </p>
-            <div className="space-y-2">
-              {activeSessions.map((session) => (
-                <div
-                  key={session.session_id}
-                  className="flex items-center justify-between p-3 bg-card rounded-md border border-orange-200 dark:border-orange-800"
-                >
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900 text-foreground">
-                      Sessão: {session.session_id.substring(0, 8)}...
-                    </p>
-                    {session.test_title && (
-                      <p className="text-xs text-muted-foreground">
-                        {session.test_title}
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    onClick={() => handleEndSession(session.session_id)}
-                    variant="destructive"
-                    size="sm"
-                    className="ml-4"
-                  >
-                    <X className="h-4 w-4 mr-2" />
-                    Encerrar Sessão
-                  </Button>
-                </div>
-              ))}
-            </div>
-            <Button
-              onClick={loadActiveSessions}
-              variant="outline"
-              size="sm"
-              disabled={loadingSessions}
-            >
-              {loadingSessions ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Carregando...
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="h-4 w-4 mr-2" />
-                  Atualizar
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Estatísticas Rápidas */}
+      {/* Estatísticas Rápidas (apenas avaliações expiradas ou que o aluno pode iniciar) */}
       <div className="grid gap-4 md:grid-cols-5">
         <Card>
           <CardContent className="p-4">
@@ -1032,7 +806,7 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
               <div>
                 <p className="text-sm text-muted-foreground">Disponíveis</p>
                 <p className="text-2xl font-bold text-blue-600">
-                  {evaluations.filter(e => e.availability.is_available && !e.student_status.has_completed && e.student_status.can_start && e.availability.status !== 'not_started').length}
+                  {evaluationsForList.filter(e => e.availability.is_available && !e.student_status.has_completed && e.student_status.can_start && e.availability.status !== 'not_started').length}
                 </p>
               </div>
               <Play className="h-8 w-8 text-blue-600" />
@@ -1046,7 +820,7 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
               <div>
                 <p className="text-sm text-muted-foreground">Agendadas</p>
                 <p className="text-2xl font-bold text-indigo-600">
-                  {evaluations.filter(e => e.availability.status === 'not_started').length}
+                  {evaluationsForList.filter(e => e.availability.status === 'not_started').length}
                 </p>
               </div>
               <Calendar className="h-8 w-8 text-indigo-600" />
@@ -1060,7 +834,7 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
               <div>
                 <p className="text-sm text-muted-foreground">Em andamento</p>
                 <p className="text-2xl font-bold text-orange-600">
-                  {evaluations.filter(e => e.student_status.status === 'em_andamento').length}
+                  {evaluationsForList.filter(e => e.student_status.status === 'em_andamento').length}
                 </p>
               </div>
               <Timer className="h-8 w-8 text-orange-600" />
@@ -1072,29 +846,27 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Concluídas</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {evaluations.filter(e => e.student_status.has_completed).length}
+                <p className="text-sm text-muted-foreground">Expiradas</p>
+                <p className="text-2xl font-bold text-amber-600">
+                  {evaluationsForList.filter(e => e.availability?.status === 'expired' || e.student_status?.status === 'expirada').length}
                 </p>
               </div>
-              <CheckCircle className="h-8 w-8 text-green-600" />
+              <AlertCircle className="h-8 w-8 text-amber-600" />
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="md:col-span-1">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Média Geral</p>
-                <p className="text-2xl font-bold text-purple-600">
-                  {evaluations.filter(e => e.student_status.score).length > 0
-                    ? (evaluations.filter(e => e.student_status.score).reduce((acc, e) => acc + (e.student_status.score || 0), 0) / evaluations.filter(e => e.student_status.score).length).toFixed(0) + "%"
-                    : "0%"
-                  }
+                <p className="text-sm text-muted-foreground">Com resultado</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {evaluations.filter(e => e.student_status.has_completed).length}
                 </p>
+                <Link to="/aluno/resultados" className="text-xs text-green-600 hover:underline mt-0.5 inline-block">Ver em Resultados</Link>
               </div>
-              <Trophy className="h-8 w-8 text-purple-600" />
+              <Trophy className="h-8 w-8 text-green-600" />
             </div>
           </CardContent>
         </Card>
@@ -1133,9 +905,9 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
           </Alert>
         )}
 
-      {/* Lista de Avaliações */}
+      {/* Lista de Avaliações (apenas expiradas e as que o aluno pode iniciar; com resultado só em Resultados) */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {evaluations.map((evaluation) => (
+        {evaluationsForList.map((evaluation) => (
           <Card key={evaluation.id} className="hover:shadow-md transition-shadow">
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between">
@@ -1301,7 +1073,11 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
                 </div>
                 <div>
                   <span className="font-medium">Duração:</span>
-                  <p className="dark:text-blue-200">{selectedEvaluation?.duration} minutos</p>
+                  <p className="dark:text-blue-200">
+                  {(selectedEvaluation?.duration ?? selectedEvaluation?.duration_minutes) != null
+                    ? `${selectedEvaluation?.duration ?? selectedEvaluation?.duration_minutes} minutos`
+                    : 'Não informado'}
+                </p>
                 </div>
                 <div>
                   <span className="font-medium">Questões:</span>
@@ -1339,8 +1115,8 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
               </div>
             </div>
 
-            {/* Tempo Disponível - SIMPLIFICADO */}
-            {selectedEvaluation && (
+            {/* Tempo disponível: janela de aplicação (De … até …) — não é a duração da prova */}
+            {selectedEvaluation && (selectedEvaluation.startDateTime || selectedEvaluation.endDateTime) && (
               <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 p-4 rounded-lg">
                 <h5 className="font-semibold text-purple-900 dark:text-purple-300 mb-2 flex items-center gap-2">
                   <Clock className="h-4 w-4 text-purple-600 dark:text-purple-400" />

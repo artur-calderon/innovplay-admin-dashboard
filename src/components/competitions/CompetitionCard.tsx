@@ -21,7 +21,6 @@ import {
   CheckCircle2,
   Clock,
   Eye,
-  ListPlus,
   MoreVertical,
   Pencil,
   Play,
@@ -39,11 +38,14 @@ import { CompetitionCountdown } from '@/components/competitions/CompetitionCount
 
 interface CompetitionCardProps {
   competition: Competition;
+  /** Role do usuário logado (ex.: 'admin', 'coordenador') — define se pode Parar e quando pode Apagar. */
+  userRole?: string;
   onView?: (id: string) => void;
   onEdit?: (id: string) => void;
   onCancel?: (id: string) => void;
   onDelete?: (id: string) => void;
-  onAddQuestions?: (id: string) => void;
+  /** Parar competição (só usado na tela Ver competição; não exibido no card). */
+  onStop?: (id: string) => void;
   /** Fluxo unificado: abre modal para agendar inscrição/prova e publicar. */
   onScheduleAndPublish?: (id: string) => void;
   className?: string;
@@ -139,13 +141,23 @@ function formatDate(value: string | undefined) {
   }
 }
 
+const IN_PROGRESS_STATUSES = ['aberta', 'em_andamento', 'enrollment_open', 'active'];
+
+function isInProgress(competition: Competition): boolean {
+  const s = String(competition.status).toLowerCase();
+  if (!IN_PROGRESS_STATUSES.includes(s)) return false;
+  if (competition.is_finished === true) return false;
+  return true;
+}
+
 export function CompetitionCard({
   competition,
+  userRole,
   onView,
   onEdit,
   onCancel,
   onDelete,
-  onAddQuestions,
+  onStop: _onStop,
   onScheduleAndPublish,
   className,
 }: CompetitionCardProps) {
@@ -153,7 +165,13 @@ export function CompetitionCard({
   const StatusIcon = statusConfig.icon;
   const draft = isDraft(competition.status);
   const cancelled = String(competition.status).toLowerCase() === 'cancelled' || String(competition.status).toLowerCase() === 'cancelada';
-  const canAddQuestions = competition.question_mode === 'manual';
+  const isAdmin = (userRole ?? '').toLowerCase() === 'admin';
+  const inProgress = isInProgress(competition);
+  /** Apagar: rascunho/cancelada para todos; em andamento só para admin. */
+  const canDelete =
+    draft ||
+    cancelled ||
+    (isAdmin && (inProgress || ['aberta', 'enrollment_open', 'active'].includes(String(competition.status).toLowerCase())));
 
   return (
     <Card className={cn('flex flex-col transition-shadow hover:shadow-md', className)}>
@@ -175,7 +193,8 @@ export function CompetitionCard({
         </Badge>
       </CardHeader>
       <CardContent className="flex-1 space-y-2 pt-0 text-sm">
-        {competition.enrollment_end && (
+        {/* Só exibe datas no card quando não for rascunho — em rascunho as datas são definidas no modal Aplicação */}
+        {!draft && competition.enrollment_end && (
           <div className="flex flex-col gap-1">
             <p className="flex items-center gap-2 text-muted-foreground">
               <Calendar className="h-3.5 w-3.5 shrink-0" />
@@ -188,7 +207,7 @@ export function CompetitionCard({
             />
           </div>
         )}
-        {competition.application && (
+        {!draft && competition.application && (
           <div className="flex flex-col gap-1">
             <p className="flex items-center gap-2 text-muted-foreground">
               <Clock className="h-3.5 w-3.5 shrink-0" />
@@ -201,7 +220,7 @@ export function CompetitionCard({
             />
           </div>
         )}
-        {competition.expiration && (
+        {!draft && competition.expiration && (
           <div className="flex flex-col gap-1">
             <p className="flex items-center gap-2 text-muted-foreground">
               <CalendarRange className="h-3.5 w-3.5 shrink-0" />
@@ -239,14 +258,8 @@ export function CompetitionCard({
               Aplicação
             </Button>
           )}
-          {onAddQuestions && canAddQuestions && draft && (
-            <Button variant="outline" size="sm" onClick={() => onAddQuestions(competition.id)}>
-              <ListPlus className="mr-1 h-4 w-4" />
-              Questões
-            </Button>
-          )}
         </div>
-        {onDelete && (draft || cancelled) && (
+        {onDelete && canDelete && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon">

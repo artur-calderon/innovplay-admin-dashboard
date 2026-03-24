@@ -51,8 +51,11 @@ export interface Question {
 export interface TestData {
     id: string;
     title: string;
+    /** Tipo da avaliação: AVALIACAO, OLIMPIADA, SIMULADO, COMPETICAO, etc. */
+    type?: string;
     subject: { id: string; name: string };
     duration: number;
+    duration_minutes?: number; // alternativo do backend (minutos)
     totalQuestions?: number; // ✅ CORRIGIDO: Tornar opcional
     total_questions?: number; // ✅ NOVO: Campo alternativo do backend
     instructions: string;
@@ -209,6 +212,7 @@ export interface Evaluation {
         skills?: string[];
     }>;
     duration?: number; // Duração em minutos
+    duration_minutes?: number; // alternativo do backend
     max_score?: number | null;
     createdAt?: string;
     created_at?: string; // Campo alternativo

@@ -65,9 +65,9 @@ const GamesList = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold">Jogos Educativos</h2>
-                <div className="flex gap-2">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Jogos Educativos</h2>
+                <div className="flex flex-wrap justify-center gap-2 w-full sm:w-auto sm:justify-end">
                     <Button
                         variant={selectedDiscipline === 'all' ? 'default' : 'outline'}
                         onClick={() => setSelectedDiscipline('all')}

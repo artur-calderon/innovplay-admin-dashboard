@@ -34,6 +34,21 @@ const COUNTRIES = [
     "Reino Unido", "Japão", "China", "Índia", "Austrália", "Outro"
 ];
 
+/** Garante que traits seja sempre um array de strings (a API pode retornar objeto ou string). */
+function ensureTraitsArray(value: unknown): string[] {
+    if (Array.isArray(value)) return value.filter((t): t is string => typeof t === "string");
+    if (typeof value === "string") {
+        try {
+            const parsed = JSON.parse(value) as unknown;
+            return Array.isArray(parsed) ? parsed.filter((t): t is string => typeof t === "string") : [];
+        } catch {
+            return [];
+        }
+    }
+    if (value && typeof value === "object") return Object.keys(value);
+    return [];
+}
+
 export const PersonalDataForm = () => {
     const { user, setUser } = useAuth();
     const { toast: toastHook } = useToast();
@@ -60,7 +75,7 @@ export const PersonalDataForm = () => {
                         phone: userData.phone || '',
                         gender: userData.gender || '',
                         address: userData.address || '',
-                        traits: userData.traits || userData.characteristics || [],
+                        traits: ensureTraitsArray(userData.traits ?? userData.characteristics),
                     });
                 } else {
                     // Usar dados do contexto se não conseguir carregar
@@ -109,12 +124,15 @@ export const PersonalDataForm = () => {
     };
 
     const toggleTrait = (traitId: string) => {
-        setFormData(prev => ({
-            ...prev,
-            traits: prev.traits.includes(traitId)
-                ? prev.traits.filter(t => t !== traitId)
-                : [...prev.traits, traitId]
-        }));
+        setFormData(prev => {
+            const traits = ensureTraitsArray(prev.traits);
+            return {
+                ...prev,
+                traits: traits.includes(traitId)
+                    ? traits.filter(t => t !== traitId)
+                    : [...traits, traitId]
+            };
+        });
     };
 
     const formatPhone = (value: string) => {
@@ -139,13 +157,14 @@ export const PersonalDataForm = () => {
         setIsLoading(true);
 
         try {
+            const traitsArr = ensureTraitsArray(formData.traits);
             const dataToSend = {
                 birth_date: formData.birth_date || null,
                 nationality: formData.nationality || null,
                 phone: formData.phone.replace(/\D/g, '') || null,
                 gender: formData.gender || null,
                 address: formData.address || null,
-                traits: formData.traits.length > 0 ? formData.traits : null,
+                traits: traitsArr.length > 0 ? traitsArr : null,
             };
 
             const response = await api.put(`/users/${user.id}`, dataToSend);
@@ -164,7 +183,7 @@ export const PersonalDataForm = () => {
                     phone: updatedUser.phone || '',
                     gender: updatedUser.gender || '',
                     address: updatedUser.address || '',
-                    traits: updatedUser.traits || updatedUser.characteristics || [],
+                    traits: ensureTraitsArray(updatedUser.traits ?? updatedUser.characteristics),
                 });
                 
                 toast.success('Dados pessoais atualizados com sucesso!');
@@ -281,7 +300,8 @@ export const PersonalDataForm = () => {
                         <div className="flex flex-wrap gap-2">
                             {PREDEFINED_TRAITS.map((trait) => {
                                 const Icon = trait.icon;
-                                const isSelected = formData.traits.includes(trait.id);
+                                const traits = ensureTraitsArray(formData.traits);
+                                const isSelected = traits.includes(trait.id);
                                 return (
                                     <button
                                         key={trait.id}
@@ -299,7 +319,7 @@ export const PersonalDataForm = () => {
                                 );
                             })}
                         </div>
-                        {formData.traits.length === 0 && (
+                        {ensureTraitsArray(formData.traits).length === 0 && (
                             <p className="text-xs text-muted-foreground">
                                 Nenhuma característica selecionada
                             </p>
@@ -321,7 +341,7 @@ export const PersonalDataForm = () => {
                                             phone: userData.phone || '',
                                             gender: userData.gender || '',
                                         address: userData.address || '',
-                                            traits: userData.traits || userData.characteristics || [],
+                                            traits: ensureTraitsArray(userData.traits ?? userData.characteristics),
                                         });
                                     }
                                 } catch (error) {

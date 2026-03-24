@@ -300,26 +300,50 @@ export default function Curso() {
     try {
       // Buscar município do usuário
       const context = await getUserHierarchyContext(user.id, user.role);
-      
+
       if (!context.municipality?.id) {
         setSchoolsWithCourses([]);
         // Não fazer return aqui - deixar o finally executar
       } else {
         // Buscar escolas do município
-        const schoolsResponse = await api.get(`/school/city/${context.municipality.id}`);
-        const schools = schoolsResponse.data || [];
-        
+        let schools = [];
+        try {
+          const schoolsResponse = await api.get(`/school/city/${context.municipality.id}`);
+          schools = schoolsResponse.data || [];
+        } catch (error: any) {
+          // Se a API retornar erro 404/400, SEMPRE exibir exatamente a mensagem do backend (campo message), nunca mensagem genérica
+          if (error?.response?.status === 404 || error?.response?.status === 400) {
+            setSchoolsWithCourses([]);
+            const backendMsg = error?.response?.data?.message;
+            toast({
+              title: backendMsg ? 'Aviso' : 'Erro',
+              description: backendMsg || `Erro ${error?.response?.status} ao buscar escolas do município.`,
+              variant: backendMsg ? 'default' : 'destructive',
+            });
+            return;
+          } else {
+            console.error('Erro ao buscar escolas do município:', error);
+            toast({
+              title: 'Erro',
+              description: 'Erro ao buscar escolas do município.',
+              variant: 'destructive',
+            });
+            setSchoolsWithCourses([]);
+            return;
+          }
+        }
+
         // Para cada escola, buscar cursos vinculados
         const schoolsWithCoursesData: SchoolWithCourses[] = await Promise.all(
           schools.map(async (school: any) => {
             try {
               const coursesResponse = await api.get(`/school/${school.id}/courses`);
               const coursesData = coursesResponse.data;
-              
-              const courses = coursesData?.courses && Array.isArray(coursesData.courses) 
-                ? coursesData.courses 
+
+              const courses = coursesData?.courses && Array.isArray(coursesData.courses)
+                ? coursesData.courses
                 : [];
-              
+
               return {
                 id: school.id,
                 name: school.name || school.nome,
@@ -338,15 +362,15 @@ export default function Curso() {
             }
           })
         );
-        
+
         setSchoolsWithCourses(schoolsWithCoursesData);
       }
     } catch (error) {
-      console.error("Erro ao buscar escolas com cursos:", error);
+      console.error('Erro ao buscar escolas com cursos:', error);
       toast({
-        title: "Erro",
-        description: "Erro ao carregar escolas e cursos. Verifique sua conexão.",
-        variant: "destructive",
+        title: 'Erro',
+        description: 'Erro inesperado ao carregar escolas e cursos.',
+        variant: 'destructive',
       });
       setSchoolsWithCourses([]);
     } finally {
@@ -946,12 +970,14 @@ export default function Curso() {
   if (isCurrentlyLoading) {
     return (
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <Skeleton className="h-9 w-64 mb-2" />
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1.5">
+            <Skeleton className="h-9 w-64" />
             <Skeleton className="h-5 w-48" />
           </div>
-          <Skeleton className="h-10 w-32" />
+          <div className="flex justify-center sm:justify-end">
+            <Skeleton className="h-10 w-32" />
+          </div>
         </div>
 
         <div className="flex items-center space-x-2">
@@ -986,21 +1012,23 @@ export default function Curso() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <GraduationCap className="w-8 h-8 text-blue-600" />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <GraduationCap className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
             Gerenciar Cursos
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground text-sm sm:text-base">
             Cadastre e gerencie os cursos/etapas de ensino
           </p>
         </div>
         {!isProfessor() && (
-          <Button onClick={openCreateModal}>
-            <PlusCircle className="h-4 w-4 mr-2" />
-            {canCreateCourse() ? "Novo Curso" : "Vincular Cursos"}
-          </Button>
+          <div className="flex justify-center w-full sm:w-auto sm:justify-end">
+            <Button onClick={openCreateModal}>
+              <PlusCircle className="h-4 w-4 mr-2" />
+              {canCreateCourse() ? "Novo Curso" : "Vincular Cursos"}
+            </Button>
+          </div>
         )}
       </div>
 

@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRight, Check, Save, AlertTriangle, Info } from "lucide-
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { Separator } from "@/components/ui/separator";
 import CreateEvaluationForm from "./CreateEvaluationForm";
 import QuestionSelectionStep from "./QuestionSelectionStep";

@@ -323,10 +323,10 @@ export function CreateCompetitionModal({
     setLoadingEdit(true);
     getCompetition(editId)
       .then(async (c) => {
-        const questionRulesStr =
+        const questionRulesStr: string =
           typeof c.question_rules === 'object' && c.question_rules != null
             ? JSON.stringify(c.question_rules)
-            : (c.question_rules ?? '');
+            : (typeof c.question_rules === 'string' ? c.question_rules : '');
         const participation =
           c.reward_config?.participation_coins ?? c.reward_participation ?? '';
         const ranking =
@@ -382,12 +382,116 @@ export function CreateCompetitionModal({
     if (!formData.name?.trim()) newErrors.name = 'Nome é obrigatório';
     if (!formData.subject_id) newErrors.subject_id = 'Disciplina é obrigatória';
 
+    if (formData.scope === 'estado') {
+      const hasStateIds = getEstadoSelectedIds().length > 0;
+      const hasStateNames = (formData.scope_filter as { state_names?: string[] } | undefined)?.state_names?.length;
+      if (!hasStateIds && !hasStateNames) {
+        newErrors.scope = 'Selecione ao menos um estado para o escopo Estado.';
+      }
+    }
+
+    const isManual = (formData.question_mode ?? 'manual').toLowerCase() === 'manual';
+    if (isManual) {
+      if (selectedQuestions.length === 0) {
+        newErrors.questions = 'Adicione pelo menos uma questão antes de criar a competição.';
+      }
+    } else {
+      const rules = parseQuestionRules(formData.question_rules);
+      if (!rules.num_questions || rules.num_questions < 1) {
+        newErrors.questions = 'Defina a quantidade de questões (mínimo 1) no modo aleatório.';
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
+  /** Para escopo estado: IDs selecionados (state_ids ou state_names mapeados a IDs quando vindo da API). */
+  const getEstadoSelectedIds = (): string[] => {
+    const sf = formData.scope_filter;
+    if (formData.scope !== 'estado' || !sf) return [];
+    const stateIds = (sf as { state_ids?: string[] }).state_ids;
+    if (stateIds?.length) return stateIds;
+    const stateNames = (sf as { state_names?: string[] }).state_names;
+    if (stateNames?.length && scopeFilterOptions.length) {
+      const norm = (s: string) => (s ?? '').trim().toLowerCase();
+      return stateNames
+        .map((name) => scopeFilterOptions.find((o) => norm(o.name) === norm(name))?.id)
+        .filter((id): id is string => Boolean(id));
+    }
+    return [];
+  };
+
+  /** Para escopo estado: nomes dos estados (para exibição quando ainda não há IDs resolvidos, ex.: edição). */
+  const getEstadoDisplayNames = (): string[] => {
+    const sf = formData.scope_filter;
+    if (formData.scope !== 'estado' || !sf) return [];
+    const stateIds = (sf as { state_ids?: string[] }).state_ids;
+    const stateNames = (sf as { state_names?: string[] }).state_names;
+    if (stateIds?.length && scopeFilterOptions.length) {
+      return stateIds
+        .map((id) => scopeFilterOptions.find((o) => o.id === id)?.name)
+        .filter((n): n is string => Boolean(n));
+    }
+    if (stateNames?.length) return stateNames;
+    return [];
+  };
+
+  /** Valida apenas a etapa atual — só permite avançar com tudo preenchido. */
+  const isStepValid = (s: number): boolean => {
+    if (s === 1) {
+      if (!formData.name?.trim() || !formData.subject_id) return false;
+      if (formData.scope && formData.scope !== 'individual') {
+        if (formData.scope === 'municipio') {
+          if (!selectedStateForMunicipio) return false;
+          const ids = formData.scope_filter?.municipality_ids ?? [];
+          if (ids.length === 0) return false;
+        } else {
+          const ids =
+            formData.scope === 'turma' ? formData.scope_filter?.class_ids ?? []
+              : formData.scope === 'escola' ? formData.scope_filter?.school_ids ?? []
+              : formData.scope === 'estado' ? getEstadoSelectedIds()
+              : [];
+          if (ids.length === 0) return false;
+        }
+      }
+      return true;
+    }
+    if (s === 2) {
+      const isManual = (formData.question_mode ?? 'manual').toLowerCase() === 'manual';
+      if (isManual) return selectedQuestions.length > 0;
+      const rules = parseQuestionRules(formData.question_rules);
+      return rules.num_questions >= 1;
+    }
+    if (s === 3) {
+      const hasParticipation = formData.reward_participation != null && String(formData.reward_participation).trim() !== '';
+      const hasRanking = formData.reward_ranking != null && String(formData.reward_ranking).trim() !== '';
+      return hasParticipation && hasRanking;
+    }
+    return true;
+  };
+
   const buildPayloadWithISODates = () => {
     const payload = { ...formData };
+
+    // Backend exige state_names (ou state) para escopo 'estado'; o formulário usa state_ids ou state_names (edição)
+    if (payload.scope === 'estado' && payload.scope_filter) {
+      const sf = payload.scope_filter as Record<string, unknown>;
+      const stateIds = sf.state_ids as string[] | undefined;
+      if (stateIds?.length) {
+        const names = stateIds
+          .map((id) => scopeFilterOptions.find((o) => o.id === id)?.name)
+          .filter((n): n is string => Boolean(n));
+        if (names.length) sf.state_names = names;
+        // se a conversão falhar (options não carregadas), não sobrescrever state_names existente (edição)
+      }
+      delete sf.state_ids;
+    }
+
+    const subjectName = formData.subject_id
+      ? (subjects.find((s) => s.id === formData.subject_id)?.name ?? '')
+      : '';
+    (payload as Record<string, unknown>).subject_name = subjectName;
 
     const now = new Date();
     const fiveMinutesMs = 5 * 60 * 1000;
@@ -703,26 +807,31 @@ export function CreateCompetitionModal({
                           const ids =
                             formData.scope === 'turma' ? formData.scope_filter?.class_ids ?? []
                               : formData.scope === 'escola' ? formData.scope_filter?.school_ids ?? []
-                              : formData.scope === 'estado' ? formData.scope_filter?.state_ids ?? []
+                              : formData.scope === 'estado' ? getEstadoSelectedIds()
                               : formData.scope === 'municipio' ? formData.scope_filter?.municipality_ids ?? []
                               : [];
-                          if (ids.length === 0) return null;
+                          // Estado: em edição pode vir só state_names; exibir nomes mesmo antes de resolver IDs
+                          const estadoNames = formData.scope === 'estado' ? getEstadoDisplayNames() : [];
+                          const count = formData.scope === 'estado' && ids.length === 0 ? estadoNames.length : ids.length;
+                          if (count === 0) return null;
                           return (
                             <div className="rounded-md border bg-muted/20 p-3">
                               <p className="text-xs font-medium text-muted-foreground mb-2">
-                                {ids.length} {ids.length === 1
+                                {count} {count === 1
                                   ? (formData.scope === 'turma' ? 'turma' : formData.scope === 'escola' ? 'escola' : formData.scope === 'estado' ? 'estado' : 'município')
                                   : (formData.scope === 'turma' ? 'turmas' : formData.scope === 'escola' ? 'escolas' : formData.scope === 'estado' ? 'estados' : 'municípios')
                                 } selecionada(s)
                               </p>
                               <div className="flex flex-wrap gap-1.5">
-                                {ids.slice(0, 10).map((id) => (
-                                  <Badge key={id} variant="secondary" className="text-xs font-normal">
-                                    {scopeFilterOptions.find((o) => o.id === id)?.name ?? scopeMunicipalities.find((m) => m.id === id)?.name ?? id.slice(0, 8)}
+                                {(formData.scope === 'estado' && ids.length === 0 ? estadoNames : ids).slice(0, 10).map((idOrName, i) => (
+                                  <Badge key={formData.scope === 'estado' && ids.length === 0 ? `n-${i}` : idOrName} variant="secondary" className="text-xs font-normal">
+                                    {formData.scope === 'estado' && ids.length === 0
+                                      ? idOrName
+                                      : scopeFilterOptions.find((o) => o.id === idOrName)?.name ?? scopeMunicipalities.find((m) => m.id === idOrName)?.name ?? idOrName.slice(0, 8)}
                                   </Badge>
                                 ))}
-                                {ids.length > 10 && (
-                                  <Badge variant="outline" className="text-xs">+{ids.length - 10} mais</Badge>
+                                {count > 10 && (
+                                  <Badge variant="outline" className="text-xs">+{count - 10} mais</Badge>
                                 )}
                               </div>
                             </div>
@@ -740,7 +849,7 @@ export function CreateCompetitionModal({
                           selectedIds={
                             formData.scope === 'turma' ? formData.scope_filter?.class_ids ?? []
                               : formData.scope === 'escola' ? formData.scope_filter?.school_ids ?? []
-                              : formData.scope === 'estado' ? formData.scope_filter?.state_ids ?? []
+                              : formData.scope === 'estado' ? getEstadoSelectedIds()
                               : []
                           }
                           onConfirm={(ids) => {
@@ -759,6 +868,9 @@ export function CreateCompetitionModal({
                           selectedIds={formData.scope_filter?.municipality_ids ?? []}
                           onConfirm={(ids) => update({ scope_filter: ids.length ? { municipality_ids: ids } : undefined })}
                         />
+                      )}
+                      {errors.scope && (
+                        <p className="text-sm text-destructive">{errors.scope}</p>
                       )}
                     </div>
                   )}
@@ -1018,6 +1130,9 @@ export function CreateCompetitionModal({
           </div>
         )}
 
+        {errors.questions && (
+          <p className="text-sm text-destructive mt-2 shrink-0">{errors.questions}</p>
+        )}
         {!loadingEdit && (
           <div className="flex justify-between pt-4 mt-4 border-t shrink-0">
             <Button variant="outline" onClick={step > 1 ? () => setStep(step - 1) : onClose}>
@@ -1025,7 +1140,13 @@ export function CreateCompetitionModal({
             </Button>
             <div className="flex gap-2">
               {step < 3 ? (
-                <Button onClick={() => setStep(step + 1)}>Próximo</Button>
+                <Button
+                  onClick={() => setStep(step + 1)}
+                  disabled={!isStepValid(step)}
+                  title={!isStepValid(step) ? 'Preencha todos os campos desta etapa para continuar' : undefined}
+                >
+                  Próximo
+                </Button>
               ) : (
                 <Button onClick={handleSubmit} disabled={loading}>
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

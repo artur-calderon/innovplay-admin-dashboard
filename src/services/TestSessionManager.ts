@@ -140,7 +140,6 @@ export class TestSessionManager {
 
         this.state.isActive = true;
         this.startSyncInterval();
-        this.loadSavedAnswers();
 
         this.config.onSessionStart?.(this.createTestSession(sessionInfo));
     }
@@ -287,47 +286,12 @@ export class TestSessionManager {
         }, 2000); // 2 segundos de debounce
     }
 
-    // Executar auto-save
+    // Executar auto-save (respostas vão apenas no submit; sem localStorage para não ficar redundante)
     private async performAutoSave(): Promise<void> {
-        try {
-            if (!this.state.sessionInfo || Object.keys(this.state.answers).length === 0) {
-                return;
-            }
-
-            const answersArray = Object.values(this.state.answers).map(answer => ({
-                question_id: answer.question_id,
-                answer: answer.answer
-            }));
-
-            // ✅ REMOVIDO: Salvamento parcial - respostas serão enviadas apenas ao final
-
-            // Salvar no localStorage como backup
-            this.saveAnswersToStorage();
-
-            console.log('💾 Auto-save realizado');
-        } catch (error) {
-            console.error('❌ Erro no auto-save:', error);
+        if (!this.state.sessionInfo || Object.keys(this.state.answers).length === 0) {
+            return;
         }
-    }
-
-    // Carregar respostas salvas
-    private loadSavedAnswers(): void {
-        const savedAnswers = this.getAnswersFromStorage();
-        if (Object.keys(savedAnswers).length > 0) {
-            this.state.answers = savedAnswers;
-            console.log('📥 Respostas carregadas do storage');
-        }
-    }
-
-    // Salvar respostas no storage
-    private saveAnswersToStorage(): void {
-        localStorage.setItem(`test_answers_${this.config.testId}`, JSON.stringify(this.state.answers));
-    }
-
-    // Obter respostas do storage
-    private getAnswersFromStorage(): Record<string, StudentAnswer> {
-        const saved = localStorage.getItem(`test_answers_${this.config.testId}`);
-        return saved ? JSON.parse(saved) : {};
+        // Persistência de respostas é feita apenas via API no fluxo useEvaluation/TakeEvaluation
     }
 
     // Criar objeto TestSession

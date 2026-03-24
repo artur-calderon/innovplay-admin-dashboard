@@ -261,20 +261,20 @@ export default function PlantaoOnline() {
 
   return (
     <div className="container mx-auto py-6 space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Headset className="w-8 h-8 text-blue-600" />
+      {/* Header — mobile: título/desc alinhados, botão centralizado abaixo */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <Headset className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
             Plantão Online
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground text-sm sm:text-base">
             {canCreate
               ? 'Gerencie e cadastre plantões online para os alunos'
               : 'Visualize os plantões online disponíveis'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex justify-center w-full sm:w-auto sm:justify-end">
           <Button variant="outline" onClick={handleRefresh} disabled={isLoading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Atualizar
@@ -412,8 +412,8 @@ export default function PlantaoOnline() {
 
       {!canCreate && (
         <>
-          {/* Filtros */}
-          <Card>
+          {/* Filtros - overflow-visible para não cortar no mobile */}
+          <Card className="overflow-visible">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <School className="h-5 w-5" />
@@ -421,9 +421,9 @@ export default function PlantaoOnline() {
               </CardTitle>
               <CardDescription>Filtre os plantões por escola, série ou disciplina</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
+            <CardContent className="overflow-visible">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 w-full min-w-0">
+                <div className="space-y-2 min-w-0">
                   <label className="text-sm font-medium">Escola</label>
                   <Select
                     value={filters.school || 'all'}
@@ -434,7 +434,7 @@ export default function PlantaoOnline() {
                       });
                     }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full min-w-0">
                       <SelectValue placeholder="Todas as escolas" />
                     </SelectTrigger>
                     <SelectContent>
@@ -448,7 +448,7 @@ export default function PlantaoOnline() {
                   </Select>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 min-w-0">
                   <label className="text-sm font-medium">Série</label>
                   <Select
                     value={filters.grade || 'all'}
@@ -459,7 +459,7 @@ export default function PlantaoOnline() {
                       })
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full min-w-0">
                       <SelectValue placeholder="Todas as séries" />
                     </SelectTrigger>
                     <SelectContent>
@@ -473,7 +473,7 @@ export default function PlantaoOnline() {
                   </Select>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 min-w-0">
                   <label className="text-sm font-medium">Disciplina</label>
                   <Select
                     value={filters.subject || 'all'}
@@ -484,7 +484,7 @@ export default function PlantaoOnline() {
                       })
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full min-w-0">
                       <SelectValue placeholder="Todas as disciplinas" />
                     </SelectTrigger>
                     <SelectContent>

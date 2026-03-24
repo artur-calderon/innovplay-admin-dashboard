@@ -273,7 +273,7 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
       : 0;
 
     return (
-      <div key={key} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+      <div key={key} className="border rounded-lg p-4 hover:bg-muted/50 dark:hover:bg-muted transition-colors">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-lg">
             {statisticsItem.seriesName ? `${statisticsItem.seriesName} - ${statisticsItem.name}` : statisticsItem.name}

@@ -8,13 +8,15 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Book, Check, List as ListIcon, Minus, Plus, Save, Eye, Heading1, Heading2, Heading3, List, Code, Type, Trash } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Question, Subject } from "../types";
-import { api } from "@/lib/api";
+import { api, BASE_URL } from "@/lib/api";
+import { resolveQuestionImageSrc } from "@/utils/questionImages";
 import { useToast } from "@/hooks/use-toast";
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -28,6 +30,7 @@ import './MyEditor.css';
 import { Option } from "@/components/ui/multi-select";
 import { useAuth } from "@/context/authContext";
 import SkillsSelector from "./SkillsSelector";
+import { AlternativeInputWithMathButtons } from "./AlternativeInputWithMathButtons";
 
 // Form schema
 const questionSchema = z.object({
@@ -183,7 +186,10 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
                 <h3 className="text-lg font-semibold">{data.title}</h3>
                 <div className="flex flex-wrap gap-2">
                     <Badge variant="outline">{selectedGrade?.name || data.grade}</Badge>
-                    <Badge variant="outline">{selectedSubject?.name || data.subjectId}</Badge>
+                    <DisciplineTag
+                      subjectId={selectedSubject?.id || data.subjectId}
+                      name={selectedSubject?.name || data.subjectId}
+                    />
                     <Badge variant="outline">{data.difficulty}</Badge>
                     <Badge variant="outline">Valor: {data.value}</Badge>
                     {selectedSkills.map(skill => (
@@ -233,7 +239,7 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
             {data.solution && (
                 <div className="space-y-2">
                     <h4 className="font-medium">Resolução:</h4>
-                    <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: data.solution }} />
+                    <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: resolveQuestionImageSrc(data.solution, BASE_URL) }} />
                 </div>
             )}
         </div>
@@ -583,7 +589,7 @@ const QuestionFormReadOnly = ({
                     <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
 
                         {/* Seção: Informações Básicas */}
-                        <div className="bg-blue-50 dark:bg-blue-950/30 rounded-xl p-6 border border-blue-200 dark:border-blue-800">
+                        <div className="bg-blue-50 dark:bg-card rounded-xl p-6 border border-blue-200 dark:border-border">
                             <div className="flex items-center gap-2 mb-4">
                                 <Book className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                                 <h3 className="text-lg font-semibold text-foreground">Informações Básicas</h3>
@@ -714,7 +720,7 @@ const QuestionFormReadOnly = ({
                                     control={form.control}
                                     name="skills"
                                     render={({ field }) => (
-                                        <FormItem>
+                                        <FormItem className="sm:col-span-2 min-w-0">
                                             <FormLabel className="text-sm font-semibold text-foreground">
                                                 Habilidades (BNCC)
                                                 <span className="text-muted-foreground font-normal ml-1">
@@ -737,7 +743,7 @@ const QuestionFormReadOnly = ({
                                             </FormControl>
                                             <FormMessage />
                                             {(field.value || []).length > 0 && (
-                                                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                                                <div className="mt-3 p-3 bg-blue-50 dark:bg-muted/50 rounded-lg border border-blue-200 dark:border-border">
                                                     <div className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2">
                                                         Habilidades Selecionadas ({(field.value || []).length}):
                                                     </div>
@@ -760,7 +766,7 @@ const QuestionFormReadOnly = ({
                         </div>
 
                         {/* Seção: Tipo de Questão */}
-                        <div className="bg-purple-50 dark:bg-purple-950/30 rounded-xl p-6 border border-purple-200 dark:border-purple-800">
+                        <div className="bg-purple-50 dark:bg-card rounded-xl p-6 border border-purple-200 dark:border-border">
                             <div className="flex items-center gap-2 mb-4">
                                 <ListIcon className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                                 <h3 className="text-lg font-semibold text-foreground">Tipo de Questão</h3>
@@ -808,7 +814,7 @@ const QuestionFormReadOnly = ({
                         </div>
 
                         {/* Seção: Enunciados */}
-                        <div className="bg-green-50 dark:bg-green-950/30 rounded-xl p-6 border border-green-200 dark:border-green-800">
+                        <div className="bg-green-50 dark:bg-card rounded-xl p-6 border border-green-200 dark:border-border">
                             <div className="flex items-center gap-2 mb-4">
                                 <Type className="h-5 w-5 text-green-600 dark:text-green-400" />
                                 <h3 className="text-lg font-semibold text-foreground">Enunciados</h3>
@@ -899,10 +905,13 @@ const QuestionFormReadOnly = ({
                                                 control={form.control}
                                                 name={`options.${index}.text`}
                                                 render={({ field }) => (
-                                                    <FormItem className="flex-1">
+                                                    <FormItem className="flex-1 min-w-0">
                                                         <FormControl>
-                                                            <Input
-                                                                {...field}
+                                                            <AlternativeInputWithMathButtons
+                                                                value={field.value}
+                                                                onChange={field.onChange}
+                                                                onBlur={field.onBlur}
+                                                                ref={field.ref}
                                                                 placeholder={`Digite a alternativa ${String.fromCharCode(65 + index)}`}
                                                                 className="h-11 text-base"
                                                             />

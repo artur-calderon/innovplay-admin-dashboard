@@ -963,12 +963,12 @@ const FormCreate = () => {
           <ArrowLeft className="h-4 w-4 mr-2" />
           Voltar
         </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <FileText className="w-8 h-8 text-blue-600" />
+        <div className="flex-1 space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
             Criar Questionário
           </h1>
-          <p className="text-muted-foreground mt-1">Configure e envie um novo questionário</p>
+          <p className="text-muted-foreground text-sm sm:text-base">Configure e envie um novo questionário</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="flex items-center gap-1">
