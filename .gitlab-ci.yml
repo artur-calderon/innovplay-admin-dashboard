@@ -24,8 +24,13 @@ workflow:
               IMAGE_TAG: "$APP:dev"
               CONTAINER_NAME: "$APP-dev"
               HOST_PORT: 8001
+
+              VITE_API_BASE_URL: /api
+              API_CONTAINER: innovplay_api-dev
         - if: "$CI_COMMIT_BRANCH == 'main'"
-        - when: never
+          variables:
+              VITE_API_BASE_URL: /api
+              API_CONTAINER: innovplay_api
 
 stages:
     - validate_pipeline
