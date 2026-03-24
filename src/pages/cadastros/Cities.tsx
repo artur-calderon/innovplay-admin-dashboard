@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -9,9 +9,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -244,6 +246,18 @@ export default function Cities() {
       c.slug?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const existingStates = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          cities
+            .map((city) => city.state?.trim())
+            .filter((state): state is string => Boolean(state))
+        )
+      ).sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" })),
+    [cities]
+  );
+
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -394,7 +408,7 @@ export default function Cities() {
               )}
             </DialogTitle>
           </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+          <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-4 pr-2 sm:px-6 sm:pr-3">
             {usersLoading ? (
               <div className="flex min-h-[200px] items-center justify-center">
                 <Loader2 className="h-10 w-10 animate-spin text-[#7B3FE4]" />
@@ -461,6 +475,9 @@ export default function Cities() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Adicionar novo município</DialogTitle>
+            <DialogDescription>
+              Preencha os dados do município e selecione um estado existente ou digite um novo.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
@@ -475,11 +492,33 @@ export default function Cities() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="state">Estado</Label>
+              <Select
+                value={existingStates.includes(newCity.state) ? newCity.state : "__manual__"}
+                onValueChange={(value) =>
+                  setNewCity({
+                    ...newCity,
+                    state: value === "__manual__" ? "" : value,
+                  })
+                }
+                disabled={isAdding}
+              >
+                <SelectTrigger id="state-select">
+                  <SelectValue placeholder="Selecione um estado existente (opcional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__manual__">Digitar manualmente</SelectItem>
+                  {existingStates.map((state) => (
+                    <SelectItem key={state} value={state}>
+                      {state}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Input
                 id="state"
                 value={newCity.state}
                 onChange={(e) => setNewCity({ ...newCity, state: e.target.value })}
-                placeholder="Digite o estado"
+                placeholder="Ou digite um novo estado"
                 disabled={isAdding}
               />
             </div>
@@ -516,6 +555,9 @@ export default function Cities() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Editar município</DialogTitle>
+            <DialogDescription>
+              Atualize os dados do município selecionado.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">

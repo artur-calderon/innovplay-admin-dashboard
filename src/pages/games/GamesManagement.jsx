@@ -27,7 +27,7 @@ import { toast } from 'react-toastify';
 import { useAuth } from '@/context/authContext';
 import { useGamesCount } from '@/hooks/useGamesCount';
 import { useNavigate } from 'react-router-dom';
-import { EvaluationResultsApiService } from '@/services/evaluationResultsApi';
+import { EvaluationResultsApiService } from '@/services/evaluation/evaluationResultsApi';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';

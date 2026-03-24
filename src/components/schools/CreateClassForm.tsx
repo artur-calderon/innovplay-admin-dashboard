@@ -670,8 +670,8 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                         ))}
                       </div>
                       {selectedLetters.length > 0 && (
-                        <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                          <p className="text-sm font-medium text-blue-800 mb-2">
+                        <div className="mt-4 rounded-lg border border-border bg-muted/50 p-3">
+                          <p className="mb-2 text-sm font-medium text-foreground">
                             Letras selecionadas ({selectedLetters.length}):
                           </p>
                           <div className="flex flex-wrap gap-1">
@@ -733,8 +733,8 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                         ))}
                       </div>
                       {selectedNumbers.length > 0 && (
-                        <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                          <p className="text-sm font-medium text-blue-800 mb-2">
+                        <div className="mt-4 rounded-lg border border-border bg-muted/50 p-3">
+                          <p className="mb-2 text-sm font-medium text-foreground">
                             Números selecionados ({selectedNumbers.length}):
                           </p>
                           <div className="flex flex-wrap gap-1">
@@ -798,8 +798,8 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                   <CardContent>
                     {classesToCreate.length === 0 ? (
                       <div className="text-center py-8">
-                        <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                        <p className="text-gray-500">
+                        <AlertCircle className="mx-auto mb-3 h-12 w-12 text-muted-foreground" />
+                        <p className="text-muted-foreground">
                           Configure as informações básicas e a nomenclatura para ver o preview
                         </p>
                       </div>
@@ -808,17 +808,17 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                         {classesToCreate.map((classPreview, index) => (
                           <div 
                             key={index}
-                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 sm:p-4 border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 hover:shadow-md transition-shadow"
+                            className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 text-card-foreground transition-shadow hover:bg-muted/40 hover:shadow-md sm:flex-row sm:items-center sm:justify-between sm:p-4"
                           >
-                            <div className="flex items-center gap-3 flex-1 min-w-0">
-                              <div className="w-9 h-9 sm:w-10 sm:h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-semibold flex-shrink-0">
+                            <div className="flex min-w-0 flex-1 items-center gap-3">
+                              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground sm:h-10 sm:w-10">
                                 {classPreview.name.split(' ').pop()}
                               </div>
                               <div className="min-w-0 flex-1">
-                                <h4 className="font-semibold text-sm sm:text-base text-gray-900 truncate">
+                                <h4 className="truncate text-sm font-semibold sm:text-base">
                                   {classPreview.name}
                                 </h4>
-                                <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-gray-600 mt-1">
+                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:gap-4 sm:text-sm">
                                   <span className="flex items-center gap-1">
                                     {getShiftIcon(shift)} {classPreview.shift}
                                   </span>
@@ -837,7 +837,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                                 </div>
                               </div>
                             </div>
-                            <Check className="h-5 w-5 text-green-600 flex-shrink-0 self-end sm:self-center" />
+                            <Check className="h-5 w-5 flex-shrink-0 self-end text-green-600 dark:text-green-400 sm:self-center" />
                           </div>
                         ))}
                       </div>
@@ -864,7 +864,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
               
               <div className="flex items-center gap-3">
                 {classesToCreate.length > 0 && (
-                  <span className="text-sm text-gray-600">
+                  <span className="text-sm text-muted-foreground">
                     {classesToCreate.length} turma(s) será(ão) criada(s)
                   </span>
                 )}

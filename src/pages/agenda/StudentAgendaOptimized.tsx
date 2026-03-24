@@ -8,7 +8,7 @@ import interactionPlugin from '@fullcalendar/interaction';
 import ptBrLocale from '@fullcalendar/core/locales/pt-br';
 
 // Importe a folha de estilos personalizada
-import '../styles/fullcalendar.css';
+import '@/styles/fullcalendar.css';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CalendarDays } from 'lucide-react';

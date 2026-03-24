@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/context/authContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,6 +62,33 @@ interface Instituicao {
     state: string;
   };
   created_at?: string;
+}
+
+function normalizeSchoolWritePayload(
+  instituicao: Partial<Instituicao>
+): { name: string; address: string; city_id: string; domain?: string } {
+  const domainRaw = instituicao.domain?.trim();
+  const domain =
+    domainRaw && domainRaw.length > 0 ? domainRaw.replace(/\/+$/, "") : undefined;
+  return {
+    name: instituicao.name!.trim(),
+    address: instituicao.address!.trim(),
+    city_id: instituicao.city_id!,
+    ...(domain ? { domain } : {}),
+  };
+}
+
+function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (error && typeof error === "object" && "response" in error) {
+    const data = (error as { response?: { data?: Record<string, unknown> } }).response
+      ?.data;
+    if (data && typeof data === "object") {
+      const cand = data.error ?? data.message ?? data.erro ?? data.detalhes ?? data.details;
+      if (typeof cand === "string" && cand.trim()) return cand.trim();
+    }
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
 }
 
 interface Class {
@@ -128,7 +155,8 @@ export default function Gestao() {
   );
   const [selectedUsersCityId, setSelectedUsersCityId] = useState<string>("");
   const [citiesWithSlug, setCitiesWithSlug] = useState<CityWithSlug[]>([]);
-  const [domainCityId, setDomainCityId] = useState<string>("");
+  /** Mantido sincronizado com o município do subdomínio / tenant (evita ReferenceError em HMR antigo). */
+  const [, setDomainCityId] = useState<string>("");
 
   useEffect(() => {
     if (tabParam === "turmas") setActiveTab("turmas");
@@ -142,15 +170,22 @@ export default function Gestao() {
     api.get("/city/").then((res) => {
       let list = res.data || [];
       if (user.role !== "admin") {
-        list = list.filter((c: CityWithSlug) => c.id === user.tenant_id);
+        const scopedCityId = user.tenant_id ?? user.city_id;
+        list = list.filter((c: CityWithSlug) => c.id === scopedCityId);
       }
       setCitiesWithSlug(Array.isArray(list) ? list : []);
     }).catch(() => setCitiesWithSlug([]));
-  }, [user.role, user.tenant_id]);
+  }, [user.role, user.tenant_id, user.city_id]);
 
-  // Detectar município pelo subdomínio (jiparana.afirmeplay.com.br ou jiparana.localhost)
+  // Aba Usuários: município padrão pelo subdomínio ou pelo tenant/city do usuário
   useEffect(() => {
-    if (typeof window === "undefined" || !citiesWithSlug.length) return;
+    if (typeof window === "undefined") return;
+    const fallbackCityId = user.tenant_id ?? user.city_id ?? "";
+    if (!citiesWithSlug.length) {
+      setDomainCityId(fallbackCityId);
+      if (fallbackCityId) setSelectedUsersCityId((prev) => prev || fallbackCityId);
+      return;
+    }
     const hostname = window.location.hostname;
     const parts = hostname.split(".");
     const first = (parts[0] || "").toLowerCase();
@@ -158,7 +193,8 @@ export default function Gestao() {
     const isSubdomain = parts.length >= 2 && first && !reserved.includes(first);
     const subdomain = isSubdomain ? first : "";
     if (!subdomain) {
-      setDomainCityId("");
+      setDomainCityId(fallbackCityId);
+      if (fallbackCityId) setSelectedUsersCityId((prev) => prev || fallbackCityId);
       return;
     }
     const city = citiesWithSlug.find((c) => (c.slug || "").toLowerCase() === subdomain);
@@ -166,9 +202,12 @@ export default function Gestao() {
       setDomainCityId(city.id);
       setSelectedUsersCityId(city.id);
     } else {
-      setDomainCityId("");
+      setDomainCityId(fallbackCityId);
+      if (fallbackCityId) {
+        setSelectedUsersCityId((prev) => prev || fallbackCityId);
+      }
     }
-  }, [citiesWithSlug]);
+  }, [citiesWithSlug, user.tenant_id, user.city_id]);
 
   // Professor: definir município da escola como padrão na aba Usuários (evita "Nenhum município definido")
   useEffect(() => {
@@ -183,6 +222,43 @@ export default function Gestao() {
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [user?.id, user?.role]);
+
+  /** Município único no modal "Nova escola": subdomínio ou vínculo do usuário (tenant/city). */
+  const lockedMunicipalityForNewSchool = useMemo(() => {
+    if (typeof window === "undefined") return undefined;
+    const hostname = window.location.hostname;
+    const parts = hostname.split(".");
+    const first = (parts[0] || "").toLowerCase();
+    const reserved = ["www", "localhost", "127", "app"];
+    const isSubdomain = parts.length >= 2 && Boolean(first) && !reserved.includes(first);
+    const fallbackId = user.tenant_id ?? user.city_id ?? "";
+
+    const fromListById = (id: string) => citiesWithSlug.find((x) => x.id === id) ?? null;
+
+    if (isSubdomain) {
+      const bySlug = citiesWithSlug.find((c) => (c.slug || "").toLowerCase() === first);
+      if (bySlug) {
+        return { id: bySlug.id, name: bySlug.name, state: bySlug.state };
+      }
+      if (fallbackId) {
+        const hit = fromListById(fallbackId);
+        if (hit) return { id: hit.id, name: hit.name, state: hit.state };
+        return {
+          id: fallbackId,
+          name: first.replace(/-/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase()),
+          state: "",
+        };
+      }
+      return undefined;
+    }
+
+    if (fallbackId) {
+      const hit = fromListById(fallbackId);
+      if (hit) return { id: hit.id, name: hit.name, state: hit.state };
+      return { id: fallbackId, name: "Município atual", state: "" };
+    }
+    return undefined;
+  }, [citiesWithSlug, user.tenant_id, user.city_id]);
 
   const fetchInstituicoes = useCallback(async () => {
     setIsLoading(true);
@@ -253,16 +329,25 @@ export default function Gestao() {
       }
 
       if (selectedInstituicao) {
-        // Atualizar instituição existente
-        const response = await api.put(`/school/${selectedInstituicao.id}`, instituicao);
-        setInstituicoes(instituicoes.map(i => i.id === selectedInstituicao.id ? response.data : i));
+        // SchoolForm já persiste com PUT; apenas sincroniza estado local (evita 2º PUT com objeto `city`).
+        const payload = normalizeSchoolWritePayload(instituicao);
+        setInstituicoes(
+          instituicoes.map((i) =>
+            i.id === selectedInstituicao.id
+              ? {
+                  ...i,
+                  ...payload,
+                  city: instituicao.city ?? i.city,
+                }
+              : i
+          )
+        );
         toast({
           title: "Sucesso",
           description: "Instituição atualizada com sucesso",
         });
       } else {
-        // Adicionar nova instituição
-        const response = await api.post("/school", instituicao);
+        await api.post("/school", normalizeSchoolWritePayload(instituicao));
         await fetchInstituicoes(); // Recarrega a lista completa
         toast({
           title: "Sucesso",
@@ -273,7 +358,7 @@ export default function Gestao() {
       setSelectedInstituicao(null);
     } catch (error: unknown) {
       console.error("Erro ao salvar instituição:", error);
-      let errorMessage = "Erro ao salvar instituição";
+      let errorMessage = getApiErrorMessage(error, "Erro ao salvar instituição");
 
       if (error && typeof error === 'object' && 'response' in error) {
         const axiosError = error as { response?: { data?: { campos_faltantes?: string[] } } };
@@ -843,6 +928,9 @@ export default function Gestao() {
               created_at: ''
             } : { id: '', name: '', state: '', created_at: '' }
           } : undefined}
+          lockedMunicipality={
+            selectedInstituicao ? undefined : lockedMunicipalityForNewSchool
+          }
           onClose={() => {
             setIsAddDialogOpen(false);
             setSelectedInstituicao(null);

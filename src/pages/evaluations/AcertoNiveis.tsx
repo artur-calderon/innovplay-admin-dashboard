@@ -3986,5 +3986,4 @@ export default function AcertoNiveis() {
     </div>
   );
 }
-}
 

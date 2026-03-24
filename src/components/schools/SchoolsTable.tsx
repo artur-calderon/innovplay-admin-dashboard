@@ -113,12 +113,11 @@ export default function SchoolsTable() {
   };
 
   // Handler for editing a school
-  const handleEditSchool = async (schoolData: Partial<School>) => {
+  const handleEditSchool = async (_schoolData: Partial<School>) => {
     if (!currentSchool) return;
-    
     try {
-      await api.put(`/school/${currentSchool.id}`, schoolData);
-      await fetchSchools(); // Refresh the schools list
+      // SchoolForm já fez PUT com payload válido; só atualiza a lista.
+      await fetchSchools();
       setIsEditDialogOpen(false);
       setCurrentSchool(null);
       toast({

@@ -143,8 +143,8 @@ const ClassDetails = React.lazy(() => import("./components/schools/ClassDetails"
 const SchoolDetails = React.lazy(() => import("./components/schools/SchoolDetails"));
 const TakeEvaluation = React.lazy(() => import("./components/evaluations/TakeEvaluation/index"));
 const EvaluationResults = React.lazy(() => import("./components/evaluations/EvaluationResults"));
-const DetailedResultsView = React.lazy(() => import("./components/evaluations/DetailedResultsView"));
-const StudentDetailedResults = React.lazy(() => import("./components/evaluations/StudentDetailedResults"));
+const DetailedResultsView = React.lazy(() => import("./components/evaluations/results/DetailedResultsView"));
+const StudentDetailedResults = React.lazy(() => import("./components/evaluations/student/StudentDetailedResults"));
 
 // Loading component
 const LoadingSpinner = () => (
