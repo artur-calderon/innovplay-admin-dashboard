@@ -39,6 +39,7 @@ import {
 import Turmas from "@/pages/Turmas";
 import { InstituicaoUsersTab } from "@/components/schools/InstituicaoUsersTab";
 import { getUserHierarchyContext } from "@/utils/userHierarchy";
+import { normalizeSubdomainFromHost } from "@/lib/subdomain";
 
 interface City {
   id: string;
@@ -153,7 +154,7 @@ export default function Gestao() {
     if (typeof window === "undefined" || !citiesWithSlug.length) return;
     const hostname = window.location.hostname;
     const parts = hostname.split(".");
-    const first = (parts[0] || "").toLowerCase();
+    const first = normalizeSubdomainFromHost((parts[0] || "").toLowerCase());
     const reserved = ["www", "localhost", "127", "app"];
     const isSubdomain = parts.length >= 2 && first && !reserved.includes(first);
     const subdomain = isSubdomain ? first : "";
