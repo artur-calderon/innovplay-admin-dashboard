@@ -13,7 +13,7 @@ import {
   LabelList,
 } from 'recharts';
 import type { ProcessedEvolutionData } from './EvolutionCharts';
-import type { ComparisonResponse } from '@/services/evaluationComparisonApi';
+import type { ComparisonResponse } from '@/services/evaluation/evaluationComparisonApi';
 import { EvolutionData } from './EvolutionChart';
 
 interface EvolutionPDFLayoutProps {

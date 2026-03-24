@@ -18,7 +18,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/authContext';
 import { getUserHierarchyContext, type UserHierarchyContext } from '@/utils/userHierarchy';
-import { EvaluationResultsApiService } from '@/services/evaluationResultsApi';
+import { EvaluationResultsApiService } from '@/services/evaluation/evaluationResultsApi';
 import { 
   IdebData, 
   EducationLevel, 

@@ -7,13 +7,13 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Medal, Trophy, TrendingUp, Users, X, Download, BarChart3, Table2, PieChart, School, MapPin, Target, Award, CheckCircle2, UserCheck, AlertCircle, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { EvaluationResultsApiService } from '@/services/evaluationResultsApi';
+import { EvaluationResultsApiService } from '@/services/evaluation/evaluationResultsApi';
 import { OlimpiadasApiService } from '@/services/olimpiadasApi';
-import { ResultsCharts } from '@/components/evaluations/ResultsCharts';
-import { DisciplineTables } from '@/components/evaluations/DisciplineTables';
-import { ClassStatistics } from '@/components/evaluations/ClassStatistics';
-import { StudentRanking } from '@/components/evaluations/StudentRanking';
-import type { NovaRespostaAPI } from '@/services/evaluationResultsApi';
+import { ResultsCharts } from '@/components/evaluations/results/ResultsCharts';
+import { DisciplineTables } from '@/components/evaluations/results/DisciplineTables';
+import { ClassStatistics } from '@/components/evaluations/results/ClassStatistics';
+import { StudentRanking } from '@/components/evaluations/student/StudentRanking';
+import type { NovaRespostaAPI } from '@/services/evaluation/evaluationResultsApi';
 
 interface OlimpiadaResultsModalProps {
   isOpen: boolean;

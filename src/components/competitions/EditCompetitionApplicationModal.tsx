@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { getCompetition, publishCompetition, updateCompetition } from '@/services/competitionsApi';
+import { getCompetition, publishCompetition, updateCompetition } from '@/services/competition/competitionsApi';
 import { parseISOToDatetimeLocal, convertDateTimeLocalToISONaive } from '@/utils/date';
 import { CalendarDays, CalendarRange, Clock, Loader2 } from 'lucide-react';
 import type { Competition } from '@/types/competition-types';

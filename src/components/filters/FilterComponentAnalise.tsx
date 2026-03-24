@@ -7,7 +7,7 @@ import {
   EvaluationResultsApiService,
   REPORT_ENTITY_TYPE_ANSWER_SHEET,
   type ReportEntityTypeQuery,
-} from "@/services/evaluationResultsApi";
+} from "@/services/evaluation/evaluationResultsApi";
 import { useToast } from "@/hooks/use-toast";
 
 // Interfaces para os filtros

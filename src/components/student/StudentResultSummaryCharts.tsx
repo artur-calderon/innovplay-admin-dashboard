@@ -3,7 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, L
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Trophy, Star, Sparkles, Loader2 } from "lucide-react"
-import type { StudentResultListItem } from "@/pages/StudentResultsPage"
+import type { StudentResultListItem } from "@/pages/reports/StudentResultsPage"
 import { getStudentResultByTest, studentCompare, type StudentResultByTestResponse, type StudentCompareResponse } from "@/services/studentResultApi"
 
 const COLORS = ["#7B3FE4", "#a78bfa", "#c4b5fd", "#8b5cf6", "#6366f1"]
