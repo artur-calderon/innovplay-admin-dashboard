@@ -111,6 +111,7 @@ image_build:
             set -e
 
             echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" > .env
+            echo "SUBDOMAIN_MODE=$SUBDOMAIN_MODE" >> .env
 
             echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Instalando dependência envsubst"
             apk add --no-cache gettext

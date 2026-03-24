@@ -3,6 +3,7 @@ import LOGO_WHITE from "/AFIRME PLAY LOGO branco.png";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
+import { getSubdomainFromHostname } from "@/lib/subdomain";
 
 export default function SubdominioInvalido() {
   const navigate = useNavigate();
@@ -10,7 +11,7 @@ export default function SubdominioInvalido() {
 
   useEffect(() => {
     const hostname = window.location.hostname;
-    const subdomain = hostname.split(".")[0] || hostname;
+    const subdomain = getSubdomainFromHostname(hostname);
 
     const check = async () => {
       try {
@@ -44,7 +45,7 @@ export default function SubdominioInvalido() {
   }
 
   const hostname = typeof window !== "undefined" ? window.location.hostname : "";
-  const subdomain = hostname.split(".")[0] || hostname;
+  const subdomain = getSubdomainFromHostname(hostname);
 
   return (
     <div

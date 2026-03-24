@@ -25,6 +25,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { getRoleDisplayName } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { formatSlugForHost } from "@/lib/subdomain";
 
 const SLUG_REGEX = /^[a-z0-9-]+$/;
 const SLUG_MAX_LENGTH = 100;
@@ -45,7 +46,10 @@ function getSubdomainConfig() {
   const host = isLocal ? `localhost:${port}` : "afirmeplay.com.br";
   const protocol = isLocal ? "http" : "https";
   return {
-    url: (slug: string) => (slug ? `${protocol}://${slug}.${host}` : "#"),
+    url: (slug: string) => {
+      const hostSlug = formatSlugForHost(slug);
+      return hostSlug ? `${protocol}://${hostSlug}.${host}` : "#";
+    },
     displayHost: host,
   };
 }
@@ -356,7 +360,7 @@ export default function Cities() {
                             <ExternalLink className="h-3.5 w-3.5 flex-shrink-0 ml-auto" />
                           </a>
                           <p className="text-xs text-muted-foreground">
-                            Subdomínio · {city.slug}.{subdomainConfig.displayHost}
+                            Subdomínio · {formatSlugForHost(city.slug || "")}.{subdomainConfig.displayHost}
                           </p>
                         </div>
                         <Button
@@ -494,7 +498,7 @@ export default function Cities() {
                 className="font-mono"
               />
               <p className="text-xs text-muted-foreground">
-                Apenas letras minúsculas, números e hífens (ex.: jiparana). Será usado em endereços como nome.{subdomainConfig.displayHost}
+                Apenas letras minúsculas, números e hífens (ex.: jiparana). Será usado em endereços como {formatSlugForHost("nome")}.{subdomainConfig.displayHost}
               </p>
             </div>
             <Button onClick={handleAddCity} className="mt-2" disabled={isAdding}>
