@@ -3,7 +3,7 @@ import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 
-const Login = React.lazy(() => import("@/pages/Login"));
+const Login = React.lazy(() => import("@/pages/auth/Login"));
 
 /**
  * Extrai o subdomínio do hostname (ex.: jiparana.localhost:8080 → jiparana).

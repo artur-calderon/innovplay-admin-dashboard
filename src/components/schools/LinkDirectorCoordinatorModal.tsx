@@ -346,14 +346,14 @@ export function LinkDirectorCoordinatorModal({
               </div>
 
               {/* Users List */}
-              <div className="flex-1 min-h-0 border border-border rounded-lg bg-card overflow-hidden">
+              <div className="flex flex-col flex-1 min-h-0 border border-border rounded-lg bg-card overflow-hidden">
                 {isLoading ? (
-                  <div className="flex flex-col items-center justify-center p-8 h-full">
+                  <div className="flex flex-col items-center justify-center p-8 flex-1 min-h-0">
                     <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
                     <span className="text-sm sm:text-base text-muted-foreground">Carregando {userTypeLabel.toLowerCase()}...</span>
                   </div>
                 ) : filteredUsers.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full">
+                  <div className="flex flex-col items-center justify-center p-6 sm:p-8 flex-1 min-h-0">
                     <div className={`${userType === 'diretor' ? 'bg-red-50 dark:bg-red-950/40' : 'bg-orange-50 dark:bg-orange-950/40'} p-4 rounded-full mb-4`}>
                       <Building className={`h-8 w-8 sm:h-12 sm:w-12 ${userType === 'diretor' ? 'text-red-400 dark:text-red-300' : 'text-orange-400 dark:text-orange-300'}`} />
                     </div>
@@ -369,7 +369,7 @@ export function LinkDirectorCoordinatorModal({
                   </div>
                 ) : (
                   <div 
-                    className={`h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scroll-smooth ${
+                    className={`flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-track-transparent scroll-smooth ${
                       userType === 'diretor' 
                         ? 'scrollbar-thumb-red-300 dark:scrollbar-thumb-red-700 hover:scrollbar-thumb-red-400' 
                         : 'scrollbar-thumb-orange-300 dark:scrollbar-thumb-orange-700 hover:scrollbar-thumb-orange-400'
@@ -427,7 +427,7 @@ export function LinkDirectorCoordinatorModal({
                 )}
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t bg-gray-50/50 dark:bg-muted px-4 py-3 rounded-b-lg">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t bg-gray-50/50 dark:bg-muted px-4 py-3 rounded-b-lg shrink-0">
                 <div className="text-xs sm:text-sm text-muted-foreground order-2 sm:order-1">
                   <span className="font-medium">{selectedUsers.length}</span> {userTypeSingular.toLowerCase()}(es) selecionado(s)
                 </div>
@@ -458,7 +458,13 @@ export function LinkDirectorCoordinatorModal({
             </TabsContent>
 
             <TabsContent value="create" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=inactive]:hidden">
-              <div className="flex-1 overflow-y-auto border border-border rounded-lg bg-card min-h-[300px] p-4 sm:p-5">
+              <div
+                className={`flex-1 overflow-y-auto border border-border rounded-lg bg-card p-4 sm:p-5 scrollbar-thin scrollbar-track-transparent ${
+                  userType === 'diretor'
+                    ? 'scrollbar-thumb-red-300 dark:scrollbar-thumb-red-700'
+                    : 'scrollbar-thumb-orange-300 dark:scrollbar-thumb-orange-700'
+                }`}
+              >
                 <p className="text-sm text-muted-foreground mb-4">
                   Preencha os dados. A senha não será exibida após o cadastro.
                 </p>
@@ -538,24 +544,34 @@ export function LinkDirectorCoordinatorModal({
                       onChange={(e) => handleInputChange('birth_date', e.target.value)}
                     />
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-3 sm:col-span-2 mt-2 pt-4 border-t border-border/60">
-                    <Button
-                      variant="outline"
-                      onClick={onClose}
-                      disabled={isCreating}
-                      className="h-11"
-                    >
-                      Cancelar
-                    </Button>
-                    <Button
-                      onClick={handleCreateUser}
-                      disabled={isCreating || isChecking || !formData.email}
-                      className={`flex-1 h-11 ${userType === 'diretor' ? 'bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-400' : 'bg-orange-600 hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-400'}`}
-                    >
-                      {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                      Criar {userTypeSingular}
-                    </Button>
-                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t bg-gray-50/50 dark:bg-muted px-4 py-3 rounded-b-lg shrink-0">
+                <div className="text-xs sm:text-sm text-muted-foreground order-2 sm:order-1">
+                  Novo {userTypeSingular.toLowerCase()}
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 order-1 sm:order-2">
+                  <Button
+                    variant="outline"
+                    onClick={onClose}
+                    disabled={isCreating}
+                    className="h-10 order-2 sm:order-1"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={handleCreateUser}
+                    disabled={isCreating || isChecking || !formData.email}
+                    className={`h-10 order-1 sm:order-2 flex-1 ${
+                      userType === 'diretor'
+                        ? 'bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-400'
+                        : 'bg-orange-600 hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-400'
+                    }`}
+                  >
+                    {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                    Criar {userTypeSingular}
+                  </Button>
                 </div>
               </div>
             </TabsContent>

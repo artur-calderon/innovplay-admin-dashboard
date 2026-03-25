@@ -5,8 +5,6 @@
  * Os valores reais de cálculo vêm da API do backend
  */
 
-import { CompletionStatusLevel } from './types/completion';
-
 // ===== CONSTANTES DE COMPLETUDE =====
 
 /**
@@ -193,42 +191,6 @@ export const EVALUATION_STATUS_COLORS = {
   [EVALUATION_STATUS.PENDENTE]: 'bg-gray-100 text-gray-800 border-gray-300',
   [EVALUATION_STATUS.AGENDADA]: 'bg-yellow-100 text-yellow-800 border-yellow-300',
   [EVALUATION_STATUS.CANCELADA]: 'bg-red-100 text-red-800 border-red-300'
-} as const;
-
-/**
- * Status de completude disponíveis
- */
-export const COMPLETION_STATUS_LEVELS = {
-  COMPLETE: CompletionStatusLevel.COMPLETE,
-  MOSTLY_COMPLETE: CompletionStatusLevel.MOSTLY_COMPLETE,
-  PARTIALLY_COMPLETE: CompletionStatusLevel.PARTIALLY_COMPLETE,
-  INCOMPLETE: CompletionStatusLevel.INCOMPLETE,
-  NOT_STARTED: CompletionStatusLevel.NOT_STARTED,
-  INVALID: CompletionStatusLevel.INVALID
-} as const;
-
-/**
- * Labels para status de completude
- */
-export const COMPLETION_STATUS_LABELS = {
-  [CompletionStatusLevel.COMPLETE]: 'Completo',
-  [CompletionStatusLevel.MOSTLY_COMPLETE]: 'Quase Completo',
-  [CompletionStatusLevel.PARTIALLY_COMPLETE]: 'Parcialmente Completo',
-  [CompletionStatusLevel.INCOMPLETE]: 'Incompleto',
-  [CompletionStatusLevel.NOT_STARTED]: 'Não Iniciado',
-  [CompletionStatusLevel.INVALID]: 'Inválido'
-} as const;
-
-/**
- * Cores para status de completude
- */
-export const COMPLETION_STATUS_COLORS = {
-  [CompletionStatusLevel.COMPLETE]: 'bg-green-100 text-green-800 border-green-300',
-  [CompletionStatusLevel.MOSTLY_COMPLETE]: 'bg-blue-100 text-blue-800 border-blue-300',
-  [CompletionStatusLevel.PARTIALLY_COMPLETE]: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  [CompletionStatusLevel.INCOMPLETE]: 'bg-orange-100 text-orange-800 border-orange-300',
-  [CompletionStatusLevel.NOT_STARTED]: 'bg-gray-100 text-gray-800 border-gray-300',
-  [CompletionStatusLevel.INVALID]: 'bg-red-100 text-red-800 border-red-300'
 } as const;
 
 // ===== CONSTANTES DE CONFIGURAÇÃO =====

@@ -13,7 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2, Calendar, Clock, Trophy, BookOpen, Hash } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { getCompetition } from '@/services/competitionsApi';
+import { getCompetition } from '@/services/competition/competitionsApi';
 import type { Competition, CompetitionStatus } from '@/types/competition-types';
 import { cn } from '@/lib/utils';
 

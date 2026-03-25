@@ -519,7 +519,7 @@ export function useBulkEvaluationStatusCheck() {
     setIsChecking(true);
     try {
       // Importar o serviço dinamicamente para evitar dependência circular
-      const { EvaluationResultsApiService } = await import('@/services/evaluationResultsApi');
+      const { EvaluationResultsApiService } = await import('@/services/evaluation/evaluationResultsApi');
       const result = await EvaluationResultsApiService.verificarTodasAvaliacoes(filters);
       setLastCheck(new Date());
       return result;

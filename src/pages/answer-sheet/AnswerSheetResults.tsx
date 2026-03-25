@@ -1,0 +1,1287 @@
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  ArrowLeft,
+  BarChart3,
+  Filter,
+  Loader2,
+  RefreshCw,
+  Users,
+  BookOpen,
+  FileX,
+  Check,
+  LayoutGrid,
+  Table2,
+  Eye,
+} from 'lucide-react';
+import { api } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
+import { ResultsCharts } from '@/components/evaluations/results/ResultsCharts';
+import { StudentRanking } from '@/components/evaluations/student/StudentRanking';
+import { ClassStatistics } from '@/components/evaluations/results/ClassStatistics';
+import { StudentCard } from '@/components/evaluations/student/StudentCard';
+import { DisciplineTables } from '@/components/evaluations/results/DisciplineTables';
+import { cn } from '@/lib/utils';
+import { getReportProficiencyTagClass } from '@/utils/report/reportTagStyles';
+
+// Opções dos filtros (resposta de GET /answer-sheets/opcoes-filtros-results)
+interface FilterOption {
+  id: string;
+  nome?: string;
+  name?: string;
+  titulo?: string;
+}
+
+interface OpcoesFiltrosResponse {
+  estados?: FilterOption[];
+  municipios?: FilterOption[];
+  gabaritos?: FilterOption[];
+  escolas?: FilterOption[];
+  series?: FilterOption[];
+  turmas?: FilterOption[];
+}
+
+// Resposta de GET /answer-sheets/resultados-agregados
+interface EstatisticasGerais {
+  tipo: string;
+  nome?: string;
+  estado?: string;
+  municipio?: string;
+  escola?: string;
+  serie?: string;
+  total_alunos: number;
+  alunos_participantes: number;
+  alunos_pendentes?: number;
+  alunos_ausentes?: number;
+  media_nota_geral: number;
+  media_proficiencia_geral: number;
+  distribuicao_classificacao_geral?: {
+    abaixo_do_basico: number;
+    basico: number;
+    adequado: number;
+    avancado: number;
+  };
+}
+
+interface GabaritoAgregado {
+  id: string;
+  titulo: string;
+  serie?: string;
+  turma?: string;
+  escola?: string;
+  municipio?: string;
+  estado?: string;
+  total_alunos: number;
+  alunos_participantes: number;
+  media_nota: number;
+  media_proficiencia: number;
+  distribuicao_classificacao?: {
+    abaixo_do_basico: number;
+    basico: number;
+    adequado: number;
+    avancado: number;
+  };
+}
+
+// Resultados por disciplina (para gráficos) — retornado por GET /answer-sheets/resultados-agregados
+interface ResultadoPorDisciplina {
+  disciplina: string;
+  total_avaliacoes?: number;
+  total_alunos?: number;
+  alunos_participantes?: number;
+  media_nota: number;
+  media_proficiencia: number;
+  distribuicao_classificacao?: {
+    abaixo_do_basico: number;
+    basico: number;
+    adequado: number;
+    avancado: number;
+  };
+}
+
+// Aluno na visão geral (tabela_detalhada.geral.alunos)
+interface GeralAluno {
+  id: string;
+  nome: string;
+  escola?: string;
+  serie?: string;
+  turma?: string;
+  nota_geral: number;
+  proficiencia_geral: number;
+  nivel_proficiencia_geral: string;
+  total_acertos_geral: number;
+  total_questoes_geral: number;
+  total_respondidas_geral: number;
+  total_em_branco_geral?: number;
+  percentual_acertos_geral: number;
+  status_geral: string;
+  respostas_por_questao?: Array<{ questao: number; acertou: boolean; respondeu: boolean; resposta: string }>;
+}
+
+// Disciplina em tabela_detalhada.disciplinas (questões podem ter só numero na API)
+interface DisciplinaTabela {
+  id: string;
+  nome: string;
+  questoes: Array<{ numero: number; habilidade?: string; codigo_habilidade?: string; question_id?: string }>;
+  alunos: Array<{
+    id: string;
+    nome: string;
+    escola?: string;
+    serie?: string;
+    turma?: string;
+    respostas_por_questao: Array<{ questao: number; acertou: boolean; respondeu: boolean; resposta: string }>;
+    total_acertos: number;
+    total_erros: number;
+    total_respondidas: number;
+    total_questoes_disciplina: number;
+    total_em_branco?: number;
+    nivel_proficiencia: string;
+    nota: number;
+    proficiencia: number;
+    status?: string;
+    percentual_acertos?: number;
+  }>;
+}
+
+interface RankingItem {
+  posicao: number;
+  student_id: string;
+  nome: string;
+  grade: number;
+  proficiency: number;
+  classification: string;
+  score_percentage: number;
+}
+
+interface ResultadosAgregadosResponse {
+  nivel_granularidade?: string;
+  filtros_aplicados?: Record<string, string>;
+  estatisticas_gerais: EstatisticasGerais;
+  resultados_por_disciplina?: ResultadoPorDisciplina[];
+  resultados_detalhados?: {
+    gabaritos: GabaritoAgregado[];
+    paginacao?: { page: number; per_page: number; total: number; total_pages: number };
+  };
+  tabela_detalhada?: {
+    disciplinas?: DisciplinaTabela[];
+    geral?: { alunos: GeralAluno[] };
+  };
+  ranking?: RankingItem[];
+}
+
+const norm = (o: FilterOption) => o.nome ?? o.name ?? o.titulo ?? o.id;
+
+const FILTERS_STORAGE_KEY = 'answer_sheet_results_filters';
+
+type AnswerSheetStoredFilters = {
+  estado: string;
+  municipio: string;
+  gabarito: string;
+  escola: string;
+  serie: string;
+  turma: string;
+};
+
+export default function AnswerSheetResults() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  /** Pula a 1ª execução do efeito de persistência (estado inicial antes da hidratação). */
+  const isFirstSaveEffectRunRef = useRef(true);
+
+  // Filtros (cascata: estado -> municipio -> gabarito -> escola -> serie -> turma)
+  const [estado, setEstado] = useState<string>('all');
+  const [municipio, setMunicipio] = useState<string>('all');
+  const [gabarito, setGabarito] = useState<string>('all');
+  const [escola, setEscola] = useState<string>('all');
+  const [serie, setSerie] = useState<string>('all');
+  const [turma, setTurma] = useState<string>('all');
+
+  // Opções dos filtros (carregadas em cascata)
+  const [opcoes, setOpcoes] = useState<OpcoesFiltrosResponse>({});
+  const [isLoadingFilters, setIsLoadingFilters] = useState(false);
+
+  // Dados agregados
+  const [apiData, setApiData] = useState<ResultadosAgregadosResponse | null>(null);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // UI: modo de visualização na aba Tabelas (tabela vs cards) e modal de faltosos
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
+  const [showAbsentStudentsModal, setShowAbsentStudentsModal] = useState(false);
+
+  const loadFiltersFromStorage = useCallback((): AnswerSheetStoredFilters | null => {
+    try {
+      let stored = sessionStorage.getItem(FILTERS_STORAGE_KEY);
+      if (!stored) {
+        const legacy = localStorage.getItem(FILTERS_STORAGE_KEY);
+        if (legacy) {
+          sessionStorage.setItem(FILTERS_STORAGE_KEY, legacy);
+          localStorage.removeItem(FILTERS_STORAGE_KEY);
+          stored = legacy;
+        }
+      }
+      if (!stored) return null;
+      const f = JSON.parse(stored) as Record<string, unknown>;
+      if (
+        typeof f.estado === 'string' &&
+        typeof f.municipio === 'string' &&
+        typeof f.gabarito === 'string' &&
+        typeof f.escola === 'string' &&
+        typeof f.serie === 'string' &&
+        typeof f.turma === 'string'
+      ) {
+        return {
+          estado: f.estado || 'all',
+          municipio: f.municipio || 'all',
+          gabarito: f.gabarito || 'all',
+          escola: f.escola || 'all',
+          serie: f.serie || 'all',
+          turma: f.turma || 'all',
+        };
+      }
+      sessionStorage.removeItem(FILTERS_STORAGE_KEY);
+      return null;
+    } catch {
+      try {
+        sessionStorage.removeItem(FILTERS_STORAGE_KEY);
+        localStorage.removeItem(FILTERS_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      return null;
+    }
+  }, []);
+
+  const saveFiltersToStorage = useCallback(() => {
+    try {
+      const payload: AnswerSheetStoredFilters & { timestamp: number } = {
+        estado,
+        municipio,
+        gabarito,
+        escola,
+        serie,
+        turma,
+        timestamp: Date.now(),
+      };
+      sessionStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(payload));
+    } catch (e) {
+      console.error('Erro ao salvar filtros (cartão resposta):', e);
+    }
+  }, [estado, municipio, gabarito, escola, serie, turma]);
+
+  useEffect(() => {
+    const saved = loadFiltersFromStorage();
+    if (saved) {
+      setEstado(saved.estado);
+      setMunicipio(saved.municipio);
+      setGabarito(saved.gabarito);
+      setEscola(saved.escola);
+      setSerie(saved.serie);
+      setTurma(saved.turma);
+    }
+  }, [loadFiltersFromStorage]);
+
+  useEffect(() => {
+    if (isFirstSaveEffectRunRef.current) {
+      isFirstSaveEffectRunRef.current = false;
+      return;
+    }
+    saveFiltersToStorage();
+  }, [estado, municipio, gabarito, escola, serie, turma, saveFiltersToStorage]);
+
+  // Carregar opções de filtros (cascata)
+  const fetchOpcoesFiltros = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (estado && estado !== 'all') params.set('estado', estado);
+    if (municipio && municipio !== 'all') params.set('municipio', municipio);
+    if (gabarito && gabarito !== 'all') params.set('gabarito', gabarito);
+    if (escola && escola !== 'all') params.set('escola', escola);
+    if (serie && serie !== 'all') params.set('serie', serie);
+    if (turma && turma !== 'all') params.set('turma', turma);
+    const query = params.toString();
+    try {
+      setIsLoadingFilters(true);
+      const url = `/answer-sheets/opcoes-filtros-results${query ? `?${query}` : ''}`;
+      const res = await api.get<OpcoesFiltrosResponse>(url);
+      setOpcoes(res.data || {});
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'response' in err && typeof (err as { response?: { data?: { message?: string } } }).response?.data?.message === 'string'
+        ? (err as { response: { data: { message: string } } }).response.data.message
+        : 'Não foi possível carregar os filtros.';
+      toast({
+        title: 'Erro',
+        description: message,
+        variant: 'destructive',
+      });
+      setOpcoes({});
+    } finally {
+      setIsLoadingFilters(false);
+    }
+  }, [estado, municipio, gabarito, escola, serie, turma, toast]);
+
+  useEffect(() => {
+    fetchOpcoesFiltros();
+  }, [fetchOpcoesFiltros]);
+
+  // Reset em cascata ao mudar filtro superior
+  const setEstadoAndReset = (v: string) => {
+    setEstado(v);
+    setMunicipio('all');
+    setGabarito('all');
+    setEscola('all');
+    setSerie('all');
+    setTurma('all');
+  };
+  const setMunicipioAndReset = (v: string) => {
+    setMunicipio(v);
+    setGabarito('all');
+    setEscola('all');
+    setSerie('all');
+    setTurma('all');
+  };
+  const setGabaritoAndReset = (v: string) => {
+    setGabarito(v);
+    setEscola('all');
+    setSerie('all');
+    setTurma('all');
+  };
+  const setEscolaAndReset = (v: string) => {
+    setEscola(v);
+    setSerie('all');
+    setTurma('all');
+  };
+  const setSerieAndReset = (v: string) => {
+    setSerie(v);
+    setTurma('all');
+  };
+
+  // Carregar resultados agregados (estado, município e cartão resposta obrigatórios)
+  const loadResultadosAgregados = useCallback(async () => {
+    if (!estado || estado === 'all' || !municipio || municipio === 'all' || !gabarito || gabarito === 'all') {
+      setApiData(null);
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set('estado', estado);
+    params.set('municipio', municipio);
+    params.set('gabarito', gabarito);
+    if (escola && escola !== 'all') params.set('escola', escola);
+    if (serie && serie !== 'all') params.set('serie', serie);
+    if (turma && turma !== 'all') params.set('turma', turma);
+    try {
+      setIsLoadingData(true);
+      setError(null);
+      const res = await api.get<ResultadosAgregadosResponse>(
+        `/answer-sheets/resultados-agregados?${params.toString()}`
+      );
+      setApiData(res.data);
+    } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'response' in err && typeof (err as { response?: { data?: { message?: string } } }).response?.data?.message === 'string'
+        ? (err as { response: { data: { message: string } } }).response.data.message
+        : 'Não foi possível carregar os resultados.';
+      setError(msg);
+      setApiData(null);
+      toast({
+        title: 'Erro',
+        description: msg,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingData(false);
+    }
+  }, [estado, municipio, gabarito, escola, serie, turma, toast]);
+
+  useEffect(() => {
+    loadResultadosAgregados();
+  }, [loadResultadosAgregados]);
+
+  const handleBack = () => navigate('/app/cartao-resposta');
+
+  // Gráficos: usar resultados_por_disciplina da API (nome das disciplinas, nota e média)
+  const chartsApiData = useMemo(() => {
+    if (!apiData?.estatisticas_gerais) return null;
+    const porDisciplina = apiData.resultados_por_disciplina ?? [];
+    return {
+      estatisticas_gerais: {
+        media_nota_geral: apiData.estatisticas_gerais.media_nota_geral ?? 0,
+        media_proficiencia_geral: apiData.estatisticas_gerais.media_proficiencia_geral ?? 0,
+        distribuicao_classificacao_geral: apiData.estatisticas_gerais.distribuicao_classificacao_geral,
+      },
+      resultados_por_disciplina: porDisciplina.map((d) => ({
+        disciplina: d.disciplina,
+        media_nota: d.media_nota ?? 0,
+        media_proficiencia: d.media_proficiencia ?? 0,
+        distribuicao_classificacao: d.distribuicao_classificacao,
+      })),
+    };
+  }, [apiData]);
+
+  const evaluationInfo = useMemo(() => {
+    if (!apiData?.estatisticas_gerais) return null;
+    const e = apiData.estatisticas_gerais;
+    return {
+      id: '',
+      titulo: e.nome ?? 'Resultados',
+      disciplina: '',
+      serie: e.serie ?? '',
+      escola: e.escola ?? '',
+      municipio: e.municipio ?? '',
+      estado: e.estado ?? '',
+      data_aplicacao: '',
+      total_alunos: e.total_alunos ?? 0,
+      alunos_participantes: e.alunos_participantes ?? 0,
+      alunos_ausentes: e.alunos_ausentes ?? 0,
+      media_nota: e.media_nota_geral ?? 0,
+      media_proficiencia: e.media_proficiencia_geral ?? 0,
+    };
+  }, [apiData]);
+
+  const inferStageGroup = useCallback((): 'group1' | 'group2' => 'group2', []);
+  const getMaxForDiscipline = useCallback(() => 400, []);
+
+  const estados = opcoes.estados ?? [];
+  const municipios = opcoes.municipios ?? [];
+  const gabaritos = opcoes.gabaritos ?? [];
+  const escolas = opcoes.escolas ?? [];
+  const series = opcoes.series ?? [];
+  const turmas = opcoes.turmas ?? [];
+
+  const geralAlunos = useMemo(() => apiData?.tabela_detalhada?.geral?.alunos ?? [], [apiData?.tabela_detalhada?.geral?.alunos]);
+  const disciplinasTabela = useMemo(() => apiData?.tabela_detalhada?.disciplinas ?? [], [apiData?.tabela_detalhada?.disciplinas]);
+  const ranking = useMemo(() => apiData?.ranking ?? [], [apiData?.ranking]);
+  const hasMinimumFilters =
+    estado && estado !== 'all' &&
+    municipio && municipio !== 'all' &&
+    gabarito && gabarito !== 'all';
+
+  const goToAnswerSheetStudentDetail = useCallback(
+    (studentRowId: string) => {
+      if (!hasMinimumFilters) return;
+      const qs = new URLSearchParams();
+      qs.set('estado', estado);
+      qs.set('municipio', municipio);
+      if (escola && escola !== 'all') qs.set('escola', escola);
+      if (serie && serie !== 'all') qs.set('serie', serie);
+      if (turma && turma !== 'all') qs.set('turma', turma);
+      navigate(
+        `/app/cartao-resposta/resultados/gabarito/${gabarito}/aluno/${studentRowId}?${qs.toString()}`
+      );
+    },
+    [navigate, hasMinimumFilters, estado, municipio, gabarito, escola, serie, turma]
+  );
+
+  // Estatísticas derivadas (para card Informações e métricas)
+  const derivedStats = useMemo(() => {
+    if (!apiData?.estatisticas_gerais) {
+      return { totalAlunos: 0, participantes: 0, ausentes: 0, mediaNota: 0, mediaProficiencia: 0 };
+    }
+    const e = apiData.estatisticas_gerais;
+    const totalAlunos = e.total_alunos ?? 0;
+    const participantes = e.alunos_participantes ?? 0;
+    const ausentes = (e.alunos_ausentes ?? 0) + (e.alunos_pendentes ?? 0);
+    return {
+      totalAlunos,
+      participantes,
+      ausentes,
+      mediaNota: e.media_nota_geral ?? 0,
+      mediaProficiencia: e.media_proficiencia_geral ?? 0,
+    };
+  }, [apiData]);
+
+  // Alunos faltosos/pendentes = status_geral !== 'concluida'
+  const absentStudents = useMemo(() => {
+    return geralAlunos.filter((a) => (a.status_geral || '').toLowerCase() !== 'concluida');
+  }, [geralAlunos]);
+
+  // Lista unificada para Ranking e Cards: partir de geral.alunos e enriquecer com ranking (posição)
+  const filteredStudents = useMemo(() => {
+    const byId = new Map<string, {
+      id: string;
+      nome: string;
+      turma: string;
+      escola?: string;
+      serie?: string;
+      nota: number;
+      proficiencia: number;
+      classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+      status: 'concluida' | 'pendente';
+      posicao?: number;
+      questoes_respondidas: number;
+      acertos: number;
+      erros: number;
+      em_branco: number;
+      tempo_gasto: number;
+    }>();
+    ranking.forEach((r, idx) => {
+      const classNorm = (r.classification || 'Básico') as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+      byId.set(r.student_id, {
+        id: r.student_id,
+        nome: r.nome ?? '',
+        turma: '',
+        escola: '',
+        serie: '',
+        nota: r.grade ?? 0,
+        proficiencia: r.proficiency ?? 0,
+        classificacao: classNorm,
+        status: 'concluida',
+        posicao: r.posicao ?? idx + 1,
+        questoes_respondidas: 0,
+        acertos: 0,
+        erros: 0,
+        em_branco: 0,
+        tempo_gasto: 0,
+      });
+    });
+    geralAlunos.forEach((a) => {
+      const concluida = (a.status_geral || '').toLowerCase() === 'concluida';
+      const erros = Math.max(0, (a.total_questoes_geral ?? 0) - (a.total_acertos_geral ?? 0) - (a.total_em_branco_geral ?? 0));
+      const existing = byId.get(a.id);
+      if (existing) {
+        existing.turma = a.turma ?? '';
+        existing.escola = a.escola;
+        existing.serie = a.serie;
+        existing.questoes_respondidas = a.total_respondidas_geral ?? 0;
+        existing.acertos = a.total_acertos_geral ?? 0;
+        existing.erros = erros;
+        existing.em_branco = a.total_em_branco_geral ?? 0;
+        existing.status = concluida ? 'concluida' : 'pendente';
+        return;
+      }
+      byId.set(a.id, {
+        id: a.id,
+        nome: a.nome ?? '',
+        turma: a.turma ?? '',
+        escola: a.escola,
+        serie: a.serie,
+        nota: a.nota_geral ?? 0,
+        proficiencia: a.proficiencia_geral ?? 0,
+        classificacao: (a.nivel_proficiencia_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado') || 'Básico',
+        status: concluida ? 'concluida' : 'pendente',
+        questoes_respondidas: a.total_respondidas_geral ?? 0,
+        acertos: a.total_acertos_geral ?? 0,
+        erros,
+        em_branco: a.total_em_branco_geral ?? 0,
+        tempo_gasto: 0,
+      });
+    });
+    return Array.from(byId.values()).sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [ranking, geralAlunos]);
+
+  /** Participantes com correção concluída (ex.: cards na aba Tabelas e ranking — sem faltosos/pendentes) */
+  const studentsParticipantesTabelas = useMemo(
+    () => filteredStudents.filter((s) => s.status === 'concluida'),
+    [filteredStudents]
+  );
+
+  // Dados no formato esperado por ClassStatistics (avaliacoes = gabaritos, geral = geralAlunos)
+  const apiDataForClassStatistics = useMemo(() => {
+    if (!apiData) return null;
+    const gabaritos = apiData.resultados_detalhados?.gabaritos ?? [];
+    const avaliacoes = gabaritos.map((g) => ({
+      id: g.id,
+      titulo: g.titulo ?? '',
+      serie: g.serie,
+      turma: g.turma,
+      escola: g.escola,
+      total_alunos: g.total_alunos ?? 0,
+      alunos_participantes: g.alunos_participantes ?? 0,
+      alunos_pendentes: (g.total_alunos ?? 0) - (g.alunos_participantes ?? 0),
+      alunos_ausentes: 0,
+      media_nota: g.media_nota ?? 0,
+      media_proficiencia: g.media_proficiencia ?? 0,
+      distribuicao_classificacao: g.distribuicao_classificacao,
+    }));
+    const alunosParaStats = geralAlunos.map((a) => ({
+      id: a.id,
+      nome: a.nome ?? '',
+      turma: a.turma ?? '',
+      nivel_proficiencia_geral: a.nivel_proficiencia_geral ?? '',
+      nota_geral: a.nota_geral ?? 0,
+      proficiencia_geral: a.proficiencia_geral ?? 0,
+      total_acertos_geral: a.total_acertos_geral ?? 0,
+      total_erros_geral: Math.max(0, (a.total_questoes_geral ?? 0) - (a.total_acertos_geral ?? 0) - (a.total_em_branco_geral ?? 0)),
+      total_respondidas_geral: a.total_respondidas_geral ?? 0,
+    }));
+    return {
+      nivel_granularidade: (apiData.nivel_granularidade as 'municipio' | 'escola' | 'serie' | 'turma' | 'avaliacao') ?? 'escola',
+      resultados_detalhados: { avaliacoes },
+      estatisticas_gerais: apiData.estatisticas_gerais,
+      tabela_detalhada: {
+        geral: { alunos: alunosParaStats },
+      },
+    };
+  }, [apiData, geralAlunos]);
+
+  const tituloGabarito = apiData?.resultados_detalhados?.gabaritos?.[0]?.titulo ?? (gabarito !== 'all' ? norm(gabaritos.find((g) => g.id === gabarito) ?? { id: gabarito }) : null) ?? 'Cartão Resposta';
+  const hasNoData = !apiData?.resultados_detalhados?.gabaritos?.length && !geralAlunos.length && !disciplinasTabela.length;
+  const totalQuestionsForCards = geralAlunos.find((a) => (a.total_questoes_geral ?? 0) > 0)?.total_questoes_geral ?? 0;
+  const derivedSubjects = useMemo(() => [tituloGabarito].filter(Boolean), [tituloGabarito]);
+
+  // Mapear tabela_detalhada da API para o formato esperado por DisciplineTables (questões com numero + campos opcionais)
+  const tabelaDetalhadaForDisciplineTables = useMemo(() => {
+    if (!disciplinasTabela.length && !geralAlunos.length) return null;
+    const disciplinas = disciplinasTabela.map((d) => ({
+      id: d.id,
+      nome: d.nome,
+      questoes: (d.questoes || []).map((q) => ({
+        numero: q.numero,
+        habilidade: q.habilidade ?? '',
+        codigo_habilidade: q.codigo_habilidade ?? '',
+        question_id: q.question_id ?? `q-${q.numero}`,
+      })),
+      alunos: (d.alunos || []).map((a) => ({
+        id: a.id,
+        nome: a.nome,
+        escola: a.escola ?? '',
+        serie: a.serie ?? '',
+        turma: a.turma ?? '',
+        respostas_por_questao: a.respostas_por_questao ?? [],
+        total_acertos: a.total_acertos ?? 0,
+        total_erros: a.total_erros ?? 0,
+        total_respondidas: a.total_respondidas ?? 0,
+        total_questoes_disciplina: a.total_questoes_disciplina ?? 0,
+        nivel_proficiencia: a.nivel_proficiencia ?? '',
+        nota: a.nota ?? 0,
+        proficiencia: a.proficiencia ?? 0,
+      })),
+    }));
+    const geral = geralAlunos.length > 0 ? {
+      alunos: geralAlunos.map((a) => ({
+        id: a.id,
+        nome: a.nome,
+        escola: a.escola ?? '',
+        serie: a.serie ?? '',
+        turma: a.turma ?? '',
+        nota_geral: a.nota_geral ?? 0,
+        proficiencia_geral: a.proficiencia_geral ?? 0,
+        nivel_proficiencia_geral: a.nivel_proficiencia_geral ?? '',
+        total_acertos_geral: a.total_acertos_geral ?? 0,
+        total_questoes_geral: a.total_questoes_geral ?? 0,
+        total_respondidas_geral: a.total_respondidas_geral ?? 0,
+        total_em_branco_geral: a.total_em_branco_geral ?? 0,
+        percentual_acertos_geral: a.percentual_acertos_geral ?? 0,
+        status_geral: a.status_geral ?? '',
+      })),
+    } : undefined;
+    return { disciplinas, geral };
+  }, [disciplinasTabela, geralAlunos]);
+
+  return (
+    <div className="w-full min-w-0 space-y-6 pb-8">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+            <BarChart3 className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
+            Resultados dos Cartões Resposta
+          </h1>
+          <p className="text-muted-foreground text-sm sm:text-base">
+            Acompanhe o desempenho das correções por estado, município e cartão resposta
+          </p>
+          {apiData?.estatisticas_gerais && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="text-xs">
+                Nível: {(apiData.nivel_granularidade || apiData.estatisticas_gerais.tipo || 'município').charAt(0).toUpperCase() + (apiData.nivel_granularidade || apiData.estatisticas_gerais.tipo || 'município').slice(1)}
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                {apiData.estatisticas_gerais.nome || apiData.estatisticas_gerais.escola || 'Dados gerais'}
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap justify-center sm:justify-end gap-2">
+          <Button variant="outline" onClick={handleBack}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Voltar
+          </Button>
+          {hasMinimumFilters && (
+            <Button variant="outline" onClick={loadResultadosAgregados} disabled={isLoadingData}>
+              <RefreshCw className={cn('h-4 w-4 mr-2', isLoadingData && 'animate-spin')} />
+              Atualizar
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <Card className="overflow-visible">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filtros
+          </CardTitle>
+          <CardDescription>
+            Estado, município e cartão resposta são obrigatórios. Refine com escola, série e turma.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="overflow-visible">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 w-full min-w-0">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Estado</label>
+              <Select value={estado} onValueChange={setEstadoAndReset} disabled={isLoadingFilters}>
+                <SelectTrigger className="w-full min-w-0">
+                  <SelectValue placeholder="Selecione o estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {estados.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {norm(s)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Município</label>
+              <Select value={municipio} onValueChange={setMunicipioAndReset} disabled={isLoadingFilters || estado === 'all'}>
+                <SelectTrigger className="w-full min-w-0">
+                  <SelectValue placeholder="Selecione o município" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {municipios.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {norm(m)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Cartão resposta</label>
+              <Select value={gabarito} onValueChange={setGabaritoAndReset} disabled={isLoadingFilters || municipio === 'all'}>
+                <SelectTrigger className="w-full min-w-0">
+                  <SelectValue placeholder="Selecione o cartão resposta" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {gabaritos.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {norm(g)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Escola</label>
+              <Select value={escola} onValueChange={setEscolaAndReset} disabled={isLoadingFilters || gabarito === 'all'}>
+                <SelectTrigger className="w-full min-w-0">
+                  <SelectValue placeholder="Selecione a escola" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {escolas.map((e) => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {norm(e)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Série</label>
+              <Select value={serie} onValueChange={setSerieAndReset} disabled={isLoadingFilters || escola === 'all'}>
+                <SelectTrigger className="w-full min-w-0">
+                  <SelectValue placeholder="Selecione a série" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {series.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {norm(s)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Turma</label>
+              <Select value={turma} onValueChange={setTurma} disabled={isLoadingFilters || serie === 'all'}>
+                <SelectTrigger className="w-full min-w-0">
+                  <SelectValue placeholder="Selecione a turma" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {turmas.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {norm(t)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="mt-4 p-3 rounded-lg bg-muted/50 border border-border col-span-full">
+              <p className="text-sm text-muted-foreground">
+                <strong>Ordem dos filtros:</strong> Estado → Município → Cartão resposta → Escola → Série → Turma
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Sem filtros obrigatórios */}
+      {!hasMinimumFilters && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <div className="w-20 h-20 rounded-2xl bg-primary/10 dark:bg-primary/20 flex items-center justify-center mb-6">
+              <BookOpen className="h-10 w-10 text-primary" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground mb-2">Selecione os filtros para continuar</h3>
+            <p className="text-muted-foreground text-center max-w-md mb-4">
+              Escolha <strong>Estado</strong>, <strong>Município</strong> e <strong>Cartão resposta</strong> nos filtros acima para carregar os resultados.
+            </p>
+            <p className="text-sm text-muted-foreground text-center max-w-md">
+              Escola, Série e Turma são opcionais e permitem refinar a visualização.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Loading */}
+      {hasMinimumFilters && isLoadingData && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+            <p className="text-muted-foreground font-medium">Carregando resultados...</p>
+            <p className="text-sm text-muted-foreground mt-1">Aguarde enquanto os dados são processados.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Conteúdo principal: Card Informações + Abas */}
+      {hasMinimumFilters && !isLoadingData && apiData && (
+        <>
+          {/* Card Informações do Cartão Resposta */}
+          <Card className="border-0 shadow-sm bg-muted/30 dark:bg-muted/20">
+            <CardHeader>
+              <CardTitle className="text-lg">Informações do Cartão Resposta</CardTitle>
+              <CardDescription>
+                {tituloGabarito} · {apiData.estatisticas_gerais.escola || apiData.estatisticas_gerais.nome || 'Escopo selecionado'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Cartão / Série</div>
+                  <div className="font-semibold">{tituloGabarito}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Escola</div>
+                  <div className="font-semibold">{apiData.estatisticas_gerais.escola || apiData.estatisticas_gerais.nome || '—'}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Município</div>
+                  <div className="font-semibold">{apiData.estatisticas_gerais.municipio || '—'}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Série</div>
+                  <div className="font-semibold">{apiData.estatisticas_gerais.serie || '—'}</div>
+                </div>
+              </div>
+              <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Total de alunos</div>
+                  <div className="text-2xl font-bold text-blue-600">{derivedStats.totalAlunos}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Participantes</div>
+                  <div className="text-2xl font-bold text-green-600">{derivedStats.participantes}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="text-sm font-medium text-muted-foreground">Faltosos / Pendentes</div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowAbsentStudentsModal(true)}
+                      className="h-7 px-2 text-xs text-red-600 hover:text-red-700 dark:hover:text-red-400"
+                      aria-label="Ver faltosos"
+                    >
+                      Ver lista
+                    </Button>
+                  </div>
+                  <div className="text-2xl font-bold text-red-600">{derivedStats.ausentes}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Taxa de participação</div>
+                  <div className="text-2xl font-bold text-blue-600">
+                    {derivedStats.totalAlunos > 0 ? ((derivedStats.participantes / derivedStats.totalAlunos) * 100).toFixed(1) : '0'}%
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Nota geral</div>
+                  <div className="text-2xl font-bold text-purple-600">{Number(derivedStats.mediaNota).toFixed(1)}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-muted-foreground">Proficiência</div>
+                  <div className="text-2xl font-bold text-orange-600">{Number(derivedStats.mediaProficiencia).toFixed(1)}</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Nenhum dado para exibir */}
+          {hasNoData ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-16">
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                  <FileX className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-medium text-foreground mb-2">Nenhum resultado para mostrar</h3>
+                <p className="text-muted-foreground text-center max-w-md">
+                  Não foram encontrados resultados para os filtros selecionados.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <Tabs defaultValue="charts" className="w-full">
+              <TabsList className="grid w-full grid-cols-4 h-11 bg-muted/50 p-1 rounded-lg">
+                <TabsTrigger value="charts" className="rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">Gráficos</TabsTrigger>
+                <TabsTrigger value="tables" className="rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">Tabelas</TabsTrigger>
+                <TabsTrigger value="statistics" className="rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">Estatísticas</TabsTrigger>
+                <TabsTrigger value="ranking" className="rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">Ranking</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="charts" className="space-y-6 mt-6">
+                {chartsApiData ? (
+                  <ResultsCharts
+                    apiData={chartsApiData}
+                    evaluationInfo={evaluationInfo}
+                    inferStageGroup={inferStageGroup}
+                    getMaxForDiscipline={getMaxForDiscipline}
+                  />
+                ) : (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12">
+                      <p className="text-muted-foreground">Não há dados suficientes para gerar os gráficos.</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+
+              <TabsContent value="tables" className="space-y-6 mt-6">
+                <Card>
+                  <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        Resultados dos Alunos
+                        <Badge variant="secondary">{filteredStudents.length} {filteredStudents.length === 1 ? 'aluno' : 'alunos'}</Badge>
+                      </CardTitle>
+                      <CardDescription>
+                        Tabela por disciplina e geral, ou cards só para alunos com correção concluída (sem faltosos/pendentes)
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-1 border rounded-lg p-1 bg-muted/30">
+                      <Button
+                        variant={viewMode === 'table' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setViewMode('table')}
+                        className="h-8 px-3"
+                      >
+                        <Table2 className="h-4 w-4 mr-1.5" />
+                        Tabela
+                      </Button>
+                      <Button
+                        variant={viewMode === 'cards' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setViewMode('cards')}
+                        className="h-8 px-3"
+                      >
+                        <LayoutGrid className="h-4 w-4 mr-1.5" />
+                        Cards
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {tabelaDetalhadaForDisciplineTables && disciplinasTabela.length > 0 ? (
+                      viewMode === 'table' ? (
+                        <DisciplineTables
+                          tabelaDetalhada={tabelaDetalhadaForDisciplineTables}
+                          onViewStudentDetails={goToAnswerSheetStudentDetail}
+                        />
+                      ) : studentsParticipantesTabelas.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                          {studentsParticipantesTabelas.map((student) => (
+                            <StudentCard
+                              key={student.id}
+                              student={{
+                                id: student.id,
+                                nome: student.nome,
+                                turma: student.turma,
+                                nota: student.nota,
+                                proficiencia: student.proficiencia,
+                                classificacao: student.classificacao,
+                                questoes_respondidas: student.questoes_respondidas,
+                                acertos: student.acertos,
+                                erros: student.erros,
+                                em_branco: student.em_branco,
+                                tempo_gasto: student.tempo_gasto,
+                                status: student.status,
+                              }}
+                              totalQuestions={totalQuestionsForCards || 1}
+                              subjects={derivedSubjects}
+                              onViewDetails={goToAnswerSheetStudentDetail}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                          <FileX className="h-10 w-10 text-muted-foreground mb-3" />
+                          <p className="text-muted-foreground font-medium">Nenhum aluno com correção concluída</p>
+                          <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                            Faltosos e pendentes não aparecem nos cards. Use a visão em tabela ou o botão &quot;Faltosos&quot; no topo.
+                          </p>
+                        </div>
+                      )
+                    ) : geralAlunos.length > 0 ? (
+                      viewMode === 'table' ? (
+                        <div className="overflow-x-auto rounded-lg border">
+                          <table className="w-full border-collapse">
+                            <thead>
+                              <tr className="border-b bg-muted/50">
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nome</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Escola</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Turma</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Série</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nota</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Proficiência</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Classificação</th>
+                                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Acertos / Erros</th>
+                                <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ações</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {geralAlunos.map((a) => {
+                                const erros = Math.max(0, (a.total_questoes_geral ?? 0) - (a.total_acertos_geral ?? 0) - (a.total_em_branco_geral ?? 0));
+                                return (
+                                  <tr key={a.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                                    <td className="py-3 px-4 font-medium">{a.nome}</td>
+                                    <td className="py-3 px-4 text-muted-foreground">{a.escola ?? '—'}</td>
+                                    <td className="py-3 px-4 text-muted-foreground">{a.turma ?? '—'}</td>
+                                    <td className="py-3 px-4 text-muted-foreground">{a.serie ?? '—'}</td>
+                                    <td className="py-3 px-4">{(a.nota_geral ?? 0).toFixed(1)}</td>
+                                    <td className="py-3 px-4">{(a.proficiencia_geral ?? 0).toFixed(1)}</td>
+                                    <td className="py-3 px-4">
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          getReportProficiencyTagClass(a.nivel_proficiencia_geral),
+                                          !a.nivel_proficiencia_geral && 'opacity-60'
+                                        )}
+                                      >
+                                        {a.nivel_proficiencia_geral || 'Pendente'}
+                                      </Badge>
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      {a.total_questoes_geral != null ? `${a.total_acertos_geral ?? 0} / ${erros} (${(a.percentual_acertos_geral ?? 0).toFixed(0)}%)` : '—'}
+                                    </td>
+                                    <td className="py-3 px-4 text-right">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8"
+                                        onClick={() => goToAnswerSheetStudentDetail(a.id)}
+                                      >
+                                        <Eye className="h-3.5 w-3.5 mr-1" />
+                                        Detalhes
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : studentsParticipantesTabelas.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                          {studentsParticipantesTabelas.map((student) => (
+                            <StudentCard
+                              key={student.id}
+                              student={{
+                                id: student.id,
+                                nome: student.nome,
+                                turma: student.turma,
+                                nota: student.nota,
+                                proficiencia: student.proficiencia,
+                                classificacao: student.classificacao,
+                                questoes_respondidas: student.questoes_respondidas,
+                                acertos: student.acertos,
+                                erros: student.erros,
+                                em_branco: student.em_branco,
+                                tempo_gasto: student.tempo_gasto,
+                                status: student.status,
+                              }}
+                              totalQuestions={totalQuestionsForCards || 1}
+                              subjects={derivedSubjects}
+                              onViewDetails={goToAnswerSheetStudentDetail}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                          <FileX className="h-10 w-10 text-muted-foreground mb-3" />
+                          <p className="text-muted-foreground font-medium">Nenhum aluno com correção concluída</p>
+                          <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                            Faltosos e pendentes não aparecem nos cards. Use a visão em tabela ou o botão &quot;Faltosos&quot; no topo.
+                          </p>
+                        </div>
+                      )
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <FileX className="h-10 w-10 text-muted-foreground mb-3" />
+                        <p className="text-muted-foreground font-medium">Nenhum aluno no escopo</p>
+                        <p className="text-sm text-muted-foreground mt-1">Ajuste os filtros para ver resultados.</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="statistics" className="space-y-6 mt-6">
+                {apiDataForClassStatistics ? (
+                  <ClassStatistics apiData={apiDataForClassStatistics} />
+                ) : (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12">
+                      <p className="text-muted-foreground">Não há dados para exibir as estatísticas.</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+
+              <TabsContent value="ranking" className="space-y-6 mt-6">
+                {studentsParticipantesTabelas.length > 0 ? (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Ranking</CardTitle>
+                      <CardDescription>Alunos ordenados por nota e proficiência (apenas participantes)</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <StudentRanking
+                        students={studentsParticipantesTabelas.map((s) => ({
+                          id: s.id,
+                          nome: s.nome,
+                          turma: s.turma,
+                          escola: s.escola,
+                          serie: s.serie,
+                          nota: s.nota,
+                          proficiencia: s.proficiencia,
+                          classificacao: s.classificacao,
+                          status: s.status,
+                          posicao: s.posicao,
+                        }))}
+                        maxStudents={100}
+                      />
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12">
+                      <FileX className="h-10 w-10 text-muted-foreground mb-3" />
+                      <p className="text-muted-foreground font-medium">Nenhum participante para ranking</p>
+                      <p className="text-sm text-muted-foreground mt-1">Os alunos que realizarem a correção aparecerão aqui.</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+            </Tabs>
+          )}
+        </>
+      )}
+
+      {/* Modal Alunos Faltosos / Pendentes */}
+      <Dialog open={showAbsentStudentsModal} onOpenChange={setShowAbsentStudentsModal}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-red-600" />
+              Faltosos / Pendentes
+              {tituloGabarito && (
+                <span className="text-sm font-normal text-muted-foreground ml-1">· {tituloGabarito}</span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto flex-1 min-h-0 py-2">
+            {absentStudents.length > 0 ? (
+              <div className="space-y-4">
+                <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-3 h-3 bg-red-500 dark:bg-red-400 rounded-full shrink-0" />
+                    <span className="font-semibold text-red-800 dark:text-red-400">
+                      {absentStudents.length} {absentStudents.length === 1 ? 'aluno' : 'alunos'} pendente(s)
+                    </span>
+                  </div>
+                  <p className="text-sm text-red-700 dark:text-red-400">
+                    Estes alunos ainda não entregaram ou não tiveram o cartão resposta corrigido.
+                  </p>
+                </div>
+                <div className="grid gap-3">
+                  {absentStudents.map((a) => (
+                    <div
+                      key={a.id}
+                      className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-red-100 dark:bg-red-950/30 rounded-full flex items-center justify-center shrink-0">
+                          <span className="text-red-600 dark:text-red-400 font-semibold text-sm">
+                            {a.nome.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="font-medium text-foreground">{a.nome}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {[a.escola, a.turma, a.serie].filter(Boolean).join(' · ') || '—'}
+                          </div>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="text-red-600 dark:text-red-400 border-red-300 dark:border-red-800">
+                        Pendente
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="w-16 h-16 bg-green-100 dark:bg-green-950/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Check className="h-8 w-8 text-green-600 dark:text-green-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground mb-2">Nenhum faltoso</h3>
+                <p className="text-muted-foreground">
+                  Todos os alunos do escopo já têm resultado ou estão como participantes.
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end pt-4 border-t mt-4">
+            <Button variant="outline" onClick={() => setShowAbsentStudentsModal(false)}>
+              Fechar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

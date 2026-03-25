@@ -19,7 +19,7 @@ import type {
   CompetitionTemplate,
   CompetitionTemplateRecurrence,
   CreateCompetitionTemplatePayload,
-} from '@/services/competitionTemplatesApi';
+} from '@/services/competition/competitionTemplatesApi';
 import { api } from '@/lib/api';
 
 interface SubjectOption {

@@ -456,9 +456,9 @@ export function ManageClassModal({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 overflow-hidden px-4 sm:px-6">
+          <div className="flex-1 overflow-hidden px-4 sm:px-6 min-h-0">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-              <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0 h-auto sm:h-10 p-1 bg-muted/60 rounded-lg my-4">
+              <TabsList className="grid w-full grid-cols-3 gap-1 sm:gap-0 h-auto sm:h-10 p-1 bg-muted/60 rounded-lg my-4">
                 <TabsTrigger 
                   value="manage" 
                   className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-border rounded-md transition-all"
@@ -492,7 +492,7 @@ export function ManageClassModal({
                     <span className="text-sm sm:text-base text-muted-foreground">Carregando dados da turma...</span>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6 h-full overflow-y-auto pr-2 pb-4 scroll-smooth">
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6 h-full overflow-y-auto pr-2 pb-4 scroll-smooth scrollbar-thin scrollbar-thumb-blue-300 dark:scrollbar-thumb-blue-700 scrollbar-track-transparent">
                     {/* Teachers Section */}
                     <div className="flex flex-col min-h-0">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
@@ -668,8 +668,8 @@ export function ManageClassModal({
                 )}
               </TabsContent>
 
-              <TabsContent value="create-student" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=inactive]:hidden">
-                <div className="flex-1 overflow-y-auto border border-border rounded-lg bg-card min-h-[300px] p-4 sm:p-5">
+              <TabsContent value="create-student" className="flex-1 flex flex-col mt-0 overflow-hidden min-h-0 data-[state=inactive]:hidden">
+                <div className="flex-1 overflow-y-auto border border-border rounded-lg bg-card p-4 sm:p-5 scrollbar-thin scrollbar-thumb-green-300 dark:scrollbar-thumb-green-700 scrollbar-track-transparent">
                   <p className="text-sm text-muted-foreground mb-4">
                     E-mail e senha são gerados automaticamente a partir do nome.
                     {!isChecking && isAvailable === false && (
@@ -774,182 +774,131 @@ export function ManageClassModal({
                 </div>
               </TabsContent>
 
-              <TabsContent value="create-teacher" className="flex-1 mt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-700 dark:scrollbar-track-gray-900 hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 pr-2 pb-4 scroll-smooth">
-                <Card className="mx-auto max-w-4xl">
-                  <CardHeader className="pb-4">
-                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-                      <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600 dark:text-blue-300" />
-                      Criar Novo Professor
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/40 dark:via-indigo-950/30 dark:to-purple-950/20 p-4 sm:p-6 rounded-xl border border-blue-200 dark:border-blue-900/60">
-                      <div className="flex items-start gap-3">
-                        <div className="flex-shrink-0 w-8 h-8 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center">
-                          <GraduationCap className="h-4 w-4 text-blue-600 dark:text-blue-300" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-blue-800 dark:text-blue-200 text-sm sm:text-base mb-2">
-                            Informações do Professor
-                          </p>
-                          <p className="text-xs sm:text-sm text-blue-700 dark:text-blue-300">
-                            Preencha os dados do novo professor que será vinculado à escola e poderá ser associado a esta turma.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+              <TabsContent value="create-teacher" className="flex-1 flex flex-col mt-0 overflow-hidden min-h-0 data-[state=inactive]:hidden">
+                <div className="flex-1 overflow-y-auto border border-border rounded-lg bg-card p-4 sm:p-5 scrollbar-thin scrollbar-thumb-blue-300 dark:scrollbar-thumb-blue-700 scrollbar-track-transparent scroll-smooth">
+                  <p className="text-sm text-muted-foreground mb-4">
+                    E-mail e senha são gerados automaticamente a partir do nome.
+                    {!isChecking && isAvailable === false && (
+                      <span className="text-amber-600 ml-1">Email original em uso — usando sugestão disponível.</span>
+                    )}
+                  </p>
 
-                    {/* Credenciais Automáticas (mesmo layout do Novo Aluno) */}
-                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:via-indigo-950/30 dark:to-indigo-950/20 p-4 sm:p-6 rounded-xl border border-blue-200 dark:border-blue-900/60">
-                      <div className="flex items-start gap-3 mb-4">
-                        <div className="flex-shrink-0 w-8 h-8 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center">
-                          <span className="text-blue-600 dark:text-blue-300 text-lg">📧</span>
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-blue-800 dark:text-blue-200 text-sm sm:text-base mb-2">
-                            Credenciais Automáticas
-                          </p>
-                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs sm:text-sm">
-                            <div className="bg-white/70 dark:bg-white/10 p-3 rounded-lg">
-                              <p className="font-medium text-foreground mb-1">
-                                <strong>Email:</strong> Iniciais do nome + "@afirmeplay.com.br"
-                              </p>
-                              <p className="text-blue-600 dark:text-blue-300 font-mono text-xs">
-                                Ex: "João Silva" → js@afirmeplay.com.br
-                              </p>
-                            </div>
-                            <div className="bg-white/70 dark:bg-white/10 p-3 rounded-lg">
-                              <p className="font-medium text-foreground mb-1">
-                                <strong>Senha:</strong> Primeiro nome + "@afirmeplay"
-                              </p>
-                              <p className="text-blue-600 dark:text-blue-300 font-mono text-xs">
-                                Ex: "João Silva" → joão@afirmeplay
-                              </p>
-                            </div>
-                          </div>
-                          <p className="text-xs sm:text-sm mt-3 text-blue-700 dark:text-blue-300 font-medium flex items-center gap-1">
-                            <span>✨</span>
-                            As credenciais aparecerão automaticamente conforme você digita o nome
-                          </p>
-                        </div>
-                      </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                    <div className="space-y-3">
+                      <Label htmlFor="teacher-nome" className="text-sm sm:text-base font-medium text-foreground">
+                        Nome Completo *
+                      </Label>
+                      <Input
+                        id="teacher-nome"
+                        placeholder="Digite o nome completo"
+                        className="h-11 focus:ring-2 focus:ring-blue-500"
+                        value={formData.name}
+                        onChange={(e) => handleNameChange(e.target.value)}
+                      />
                     </div>
-
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                        <div className="space-y-3">
-                          <Label htmlFor="teacher-nome" className="text-sm sm:text-base font-medium text-foreground">
-                            Nome Completo *
-                          </Label>
-                          <Input
-                            id="teacher-nome"
-                            placeholder="Digite o nome completo"
-                            className="h-11 focus:ring-2 focus:ring-blue-500"
-                            value={formData.name}
-                            onChange={(e) => handleNameChange(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-3">
-                          <Label htmlFor="teacher-email" className="text-sm font-medium text-muted-foreground">
-                            Email (Gerado automaticamente)
-                          </Label>
-                          <div className="relative">
-                            <Input
-                              id="teacher-email"
-                              placeholder="Email será gerado automaticamente"
-                              className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed pr-8"
-                              value={formData.email}
-                              readOnly
-                            />
-                            <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                              {isChecking && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-                              {!isChecking && isAvailable === true && <CheckCircle2 className="h-4 w-4 text-green-500" />}
-                              {!isChecking && isAvailable === false && <AlertCircle className="h-4 w-4 text-amber-500" />}
-                            </div>
-                          </div>
-                          {!isChecking && isAvailable === false && (
-                            <p className="text-xs text-amber-600">Email original em uso. Usando sugestão disponível.</p>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                        <div className="space-y-3">
-                          <Label htmlFor="teacher-senha" className="text-sm font-medium text-muted-foreground">
-                            Senha (Gerada automaticamente)
-                          </Label>
-                          <div className="relative">
-                            <Input
-                              id="teacher-senha"
-                              type={showTeacherPassword ? "text" : "password"}
-                              placeholder="Senha será gerada automaticamente"
-                              className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed pr-10"
-                              value={formData.password}
-                              readOnly
-                            />
-                            <button
-                              type="button"
-                              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                              onClick={() => setShowTeacherPassword(!showTeacherPassword)}
-                              aria-label={showTeacherPassword ? "Ocultar senha" : "Ver senha"}
-                            >
-                              {showTeacherPassword ? (
-                                <EyeOff className="h-4 w-4" />
-                              ) : (
-                                <Eye className="h-4 w-4" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="space-y-3">
-                          <Label htmlFor="teacher-matricula" className="text-sm sm:text-base font-medium text-foreground">
-                            Matrícula (Opcional)
-                          </Label>
-                          <Input
-                            id="teacher-matricula"
-                            placeholder="Digite a matrícula"
-                            className="h-11 focus:ring-2 focus:ring-blue-500"
-                            value={formData.registration}
-                            onChange={(e) => handleInputChange('registration', e.target.value)}
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-3">
-                        <Label htmlFor="teacher-birth_date" className="text-sm sm:text-base font-medium text-foreground">
-                          Data de Nascimento *
-                        </Label>
+                    <div className="space-y-3">
+                      <Label htmlFor="teacher-email" className="text-sm font-medium text-muted-foreground">
+                        Email (Gerado automaticamente)
+                      </Label>
+                      <div className="relative">
                         <Input
-                          id="teacher-birth_date"
-                          type="date"
-                          className="h-11 focus:ring-2 focus:ring-blue-500 max-w-xs"
-                          value={formData.birth_date}
-                          onChange={(e) => handleInputChange('birth_date', e.target.value)}
+                          id="teacher-email"
+                          placeholder="Email será gerado automaticamente"
+                          className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed pr-8"
+                          value={formData.email}
+                          readOnly
                         />
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                          {isChecking && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                          {!isChecking && isAvailable === true && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                          {!isChecking && isAvailable === false && <AlertCircle className="h-4 w-4 text-amber-500" />}
+                        </div>
+                      </div>
+                      {!isChecking && isAvailable === false && (
+                        <p className="text-xs text-amber-600">Email original em uso. Usando sugestão disponível.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-6">
+                    <div className="space-y-3">
+                      <Label htmlFor="teacher-senha" className="text-sm font-medium text-muted-foreground">
+                        Senha (Gerada automaticamente)
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="teacher-senha"
+                          type={showTeacherPassword ? "text" : "password"}
+                          placeholder="Senha será gerada automaticamente"
+                          className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed pr-10"
+                          value={formData.password}
+                          readOnly
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          onClick={() => setShowTeacherPassword(!showTeacherPassword)}
+                          aria-label={showTeacherPassword ? "Ocultar senha" : "Ver senha"}
+                        >
+                          {showTeacherPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
                       </div>
                     </div>
-                    
-                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-6 border-t border-border/60">
-                      <Button 
-                        variant="outline" 
-                        onClick={onClose} 
-                        disabled={isCreating}
-                        className="order-2 sm:order-1 h-11"
-                      >
-                        Cancelar
-                      </Button>
-                      <Button 
-                        onClick={handleCreateTeacher} 
-                        disabled={isCreating}
-                        className="order-1 sm:order-2 flex-1 h-11 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400"
-                      >
-                        {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        <UserPlus className="mr-2 h-4 w-4" />
-                        Criar Professor
-                      </Button>
+                    <div className="space-y-3">
+                      <Label htmlFor="teacher-matricula" className="text-sm sm:text-base font-medium text-foreground">
+                        Matrícula (Opcional)
+                      </Label>
+                      <Input
+                        id="teacher-matricula"
+                        placeholder="Digite a matrícula"
+                        className="h-11 focus:ring-2 focus:ring-blue-500"
+                        value={formData.registration}
+                        onChange={(e) => handleInputChange('registration', e.target.value)}
+                      />
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+
+                  <div className="space-y-3 mt-6">
+                    <Label htmlFor="teacher-birth_date" className="text-sm sm:text-base font-medium text-foreground">
+                      Data de Nascimento *
+                    </Label>
+                    <Input
+                      id="teacher-birth_date"
+                      type="date"
+                      className="h-11 focus:ring-2 focus:ring-blue-500 max-w-xs"
+                      value={formData.birth_date}
+                      onChange={(e) => handleInputChange('birth_date', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t bg-gray-50/50 dark:bg-muted px-4 py-3 rounded-b-lg shrink-0">
+                  <div className="text-xs sm:text-sm text-muted-foreground order-2 sm:order-1">
+                    Novo professor
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 order-1 sm:order-2">
+                    <Button
+                      variant="outline"
+                      onClick={onClose}
+                      disabled={isCreating}
+                      className="h-10 order-2 sm:order-1"
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={handleCreateTeacher}
+                      disabled={isCreating}
+                      className="h-10 order-1 sm:order-2 flex-1 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400"
+                    >
+                      {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                      Criar Professor
+                    </Button>
+                  </div>
+                </div>
               </TabsContent>
             </Tabs>
           </div>
