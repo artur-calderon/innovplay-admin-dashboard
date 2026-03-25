@@ -4293,12 +4293,12 @@ export default function RelatorioEscolar({
                 </p>
                 <p className="text-sm text-muted-foreground text-center mb-4">
                   {(isAnswerSheetAgregados ? asEscola : selectedSchool) !== 'all' 
-                    ? "Quando uma escola específica é selecionada, o backend não está retornando dados individuais de alunos por disciplina. Tente selecionar 'Todas' as escolas para visualizar os dados do município."
+                    ? "Quando uma escola específica é selecionada, o servidor não está retornando dados individuais de alunos por disciplina. Tente selecionar 'Todas' as escolas para visualizar os dados do município."
                     : apiData.tabela_detalhada.disciplinas?.some(d => d.alunos && d.alunos.length > 0)
                       ? "Os dados de proficiência dos alunos não estão disponíveis para os filtros selecionados."
                       : reportAnswerSheet
-                        ? "O backend não retornou dados de alunos na tabela detalhada. Verifique se há alunos cadastrados para este cartão resposta e filtros."
-                        : "O backend não retornou dados de alunos na tabela detalhada. Verifique se há alunos cadastrados para esta avaliação e filtros."}
+                        ? "O servidor não retornou dados de alunos na tabela detalhada. Verifique se há alunos cadastrados para este cartão resposta e filtros."
+                        : "O servidor não retornou dados de alunos na tabela detalhada. Verifique se há alunos cadastrados para esta avaliação e filtros."}
                 </p>
                 {apiData.tabela_detalhada?.disciplinas && (
                   <div className="mt-4 p-4 bg-muted rounded-lg border border-border">

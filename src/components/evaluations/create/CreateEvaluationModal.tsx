@@ -1144,7 +1144,7 @@ export function CreateEvaluationModal({
               
               toast({
                 title: 'Aviso',
-                description: `A avaliação foi atualizada, mas apenas ${questionsCount} de ${expectedQuestionsCount} questões foram salvas. Isso pode ser um problema no backend.`,
+                description: `A avaliação foi atualizada, mas apenas ${questionsCount} de ${expectedQuestionsCount} questões foram salvas. Isso pode ser um problema no sistema.`,
                 variant: 'destructive',
               });
             }
@@ -1160,7 +1160,7 @@ export function CreateEvaluationModal({
               
               toast({
                 title: 'Aviso',
-                description: `A avaliação foi atualizada, mas apenas ${savedClassesCount} de ${expectedClassesCount} turma(s) foram salvas. Isso pode ser um problema no backend.`,
+                description: `A avaliação foi atualizada, mas apenas ${savedClassesCount} de ${expectedClassesCount} turma(s) foram salvas. Isso pode ser um problema no sistema.`,
                 variant: 'destructive',
               });
             }
@@ -1185,7 +1185,7 @@ export function CreateEvaluationModal({
           // Log completo do erro se disponível
           if (error?.response?.data) {
             try {
-              console.error('❌ Detalhes do erro do backend:', JSON.stringify(error.response.data, null, 2));
+              console.error('❌ Detalhes do erro do servidor:', JSON.stringify(error.response.data, null, 2));
             } catch (e) {
               console.error('❌ Erro ao serializar detalhes do erro:', e);
             }
@@ -1228,7 +1228,7 @@ export function CreateEvaluationModal({
           
           if (error?.response?.data) {
             try {
-              console.error('❌ Detalhes do erro do backend:', JSON.stringify(error.response.data, null, 2));
+              console.error('❌ Detalhes do erro do servidor:', JSON.stringify(error.response.data, null, 2));
             } catch (e) {
               console.error('❌ Erro ao serializar detalhes do erro:', e);
             }

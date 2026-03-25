@@ -1676,7 +1676,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
             const apiError = error as ApiError;
             
             if (apiError.message?.includes('CORS') || apiError.code === 'ERR_NETWORK') {
-                errorMessage = "Erro de conexão com o servidor. Verifique se o backend está rodando em http://localhost:5000";
+                errorMessage = "Erro de conexão com o servidor. Verifique se o serviço está disponível e tente novamente.";
             } else if (apiError.code === 'ECONNABORTED' || apiError.message?.includes('timeout') || apiError.message?.includes('Timeout')) {
                 errorMessage = "A requisição demorou muito para responder. O servidor pode estar processando muitos dados. Tente novamente em alguns minutos.";
             } else if (apiError.message?.includes('não encontrada')) {

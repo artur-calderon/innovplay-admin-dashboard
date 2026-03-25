@@ -681,7 +681,7 @@ const QuestionarioRespond = () => {
         console.log('✅ Progresso retornado pela API após finalizar:', response.data.progress);
         if (response.data.progress < 100) {
           console.warn('⚠️ ATENÇÃO: Progresso não está em 100% após finalizar:', response.data.progress);
-          console.warn('Isso pode indicar que o backend não está contando todas as questões corretamente.');
+          console.warn('Isso pode indicar que o servidor não está contando todas as questões corretamente.');
         }
       } else {
         console.warn('⚠️ API não retornou progresso após finalizar');

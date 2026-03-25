@@ -156,7 +156,7 @@ export default function CompetitionTemplatesList() {
             Templates de Competições
           </h1>
           <p className="text-sm text-muted-foreground max-w-xl">
-            Defina modelos recorrentes de competições por disciplina e nível. O backend
+            Defina modelos recorrentes de competições por disciplina e nível. O sistema
             cuida das datas e gera automaticamente as próximas edições.
           </p>
         </div>

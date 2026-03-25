@@ -71,7 +71,7 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
       // if (!response.isBackendConnected) {
       //   toast({
       //     title: "Usando dados de exemplo",
-      //     description: "Não foi possível conectar com o backend. Exibindo dados de exemplo.",
+      //     description: "Não foi possível conectar com o servidor. Exibindo dados de exemplo.",
       //     variant: "default",
       //   });
       // }

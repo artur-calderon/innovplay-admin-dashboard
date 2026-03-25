@@ -360,21 +360,22 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
           Criar Turma
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+      <DialogContent className="w-[95vw] max-w-4xl h-[95vh] max-h-[95vh] overflow-hidden flex flex-col p-0">
+        <DialogHeader className="px-4 sm:px-6 py-4 border-b">
+          <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
             <Sparkles className="h-5 w-5 text-blue-600" />
             Criar Nova(s) Turma(s)
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-sm sm:text-base">
             Configure e crie uma ou múltiplas turmas para {schoolName || 'a escola selecionada'}
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-            <Tabs defaultValue="basic" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="flex-1 min-h-0 flex flex-col">
+            <div className="flex-1 min-h-0 overflow-hidden px-4 sm:px-6">
+              <Tabs defaultValue="basic" className="h-full flex flex-col">
+                <TabsList className="grid w-full grid-cols-3 my-4">
                 <TabsTrigger value="basic" className="flex items-center gap-2">
                   <BookOpen className="h-4 w-4" />
                   Básico
@@ -389,15 +390,18 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="basic" className="space-y-6">
+              <TabsContent
+                value="basic"
+                className="flex-1 min-h-0 overflow-y-auto pr-2 pb-4 space-y-6 scrollbar-thin scrollbar-thumb-muted-foreground/30 hover:scrollbar-thumb-muted-foreground/50 scrollbar-track-transparent scroll-smooth"
+              >
                 <Card>
-                  <CardHeader>
+                  <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2">
                       <School className="h-5 w-5" />
                       Informações Acadêmicas
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="space-y-5">
                     {/* Seletor de escola quando showSchoolSelector estiver ativo */}
                     {showSchoolSelector && availableSchools && (
                       <div className="space-y-2">
@@ -420,7 +424,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                       </div>
                     )}
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <FormField
                         control={form.control}
                         name="educationStageId"
@@ -494,10 +498,13 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                             <RadioGroup
                               onValueChange={field.onChange}
                               value={field.value}
-                              className="grid grid-cols-2 md:grid-cols-4 gap-4"
+                              className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-4 gap-3"
                             >
                               {shifts.map((shiftOption) => (
-                                <div key={shiftOption.value} className="flex items-center space-x-2">
+                                <div
+                                  key={shiftOption.value}
+                                  className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2.5"
+                                >
                                   <RadioGroupItem value={shiftOption.value} id={shiftOption.value} />
                                   <Label htmlFor={shiftOption.value} className="flex items-center gap-2 cursor-pointer">
                                     <span>{shiftOption.icon}</span>
@@ -515,12 +522,12 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                 </Card>
 
                 <Card>
-                  <CardHeader>
+                  <CardHeader className="pb-3">
                     <CardTitle>Informações Complementares</CardTitle>
                     <CardDescription>Dados opcionais para melhor organização</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <CardContent className="space-y-5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <FormField
                         control={form.control}
                         name="capacity"
@@ -579,7 +586,10 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                 </Card>
               </TabsContent>
 
-              <TabsContent value="naming" className="space-y-6">
+              <TabsContent
+                value="naming"
+                className="flex-1 min-h-0 overflow-y-auto pr-2 pb-4 space-y-6 scrollbar-thin scrollbar-thumb-muted-foreground/30 hover:scrollbar-thumb-muted-foreground/50 scrollbar-track-transparent scroll-smooth"
+              >
                 <Card>
                   <CardHeader>
                     <CardTitle>Tipo de Nomenclatura</CardTitle>
@@ -783,7 +793,10 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                 )}
               </TabsContent>
 
-              <TabsContent value="preview" className="space-y-6">
+              <TabsContent
+                value="preview"
+                className="flex-1 min-h-0 overflow-y-auto pr-2 pb-4 space-y-6 scrollbar-thin scrollbar-thumb-muted-foreground/30 hover:scrollbar-thumb-muted-foreground/50 scrollbar-track-transparent scroll-smooth"
+              >
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -845,46 +858,48 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                   </CardContent>
                 </Card>
               </TabsContent>
-            </Tabs>
+              </Tabs>
+            </div>
 
-            <Separator />
-
-            <div className="flex justify-between items-center pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  form.reset();
-                  setOpen(false);
-                }}
-                disabled={isSubmitting}
-              >
-                Cancelar
-              </Button>
-              
-              <div className="flex items-center gap-3">
-                {classesToCreate.length > 0 && (
-                  <span className="text-sm text-muted-foreground">
-                    {classesToCreate.length} turma(s) será(ão) criada(s)
-                  </span>
-                )}
-                <Button 
-                  type="submit" 
-                  disabled={isSubmitting || classesToCreate.length === 0}
-                  className="bg-blue-600 hover:bg-blue-700"
+            <div className="shrink-0 border-t bg-muted/30 px-4 sm:px-6 py-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    form.reset();
+                    setOpen(false);
+                  }}
+                  disabled={isSubmitting}
+                  className="h-10 order-2 sm:order-1"
                 >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Criando...
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Criar {classesToCreate.length > 1 ? 'Turmas' : 'Turma'}
-                    </>
-                  )}
+                  Cancelar
                 </Button>
+
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 order-1 sm:order-2">
+                  {classesToCreate.length > 0 && (
+                    <span className="text-sm text-muted-foreground">
+                      {classesToCreate.length} turma(s) será(ão) criada(s)
+                    </span>
+                  )}
+                  <Button 
+                    type="submit" 
+                    disabled={isSubmitting || classesToCreate.length === 0}
+                    className="h-10 bg-blue-600 hover:bg-blue-700"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Criando...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Criar {classesToCreate.length > 1 ? 'Turmas' : 'Turma'}
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           </form>

@@ -320,7 +320,7 @@ export default function Evolution() {
           setAvailableEvaluationsForPicker([]);
           toast({
             title: 'Erro ao carregar avaliações',
-            description: 'O servidor não respondeu. Verifique o backend (GET /evaluation-results/evolucao/avaliacoes).',
+            description: 'O servidor não respondeu. Verifique a disponibilidade do serviço e tente novamente.',
             variant: 'destructive',
           });
           return;

@@ -470,7 +470,7 @@ export function CreatePlayTvVideoForm({
       const is404 = error.response?.status === 404 || error.status === 404;
       
       if (is404) {
-        errorMessage = 'Endpoint ainda não implementado no backend. Aguarde a implementação da API.';
+        errorMessage = 'Endpoint ainda não implementado no sistema. Aguarde a implementação da API.';
         // Não logar erro para endpoints que ainda não existem
       } else {
         console.error('Erro ao cadastrar vídeo:', error);

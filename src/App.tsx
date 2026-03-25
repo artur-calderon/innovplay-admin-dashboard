@@ -170,6 +170,7 @@ const App = () => {
         <Toaster />
         <ToastContainer
           position="bottom-right"
+          style={{ zIndex: 2001 }}
           autoClose={5000}
           hideProgressBar={false}
           newestOnTop={false}

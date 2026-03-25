@@ -314,7 +314,7 @@ export default function EvaluationCorrection() {
     
     toast({
       title: "Recarregando dados",
-      description: "Recarregando dados do backend...",
+      description: "Recarregando dados do servidor...",
     });
     
     // Recarregar dados do backend

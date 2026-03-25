@@ -980,7 +980,7 @@ const FormRegistration = () => {
             Formulários cadastrados
           </CardTitle>
           <CardDescription>
-            Questionários criados por você. O backend retorna apenas os formulários do usuário logado.
+            Questionários criados por você. O servidor retorna apenas os formulários do usuário logado.
           </CardDescription>
         </CardHeader>
         <CardContent>
