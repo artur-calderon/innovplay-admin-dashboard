@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { CertificateTemplate } from '@/types/certificates';
+import { loadCertificateImage, getAccessToken, getCityId, revokeCertificateImageBlob } from '@/utils/certificateImageUtils';
 
 interface CertificateTemplateProps {
   template: CertificateTemplate;
@@ -16,6 +17,46 @@ export function CertificateTemplateComponent({
   grade,
   className = ''
 }: CertificateTemplateProps) {
+  const [logoUrl, setLogoUrl] = useState<string | undefined>(undefined);
+  const [signatureUrl, setSignatureUrl] = useState<string | undefined>(undefined);
+  const [isLoadingImages, setIsLoadingImages] = useState(false);
+
+  // Carregar imagens via fetch + blob
+  useEffect(() => {
+    const accessToken = getAccessToken();
+    const cityId = getCityId();
+    
+    const loadImages = async () => {
+      setIsLoadingImages(true);
+      
+      try {
+        const [loadedLogo, loadedSignature] = await Promise.all([
+          loadCertificateImage(template.logo_url, accessToken, cityId),
+          loadCertificateImage(template.signature_url, accessToken, cityId)
+        ]);
+        
+        setLogoUrl(loadedLogo);
+        setSignatureUrl(loadedSignature);
+      } catch (error) {
+        console.error('Erro ao carregar imagens do certificado:', error);
+      } finally {
+        setIsLoadingImages(false);
+      }
+    };
+
+    loadImages();
+
+    // Cleanup: revogar blob URLs quando o componente for desmontado
+    return () => {
+      if (template.logo_url) {
+        revokeCertificateImageBlob(template.logo_url, accessToken);
+      }
+      if (template.signature_url) {
+        revokeCertificateImageBlob(template.signature_url, accessToken);
+      }
+    };
+  }, [template.logo_url, template.signature_url]);
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return new Date().toLocaleDateString('pt-BR');
     try {
@@ -84,11 +125,11 @@ export function CertificateTemplateComponent({
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundImage: template.logo_url ? `url(${template.logo_url})` : 'none',
+        backgroundImage: logoUrl ? `url(${logoUrl})` : 'none',
         backgroundSize: '15%',
         backgroundPosition: 'top center',
         backgroundRepeat: 'no-repeat',
-        paddingTop: template.logo_url ? '15%' : '5%',
+        paddingTop: logoUrl ? '15%' : '5%',
         boxSizing: 'border-box'
       }}
     >
@@ -236,7 +277,7 @@ export function CertificateTemplateComponent({
           </div>
 
           {/* Signature */}
-          {template.signature_url && (
+          {signatureUrl && (
             <div
               style={{
                 display: 'flex',
@@ -246,7 +287,7 @@ export function CertificateTemplateComponent({
               }}
             >
               <img
-                src={template.signature_url}
+                src={signatureUrl}
                 alt="Assinatura"
                 style={{
                   maxWidth: '150px',
