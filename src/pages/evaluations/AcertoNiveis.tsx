@@ -2729,8 +2729,8 @@ export default function AcertoNiveis() {
           }
 
           const numQuestoesThisChunk = chunk.length;
-          // Altura da linha de habilidade para caber o texto vertical
-          const SKILL_ROW_H = 22;
+          // Altura da linha de habilidade — máx 12 chars por código
+          const SKILL_ROW_H = 14;
           const PCT_ROW_H = 5.5;
 
           autoTable(doc, {
@@ -2837,17 +2837,18 @@ export default function AcertoNiveis() {
                   d.rect(cell.x, cell.y, cell.width, cell.height);
                 }
               }
-              // Habilidade (row 1): desenhar texto vertical nas colunas de questão — fonte reduzida
+              // Habilidade (row 1): desenhar texto vertical nas colunas de questão — centralizado
               if (section === 'head' && row.index === 1 && column.index > 0 && column.index <= numQuestoesThisChunk) {
                 const skillCode = headerRow2[column.index] || '';
                 if (skillCode) {
                   d.setFillColor(219, 234, 254);
                   d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-                  d.setFontSize(4.5);
+                  d.setFontSize(4);
                   d.setFont('helvetica', 'bold');
                   d.setTextColor(0, 0, 0);
                   const cx = cell.x + cell.width / 2;
-                  const cy = cell.y + cell.height - 1;
+                  const textWidthMm = d.getStringUnitWidth(skillCode) * 4 / d.internal.scaleFactor;
+                  const cy = cell.y + (cell.height + textWidthMm) / 2;
                   d.text(skillCode, cx, cy, { angle: 90, maxWidth: cell.height - 2 });
                   d.setDrawColor(0, 0, 0);
                   d.setLineWidth(0.4);
@@ -3111,8 +3112,8 @@ export default function AcertoNiveis() {
               };
             }
             const numQuestoesThisChunk = chunk.length;
-            // Altura da linha de habilidade para caber o texto vertical
-            const SKILL_ROW_H_DISC = 22;
+            // Altura da linha de habilidade — máx 12 chars por código
+            const SKILL_ROW_H_DISC = 14;
             const PCT_ROW_H_DISC = 5.5;
 
             autoTable(doc, {
@@ -3234,17 +3235,18 @@ export default function AcertoNiveis() {
                   d.setLineWidth(0.25);
                   d.rect(cell.x, cell.y, cell.width, cell.height);
                 }
-                // Habilidade (row 1): desenhar texto vertical nas colunas de questão — fonte reduzida
+                // Habilidade (row 1): desenhar texto vertical nas colunas de questão — centralizado
                 if (section === 'head' && row.index === 1 && column.index > 0 && column.index <= numQuestoesThisChunk) {
                   const skillCode = headerRow2[column.index] || '';
                   if (skillCode) {
                     d.setFillColor(219, 234, 254);
                     d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-                    d.setFontSize(4.5);
+                    d.setFontSize(4);
                     d.setFont('helvetica', 'bold');
                     d.setTextColor(0, 0, 0);
                     const cx = cell.x + cell.width / 2;
-                    const cy = cell.y + cell.height - 1;
+                    const textWidthMm = d.getStringUnitWidth(skillCode) * 4 / d.internal.scaleFactor;
+                    const cy = cell.y + (cell.height + textWidthMm) / 2;
                     d.text(skillCode, cx, cy, { angle: 90, maxWidth: cell.height - 2 });
                     d.setDrawColor(0, 0, 0);
                     d.setLineWidth(0.4);
