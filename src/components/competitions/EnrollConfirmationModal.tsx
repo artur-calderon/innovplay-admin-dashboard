@@ -15,7 +15,7 @@ import { Calendar, Clock, Coins, Loader2, Trophy, Users } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
-import { enrollCompetition } from '@/services/competitionsApi';
+import { enrollCompetition } from '@/services/competition/competitionsApi';
 import type { Competition } from '@/types/competition-types';
 
 function formatDate(value: string | undefined): string {

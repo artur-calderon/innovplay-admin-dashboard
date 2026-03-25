@@ -10,8 +10,8 @@ import StartEvaluationModal from "./StartEvaluationModal";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { DisciplineTag } from "@/components/ui/discipline-tag";
-import { getSubjectColors } from "@/utils/competitionSubjectColors";
-import { REPORT_TAG_BASE } from "@/utils/reportTagStyles";
+import { getSubjectColors } from "@/utils/competition/competitionSubjectColors";
+import { REPORT_TAG_BASE } from "@/utils/report/reportTagStyles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -49,7 +49,7 @@ import { Evaluation, Subject, Grade, getEvaluationSubjects, getEvaluationSubject
 import { EvaluationsCardGrid } from "./EvaluationsCardGrid";
 import { formatEvaluationQuestionCount } from "./evaluationListUtils";
 import { cn } from "@/lib/utils";
-import ViewEvaluation from "@/pages/ViewEvaluation";
+import ViewEvaluation from "@/pages/evaluations/ViewEvaluation";
 
 interface ReadyEvaluationsProps {
   onUseEvaluation?: (evaluation: Evaluation) => void;

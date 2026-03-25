@@ -21,7 +21,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { createCompetition, getCompetition, updateCompetition, addCompetitionQuestions, getCompetitionLevelOptions, getAllowedCompetitionScopes } from '@/services/competitionsApi';
+import { createCompetition, getCompetition, updateCompetition, addCompetitionQuestions, getCompetitionLevelOptions, getAllowedCompetitionScopes } from '@/services/competition/competitionsApi';
 import type { CreateCompetitionFormData, CompetitionScope, CompetitionScopeFilter, QuestionRulesPayload } from '@/types/competition-types';
 import { api } from '@/lib/api';
 import { parseISOToDatetimeLocal, convertDateTimeLocalToISONaive } from '@/utils/date';

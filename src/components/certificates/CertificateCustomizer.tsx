@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
@@ -12,6 +12,7 @@ import { Save, Upload, Palette, Type, Calendar, Image as ImageIcon } from 'lucid
 import { CertificateTemplateComponent } from './CertificateTemplate';
 import type { CertificateTemplate } from '@/types/certificates';
 import { useToast } from '@/hooks/use-toast';
+import { loadCertificateImage, getAccessToken, getCityId, revokeCertificateImageBlob } from '@/utils/certificateImageUtils';
 
 interface CertificateCustomizerProps {
   evaluationId: string;
@@ -27,6 +28,9 @@ export function CertificateCustomizer({
   onPreview
 }: CertificateCustomizerProps) {
   const { toast } = useToast();
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | undefined>(undefined);
+  const [signaturePreviewUrl, setSignaturePreviewUrl] = useState<string | undefined>(undefined);
+  
   const [template, setTemplate] = useState<CertificateTemplate>({
     evaluation_id: evaluationId,
     title: initialTemplate?.title || 'Certificado de Excelência',
@@ -39,6 +43,38 @@ export function CertificateCustomizer({
     custom_date: initialTemplate?.custom_date || new Date().toISOString().split('T')[0],
     font_size: initialTemplate?.font_size || 'medium'
   });
+
+  // Carregar preview das imagens via fetch + blob
+  useEffect(() => {
+    const accessToken = getAccessToken();
+    const cityId = getCityId();
+
+    const loadPreviews = async () => {
+      try {
+        const [loadedLogo, loadedSignature] = await Promise.all([
+          loadCertificateImage(template.logo_url, accessToken, cityId),
+          loadCertificateImage(template.signature_url, accessToken, cityId)
+        ]);
+
+        setLogoPreviewUrl(loadedLogo);
+        setSignaturePreviewUrl(loadedSignature);
+      } catch (error) {
+        console.error('Erro ao carregar preview das imagens:', error);
+      }
+    };
+
+    loadPreviews();
+
+    // Cleanup: revogar blobs antigos quando URLs mudarem
+    return () => {
+      if (template.logo_url) {
+        revokeCertificateImageBlob(template.logo_url, accessToken);
+      }
+      if (template.signature_url) {
+        revokeCertificateImageBlob(template.signature_url, accessToken);
+      }
+    };
+  }, [template.logo_url, template.signature_url]);
 
   const editor = useEditor({
     extensions: [
@@ -264,9 +300,9 @@ export function CertificateCustomizer({
                     }}
                     className="flex-1"
                   />
-                  {template.logo_url && (
+                  {logoPreviewUrl && (
                     <img
-                      src={template.logo_url}
+                      src={logoPreviewUrl}
                       alt="Logo"
                       className="h-20 w-20 object-contain border rounded"
                     />
@@ -287,9 +323,9 @@ export function CertificateCustomizer({
                     }}
                     className="flex-1"
                   />
-                  {template.signature_url && (
+                  {signaturePreviewUrl && (
                     <img
-                      src={template.signature_url}
+                      src={signaturePreviewUrl}
                       alt="Assinatura"
                       className="h-20 w-40 object-contain border rounded"
                     />

@@ -43,10 +43,10 @@ const STAT_ITEMS: StatItem[] = [
   },
   {
     id: "questions",
-    title: "Banco de questões",
+    title: "Questões do município",
     icon: Users,
     getValue: (s) => s.totalQuestions,
-    getDescription: (s) => `Média de ${s.averageQuestions} por avaliação`,
+    getDescription: () => "Questões criadas pelo município.",
   },
 ];
 

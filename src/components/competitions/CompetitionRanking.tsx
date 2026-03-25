@@ -24,7 +24,7 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 import { Trophy, Coins, RefreshCw, Loader2, User } from 'lucide-react';
-import { getCompetitionRanking, type CompetitionRankingEntry, type CompetitionRankingResponse } from '@/services/competitionsApi';
+import { getCompetitionRanking, type CompetitionRankingEntry, type CompetitionRankingResponse } from '@/services/competition/competitionsApi';
 import { getMedalEmoji, formatCoins } from '@/utils/coins';
 import type { RewardConfig } from '@/types/competition-types';
 

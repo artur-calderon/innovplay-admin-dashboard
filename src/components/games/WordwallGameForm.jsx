@@ -17,7 +17,7 @@ import { ExternalLink, Plus, Save, AlertCircle, CheckCircle, Loader2, Users, Sch
 import { cn } from '@/lib/utils';
 import { useGamesCount } from '@/hooks/useGamesCount';
 import { useAuth } from '@/context/authContext';
-import { EvaluationResultsApiService } from '@/services/evaluationResultsApi';
+import { EvaluationResultsApiService } from '@/services/evaluation/evaluationResultsApi';
 import { getUserHierarchyContext } from '@/utils/userHierarchy';
 import { toast } from 'react-toastify';
 

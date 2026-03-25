@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { EvaluationResultsApiService } from '../services/evaluationResultsApi';
+import { EvaluationResultsApiService } from '../services/evaluation/evaluationResultsApi';
 import { 
   QuestionData, 
   QuestionWithSkills, 

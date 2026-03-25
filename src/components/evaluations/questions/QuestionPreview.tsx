@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Badge } from "@/components/ui/badge";
 import { DisciplineTag } from "@/components/ui/discipline-tag";
-import { getSubjectColors } from "@/utils/competitionSubjectColors";
+import { getSubjectColors } from "@/utils/competition/competitionSubjectColors";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
