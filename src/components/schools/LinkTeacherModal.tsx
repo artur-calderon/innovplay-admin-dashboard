@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
+import { teacherIdFromCreateResponse } from "@/lib/teacher-create-response";
 import { Loader2, Search, UserPlus, Plus, Eye, EyeOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -216,22 +217,6 @@ export function LinkTeacherModal({
 
     setIsLinking(true);
     try {
-      // 1) Garantir que cada professor está vinculado à escola (professor pode estar em várias escolas)
-      const schoolLinkPromises = selectedTeachers.map(teacherId =>
-        api.post("/school-teacher", {
-          teacher_id: teacherId,
-          school_id: schoolId
-        }).catch(err => {
-          // Se já estiver vinculado, o backend pode retornar erro; continuamos para teacher-class
-          if (err?.response?.status === 400 && /já vinculado|already/i.test(String(err?.response?.data?.error ?? err?.response?.data?.message ?? ''))) {
-            return Promise.resolve();
-          }
-          throw err;
-        })
-      );
-      await Promise.all(schoolLinkPromises);
-
-      // 2) Vincular cada professor à turma
       const linkPromises = selectedTeachers.map(teacherId =>
         api.post("/teacher-class", {
           teacher_id: teacherId,
@@ -290,15 +275,28 @@ export function LinkTeacherModal({
         senha: formData.senha,
         matricula: formData.matricula || undefined,
         birth_date: formData.birth_date,
-        escolas_ids: [schoolId],
         city_id: ['admin', 'tecadm'].includes(user?.role || '') ? effectiveCityId : (user as any)?.city_id
       };
 
       const response = await api.post("/teacher", teacherData);
+      const newTeacherId = teacherIdFromCreateResponse(response.data);
+      if (!newTeacherId) {
+        toast({
+          title: "Erro",
+          description: "Professor criado, mas não foi possível obter o id para vincular à escola.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await api.post("/school-teacher", {
+        teacher_id: newTeacherId,
+        school_id: schoolId,
+      });
 
       toast({
         title: "Sucesso",
-        description: "Professor criado com sucesso!",
+        description: "Professor criado e vinculado à escola com sucesso!",
       });
 
       // Limpar formulário
@@ -308,10 +306,10 @@ export function LinkTeacherModal({
         senha: "",
         matricula: "",
         birth_date: "",
-        city_id: ""
+        city_id: schoolCityId ?? ""
       });
 
-      // Recarregar lista de professores
+      await fetchTeachers();
       onSuccess();
     } catch (error: unknown) {
       console.error("Erro ao criar professor:", error);
