@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
+import { teacherIdFromCreateResponse } from "@/lib/teacher-create-response";
 import { Loader2, Users, GraduationCap, Trash2, Plus, Eye, EyeOff, UserPlus, CheckCircle2, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { LinkTeacherModal } from "./LinkTeacherModal";
@@ -352,17 +353,30 @@ export function ManageClassModal({
         senha: formData.password,
         matricula: formData.registration || undefined,
         birth_date: formData.birth_date,
-        escolas_ids: [schoolId],
       };
       if ((user?.role === "admin" || user?.role === "tecadm") && schoolCityId) {
         teacherData.city_id = schoolCityId;
       }
 
-      await api.post("/teacher", teacherData);
+      const createRes = await api.post("/teacher", teacherData);
+      const newTeacherId = teacherIdFromCreateResponse(createRes.data);
+      if (!newTeacherId) {
+        toast({
+          title: "Erro",
+          description: "Professor criado, mas não foi possível obter o id para vincular à escola.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await api.post("/school-teacher", {
+        teacher_id: newTeacherId,
+        school_id: schoolId,
+      });
 
       toast({
         title: "Sucesso",
-        description: "Professor criado com sucesso!",
+        description: "Professor criado e vinculado à escola com sucesso!",
       });
 
       // Limpar formulário

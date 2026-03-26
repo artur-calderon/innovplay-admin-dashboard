@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { getCompetitionDetails, publishCompetition, updateCompetition } from '@/services/competition/competitionsApi';
+import { getCompetition, publishCompetition, updateCompetition } from '@/services/competition/competitionsApi';
 import { parseISOToDatetimeLocal, convertDateTimeLocalToISONaive } from '@/utils/date';
 import { CalendarDays, CalendarRange, Clock, Loader2 } from 'lucide-react';
 import type { Competition } from '@/types/competition-types';
@@ -64,8 +64,8 @@ export function EditCompetitionApplicationModal({
       return;
     }
     setLoadingData(true);
-    // Usar /details para garantir que campos de questões (question_ids/question_rules) venham preenchidos.
-    getCompetitionDetails(competitionId)
+    // GET /competitions/:id (ROLES_EDIT) — não usar /details, que é orientado ao aluno.
+    getCompetition(competitionId)
       .then((c) => {
         setCompetition(c);
         setEnrollmentStart(parseISOToDatetimeLocal(c.enrollment_start));
