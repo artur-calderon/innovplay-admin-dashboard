@@ -145,6 +145,35 @@ function groupPresenceFromNova(novaRespostaAgregados: NovaRespostaAPI | null, se
   ];
 }
 
+function buildPresenceFinalFallback(
+  relatorio: Partial<RelatorioCompleto> | null,
+  novaRespostaAgregados: NovaRespostaAPI | null,
+  serieFallback?: string
+): PresenceBySeriesRow[] {
+  const totalAlunos =
+    clampToNumber(relatorio?.total_alunos?.total_geral?.matriculados, NaN) ||
+    clampToNumber(novaRespostaAgregados?.estatisticas_gerais?.total_alunos, 0);
+  const totalPresentes =
+    clampToNumber(relatorio?.total_alunos?.total_geral?.avaliados, NaN) ||
+    clampToNumber(novaRespostaAgregados?.estatisticas_gerais?.alunos_participantes, 0);
+  const alunosFaltosos =
+    clampToNumber(novaRespostaAgregados?.estatisticas_gerais?.alunos_ausentes, Math.max(0, totalAlunos - totalPresentes));
+  const serie = isValidSerieLabel(serieFallback) ? String(serieFallback).trim() : "GERAL";
+
+  // Se não há nenhuma base numérica, não inventar linha.
+  if (!Number.isFinite(totalAlunos) || totalAlunos <= 0) return [];
+
+  return [
+    {
+      serie,
+      totalAlunos,
+      totalPresentes,
+      presencaMediaPct: totalAlunos > 0 ? (totalPresentes / totalAlunos) * 100 : 0,
+      alunosFaltosos,
+    },
+  ];
+}
+
 function groupNiveisFromRelatorio(relatorio: Partial<RelatorioCompleto> | null, series: string[]): NiveisBySeriesRow[] {
   const niveis = relatorio?.niveis_aprendizagem;
   if (!niveis) return [];
@@ -256,7 +285,10 @@ function buildProficiencyGeneralByTurma(
   };
   const geral = (prof as AnyRecord)[geralKey] as ProficienciaGeral | undefined;
   const porTurma = (geral?.por_turma ?? []) as Array<{ turma: string; proficiencia: number }>;
-  if (porTurma.length === 0) return [];
+  if (porTurma.length === 0) {
+    const mediaGeral = clampToNumber((geral as AnyRecord | undefined)?.media_geral, NaN);
+    return Number.isFinite(mediaGeral) ? [{ turma: "GERAL", proficiencia: mediaGeral }] : [];
+  }
   return porTurma
     .map((r) => ({
       turma: String(r.turma ?? "").trim(),
@@ -268,28 +300,9 @@ function buildProficiencyGeneralByTurma(
 
 function buildProficiencyGeneralByTurmaFromNova(novaRespostaAgregados: NovaRespostaAPI | null): ProficiencyGeneralByTurmaRow[] {
   if (!novaRespostaAgregados) return [];
-
-  const alunos = (novaRespostaAgregados.tabela_detalhada?.geral?.alunos ?? []) as Array<{
-    turma?: string;
-    proficiencia_geral?: number;
-    proficiencia?: number;
-  }>;
-  if (alunos.length === 0) return [];
-
-  const grouped = new Map<string, { sum: number; count: number }>();
-  for (const aluno of alunos) {
-    const turma = String(aluno.turma ?? "").trim();
-    if (!turma) continue;
-    const proficiencia = clampToNumber(aluno.proficiencia_geral ?? aluno.proficiencia, 0);
-    const cur = grouped.get(turma) ?? { sum: 0, count: 0 };
-    grouped.set(turma, { sum: cur.sum + proficiencia, count: cur.count + 1 });
-  }
-
-  const rows = Array.from(grouped.entries()).map(([turma, v]) => ({
-    turma,
-    proficiencia: v.count > 0 ? v.sum / v.count : 0,
-  }));
-  return rows.sort((a, b) => a.turma.localeCompare(b.turma, "pt-BR", { sensitivity: "base" }));
+  // Usar apenas métrica oficial do backend, sem recálculo por alunos.
+  const mediaGeral = clampToNumber(novaRespostaAgregados.estatisticas_gerais?.media_proficiencia_geral, NaN);
+  return Number.isFinite(mediaGeral) ? [{ turma: "GERAL", proficiencia: mediaGeral }] : [];
 }
 
 function buildProficiencyByDisciplineByTurma(
@@ -312,44 +325,58 @@ function buildProficiencyByDisciplineByTurma(
     })
     .filter((d) => d.valuesByTurma.length > 0);
 
-  // limitar para evitar legendas enormes no slide 13
-  return disciplines.slice(0, 6);
+  return disciplines;
 }
 
 function buildProficiencyByDisciplineByTurmaFromNova(novaRespostaAgregados: NovaRespostaAPI | null): ProficiencyByDisciplineByTurmaRow[] {
   if (!novaRespostaAgregados) return [];
+  // Usar apenas métricas oficiais agregadas por disciplina do backend.
+  const disciplinas = novaRespostaAgregados.resultados_por_disciplina ?? [];
+  return disciplinas
+    .map((d) => {
+      const disciplina = String(d.disciplina ?? "").trim();
+      const media = clampToNumber(d.media_proficiencia, NaN);
+      if (!disciplina || !Number.isFinite(media)) return null;
+      return {
+        disciplina,
+        valuesByTurma: [{ turma: "GERAL", proficiencia: media }],
+      };
+    })
+    .filter((d): d is ProficiencyByDisciplineByTurmaRow => Boolean(d));
+}
 
-  const disciplinas = (novaRespostaAgregados.tabela_detalhada?.disciplinas ?? []) as Array<{
-    nome?: string;
-    alunos?: Array<{ turma?: string; proficiencia?: number }>;
-  }>;
-  if (disciplinas.length === 0) return [];
+function warnIfProficiencyOutOfRange(
+  serieHint: string,
+  profGeral: ProficiencyGeneralByTurmaRow[],
+  profPorDisciplina: ProficiencyByDisciplineByTurmaRow[]
+): void {
+  const maxGeral = getProficiencyTableInfo(serieHint, "Matemática").maxProficiency;
 
-  const rows: ProficiencyByDisciplineByTurmaRow[] = [];
-  for (const d of disciplinas) {
-    const disciplina = String(d.nome ?? "").trim();
-    if (!disciplina) continue;
-
-    const grouped = new Map<string, { sum: number; count: number }>();
-    for (const aluno of d.alunos ?? []) {
-      const turma = String(aluno.turma ?? "").trim();
-      if (!turma) continue;
-      const prof = clampToNumber(aluno.proficiencia, 0);
-      const cur = grouped.get(turma) ?? { sum: 0, count: 0 };
-      grouped.set(turma, { sum: cur.sum + prof, count: cur.count + 1 });
+  for (const row of profGeral) {
+    if (row.proficiencia > maxGeral) {
+      console.warn("[presentation19] proficiência geral fora da faixa esperada", {
+        serieHint,
+        turma: row.turma,
+        proficiencia: row.proficiencia,
+        maxEsperado: maxGeral,
+      });
     }
-
-    const valuesByTurma = Array.from(grouped.entries())
-      .map(([turma, v]) => ({
-        turma,
-        proficiencia: v.count > 0 ? v.sum / v.count : 0,
-      }))
-      .sort((a, b) => a.turma.localeCompare(b.turma, "pt-BR", { sensitivity: "base" }));
-
-    if (valuesByTurma.length > 0) rows.push({ disciplina, valuesByTurma });
   }
 
-  return rows.slice(0, 6);
+  for (const disc of profPorDisciplina) {
+    const maxDisc = getProficiencyTableInfo(serieHint, disc.disciplina).maxProficiency;
+    for (const row of disc.valuesByTurma) {
+      if (row.proficiencia > maxDisc) {
+        console.warn("[presentation19] proficiência por disciplina fora da faixa esperada", {
+          serieHint,
+          disciplina: disc.disciplina,
+          turma: row.turma,
+          proficiencia: row.proficiencia,
+          maxEsperado: maxDisc,
+        });
+      }
+    }
+  }
 }
 
 function buildProjectionTable(relatorio: Partial<RelatorioCompleto> | null, serieHint: string): ProjectionTableRow[] {
@@ -601,7 +628,13 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
 
   const presencaPorSerieRelatorio = groupPresenceFromRelatorio(relatorioDetalhado);
   const presencaPorSerieNova = groupPresenceFromNova(novaRespostaAgregados, serieHintBase);
-  const presencaPorSerie = presencaPorSerieRelatorio.length > 0 ? presencaPorSerieRelatorio : presencaPorSerieNova;
+  const presencaPorSerieFallbackFinal = buildPresenceFinalFallback(relatorioDetalhado, novaRespostaAgregados, serieHintBase);
+  const presencaPorSerie =
+    presencaPorSerieRelatorio.length > 0
+      ? presencaPorSerieRelatorio
+      : presencaPorSerieNova.length > 0
+        ? presencaPorSerieNova
+        : presencaPorSerieFallbackFinal;
   const levelsPorSerieRelatorio = buildLevelsBySeries(relatorioDetalhado, presencaPorSerie);
   const serieHint = serieFromEstatisticas || serieFromAlunoGeral || presencaPorSerie[0]?.serie || levelsPorSerieRelatorio[0]?.serie || "GERAL";
   const levelsPorSerieNova = groupNiveisFromNova(novaRespostaAgregados, serieHint);
@@ -636,13 +669,15 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
   }
 
   const proficienciaGeralPorTurmaBase = buildProficiencyGeneralByTurma(relatorioDetalhado);
+  const proficienciaGeralPorTurmaFromNova = buildProficiencyGeneralByTurmaFromNova(novaRespostaAgregados);
   const proficienciaGeralPorTurma =
-    proficienciaGeralPorTurmaBase.length > 0 ? proficienciaGeralPorTurmaBase : buildProficiencyGeneralByTurmaFromNova(novaRespostaAgregados);
+    proficienciaGeralPorTurmaFromNova.length > 0 ? proficienciaGeralPorTurmaFromNova : proficienciaGeralPorTurmaBase;
   const proficienciaPorDisciplinaPorTurmaBase = buildProficiencyByDisciplineByTurma(relatorioDetalhado);
+  const proficienciaPorDisciplinaPorTurmaFromNova = buildProficiencyByDisciplineByTurmaFromNova(novaRespostaAgregados);
   const proficienciaPorDisciplinaPorTurma =
-    proficienciaPorDisciplinaPorTurmaBase.length > 0
-      ? proficienciaPorDisciplinaPorTurmaBase
-      : buildProficiencyByDisciplineByTurmaFromNova(novaRespostaAgregados);
+    proficienciaPorDisciplinaPorTurmaFromNova.length > 0
+      ? proficienciaPorDisciplinaPorTurmaFromNova
+      : proficienciaPorDisciplinaPorTurmaBase;
   const projeccaoTabelaRelatorio = buildProjectionTable(relatorioDetalhado, serieHint);
   const projeccaoTabela =
     projeccaoTabelaRelatorio.length > 0 ? projeccaoTabelaRelatorio : buildProjectionTableFromNova(novaRespostaAgregados, serieHint);
@@ -652,6 +687,8 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
 
   const serieNomeCapas = serieFinal;
   const turmaNomeCapas = turma;
+
+  warnIfProficiencyOutOfRange(serieFinal, proficienciaGeralPorTurma, proficienciaPorDisciplinaPorTurma);
 
   return {
     mode,
@@ -682,4 +719,6 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
     turmaNomeCapas,
   };
 }
+
+export default buildDeckDataForPresentation19Slides;
 

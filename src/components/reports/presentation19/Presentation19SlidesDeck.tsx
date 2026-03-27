@@ -2,14 +2,18 @@ import React, { useMemo } from "react";
 import {
   BarChart,
   Bar,
+  Cell,
   LabelList,
   XAxis,
   YAxis,
   Tooltip,
   CartesianGrid,
   Legend,
+  ReferenceLine,
 } from "recharts";
 import type { Presentation19DeckData, NiveisBySeriesRow } from "@/types/presentation19-slides";
+import { getProficiencyTableInfo } from "@/components/evaluations/results/utils/proficiency";
+import { getSubjectPaletteIndex } from "@/utils/competition/competitionSubjectColors";
 
 type SlideFrameProps = {
   children: React.ReactNode;
@@ -23,13 +27,22 @@ function formatPct(n: number): string {
   return `${rounded.toFixed(1).replace(".", ",")}%`;
 }
 
+function linearTicks(min: number, max: number, segments = 4): number[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return [min, max];
+  const step = (max - min) / segments;
+  return Array.from({ length: segments + 1 }, (_, i) => Number((min + i * step).toFixed(1)));
+}
+
+function clampToRange(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
+}
+
 function SlideFrame({ children, primaryColor, logoDataUrl }: SlideFrameProps) {
-  const primarySoft = `${primaryColor}22`;
-  const primarySoft2 = `${primaryColor}14`;
   return (
     <div
       data-slide-frame
-      className="bg-white text-zinc-900 relative overflow-hidden border border-zinc-300"
+      className="bg-zinc-200 text-zinc-900 relative overflow-hidden border border-zinc-300"
       style={{
         width: 1123,
         height: 793,
@@ -40,13 +53,11 @@ function SlideFrame({ children, primaryColor, logoDataUrl }: SlideFrameProps) {
       <div
         style={{
           position: "absolute",
-          inset: -40,
+          inset: 0,
           pointerEvents: "none",
           backgroundImage: `
-            radial-gradient(circle at 10% 0%, ${primarySoft} 0%, rgba(255,255,255,0) 40%),
-            radial-gradient(circle at 90% 10%, ${primarySoft2} 0%, rgba(255,255,255,0) 45%),
-            repeating-linear-gradient(90deg, rgba(15,23,42,0.09) 0 1px, transparent 1px 64px),
-            repeating-linear-gradient(0deg, rgba(15,23,42,0.08) 0 1px, transparent 1px 64px)
+            repeating-linear-gradient(90deg, rgba(15,23,42,0.06) 0 1px, transparent 1px 56px),
+            repeating-linear-gradient(0deg, rgba(15,23,42,0.05) 0 1px, transparent 1px 56px)
           `,
         }}
       />
@@ -58,7 +69,7 @@ function SlideFrame({ children, primaryColor, logoDataUrl }: SlideFrameProps) {
           left: 0,
           right: 0,
           height: 10,
-          background: `linear-gradient(90deg, ${primaryColor} 0%, rgba(0,0,0,0) 95%)`,
+          backgroundColor: primaryColor,
         }}
       />
 
@@ -90,7 +101,7 @@ function SlideTitle({ title, primaryColor }: { title: string; primaryColor: stri
         style={{
           width: 12,
           height: 38,
-          background: `linear-gradient(180deg, ${primaryColor} 0%, rgba(0,0,0,0) 140%)`,
+          backgroundColor: primaryColor,
           borderRadius: 999,
         }}
       />
@@ -140,6 +151,7 @@ function SimpleTable({
 }
 
 export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation19DeckData }) {
+  const QUESTIONS_PER_PAGE = 17;
   const fixedLevelColors = useMemo(
     () => ({
       abaixo: "#EF4444", // Vermelho
@@ -154,59 +166,85 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
   const niveisRows = deckData.niveisPorSerie;
 
   const levelsChartData = useMemo(() => {
-    return niveisRows.map((r: NiveisBySeriesRow) => ({
-      serie: r.serie,
-      abaixo_do_basico: r.abaixoDoBasico,
-      basico: r.basico,
-      adequado: r.adequado,
-      avancado: r.avancado,
-      total: r.total,
-    }));
-  }, [niveisRows]);
+    const totals = niveisRows.reduce(
+      (acc, r: NiveisBySeriesRow) => {
+        acc.abaixo += Number(r.abaixoDoBasico || 0);
+        acc.basico += Number(r.basico || 0);
+        acc.adequado += Number(r.adequado || 0);
+        acc.avancado += Number(r.avancado || 0);
+        return acc;
+      },
+      { abaixo: 0, basico: 0, adequado: 0, avancado: 0 }
+    );
+
+    return [
+      { nivel: "Abaixo do Básico", valor: totals.abaixo, color: fixedLevelColors.abaixo },
+      { nivel: "Básico", valor: totals.basico, color: fixedLevelColors.basico },
+      { nivel: "Adequado", valor: totals.adequado, color: fixedLevelColors.adequado },
+      { nivel: "Avançado", valor: totals.avancado, color: fixedLevelColors.avancado },
+    ];
+  }, [niveisRows, fixedLevelColors]);
+
+  const levelsAxisMax = useMemo(() => {
+    const maxByLevel = Math.max(
+      1,
+      ...levelsChartData.map((r) => Number(r.valor || 0))
+    );
+    return maxByLevel <= 10 ? 10 : Math.ceil(maxByLevel / 5) * 5;
+  }, [levelsChartData]);
+
+  const generalProfAxisMax = useMemo(() => {
+    const maxMath = getProficiencyTableInfo(deckData.serie, "Matemática").maxProficiency;
+    const maxOutras = getProficiencyTableInfo(deckData.serie, "Português").maxProficiency;
+    return Math.max(maxMath, maxOutras);
+  }, [deckData.serie]);
 
   const presenceChartData = useMemo(() => {
     return presenceRows.map((r) => ({
       serie: r.serie,
-      presenca_media_pct: r.presencaMediaPct,
+      presenca_media_pct: clampToRange(r.presencaMediaPct, 0, 100),
     }));
   }, [presenceRows]);
 
   const profGeneralData = useMemo(() => {
+    const maxMath = getProficiencyTableInfo(deckData.serie, "Matemática").maxProficiency;
+    const maxOutras = getProficiencyTableInfo(deckData.serie, "Português").maxProficiency;
+    const axisMax = Math.max(maxMath, maxOutras);
     return deckData.proficienciaGeralPorTurma.map((r) => ({
       turma: r.turma,
-      proficiencia: r.proficiciencia,
+      proficiencia: clampToRange(r.proficiencia, 0, axisMax),
     }));
-  }, [deckData.proficienciaGeralPorTurma]);
+  }, [deckData.proficienciaGeralPorTurma, deckData.serie]);
 
-  const profByDiscChartData = useMemo(() => {
-    const disciplinas = deckData.proficienciaPorDisciplinaPorTurma;
-    if (disciplinas.length === 0) return [];
-
-    const turmasSet = new Set<string>();
-    for (const d of disciplinas) for (const v of d.valuesByTurma) if (v.turma) turmasSet.add(v.turma);
-    const turmas = Array.from(turmasSet).sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
-
-    const keyByDisc = disciplinas.map((d, idx) => ({ disc: d.disciplina, key: `disc_${idx}` }));
-
-    return turmas.map((turma) => {
-      const row: Record<string, string | number> = { turma };
-      keyByDisc.forEach(({ disc, key }) => {
-        const found = disciplinas.find((d) => d.disciplina === disc)?.valuesByTurma.find((x) => x.turma === turma);
-        row[key] = found ? found.proficiencia : 0;
-      });
-      return row;
-    });
-  }, [deckData.proficienciaPorDisciplinaPorTurma]);
-
-  const profDiscChartKeys = useMemo(() => {
-    return deckData.proficienciaPorDisciplinaPorTurma.map((d, idx) => ({
-      disciplina: d.disciplina,
-      key: `disc_${idx}`,
-    }));
-  }, [deckData.proficienciaPorDisciplinaPorTurma]);
+  const profByDiscSeparate = useMemo(() => {
+    return deckData.proficienciaPorDisciplinaPorTurma
+      .map((d) => ({
+        disciplina: d.disciplina,
+        data: d.valuesByTurma
+          .map((v) => ({
+            turma: v.turma,
+            proficiencia: clampToRange(
+              v.proficiencia,
+              0,
+              getProficiencyTableInfo(deckData.serie, d.disciplina).maxProficiency
+            ),
+          }))
+          .sort((a, b) => a.turma.localeCompare(b.turma, "pt-BR", { sensitivity: "base" })),
+      }))
+      .filter((d) => d.data.length > 0);
+  }, [deckData.proficienciaPorDisciplinaPorTurma, deckData.serie]);
 
   const disciplinePalette = useMemo(
-    () => ["#1D4ED8", "#0F766E", "#7C3AED", "#0EA5E9", "#4338CA", "#0369A1"],
+    () => [
+      "#f59e0b", // amber-500
+      "#10b981", // emerald-500
+      "#3b82f6", // blue-500
+      "#8b5cf6", // violet-500
+      "#f43f5e", // rose-500
+      "#06b6d4", // cyan-500
+      "#84cc16", // lime-500
+      "#d946ef", // fuchsia-500
+    ],
     []
   );
 
@@ -216,6 +254,19 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
     { label: "BÁSICO", description: "", color: fixedLevelColors.basico },
     { label: "ABAIXO DO BÁSICO", description: "", color: fixedLevelColors.abaixo },
   ];
+
+  const questoesChunks = useMemo(() => {
+    const rows = deckData.questoesTabela ?? [];
+    if (rows.length === 0) return [[]];
+    const pages: Array<typeof rows> = [];
+    for (let i = 0; i < rows.length; i += QUESTIONS_PER_PAGE) {
+      pages.push(rows.slice(i, i + QUESTIONS_PER_PAGE));
+    }
+    return pages;
+  }, [deckData.questoesTabela]);
+
+  const firstQuestionsSlideIndex = 18;
+  const thanksSlideIndex = firstQuestionsSlideIndex + questoesChunks.length;
 
   return (
     <div data-presentation19-root className="space-y-6">
@@ -256,8 +307,6 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
           <div className="h-full flex flex-col">
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
-                <SlideTitle title="CAPA DE ESCOLA" primaryColor={deckData.primaryColor} />
-                <div className="h-6" />
                 <div className="text-4xl font-black text-zinc-900">
                   {deckData.escolasParticipantes.length <= 1
                     ? deckData.escolasParticipantes[0] ?? "N/A"
@@ -372,6 +421,8 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                   interval={0}
                 />
                 <YAxis
+                  domain={[0, 100]}
+                  ticks={[0, 25, 50, 75, 100]}
                   tick={{ fontSize: 12, fill: "#334155" }}
                   tickFormatter={(v) => `${Math.round(v)}%`}
                 />
@@ -441,40 +492,15 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
             <div className="mt-6 flex-1">
               <BarChart width={980} height={520} data={levelsChartData}>
                 <CartesianGrid stroke="#94a3b8" strokeOpacity={0.55} strokeDasharray="3 3" />
-                <XAxis dataKey="serie" />
-                <YAxis />
+                <XAxis dataKey="nivel" interval={0} tick={{ fontSize: 12, fill: "#334155" }} />
+                <YAxis domain={[0, levelsAxisMax]} ticks={linearTicks(0, levelsAxisMax, 4)} />
                 <Tooltip />
-                <Legend verticalAlign="top" align="right" />
-                <Bar
-                  dataKey="abaixo_do_basico"
-                  name="Abaixo do Básico"
-                  stackId="a"
-                  fill={fixedLevelColors.abaixo}
-                  radius={[8, 8, 0, 0]}
-                />
-                <Bar
-                  dataKey="basico"
-                  name="Básico"
-                  stackId="a"
-                  fill={fixedLevelColors.basico}
-                  radius={[8, 8, 0, 0]}
-                />
-                <Bar
-                  dataKey="adequado"
-                  name="Adequado"
-                  stackId="a"
-                  fill={fixedLevelColors.adequado}
-                  radius={[8, 8, 0, 0]}
-                />
-                <Bar
-                  dataKey="avancado"
-                  name="Avançado"
-                  stackId="a"
-                  fill={fixedLevelColors.avancado}
-                  radius={[8, 8, 0, 0]}
-                >
+                <Bar dataKey="valor" radius={[8, 8, 0, 0]}>
+                  {levelsChartData.map((entry, idx) => (
+                    <Cell key={`cell-${idx}`} fill={entry.color} />
+                  ))}
                   <LabelList
-                    dataKey="total"
+                    dataKey="valor"
                     position="top"
                     formatter={(v: number) => String(v)}
                     style={{ fontSize: 11, fill: "#0f172a", fontWeight: 700 }}
@@ -493,7 +519,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
             <SlideTitle title="TABELA DE NÍVEIS" primaryColor={deckData.primaryColor} />
             <div className="mt-6 flex-1">
               <SimpleTable
-                columns={["Série", "Abaixo do Básico", "Básico", "Adequado", "Avançado", "Total"]}
+                columns={["Série", "Abaixo do Básico", "Básico", "Adequado", "Avançado"]}
                 rows={niveisRows.map((r) => [
                   <span key="s" className="font-semibold">
                     {r.serie}
@@ -502,7 +528,6 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                   r.basico,
                   r.adequado,
                   r.avancado,
-                  r.total,
                 ])}
                 accentColor={deckData.primaryColor}
               />
@@ -534,7 +559,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
               <BarChart width={980} height={520} data={profGeneralData}>
                 <CartesianGrid stroke="#94a3b8" strokeOpacity={0.55} strokeDasharray="3 3" />
                 <XAxis dataKey="turma" tick={{ fontSize: 12, fill: "#334155" }} interval={0} />
-                <YAxis tick={{ fontSize: 12, fill: "#334155" }} />
+                <YAxis domain={[0, generalProfAxisMax]} ticks={linearTicks(0, generalProfAxisMax, 4)} tick={{ fontSize: 12, fill: "#334155" }} />
                 <Tooltip wrapperStyle={{ borderRadius: 10, overflow: "hidden" }} />
                 <Bar dataKey="proficiencia" fill={deckData.primaryColor} radius={[8, 8, 0, 0]}>
                   <LabelList
@@ -555,30 +580,63 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
           <div className="h-full flex flex-col">
             <SlideTitle title="PROFICIÊNCIA POR DISCIPLINA POR TURMA" primaryColor={deckData.primaryColor} />
-            <div className="mt-6 flex-1">
-              <BarChart width={980} height={520} data={profByDiscChartData}>
-                <CartesianGrid stroke="#94a3b8" strokeOpacity={0.55} strokeDasharray="3 3" />
-                <XAxis dataKey="turma" tick={{ fontSize: 12, fill: "#334155" }} interval={0} />
-                <YAxis tick={{ fontSize: 12, fill: "#334155" }} />
-                <Tooltip wrapperStyle={{ borderRadius: 10, overflow: "hidden" }} />
-                <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: 12 }} />
-                {profDiscChartKeys.map((k, idx) => (
-                  <Bar
-                    key={k.key}
-                    dataKey={k.key}
-                    name={k.disciplina}
-                    fill={disciplinePalette[idx % disciplinePalette.length]}
-                    radius={[8, 8, 0, 0]}
-                  >
-                    <LabelList
-                      dataKey={k.key}
-                      position="top"
-                      formatter={(v: number) => (Number(v) > 0 ? Number(v).toFixed(1) : "")}
-                      style={{ fontSize: 10, fill: "#0f172a", fontWeight: 600 }}
-                    />
-                  </Bar>
-                ))}
-              </BarChart>
+            <div className="mt-4 flex-1 grid grid-cols-2 gap-3">
+              {profByDiscSeparate.map((disc) => {
+                const paletteIndex = getSubjectPaletteIndex(disc.disciplina, disc.disciplina);
+                const barColor = disciplinePalette[paletteIndex % disciplinePalette.length];
+                const maxDisc = getProficiencyTableInfo(deckData.serie, disc.disciplina).maxProficiency;
+                const maxAtual = Math.max(
+                  0,
+                  ...disc.data.map((d) => (Number.isFinite(d.proficiencia) ? Number(d.proficiencia) : 0))
+                );
+                const pctTeto = maxDisc > 0 ? (maxAtual / maxDisc) * 100 : 0;
+                const step = maxDisc <= 350 ? 50 : 100;
+
+                return (
+                  <div key={disc.disciplina} className="rounded-xl border border-zinc-200 bg-zinc-50/70 p-2">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div className="text-xs font-bold text-zinc-700 truncate">{disc.disciplina}</div>
+                      <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: barColor }} />
+                    </div>
+                    <div className="grid grid-cols-[1fr_132px] gap-2">
+                      <BarChart width={308} height={176} data={disc.data}>
+                        <XAxis dataKey="turma" tick={{ fontSize: 10, fill: "#334155" }} interval={0} />
+                        <YAxis domain={[0, maxDisc]} ticks={linearTicks(0, maxDisc, 4)} tick={{ fontSize: 10, fill: "#334155" }} />
+                        <Tooltip wrapperStyle={{ borderRadius: 10, overflow: "hidden" }} />
+                        <ReferenceLine y={0} stroke="#64748b" strokeOpacity={0.25} />
+                        <ReferenceLine y={step} stroke="#64748b" strokeOpacity={0.18} strokeDasharray="3 3" />
+                        <ReferenceLine y={step * 2} stroke="#64748b" strokeOpacity={0.18} strokeDasharray="3 3" />
+                        <ReferenceLine y={step * 3} stroke="#64748b" strokeOpacity={0.18} strokeDasharray="3 3" />
+                        <ReferenceLine y={maxDisc} stroke="#0f172a" strokeOpacity={0.22} strokeDasharray="4 4" />
+                        <Bar dataKey="proficiencia" fill={barColor} radius={[6, 6, 0, 0]}>
+                          <LabelList
+                            dataKey="proficiencia"
+                            position="top"
+                            formatter={(v: number) => (Number(v) > 0 ? Number(v).toFixed(1) : "")}
+                            style={{ fontSize: 10, fill: "#0f172a", fontWeight: 600 }}
+                          />
+                        </Bar>
+                      </BarChart>
+                      <div className="rounded-lg border border-zinc-200 bg-white px-2 py-2">
+                        <div className="text-[10px] uppercase tracking-wide text-zinc-500 font-semibold">Máx. Disc.</div>
+                        <div className="text-lg font-black leading-tight" style={{ color: barColor }}>
+                          {maxDisc.toFixed(1)}
+                        </div>
+                        <div className="mt-2 text-[10px] uppercase tracking-wide text-zinc-500 font-semibold">Atual</div>
+                        <div className="text-base font-extrabold text-zinc-800 leading-tight">
+                          {maxAtual.toFixed(1)}
+                        </div>
+                        <div className="mt-1 text-[11px] text-zinc-600">{pctTeto.toFixed(1)}% do teto</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {profByDiscSeparate.length === 0 && (
+                <div className="col-span-2 flex items-center justify-center text-sm text-zinc-500">
+                  Sem dados de proficiência por disciplina para exibir.
+                </div>
+              )}
             </div>
           </div>
         </SlideFrame>
@@ -590,21 +648,58 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
           <div className="h-full flex flex-col">
             <SlideTitle title="TABELA DE PROJEÇÃO" primaryColor={deckData.primaryColor} />
             <div className="mt-6 flex-1">
-              <SimpleTable
-                columns={[
-                  "Proficiência da Disciplina",
-                  "Projeção +20% (teto)",
-                  "Proficiência Geral",
-                  "Projeção Geral +20% (teto)",
-                ]}
-                rows={deckData.projeccaoTabela.map((r) => [
-                  `${r.disciplina}: ${r.proficienciaDisciplina.toFixed(1)}`,
-                  r.projPlus20Disciplina.toFixed(1),
-                  r.proficienciaGeral.toFixed(1),
-                  r.projPlus20Geral.toFixed(1),
-                ])}
-                accentColor={deckData.primaryColor}
-              />
+              <div className="rounded-2xl overflow-hidden border border-zinc-300">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-zinc-100">
+                      <th
+                        colSpan={2}
+                        className="border-b border-zinc-300 px-3 py-2 text-left text-sm font-extrabold text-zinc-700"
+                      >
+                        Bloco Disciplina
+                      </th>
+                      <th
+                        colSpan={2}
+                        className="border-b border-l-2 border-zinc-400 px-3 py-2 text-left text-sm font-extrabold text-zinc-700"
+                      >
+                        Bloco Geral
+                      </th>
+                    </tr>
+                    <tr className="bg-zinc-50">
+                      <th className="border-b border-zinc-300 px-3 py-2 text-left text-sm font-semibold text-zinc-700">
+                        Proficiência da Disciplina
+                      </th>
+                      <th className="border-b border-zinc-300 px-3 py-2 text-left text-sm font-semibold text-zinc-700">
+                        Projeção +20% (teto)
+                      </th>
+                      <th className="border-b border-l-2 border-zinc-400 px-3 py-2 text-left text-sm font-semibold text-zinc-700">
+                        Proficiência Geral
+                      </th>
+                      <th className="border-b border-zinc-300 px-3 py-2 text-left text-sm font-semibold text-zinc-700">
+                        Projeção Geral +20% (teto)
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deckData.projeccaoTabela.map((r, idx) => (
+                      <tr key={`${r.disciplina}-${idx}`} className={idx % 2 === 0 ? "bg-white" : "bg-zinc-50/60"}>
+                        <td className="border-b border-zinc-300 px-3 py-2 text-sm text-zinc-800">
+                          {r.disciplina}: {r.proficienciaDisciplina.toFixed(1)}
+                        </td>
+                        <td className="border-b border-zinc-300 px-3 py-2 text-sm text-zinc-800 font-semibold">
+                          {r.projPlus20Disciplina.toFixed(1)}
+                        </td>
+                        <td className="border-b border-l-2 border-zinc-400 px-3 py-2 text-sm text-zinc-800">
+                          {r.proficienciaGeral.toFixed(1)}
+                        </td>
+                        <td className="border-b border-zinc-300 px-3 py-2 text-sm text-zinc-800 font-semibold">
+                          {r.projPlus20Geral.toFixed(1)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </SlideFrame>
@@ -650,36 +745,42 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
         </SlideFrame>
       </div>
 
-      {/* Slide 18 */}
-      <div data-slide-index={18}>
-        <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
-          <div className="h-full flex flex-col">
-            <SlideTitle title="TABELA DE QUESTÕES" primaryColor={deckData.primaryColor} />
-            <div className="mt-6 flex-1">
-              <SimpleTable
-                columns={["Questão", "Habilidade", "% Acertos"]}
-                rows={deckData.questoesTabela.map((q) => [
-                  q.questao,
-                  q.habilidade,
-                  `${q.percentualAcertos.toFixed(1).replace(".", ",")}%`,
-                ])}
-                accentColor={deckData.primaryColor}
-              />
+      {/* Slide 18+ (paginado com 17 questões por página) */}
+      {questoesChunks.map((questoesPage, pageIdx) => (
+        <div key={`questions-page-${pageIdx}`} data-slide-index={firstQuestionsSlideIndex + pageIdx}>
+          <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
+            <div className="h-full flex flex-col">
+              <div className="flex items-center justify-between">
+                <SlideTitle title="TABELA DE QUESTÕES" primaryColor={deckData.primaryColor} />
+                {questoesChunks.length > 1 && (
+                  <div className="text-sm font-semibold text-zinc-600">
+                    Página {pageIdx + 1}/{questoesChunks.length}
+                  </div>
+                )}
+              </div>
+              <div className="mt-6 flex-1">
+                <SimpleTable
+                  columns={["Questão", "Habilidade", "% Acertos"]}
+                  rows={questoesPage.map((q) => [
+                    q.questao,
+                    q.habilidade,
+                    `${q.percentualAcertos.toFixed(1).replace(".", ",")}%`,
+                  ])}
+                  accentColor={deckData.primaryColor}
+                />
+              </div>
             </div>
-          </div>
-        </SlideFrame>
-      </div>
+          </SlideFrame>
+        </div>
+      ))}
 
-      {/* Slide 19 */}
-      <div data-slide-index={19}>
+      {/* Último slide */}
+      <div data-slide-index={thanksSlideIndex}>
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
               <div className="text-6xl font-black" style={{ color: deckData.primaryColor }}>
                 Obrigado!!
-              </div>
-              <div className="mt-6 text-zinc-600 text-xl font-semibold">
-                Relatório gerado para apresentação
               </div>
             </div>
           </div>

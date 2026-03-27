@@ -16,10 +16,10 @@ import {
 import { mapAnswerSheetResultadosAgregadosToNovaResposta, type AnswerSheetResultadosAgregadosRaw } from "@/utils/answer-sheet/mapAnswerSheetResultadosAgregadosToNovaResposta";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext, cityIdQueryParamForAdmin } from "@/utils/userHierarchy";
 import { api } from "@/lib/api";
-import { buildDeckDataForPresentation19Slides } from "@/utils/reports/presentation19/buildDeckData";
+import buildDeckDataForPresentation19Slides from "@/utils/reports/presentation19/buildDeckData";
 import { normalizeRelatorioCompletoForAnaliseUI } from "@/utils/report/relatorioCompletoNormalize";
 import type { Presentation19DeckData, Presentation19Mode } from "@/types/presentation19-slides";
-import { Presentation19SlidesDeck } from "@/components/reports/presentation19/Presentation19SlidesDeck";
+import { Presentation19NativePreviewDeck } from "@/components/reports/presentation19/Presentation19NativePreviewDeck";
 import { exportPresentation19Pdf, exportPresentation19Pptx } from "@/services/reports/presentation19/Presentation19SlidesExportService";
 import type { RelatorioCompleto } from "@/types/evaluation-results";
 
@@ -143,13 +143,11 @@ export default function RelatorioApresentacao19Slides() {
     setDeckData(null);
   }, [activeMode, selectedEvaluation]);
 
-  const deckRootRef = useRef<HTMLDivElement | null>(null);
-
   const reportEntityType: ReportEntityTypeQuery | undefined =
     activeMode === "answer_sheet" ? REPORT_ENTITY_TYPE_ANSWER_SHEET : undefined;
 
-  const loadDeckData = useCallback(async () => {
-    if (!allRequiredFiltersSelected) return;
+  const loadDeckData = useCallback(async (): Promise<Presentation19DeckData | null> => {
+    if (!allRequiredFiltersSelected) return null;
 
     const evaluationId = selectedEvaluation;
 
@@ -170,7 +168,7 @@ export default function RelatorioApresentacao19Slides() {
           description: "Não foi possível obter o relatório completo (endpoint 1).",
           variant: "destructive",
         });
-        return;
+        return null;
       }
 
       // Se o backend retornar um payload "vazio" para o recorte de filtros, o deck vai renderizar N/A.
@@ -241,12 +239,14 @@ export default function RelatorioApresentacao19Slides() {
       });
 
       setDeckData(deck);
+      return deck;
     } catch (err) {
       toast({
         title: "Erro ao gerar",
         description: err instanceof Error ? err.message : "Falha ao carregar dados para o relatório.",
         variant: "destructive",
       });
+      return null;
     } finally {
       setIsGenerating(false);
     }
@@ -315,33 +315,25 @@ export default function RelatorioApresentacao19Slides() {
 
       try {
         // Se o deck ainda não existe para as seleções atuais, carregamos.
-        if (!deckData) {
-          await loadDeckData();
-          // Garantir 1-2 frames para o layout e os charts SVG estabilizarem.
-          await new Promise<void>((r) => requestAnimationFrame(() => r()));
-          await new Promise<void>((r) => requestAnimationFrame(() => r()));
-        } else {
-          // Espera mínima caso o deck já esteja montado.
-          await new Promise<void>((r) => requestAnimationFrame(() => r()));
+        let activeDeck = deckData;
+        if (!activeDeck) {
+          activeDeck = await loadDeckData();
         }
 
-        const rootEl = deckRootRef.current;
-        if (!rootEl) {
-          throw new Error("Deck não disponível para exportação (ref não inicializado).");
+        if (!activeDeck) {
+          throw new Error("Deck não disponível para exportação.");
         }
         const safeEval = selectedEvaluation.replace(/[^a-zA-Z0-9-_]+/g, "-").toLowerCase();
         const fileName = `relatorio_19-slides_${activeMode}_${safeEval}_${new Date().toISOString().split("T")[0]}.${format === "pdf" ? "pdf" : "pptx"}`;
 
         if (format === "pdf") {
           await exportPresentation19Pdf({
-            rootElement: rootEl,
-            slidesCount,
+            deckData: activeDeck,
             fileName,
           });
         } else {
           await exportPresentation19Pptx({
-            rootElement: rootEl,
-            slidesCount,
+            deckData: activeDeck,
             fileName,
           });
         }
@@ -370,7 +362,7 @@ export default function RelatorioApresentacao19Slides() {
   );
 
   return (
-    <div className="p-6 min-h-screen bg-gradient-to-b from-zinc-50 to-white dark:from-zinc-950/30 dark:to-zinc-950">
+    <div className="p-6 min-h-screen bg-background">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -436,12 +428,6 @@ export default function RelatorioApresentacao19Slides() {
           </Tabs>
 
           <Card className="overflow-hidden">
-            <div
-              className="h-2 w-full"
-              style={{
-                background: `linear-gradient(90deg, ${primaryColor} 0%, rgba(0,0,0,0) 90%)`,
-              }}
-            />
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Palette className="h-5 w-5" />
@@ -548,25 +534,20 @@ export default function RelatorioApresentacao19Slides() {
             )}
 
           {deckData && (
-            <div
-              className="relative border border-border rounded-xl p-4 bg-card overflow-hidden"
-              style={{
-                backgroundImage: `radial-gradient(circle at 10% 0%, ${primaryColor}18 0%, rgba(255,255,255,0) 42%)`,
-              }}
-            >
+            <div className="relative border border-border rounded-xl p-4 bg-card overflow-hidden">
               <div className="flex items-center justify-between gap-4 mb-3">
                 <div>
                   <div className="font-bold">Pré-visualização</div>
                   <div className="text-xs text-muted-foreground">
-                    O exportador captura os 19 slides na ordem 1..19.
+                    A exportação usa renderização nativa dos 19 slides (sem print de tela).
                   </div>
                 </div>
                 <div className="text-xs text-muted-foreground">{slidesCount} slides</div>
               </div>
 
               <div className="overflow-auto">
-                <div ref={deckRootRef}>
-                  <Presentation19SlidesDeck deckData={deckData} />
+                <div>
+                  <Presentation19NativePreviewDeck deckData={deckData} />
                 </div>
               </div>
             </div>
