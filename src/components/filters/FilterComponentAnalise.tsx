@@ -65,6 +65,11 @@ interface FilterComponentAnaliseProps {
   reportEntityType?: ReportEntityTypeQuery;
   /** Somente admin: query `city_id` (município selecionado; token sem cidade). */
   adminCityIdQuery?: string;
+  /**
+   * Apenas troca a ordem visual dos selects (ex.: Avaliação/Cartão resposta antes de Escola),
+   * sem alterar a lógica de carregamento (efeitos) baseada em `loadSchoolsAfterEvaluation`.
+   */
+  displayEvaluationFirst?: boolean;
 }
 
 export function FilterComponentAnalise({
@@ -89,6 +94,7 @@ export function FilterComponentAnalise({
   loadSchoolsAfterEvaluation = false,
   reportEntityType,
   adminCityIdQuery,
+  displayEvaluationFirst = false,
 }: FilterComponentAnaliseProps) {
   const { toast } = useToast();
   const isAnswerSheetReport = reportEntityType === REPORT_ENTITY_TYPE_ANSWER_SHEET;
@@ -97,6 +103,27 @@ export function FilterComponentAnalise({
     ? "Selecione o cartão resposta"
     : "Selecione a avaliação";
   const hierarchyEvaluationStep = isAnswerSheetReport ? "Cartão resposta" : "Avaliação";
+
+  // Ordem visual de UI (não necessariamente acopla ao modo de carregamento)
+  const uiEvaluationFirst = loadSchoolsAfterEvaluation || displayEvaluationFirst;
+  const selectedEvaluationRequiredForSchools = loadSchoolsAfterEvaluation;
+
+  const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  const schoolsRequestIdRef = useRef(0);
+  const evaluationsRequestIdRef = useRef(0);
 
   // Estados dos dados dos filtros
   const [states, setStates] = useState<State[]>([]);
@@ -221,150 +248,177 @@ export function FilterComponentAnalise({
     loadMunicipalities();
   }, [selectedState, canSelectMunicipality, reportEntityType, adminCityIdQuery]);
 
-  // Carregar escolas quando município for selecionado (ou após avaliação se loadSchoolsAfterEvaluation for true)
+  // Carregar escolas quando `loadSchoolsAfterEvaluation=true` (modo dependente de avaliação)
   useEffect(() => {
+    if (!loadSchoolsAfterEvaluation) return;
+
     const loadSchools = async () => {
-      // Se loadSchoolsAfterEvaluation for true, só carregar escolas após selecionar avaliação
-      if (loadSchoolsAfterEvaluation) {
-        if (selectedMunicipality !== 'all' && selectedState !== 'all' && selectedEvaluation !== 'all') {
-          try {
-            onLoadingChange(true);
-            const schoolsData = await EvaluationResultsApiService.getFilterSchoolsByEvaluation({
+      const requestId = ++schoolsRequestIdRef.current;
+
+      if (selectedMunicipality !== 'all' && selectedState !== 'all' && selectedEvaluation !== 'all') {
+        try {
+          onLoadingChange(true);
+          const schoolsData = await withTimeout(
+            EvaluationResultsApiService.getFilterSchoolsByEvaluation({
               estado: selectedState,
               municipio: selectedMunicipality,
               avaliacao: selectedEvaluation,
               ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
               ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
-            });
+            }),
+            20000,
+            'Tempo esgotado ao carregar escolas.'
+          );
+
           let formattedSchools = schoolsData.map(school => ({
             id: school.id,
-            name: school.nome ?? (school as any).name,
-            municipality: selectedMunicipality
+            name: school.nome,
+            municipality: selectedMunicipality,
           }));
 
           if (formattedSchools.length === 0 && fallbackSchools.length > 0) {
             const fallbackMatches = fallbackSchools.filter(
-              (school) => !school.municipalityId || school.municipalityId === selectedMunicipality
+              (school) =>
+                !school.municipalityId || school.municipalityId === selectedMunicipality
             );
             formattedSchools = fallbackMatches.map((school) => ({
               id: school.id,
               name: school.name,
-              municipality: selectedMunicipality
+              municipality: selectedMunicipality,
             }));
           } else if (fallbackSchools.length > 0) {
             const existingIds = new Set(formattedSchools.map((school) => school.id));
             fallbackSchools.forEach((fallbackSchool) => {
               const matchesMunicipality =
-                !fallbackSchool.municipalityId || fallbackSchool.municipalityId === selectedMunicipality;
+                !fallbackSchool.municipalityId ||
+                fallbackSchool.municipalityId === selectedMunicipality;
               if (matchesMunicipality && !existingIds.has(fallbackSchool.id)) {
                 formattedSchools.push({
                   id: fallbackSchool.id,
                   name: fallbackSchool.name,
-                  municipality: selectedMunicipality
+                  municipality: selectedMunicipality,
                 });
               }
             });
           }
 
-          setSchools(formattedSchools);
+          if (requestId === schoolsRequestIdRef.current) setSchools(formattedSchools);
 
           if (mustSelectSpecificSchool && formattedSchools.length > 0) {
             const alreadySelected = formattedSchools.some(school => school.id === selectedSchool);
             if (!alreadySelected) {
-              // Só chamar se a escola selecionada não existe mais na lista
               const schoolToSelect = formattedSchools[0].id;
               onSchoolChangeRef.current(schoolToSelect);
             }
-            // Se já está selecionada, não precisa chamar o callback novamente
           } else if (!mustSelectSpecificSchool) {
             const alreadySelected = formattedSchools.some(school => school.id === selectedSchool);
             if (!alreadySelected && selectedSchool !== 'all') {
-              // Só chamar se havia uma escola selecionada que não existe mais na lista
               onSchoolChangeRef.current('all');
             }
-            // Se já está como 'all' ou a escola existe, não precisa chamar o callback novamente
           }
         } catch (error) {
-          setSchools([]);
+          if (requestId === schoolsRequestIdRef.current) setSchools([]);
         } finally {
           onLoadingChange(false);
         }
       } else {
         // Se não tiver avaliação selecionada, limpar escolas
-        setSchools([]);
+        if (requestId === schoolsRequestIdRef.current) setSchools([]);
         onSchoolChangeRef.current('all');
       }
-        return;
-      }
-      
-      // Comportamento original: carregar escolas quando município for selecionado
+    };
+
+    loadSchools();
+  }, [
+    selectedMunicipality,
+    selectedState,
+    selectedEvaluation,
+    selectedSchool,
+    mustSelectSpecificSchool,
+    fallbackSchools,
+    loadSchoolsAfterEvaluation,
+    reportEntityType,
+    adminCityIdQuery,
+    onLoadingChange,
+  ]);
+
+  // Carregar escolas quando `loadSchoolsAfterEvaluation=false` (modo original dependente de Estado/Município)
+  useEffect(() => {
+    if (loadSchoolsAfterEvaluation) return;
+
+    const loadSchools = async () => {
+      const requestId = ++schoolsRequestIdRef.current;
+
       if (selectedMunicipality !== 'all' && selectedState !== 'all') {
         try {
           onLoadingChange(true);
-          const schoolsData = await EvaluationResultsApiService.getFilterSchools({
-            municipio: selectedMunicipality,
-            estado: selectedState,
-            ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
-            ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
-          });
+          const schoolsData = await withTimeout(
+            EvaluationResultsApiService.getFilterSchools({
+              municipio: selectedMunicipality,
+              estado: selectedState,
+              ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
+              ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+            }),
+            20000,
+            'Tempo esgotado ao carregar escolas.'
+          );
+
           let formattedSchools = schoolsData.map(school => ({
             id: school.id,
-            name: school.nome ?? (school as any).name,
-            municipality: selectedMunicipality
+            name: school.nome,
+            municipality: selectedMunicipality,
           }));
 
           if (formattedSchools.length === 0 && fallbackSchools.length > 0) {
             const fallbackMatches = fallbackSchools.filter(
-              (school) => !school.municipalityId || school.municipalityId === selectedMunicipality
+              (school) =>
+                !school.municipalityId || school.municipalityId === selectedMunicipality
             );
             formattedSchools = fallbackMatches.map((school) => ({
               id: school.id,
               name: school.name,
-              municipality: selectedMunicipality
+              municipality: selectedMunicipality,
             }));
           } else if (fallbackSchools.length > 0) {
             const existingIds = new Set(formattedSchools.map((school) => school.id));
             fallbackSchools.forEach((fallbackSchool) => {
               const matchesMunicipality =
-                !fallbackSchool.municipalityId || fallbackSchool.municipalityId === selectedMunicipality;
+                !fallbackSchool.municipalityId ||
+                fallbackSchool.municipalityId === selectedMunicipality;
               if (matchesMunicipality && !existingIds.has(fallbackSchool.id)) {
                 formattedSchools.push({
                   id: fallbackSchool.id,
                   name: fallbackSchool.name,
-                  municipality: selectedMunicipality
+                  municipality: selectedMunicipality,
                 });
               }
             });
           }
 
-          setSchools(formattedSchools);
+          if (requestId === schoolsRequestIdRef.current) setSchools(formattedSchools);
           setEvaluationsByMunicipality([]);
 
           if (mustSelectSpecificSchool && formattedSchools.length > 0) {
             const alreadySelected = formattedSchools.some(school => school.id === selectedSchool);
             if (!alreadySelected) {
-              // Só chamar se a escola selecionada não existe mais na lista
               const schoolToSelect = formattedSchools[0].id;
               onSchoolChangeRef.current(schoolToSelect);
               onEvaluationChangeRef.current('all');
             }
-            // Se já está selecionada, não precisa chamar o callback novamente
           } else if (!mustSelectSpecificSchool) {
             const alreadySelected = formattedSchools.some(school => school.id === selectedSchool);
             if (!alreadySelected && selectedSchool !== 'all') {
-              // Só chamar se havia uma escola selecionada que não existe mais na lista
               onSchoolChangeRef.current('all');
               onEvaluationChangeRef.current('all');
             }
-            // Se já está como 'all' ou a escola existe, não precisa chamar o callback novamente
           }
         } catch (error) {
-          setSchools([]);
+          if (requestId === schoolsRequestIdRef.current) setSchools([]);
         } finally {
           onLoadingChange(false);
         }
       } else {
-        setSchools([]);
+        if (requestId === schoolsRequestIdRef.current) setSchools([]);
         setEvaluationsByMunicipality([]);
         onSchoolChangeRef.current('all');
         onEvaluationChangeRef.current('all');
@@ -372,22 +426,37 @@ export function FilterComponentAnalise({
     };
 
     loadSchools();
-  }, [selectedMunicipality, selectedState, selectedEvaluation, selectedSchool, mustSelectSpecificSchool, fallbackSchools, loadSchoolsAfterEvaluation, reportEntityType, adminCityIdQuery]);
+  }, [
+    selectedMunicipality,
+    selectedState,
+    selectedSchool,
+    mustSelectSpecificSchool,
+    fallbackSchools,
+    loadSchoolsAfterEvaluation,
+    reportEntityType,
+    adminCityIdQuery,
+    onLoadingChange,
+  ]);
 
   // Carregar avaliações quando município for selecionado (e escola se loadSchoolsAfterEvaluation for false)
   useEffect(() => {
     const loadEvaluations = async () => {
+      const requestId = ++evaluationsRequestIdRef.current;
       // Se loadSchoolsAfterEvaluation for true, carregar avaliações apenas com Estado + Município
       if (loadSchoolsAfterEvaluation) {
         if (selectedState !== 'all' && selectedMunicipality !== 'all') {
           try {
             onLoadingChange(true);
-            const evaluationsData = await EvaluationResultsApiService.getFilterEvaluations({
+            const evaluationsData = await withTimeout(
+              EvaluationResultsApiService.getFilterEvaluations({
               estado: selectedState,
               municipio: selectedMunicipality,
               ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
               ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
-            });
+              }),
+              20000,
+              "Tempo esgotado ao carregar avaliações."
+            );
             const mappedEvaluations = evaluationsData.map(evaluation => ({
               id: evaluation.id,
               titulo: evaluation.titulo,
@@ -395,19 +464,19 @@ export function FilterComponentAnalise({
               status: 'concluida',
               data_aplicacao: new Date().toISOString()
             }));
-            setEvaluationsByMunicipality(mappedEvaluations);
+            if (requestId === evaluationsRequestIdRef.current) setEvaluationsByMunicipality(mappedEvaluations);
             // Não resetar avaliação se já estiver selecionada
             const evaluationExists = mappedEvaluations.some(evaluation => evaluation.id === selectedEvaluation);
             if (!evaluationExists && selectedEvaluation !== 'all') {
               onEvaluationChangeRef.current('all');
             }
           } catch (error) {
-            setEvaluationsByMunicipality([]);
+            if (requestId === evaluationsRequestIdRef.current) setEvaluationsByMunicipality([]);
           } finally {
             onLoadingChange(false);
           }
         } else {
-          setEvaluationsByMunicipality([]);
+          if (requestId === evaluationsRequestIdRef.current) setEvaluationsByMunicipality([]);
           onEvaluationChangeRef.current('all');
         }
         return;
@@ -418,13 +487,17 @@ export function FilterComponentAnalise({
       if (selectedState !== 'all' && selectedMunicipality !== 'all') {
         try {
           onLoadingChange(true);
-          const evaluationsData = await EvaluationResultsApiService.getFilterEvaluations({
+          const evaluationsData = await withTimeout(
+            EvaluationResultsApiService.getFilterEvaluations({
             estado: selectedState,
             municipio: selectedMunicipality,
             escola: selectedSchool !== 'all' ? selectedSchool : undefined,
             ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
             ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
-          });
+            }),
+            20000,
+            "Tempo esgotado ao carregar avaliações."
+          );
           const mappedEvaluations = evaluationsData.map(evaluation => ({
             id: evaluation.id,
             titulo: evaluation.titulo,
@@ -432,7 +505,7 @@ export function FilterComponentAnalise({
             status: 'concluida',
             data_aplicacao: new Date().toISOString()
           }));
-          setEvaluationsByMunicipality(mappedEvaluations);
+          if (requestId === evaluationsRequestIdRef.current) setEvaluationsByMunicipality(mappedEvaluations);
           
           // Só resetar avaliação se a avaliação selecionada não existir mais na lista
           const evaluationExists = mappedEvaluations.some(evaluation => evaluation.id === selectedEvaluation);
@@ -440,12 +513,12 @@ export function FilterComponentAnalise({
             onEvaluationChangeRef.current('all');
           }
         } catch (error) {
-          setEvaluationsByMunicipality([]);
+          if (requestId === evaluationsRequestIdRef.current) setEvaluationsByMunicipality([]);
         } finally {
           onLoadingChange(false);
         }
       } else {
-        setEvaluationsByMunicipality([]);
+        if (requestId === evaluationsRequestIdRef.current) setEvaluationsByMunicipality([]);
         onEvaluationChangeRef.current('all');
       }
     };
@@ -517,8 +590,8 @@ export function FilterComponentAnalise({
             </Select>
           </div>
 
-          {/* Renderizar Avaliação antes de Escola quando loadSchoolsAfterEvaluation for true */}
-          {loadSchoolsAfterEvaluation ? (
+          {/* Renderizar Avaliação antes de Escola quando uiEvaluationFirst for true */}
+          {uiEvaluationFirst ? (
             <>
               {/* Avaliações */}
               <div className="space-y-2">
@@ -560,7 +633,7 @@ export function FilterComponentAnalise({
                   disabled={
                     isLoadingFilters ||
                     selectedMunicipality === 'all' ||
-                    selectedEvaluation === 'all' ||
+                    (selectedEvaluationRequiredForSchools && selectedEvaluation === 'all') ||
                     !canSelectSchool
                   }
                 >
@@ -644,7 +717,7 @@ export function FilterComponentAnalise({
         {/* Informação sobre filtros */}
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
           <p className="text-sm text-blue-700 dark:text-blue-400">
-            💡 <strong>Hierarquia dos Filtros:</strong> {loadSchoolsAfterEvaluation 
+            💡 <strong>Hierarquia dos Filtros:</strong> {uiEvaluationFirst 
               ? `Estado → Município → ${hierarchyEvaluationStep} → Escola`
               : `Estado → Município → Escola → ${hierarchyEvaluationStep}`}
           </p>

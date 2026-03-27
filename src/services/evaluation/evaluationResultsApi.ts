@@ -425,6 +425,7 @@ interface FilterOptionsResponse {
   estados?: Array<{ id: string; nome: string }>;
   municipios?: Array<{ id: string; nome: string }>;
   avaliacoes?: Array<{ id: string; titulo: string }>;
+  gabaritos?: Array<{ id: string; titulo: string }>;
   escolas?: Array<{ id: string; nome: string }>;
   series?: Array<{ id: string; nome: string }>;
   turmas?: Array<{ id: string; nome: string }>;
@@ -1658,10 +1659,15 @@ export class EvaluationResultsApiService {
     city_id?: string;
   }): Promise<FilterOptionsResponse> {
     try {
+      const isAnswerSheet = params.report_entity_type === REPORT_ENTITY_TYPE_ANSWER_SHEET;
       const queryParams = new URLSearchParams();
       if (params.estado && params.estado !== 'all') queryParams.append('estado', params.estado);
       if (params.municipio && params.municipio !== 'all') queryParams.append('municipio', params.municipio);
-      if (params.avaliacao && params.avaliacao !== 'all') queryParams.append('avaliacao', params.avaliacao);
+      if (params.avaliacao && params.avaliacao !== 'all') {
+        // /answer-sheets/opcoes-filtros-results espera "gabarito";
+        // /evaluation-results/opcoes-filtros espera "avaliacao".
+        queryParams.append(isAnswerSheet ? 'gabarito' : 'avaliacao', params.avaliacao);
+      }
       if (params.escola && params.escola !== 'all') queryParams.append('escola', params.escola);
       if (params.serie && params.serie !== 'all') queryParams.append('serie', params.serie);
       if (params.turma && params.turma !== 'all') queryParams.append('turma', params.turma);
@@ -1672,14 +1678,24 @@ export class EvaluationResultsApiService {
         queryParams.append('city_id', params.city_id);
       }
 
-      const url = `/evaluation-results/opcoes-filtros${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      const basePath = isAnswerSheet
+        ? '/answer-sheets/opcoes-filtros-results'
+        : '/evaluation-results/opcoes-filtros';
+      const url = `${basePath}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
       const requestConfig = params.municipio && params.municipio !== 'all'
         ? { meta: { cityId: params.municipio } }
         : {};
       const response = await api.get(url, requestConfig);
       const data = response.data || {};
+      const avaliacoesNormalizadas =
+        Array.isArray(data.avaliacoes) && data.avaliacoes.length > 0
+          ? data.avaliacoes
+          : Array.isArray(data.gabaritos)
+            ? data.gabaritos
+            : [];
       return {
         ...data,
+        avaliacoes: avaliacoesNormalizadas,
         estados: this.normalizeFilterEntities(data.estados),
         municipios: this.normalizeFilterEntities(data.municipios),
         escolas: this.normalizeFilterEntities(data.escolas),
@@ -1889,17 +1905,41 @@ export class EvaluationResultsApiService {
         ...(filters.city_id ? { city_id: filters.city_id } : {}),
       });
       const avaliacoes = response.avaliacoes || [];
-      return avaliacoes.filter((evaluation: any) => {
+      // Para cartões resposta, manter a lista como veio do backend (gabaritos).
+      if (filters.report_entity_type === REPORT_ENTITY_TYPE_ANSWER_SHEET) {
+        return avaliacoes;
+      }
+
+      // Para aba "Avaliações", aceitar itens sem `type` quando o backend não preencher
+      // esse campo, mas manter bloqueios por padrão de título/tipo indesejado.
+      return avaliacoes.filter((evaluation: { type?: unknown; tipo?: unknown; titulo?: unknown; title?: unknown }) => {
         const raw = (evaluation.type ?? evaluation.tipo ?? '').toString().trim();
         const type = raw.toUpperCase();
         const title = String(evaluation.titulo ?? evaluation.title ?? '').toUpperCase();
+        const titleNormalized = title
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '');
         // Excluir olimpíadas e competições (relatórios e filtros: apenas avaliações/simulados)
         if (type === 'OLIMPIADAS' || type === 'OLIMPIADA' || type.includes('OLIMPI')) return false;
         if (type === 'COMPETICAO' || type === 'COMPETIÇÃO' || type.includes('COMPET')) return false;
         // Excluir também pelo título quando o backend não envia type (ex.: "OLIMPIADA DE MATEMÁTICA", "SIMULADO OLÍMPICO")
         if (title.includes('OLIMPI') || title.includes('OLÍMPIC')) return false;
-        // Incluir apenas AVALIACAO, SIMULADO ou sem tipo
-        return type === '' || type === 'AVALIACAO' || type === 'SIMULADO';
+        // Proteção extra: não listar cartões resposta/gabaritos na aba de avaliações.
+        if (
+          titleNormalized.includes('GABARITO') ||
+          titleNormalized.includes('CARTAO') ||
+          titleNormalized.includes('CARTAO RESPOSTA')
+        ) {
+          return false;
+        }
+        // Quando tipo vier explícito, permitir apenas avaliação/simulado.
+        if (type !== '') {
+          return type === 'AVALIACAO' || type === 'SIMULADO';
+        }
+
+        // Sem `type`: assumir avaliação válida (compatibilidade com payload legado),
+        // desde que não tenha caído nos bloqueios por título acima.
+        return true;
       });
     } catch (error) {
       console.error('Erro ao buscar avaliações para filtros:', error);
