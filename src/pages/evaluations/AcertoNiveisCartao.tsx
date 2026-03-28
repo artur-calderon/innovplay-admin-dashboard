@@ -20,6 +20,7 @@ import {
   filtrarGabaritosOpcoesSomenteComHabilidadesVinculadas,
   type GabaritoOpcaoFiltrosResults,
 } from "@/utils/answer-sheet/answerSheetRelatorioGabaritoComHabilidades";
+import { loadLogoAssetForLandscapePdf } from "@/utils/pdfCityBranding";
 
 // Types from the original component
 type StudentResult = {
@@ -2160,31 +2161,24 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
       const jsPDF = (await import('jspdf')).default;
       const autoTable = (await import('jspdf-autotable')).default;
 
-      // Carregar logo com uma única requisição: fetch -> blob -> dimensões (Image) + DataURL (FileReader)
+      const brandingCityId =
+        (isAnswerSheetAgregados
+          ? asMunicipio !== "all"
+            ? asMunicipio
+            : null
+          : selectedMunicipality || null) ??
+        userHierarchyContext?.school?.municipality_id ??
+        userHierarchyContext?.municipality?.id ??
+        null;
+
       let logoDataUrl = '';
       let logoWidth = 0;
       let logoHeight = 0;
-      try {
-        const logoPath = '/LOGO-1-menor.png';
-        const response = await fetch(logoPath);
-        const blob = await response.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        const logoImg = new Image();
-        await new Promise<void>((resolve, reject) => {
-          logoImg.onload = () => resolve();
-          logoImg.onerror = reject;
-          logoImg.src = objectUrl;
-        });
-        URL.revokeObjectURL(objectUrl);
-        logoWidth = logoImg.width;
-        logoHeight = logoImg.height;
-        logoDataUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(blob);
-        });
-      } catch (error) {
-        // Continuar sem logo
+      const logoLand = await loadLogoAssetForLandscapePdf(brandingCityId);
+      if (logoLand) {
+        logoDataUrl = logoLand.dataUrl;
+        logoWidth = logoLand.iw;
+        logoHeight = logoLand.ih;
       }
 
       // Documento começa em landscape para a capa inicial

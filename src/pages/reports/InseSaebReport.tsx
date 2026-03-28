@@ -39,6 +39,10 @@ import { EvaluationApiService } from '@/services/evaluation/evaluationApi';
 import { EvaluationResultsApiService } from '@/services/evaluation/evaluationResultsApi';
 import type { StudentDetailedResult } from '@/services/evaluation/evaluationResultsApi';
 import type { Question, TestData } from '@/types/evaluation-types';
+import {
+  loadCityBrandingPdfAssets,
+  paintLetterheadBackground,
+} from '@/utils/pdfCityBranding';
 
 // --- Tipos da API de resultados ---
 interface DisciplinaAluno {
@@ -708,6 +712,14 @@ const InseSaebReport = () => {
         const margin = 15;
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
+
+        const inseBrandingAluno = await loadCityBrandingPdfAssets(
+          selectedMunicipality !== 'all' ? selectedMunicipality : null
+        );
+        if (inseBrandingAluno.letterhead) {
+          paintLetterheadBackground(doc, inseBrandingAluno.letterhead, pageWidth, pageHeight);
+        }
+
         let y = margin;
         const primaryRgb: [number, number, number] = [124, 58, 237];
         const textDark: [number, number, number] = [31, 41, 55];
@@ -721,21 +733,44 @@ const InseSaebReport = () => {
           }
         };
 
-        try {
-          const logoPath = '/LOGO-1-menor.png';
-          const logoResponse = await fetch(logoPath);
-          const logoBlob = await logoResponse.blob();
-          const logoDataUrl = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(logoBlob);
-          });
-          doc.addImage(logoDataUrl, 'PNG', (pageWidth - 50) / 2, y, 50, 22);
-          y += 28;
-        } catch {
-          // segue sem logo
-        }
+        const drawAlunoHeaderLogo = async () => {
+          if (inseBrandingAluno.logo) {
+            const maxW = 50;
+            const maxH = 22;
+            let drawW = maxW;
+            let drawH = (inseBrandingAluno.logo.ih / inseBrandingAluno.logo.iw) * drawW;
+            if (drawH > maxH) {
+              drawH = maxH;
+              drawW = (inseBrandingAluno.logo.iw / inseBrandingAluno.logo.ih) * drawH;
+            }
+            doc.addImage(
+              inseBrandingAluno.logo.dataUrl,
+              'PNG',
+              (pageWidth - drawW) / 2,
+              y,
+              drawW,
+              drawH
+            );
+            y += drawH + 6;
+            return;
+          }
+          try {
+            const logoPath = '/LOGO-1-menor.png';
+            const logoResponse = await fetch(logoPath);
+            const logoBlob = await logoResponse.blob();
+            const logoDataUrl = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(logoBlob);
+            });
+            doc.addImage(logoDataUrl, 'PNG', (pageWidth - 50) / 2, y, 50, 22);
+            y += 28;
+          } catch {
+            // segue sem logo
+          }
+        };
+        await drawAlunoHeaderLogo();
 
         const municipioName =
           municipalities.find((m) => m.id === selectedMunicipality)?.name ?? '';
@@ -1083,6 +1118,12 @@ const InseSaebReport = () => {
       const margin = 15;
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
+
+      const inseBrandingFull = await loadCityBrandingPdfAssets(selectedMunicipality);
+      if (inseBrandingFull.letterhead) {
+        paintLetterheadBackground(doc, inseBrandingFull.letterhead, pageWidth, pageHeight);
+      }
+
       const primaryRgb: [number, number, number] = [124, 58, 237];
       const textDark: [number, number, number] = [31, 41, 55];
       const textMuted: [number, number, number] = [107, 114, 128];
@@ -1109,20 +1150,36 @@ const InseSaebReport = () => {
         }
       };
 
-      try {
-        const logoPath = '/LOGO-1-menor.png';
-        const logoResponse = await fetch(logoPath);
-        const logoBlob = await logoResponse.blob();
-        const logoDataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(logoBlob);
-        });
-        doc.addImage(logoDataUrl, 'PNG', (pageWidth - 50) / 2, y, 50, logoH);
-        y += logoH + 28;
-      } catch {
-        y += logoH + 28;
+      if (inseBrandingFull.logo) {
+        const lw = 50;
+        const lhRaw = (inseBrandingFull.logo.ih / inseBrandingFull.logo.iw) * lw;
+        const lh = Math.min(lhRaw, logoH);
+        const lw2 = lhRaw > logoH ? (inseBrandingFull.logo.iw / inseBrandingFull.logo.ih) * lh : lw;
+        doc.addImage(
+          inseBrandingFull.logo.dataUrl,
+          'PNG',
+          (pageWidth - lw2) / 2,
+          y,
+          lw2,
+          lh
+        );
+        y += lh + 28;
+      } else {
+        try {
+          const logoPath = '/LOGO-1-menor.png';
+          const logoResponse = await fetch(logoPath);
+          const logoBlob = await logoResponse.blob();
+          const logoDataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(logoBlob);
+          });
+          doc.addImage(logoDataUrl, 'PNG', (pageWidth - 50) / 2, y, 50, logoH);
+          y += logoH + 28;
+        } catch {
+          y += logoH + 28;
+        }
       }
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(titleFontSize);

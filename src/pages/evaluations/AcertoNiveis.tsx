@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import type { jsPDF } from "jspdf";
 import type { CellHookData, Styles } from "jspdf-autotable";
 import { normalizeProficiencyLevelLabel, type ReportProficiencyLabel } from "@/utils/report/reportTagStyles";
+import { loadLogoAssetForLandscapePdf } from "@/utils/pdfCityBranding";
 
 // Types from the original component
 type StudentResult = {
@@ -1695,31 +1696,21 @@ export default function AcertoNiveis() {
       const jsPDF = (await import('jspdf')).default;
       const autoTable = (await import('jspdf-autotable')).default;
 
-      // Carregar logo com uma única requisição: fetch -> blob -> dimensões (Image) + DataURL (FileReader)
+      const brandingCityId =
+        selectedMunicipality && selectedMunicipality !== "all"
+          ? selectedMunicipality
+          : userHierarchyContext?.school?.municipality_id ??
+            userHierarchyContext?.municipality?.id ??
+            null;
+
       let logoDataUrl = '';
       let logoWidth = 0;
       let logoHeight = 0;
-      try {
-        const logoPath = '/LOGO-1-menor.png';
-        const response = await fetch(logoPath);
-        const blob = await response.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        const logoImg = new Image();
-        await new Promise<void>((resolve, reject) => {
-          logoImg.onload = () => resolve();
-          logoImg.onerror = reject;
-          logoImg.src = objectUrl;
-        });
-        URL.revokeObjectURL(objectUrl);
-        logoWidth = logoImg.width;
-        logoHeight = logoImg.height;
-        logoDataUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(blob);
-        });
-      } catch (error) {
-        // Continuar sem logo
+      const logoLand = await loadLogoAssetForLandscapePdf(brandingCityId);
+      if (logoLand) {
+        logoDataUrl = logoLand.dataUrl;
+        logoWidth = logoLand.iw;
+        logoHeight = logoLand.ih;
       }
 
       // Documento começa em landscape para a capa inicial

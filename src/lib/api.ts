@@ -38,7 +38,7 @@ api.interceptors.request.use((config) => {
             const user = JSON.parse(userJson) as { role?: string; tenant_id?: string }
             const cityId = (config as typeof config & { meta?: { cityId?: string } }).meta?.cityId
             const role = (user?.role ?? '').toLowerCase()
-            const canSendCityId = ['admin', 'tecadm', 'diretor', 'coordenador'].includes(role)
+            const canSendCityId = ['admin', 'tecadm', 'diretor', 'coordenador', 'professor'].includes(role)
             const isCompetitionsRequest = typeof config.url === 'string' && config.url.includes('/competitions')
             const isDashboardRequest = typeof config.url === 'string' && config.url.includes('/dashboard/')
             // Admin/coordenador/diretor/tecadm: enviar X-City-ID quando informado (meta.cityId)

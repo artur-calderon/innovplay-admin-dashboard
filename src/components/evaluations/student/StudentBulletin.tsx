@@ -12,6 +12,12 @@ import { Question, TestData } from "@/types/evaluation-types";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/authContext";
+import {
+  loadCityBrandingPdfAssets,
+  paintLetterheadBackground,
+  drawMunicipalLogoTopCenter,
+} from "@/utils/pdfCityBranding";
 
 // Helper robusto para extrair série e turma de uma string de turma
 function parseGradeAndClassFromTurma(input?: string | null): { grade?: string; classLetter?: string } {
@@ -60,6 +66,8 @@ interface StudentBulletinProps {
   testId: string;
   studentId: string;
   initialDisciplineStats?: DisciplineStatsMap;
+  /** UUID do município para timbrado/logo na capa do PDF */
+  brandingCityId?: string | null;
 }
 
 // Helper function para identificar alternativa selecionada com 4 métodos de matching
@@ -223,7 +231,7 @@ const groupQuestionsBySubject = (questions: BulletinQuestion[]): QuestionsBySubj
 
 type FilterType = 'all' | 'correct' | 'incorrect' | 'unanswered';
 
-export default function StudentBulletin({ testId, studentId, initialDisciplineStats }: StudentBulletinProps) {
+export default function StudentBulletin({ testId, studentId, initialDisciplineStats, brandingCityId }: StudentBulletinProps) {
   const [bulletinQuestions, setBulletinQuestions] = useState<BulletinQuestion[]>([]);
   const [filter, setFilter] = useState<FilterType>('all');
   const [loadingState, setLoadingState] = useState<{
@@ -245,6 +253,7 @@ export default function StudentBulletin({ testId, studentId, initialDisciplineSt
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   studentNameRef.current = studentName;
   studentGradeRef.current = studentGrade;
@@ -558,6 +567,16 @@ export default function StudentBulletin({ testId, studentId, initialDisciplineSt
       const pageHeight = pdf.internal.pageSize.getHeight();
       const usableWidth = pageWidth - margin * 2;
       const usableHeight = pageHeight - margin * 2;
+
+      const resolvedBrandingCityId =
+        brandingCityId ?? user?.city_id ?? user?.tenant_id ?? null;
+      const bulletinBranding = await loadCityBrandingPdfAssets(resolvedBrandingCityId);
+      if (bulletinBranding.letterhead) {
+        paintLetterheadBackground(pdf, bulletinBranding.letterhead, pageWidth, pageHeight);
+      }
+      if (bulletinBranding.logo) {
+        drawMunicipalLogoTopCenter(pdf, pageWidth, margin, bulletinBranding.logo);
+      }
 
       // Capa
       const coverTitle = 'Boletim do Aluno';

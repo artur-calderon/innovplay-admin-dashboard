@@ -22,6 +22,7 @@ import type { Presentation19DeckData, Presentation19Mode } from "@/types/present
 import { Presentation19NativePreviewDeck } from "@/components/reports/presentation19/Presentation19NativePreviewDeck";
 import { exportPresentation19Pdf, exportPresentation19Pptx } from "@/services/reports/presentation19/Presentation19SlidesExportService";
 import type { RelatorioCompleto } from "@/types/evaluation-results";
+import { resolveReportLogoForPdf } from "@/utils/pdfCityBranding";
 
 const slidesCount = 19;
 
@@ -327,8 +328,15 @@ export default function RelatorioApresentacao19Slides() {
         const fileName = `relatorio_19-slides_${activeMode}_${safeEval}_${new Date().toISOString().split("T")[0]}.${format === "pdf" ? "pdf" : "pptx"}`;
 
         if (format === "pdf") {
+          let deckForPdf = activeDeck;
+          if (selectedMunicipality !== "all") {
+            const mLogo = await resolveReportLogoForPdf(selectedMunicipality);
+            if (mLogo) {
+              deckForPdf = { ...activeDeck, logoDataUrl: mLogo.dataUrl };
+            }
+          }
           await exportPresentation19Pdf({
-            deckData: activeDeck,
+            deckData: deckForPdf,
             fileName,
           });
         } else {
@@ -358,7 +366,7 @@ export default function RelatorioApresentacao19Slides() {
         window.setTimeout(() => setExportProgress(0), 700);
       }
     },
-    [activeMode, allRequiredFiltersSelected, deckData, loadDeckData, selectedEvaluation, toast, validateAccess]
+    [activeMode, allRequiredFiltersSelected, deckData, loadDeckData, selectedEvaluation, selectedMunicipality, toast, validateAccess]
   );
 
   return (
