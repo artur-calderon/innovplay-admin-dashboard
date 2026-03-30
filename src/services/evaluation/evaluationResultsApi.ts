@@ -1691,7 +1691,7 @@ export class EvaluationResultsApiService {
       const axiosError = error as { response?: { status?: number; data?: unknown; config?: { url?: string } } };
       const status = axiosError.response?.status;
       const url = axiosError.response?.config?.url;
-      
+
       console.error(`❌ Erro ao buscar opções de filtros (status: ${status}):`, {
         url,
         params,
