@@ -93,6 +93,7 @@
     "katex": "^0.16.22",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
+    "pptxgenjs": "^4.0.1",
     "qr-scanner": "^1.4.2",
     "qrcode": "^1.5.4",
     "quill": "^2.0.3",

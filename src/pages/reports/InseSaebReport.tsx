@@ -39,6 +39,10 @@ import { EvaluationApiService } from '@/services/evaluation/evaluationApi';
 import { EvaluationResultsApiService } from '@/services/evaluation/evaluationResultsApi';
 import type { StudentDetailedResult } from '@/services/evaluation/evaluationResultsApi';
 import type { Question, TestData } from '@/types/evaluation-types';
+import {
+  loadCityBrandingPdfAssets,
+  paintLetterheadBackground,
+} from '@/utils/pdfCityBranding';
 
 // --- Tipos da API de resultados ---
 interface DisciplinaAluno {
@@ -708,6 +712,14 @@ const InseSaebReport = () => {
         const margin = 15;
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
+
+        const inseBrandingAluno = await loadCityBrandingPdfAssets(
+          selectedMunicipality !== 'all' ? selectedMunicipality : null
+        );
+        if (inseBrandingAluno.letterhead) {
+          paintLetterheadBackground(doc, inseBrandingAluno.letterhead, pageWidth, pageHeight);
+        }
+
         let y = margin;
         const primaryRgb: [number, number, number] = [124, 58, 237];
         const textDark: [number, number, number] = [31, 41, 55];
@@ -721,21 +733,44 @@ const InseSaebReport = () => {
           }
         };
 
-        try {
-          const logoPath = '/LOGO-1-menor.png';
-          const logoResponse = await fetch(logoPath);
-          const logoBlob = await logoResponse.blob();
-          const logoDataUrl = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(logoBlob);
-          });
-          doc.addImage(logoDataUrl, 'PNG', (pageWidth - 50) / 2, y, 50, 22);
-          y += 28;
-        } catch {
-          // segue sem logo
-        }
+        const drawAlunoHeaderLogo = async () => {
+          if (inseBrandingAluno.logo) {
+            const maxW = 50;
+            const maxH = 22;
+            let drawW = maxW;
+            let drawH = (inseBrandingAluno.logo.ih / inseBrandingAluno.logo.iw) * drawW;
+            if (drawH > maxH) {
+              drawH = maxH;
+              drawW = (inseBrandingAluno.logo.iw / inseBrandingAluno.logo.ih) * drawH;
+            }
+            doc.addImage(
+              inseBrandingAluno.logo.dataUrl,
+              'PNG',
+              (pageWidth - drawW) / 2,
+              y,
+              drawW,
+              drawH
+            );
+            y += drawH + 6;
+            return;
+          }
+          try {
+            const logoPath = '/LOGO-1-menor.png';
+            const logoResponse = await fetch(logoPath);
+            const logoBlob = await logoResponse.blob();
+            const logoDataUrl = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(logoBlob);
+            });
+            doc.addImage(logoDataUrl, 'PNG', (pageWidth - 50) / 2, y, 50, 22);
+            y += 28;
+          } catch {
+            // segue sem logo
+          }
+        };
+        await drawAlunoHeaderLogo();
 
         const municipioName =
           municipalities.find((m) => m.id === selectedMunicipality)?.name ?? '';
@@ -1083,6 +1118,12 @@ const InseSaebReport = () => {
       const margin = 15;
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
+
+      const inseBrandingFull = await loadCityBrandingPdfAssets(selectedMunicipality);
+      if (inseBrandingFull.letterhead) {
+        paintLetterheadBackground(doc, inseBrandingFull.letterhead, pageWidth, pageHeight);
+      }
+
       const primaryRgb: [number, number, number] = [124, 58, 237];
       const textDark: [number, number, number] = [31, 41, 55];
       const textMuted: [number, number, number] = [107, 114, 128];
@@ -1109,20 +1150,36 @@ const InseSaebReport = () => {
         }
       };
 
-      try {
-        const logoPath = '/LOGO-1-menor.png';
-        const logoResponse = await fetch(logoPath);
-        const logoBlob = await logoResponse.blob();
-        const logoDataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(logoBlob);
-        });
-        doc.addImage(logoDataUrl, 'PNG', (pageWidth - 50) / 2, y, 50, logoH);
-        y += logoH + 28;
-      } catch {
-        y += logoH + 28;
+      if (inseBrandingFull.logo) {
+        const lw = 50;
+        const lhRaw = (inseBrandingFull.logo.ih / inseBrandingFull.logo.iw) * lw;
+        const lh = Math.min(lhRaw, logoH);
+        const lw2 = lhRaw > logoH ? (inseBrandingFull.logo.iw / inseBrandingFull.logo.ih) * lh : lw;
+        doc.addImage(
+          inseBrandingFull.logo.dataUrl,
+          'PNG',
+          (pageWidth - lw2) / 2,
+          y,
+          lw2,
+          lh
+        );
+        y += lh + 28;
+      } else {
+        try {
+          const logoPath = '/LOGO-1-menor.png';
+          const logoResponse = await fetch(logoPath);
+          const logoBlob = await logoResponse.blob();
+          const logoDataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(logoBlob);
+          });
+          doc.addImage(logoDataUrl, 'PNG', (pageWidth - 50) / 2, y, 50, logoH);
+          y += logoH + 28;
+        } catch {
+          y += logoH + 28;
+        }
       }
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(titleFontSize);
@@ -1322,7 +1379,9 @@ const InseSaebReport = () => {
         const pct = item?.porcentagem ?? 0;
         const label = item?.label ?? `Nível ${key}`;
         const rowY = y + idx * rowH;
-        doc.setFillColor(idx % 2 === 0 ? [248, 250, 252] : [255, 255, 255]);
+        const rowFill: [number, number, number] =
+          idx % 2 === 0 ? [248, 250, 252] : [255, 255, 255];
+        doc.setFillColor(...rowFill);
         doc.rect(margin, rowY, tableW, rowH, 'F');
         doc.setDrawColor(226, 232, 240);
         doc.setLineWidth(0.1);
@@ -1377,7 +1436,9 @@ const InseSaebReport = () => {
         { label: 'Abaixo do Básico', qtd: distProf?.abaixo_do_basico ?? 0, pct: distProf?.abaixo_do_basico_porcentagem ?? 0, color: profColors[3], textColor: [255, 255, 255] as [number, number, number] },
       ].forEach(({ label, qtd, pct, color, textColor }, idx) => {
         const rowY = y + idx * rowH;
-        doc.setFillColor(idx % 2 === 0 ? [248, 250, 252] : [255, 255, 255]);
+        const rowFill: [number, number, number] =
+          idx % 2 === 0 ? [248, 250, 252] : [255, 255, 255];
+        doc.setFillColor(...rowFill);
         doc.rect(margin, rowY, tableW, rowH, 'F');
         doc.setDrawColor(226, 232, 240);
         doc.rect(margin, rowY, tableW, rowH, 'S');
@@ -1419,12 +1480,12 @@ const InseSaebReport = () => {
       const head = [
         '#',
         'Aluno',
-        ...disciplinasAvaliacao.map((d) => `Profic. ${d.nome}`),
-        'Prof. Média',
+        ...disciplinasAvaliacao.map((d) => `Proficiência\n${d.nome}`),
+        'Prof.\nMédia',
         'Nota',
-        'Nível de Aprendizagem',
+        'Nível de\nAprendizagem',
         'INSE',
-        'Nível INSE',
+        'Nível\nINSE',
       ];
       const body =
         alunosData.length === 0
@@ -1471,22 +1532,74 @@ const InseSaebReport = () => {
         doc.text('Nenhum aluno no escopo.', margin, y);
       } else {
         const usableTableWidth = pageWidth - margin * 2;
-        const alunoColWidth = Math.max(48, usableTableWidth * 0.3);
-        const nivelAprWidth = 24;
-        const inseColWidth = 20;
-        const otherSingle = (usableTableWidth - 12 - alunoColWidth - nivelAprWidth - 10 - 10 - inseColWidth) / (disciplinasAvaliacao.length + 1);
-        const colWidths: Record<number, number> = {
-          0: 12,
-          1: alunoColWidth,
-          [nivelColIndex]: nivelAprWidth,
-          [head.length - 2]: 10,
-          [head.length - 1]: inseColWidth,
+        const nDisc = disciplinasAvaliacao.length;
+        const profMedIdx = 2 + nDisc;
+        const notaIdx = profMedIdx + 1;
+        const inseColIdx = head.length - 2;
+        const floor = {
+          num: 8,
+          aluno: 30,
+          profDisc: 22,
+          profMed: 15,
+          nota: 12,
+          nivelApr: 26,
+          inse: 12,
+          nivelInse: 24,
         };
-        disciplinasAvaliacao.forEach((_, i) => {
-          colWidths[2 + i] = otherSingle;
-        });
-        colWidths[2 + disciplinasAvaliacao.length] = otherSingle;
-        colWidths[3 + disciplinasAvaliacao.length] = 10;
+        const colWidths: Record<number, number> = {
+          0: floor.num,
+          1: floor.aluno,
+          [nivelColIndex]: floor.nivelApr,
+          [inseColIdx]: floor.inse,
+          [head.length - 1]: floor.nivelInse,
+        };
+        for (let i = 0; i < nDisc; i++) colWidths[2 + i] = floor.profDisc;
+        colWidths[profMedIdx] = floor.profMed;
+        colWidths[notaIdx] = floor.nota;
+
+        const sumWidths = (): number =>
+          Object.values(colWidths).reduce((a, b) => a + b, 0);
+
+        let delta = usableTableWidth - sumWidths();
+        if (delta > 0) {
+          const growWeight: Record<number, number> = { 0: 0, 1: 1.15 };
+          for (let i = 0; i < nDisc; i++) growWeight[2 + i] = 1;
+          growWeight[profMedIdx] = 0.45;
+          growWeight[notaIdx] = 0.35;
+          growWeight[nivelColIndex] = 0.85;
+          growWeight[inseColIdx] = 0.35;
+          growWeight[head.length - 1] = 0.75;
+          const wsum = Object.values(growWeight).reduce((a, b) => a + b, 0);
+          Object.entries(growWeight).forEach(([k, w]) => {
+            const idx = Number(k);
+            colWidths[idx] += (delta * w) / wsum;
+          });
+        } else if (delta < 0) {
+          let d = -delta;
+          const shrinkAluno = Math.min(d, Math.max(0, colWidths[1] - 26));
+          colWidths[1] -= shrinkAluno;
+          d -= shrinkAluno;
+          if (nDisc > 0 && d > 0) {
+            const removable = Array.from({ length: nDisc }, (_, i) =>
+              Math.max(0, colWidths[2 + i] - 18)
+            );
+            const totalRemovable = removable.reduce((a, b) => a + b, 0);
+            const take = Math.min(totalRemovable, d);
+            if (totalRemovable > 0) {
+              removable.forEach((r, i) => {
+                colWidths[2 + i] -= (take * r) / totalRemovable;
+              });
+            }
+            d -= take;
+          }
+          if (d > 0) {
+            colWidths[nivelColIndex] = Math.max(22, colWidths[nivelColIndex] - d);
+          }
+        }
+        const finalSum = sumWidths();
+        if (Math.abs(finalSum - usableTableWidth) > 0.05) {
+          colWidths[1] += usableTableWidth - finalSum;
+        }
 
         autoTable(doc, {
           startY: y,
@@ -1495,16 +1608,18 @@ const InseSaebReport = () => {
           theme: 'grid',
           margin: { left: margin, right: margin },
           styles: {
-            fontSize: 11,
-            cellPadding: 3,
+            fontSize: 10,
+            cellPadding: 2.5,
             overflow: 'linebreak',
+            valign: 'middle',
           },
           headStyles: {
             fillColor: primaryRgb,
             textColor: [255, 255, 255],
             fontStyle: 'bold',
-            fontSize: 10,
-            cellPadding: 3,
+            fontSize: 8.5,
+            cellPadding: 2,
+            valign: 'middle',
           },
           bodyStyles: {
             lineWidth: 0.1,
@@ -1514,7 +1629,16 @@ const InseSaebReport = () => {
             fillColor: [248, 250, 252],
           },
           columnStyles: Object.fromEntries(
-            Object.entries(colWidths).map(([k, w]) => [Number(k), { cellWidth: w, halign: k === '0' || Number(k) === nivelColIndex || Number(k) === head.length - 1 ? 'center' : 'left' }])
+            Object.entries(colWidths).map(([k, w]) => {
+              const idx = Number(k);
+              const centerNumeric =
+                idx === 0 ||
+                (idx >= 2 && idx <= notaIdx) ||
+                idx === inseColIdx ||
+                idx === nivelColIndex ||
+                idx === head.length - 1;
+              return [idx, { cellWidth: w, halign: centerNumeric ? 'center' : 'left' as const }];
+            })
           ),
           didDrawCell: (data: { section: string; column?: { index: number }; row?: { index: number }; cell: { x: number; y: number; width: number; height: number }; cursor?: { x: number; y: number } }) => {
             if (data.section !== 'body') return;
@@ -1551,7 +1675,7 @@ const InseSaebReport = () => {
               doc.text(aluno?.inse_nivel_label ?? '—', c.x + c.width / 2, c.y + c.height / 2 + 1.5, { align: 'center' });
             }
             doc.setFont('helvetica', 'normal');
-            doc.setFontSize(11);
+            doc.setFontSize(10);
             doc.setTextColor(...textDark);
           },
         });

@@ -135,6 +135,12 @@ export interface AnswerSheetResultadosAgregadosRaw {
     total_acertos?: number;
     total_questoes?: number;
   }>;
+  opcoes_proximos_filtros?: {
+    gabaritos?: Array<{ id: string; titulo?: string; nome?: string; name?: string }>;
+    escolas?: Array<{ id: string; nome?: string; name?: string }>;
+    series?: Array<{ id: string; nome?: string; name?: string }>;
+    turmas?: Array<{ id: string; nome?: string; name?: string }>;
+  };
 }
 
 const emptyDist = () => ({
@@ -317,7 +323,26 @@ export function mapAnswerSheetResultadosAgregadosToNovaResposta(
         : undefined,
     ranking: ranking.length ? ranking : undefined,
     opcoes_proximos_filtros: {
-      avaliacoes: [{ id: filters.gabarito, titulo: tituloGabarito }],
+      avaliacoes:
+        raw.opcoes_proximos_filtros?.gabaritos?.map((g) => ({
+          id: g.id,
+          titulo: g.titulo ?? g.nome ?? g.name ?? "Gabarito",
+        })) ?? [{ id: filters.gabarito, titulo: tituloGabarito }],
+      escolas:
+        raw.opcoes_proximos_filtros?.escolas?.map((e) => ({
+          id: e.id,
+          name: e.name ?? e.nome ?? "",
+        })) ?? [],
+      series:
+        raw.opcoes_proximos_filtros?.series?.map((s) => ({
+          id: s.id,
+          name: s.name ?? s.nome ?? "",
+        })) ?? [],
+      turmas:
+        raw.opcoes_proximos_filtros?.turmas?.map((t) => ({
+          id: t.id,
+          name: t.name ?? t.nome ?? "",
+        })) ?? [],
     },
   };
 

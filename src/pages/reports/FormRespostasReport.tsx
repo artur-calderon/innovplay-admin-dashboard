@@ -27,6 +27,11 @@ import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { FormResultsFiltersApiService } from '@/services/formResultsFiltersApi';
 import { FormMultiSelect } from '@/components/ui/form-multi-select';
+import {
+  loadCityBrandingPdfAssets,
+  paintLetterheadBackground,
+  drawReportHeaderLogoWithFallback,
+} from '@/utils/pdfCityBranding';
 
 interface State {
   id: string;
@@ -575,33 +580,22 @@ const FormRespostasReport = () => {
         const margin = 15;
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
+
+        const branding =
+          selectedMunicipality !== 'all'
+            ? await loadCityBrandingPdfAssets(selectedMunicipality)
+            : { letterhead: null, logo: null };
+
+        if (branding.letterhead) {
+          paintLetterheadBackground(doc, branding.letterhead, pageWidth, pageHeight);
+        }
         let y = margin;
+        y = await drawReportHeaderLogoWithFallback(doc, pageWidth, y, branding.logo);
 
         // Cores do sistema (primary: 267 84% 65% ≈ #7c3aed)
         const primaryRgb: [number, number, number] = [124, 58, 237];
         const textDark: [number, number, number] = [31, 41, 55];
         const textMuted: [number, number, number] = [107, 114, 128];
-
-        // Carregar logo (LOGO-1-menor.png – visível em fundo branco)
-        try {
-          const logoPath = '/LOGO-1-menor.png';
-          const logoResponse = await fetch(logoPath);
-          const logoBlob = await logoResponse.blob();
-          const logoDataUrl = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(logoBlob);
-          });
-
-          const logoWidth = 50;
-          const logoHeight = 22;
-          const logoX = (pageWidth - logoWidth) / 2;
-          doc.addImage(logoDataUrl, 'PNG', logoX, y, logoWidth, logoHeight);
-          y += logoHeight + 10;
-        } catch {
-          // segue sem logo se houver erro
-        }
 
         const municipioName =
           municipalities.find((m) => m.id === selectedMunicipality)?.name ||
@@ -789,29 +783,20 @@ const FormRespostasReport = () => {
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
       const centerX = pageWidth / 2;
+
+      const branding =
+        selectedMunicipality !== 'all'
+          ? await loadCityBrandingPdfAssets(selectedMunicipality)
+          : { letterhead: null, logo: null };
+
+      if (branding.letterhead) {
+        paintLetterheadBackground(doc, branding.letterhead, pageWidth, pageHeight);
+      }
       let y = margin;
+      y = await drawReportHeaderLogoWithFallback(doc, pageWidth, y, branding.logo);
 
       const primaryRgb: [number, number, number] = [124, 58, 237];
       const textDark: [number, number, number] = [31, 41, 55];
-
-      // Capa: logo
-      try {
-        const logoPath = '/LOGO-1-menor.png';
-        const logoResponse = await fetch(logoPath);
-        const logoBlob = await logoResponse.blob();
-        const logoDataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(logoBlob);
-        });
-        const logoWidth = 50;
-        const logoHeight = 22;
-        doc.addImage(logoDataUrl, 'PNG', (pageWidth - logoWidth) / 2, y, logoWidth, logoHeight);
-        y += logoHeight + 10;
-      } catch {
-        // segue sem logo
-      }
 
       const municipioName =
         municipalities.find((m) => m.id === selectedMunicipality)?.name || selectedMunicipality || '';

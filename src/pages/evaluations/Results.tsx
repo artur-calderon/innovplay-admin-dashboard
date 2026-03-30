@@ -4,9 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DisciplineTag } from "@/components/ui/discipline-tag";
 import { Progress } from "@/components/ui/progress";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Calendar as CalendarIcon,
   Download,
   Users,
   FileX,
@@ -25,7 +25,12 @@ import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format, parse } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { EvaluationResultsApiService } from "@/services/evaluation/evaluationResultsApi";
+import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
 import { getUserHierarchyContext } from "@/utils/userHierarchy";
 import { ResultsCharts } from "@/components/evaluations/results/ResultsCharts";
@@ -345,6 +350,221 @@ interface SimpleDetailedReport {
   }>;
 }
 
+// ----- Somente esta página: opcoes-filtros + listar avaliacoes com periodo=YYYY-MM (sem alterar o serviço compartilhado) -----
+
+type ResultsOpcoesFiltrosParams = {
+  estado?: string;
+  municipio?: string;
+  avaliacao?: string;
+  escola?: string;
+  serie?: string;
+  turma?: string;
+  periodo?: string;
+};
+
+interface ResultsFilterOptionsResponse {
+  estados?: Array<{ id: string; nome: string }>;
+  municipios?: Array<{ id: string; nome: string }>;
+  avaliacoes?: Array<{
+    id: string;
+    titulo?: string;
+    title?: string;
+    type?: string;
+    tipo?: string;
+  }>;
+  escolas?: Array<{ id: string; nome?: string; name?: string }>;
+  series?: Array<{ id: string; nome?: string; name?: string }>;
+  turmas?: Array<{ id: string; nome?: string; name?: string }>;
+}
+
+function resultsNormalizeFilterEntities(
+  items: Array<{ id: string; nome?: string; name?: string }> | undefined
+): Array<{ id: string; nome: string }> {
+  if (!Array.isArray(items) || !items.length) return [];
+  return items.map((item) => ({
+    id: item.id,
+    nome: item.nome ?? item.name ?? "",
+  }));
+}
+
+async function resultsFetchOpcoesFiltros(
+  params: ResultsOpcoesFiltrosParams
+): Promise<ResultsFilterOptionsResponse> {
+  const queryParams = new URLSearchParams();
+  if (params.estado && params.estado !== "all") queryParams.append("estado", params.estado);
+  if (params.municipio && params.municipio !== "all") queryParams.append("municipio", params.municipio);
+  if (params.avaliacao && params.avaliacao !== "all") queryParams.append("avaliacao", params.avaliacao);
+  if (params.escola && params.escola !== "all") queryParams.append("escola", params.escola);
+  if (params.serie && params.serie !== "all") queryParams.append("serie", params.serie);
+  if (params.turma && params.turma !== "all") queryParams.append("turma", params.turma);
+  if (params.periodo && /^\d{4}-\d{2}$/.test(params.periodo)) {
+    queryParams.append("periodo", params.periodo);
+  }
+  const url = `/evaluation-results/opcoes-filtros${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
+  const requestConfig =
+    params.municipio && params.municipio !== "all" ? { meta: { cityId: params.municipio } } : {};
+  const response = await api.get(url, requestConfig);
+  const data = response.data || {};
+  return {
+    ...data,
+    estados: resultsNormalizeFilterEntities(data.estados),
+    municipios: resultsNormalizeFilterEntities(data.municipios),
+    escolas: resultsNormalizeFilterEntities(data.escolas),
+    series: resultsNormalizeFilterEntities(data.series),
+    turmas: resultsNormalizeFilterEntities(data.turmas),
+  } as ResultsFilterOptionsResponse;
+}
+
+function resultsFilterEvaluationsForDropdown(
+  avaliacoes: ResultsFilterOptionsResponse["avaliacoes"]
+): Array<{ id: string; titulo: string }> {
+  const list = avaliacoes || [];
+  return list
+    .filter((evaluation) => {
+      const raw = (evaluation.type ?? evaluation.tipo ?? "").toString().trim();
+      const type = raw.toUpperCase();
+      const title = String(evaluation.titulo ?? evaluation.title ?? "").toUpperCase();
+      if (type === "OLIMPIADAS" || type === "OLIMPIADA" || type.includes("OLIMPI")) return false;
+      if (type === "COMPETICAO" || type === "COMPETIÇÃO" || type.includes("COMPET")) return false;
+      if (title.includes("OLIMPI") || title.includes("OLÍMPIC")) return false;
+      return type === "" || type === "AVALIACAO" || type === "SIMULADO";
+    })
+    .map((e) => ({
+      id: e.id,
+      titulo: e.titulo ?? e.title ?? "Sem título",
+    }));
+}
+
+async function resultsGetFilterMunicipalities(
+  stateId: string,
+  periodo?: string
+): Promise<Array<{ id: string; nome: string }>> {
+  try {
+    const response = await resultsFetchOpcoesFiltros({
+      estado: stateId,
+      ...(periodo ? { periodo } : {}),
+    });
+    if (response.municipios && response.municipios.length > 0) {
+      return response.municipios;
+    }
+    console.warn(
+      `⚠️ Endpoint de opções de filtros não retornou municípios para estado: ${stateId}, tentando fallback...`
+    );
+  } catch (error) {
+    console.error(`❌ Erro ao buscar municípios via opções de filtros para estado: ${stateId}`, error);
+    const axiosError = error as { response?: { status?: number } };
+    if (axiosError.response?.status === 400) throw error;
+    if (axiosError.response?.status === 500) {
+      console.warn(`⚠️ Erro 500 do backend ao buscar municípios para estado: ${stateId}, tentando fallback...`);
+    }
+  }
+  try {
+    const res = await api.get(`/city/municipalities/state/${stateId}`);
+    if (res.data && Array.isArray(res.data)) {
+      const municipios = res.data
+        .map((municipality: { id: string; name?: string; nome?: string }) => ({
+          id: municipality.id,
+          nome: municipality.nome || municipality.name || "",
+        }))
+        .filter((m: { nome: string }) => m.nome !== "");
+      if (municipios.length > 0) return municipios;
+    }
+  } catch (fallbackError) {
+    console.error(`❌ Erro também no fallback ao buscar municípios para estado: ${stateId}`, fallbackError);
+  }
+  console.error(`❌ Não foi possível carregar municípios para o estado: ${stateId}`);
+  return [];
+}
+
+type ResultsEvaluationsListFilters = {
+  estado?: string;
+  municipio?: string;
+  escola?: string;
+  serie?: string;
+  turma?: string;
+  avaliacao?: string;
+  periodo?: string;
+};
+
+async function resultsFetchEvaluationsList(
+  page: number,
+  perPage: number,
+  filters: ResultsEvaluationsListFilters
+): Promise<NovaRespostaAPI> {
+  const params = new URLSearchParams({
+    page: String(page),
+    per_page: String(perPage),
+  });
+  if (filters.estado && filters.estado !== "all") params.append("estado", filters.estado);
+  if (filters.municipio && filters.municipio !== "all") params.append("municipio", filters.municipio);
+  if (filters.avaliacao && filters.avaliacao !== "all") params.append("avaliacao", filters.avaliacao);
+  if (filters.escola && filters.escola !== "all") params.append("escola", filters.escola);
+  if (filters.serie && filters.serie !== "all") params.append("serie", filters.serie);
+  if (filters.turma && filters.turma !== "all") params.append("turma", filters.turma);
+  if (filters.periodo && /^\d{4}-\d{2}$/.test(filters.periodo)) {
+    params.append("periodo", filters.periodo);
+  }
+  const requestConfig =
+    filters.municipio && filters.municipio !== "all"
+      ? { meta: { cityId: filters.municipio } }
+      : {};
+  const response = await api.get(`/evaluation-results/avaliacoes?${params}`, requestConfig);
+  const data = response.data;
+  if (data?.resultados_detalhados?.avaliacoes) {
+    data.resultados_detalhados.avaliacoes = data.resultados_detalhados.avaliacoes.filter(
+      (evaluation: {
+        type?: string;
+        tipo?: string;
+        titulo?: string;
+        title?: string;
+      }) => {
+        const type = String(evaluation.type ?? evaluation.tipo ?? "").toUpperCase().trim();
+        const title = String(evaluation.titulo ?? evaluation.title ?? "").toUpperCase();
+        if (type === "OLIMPIADA" || type === "OLIMPIADAS" || type.includes("OLIMPI")) return false;
+        if (type === "COMPETICAO" || type === "COMPETIÇÃO" || type.includes("COMPET")) return false;
+        if (title.includes("[OLIMPÍADA]") || title.includes("OLIMPÍADA") || title.includes("OLIMPIADA"))
+          return false;
+        if (title.includes("COMPETIÇÃO") || title.includes("COMPETICAO")) return false;
+        return type === "" || type === "AVALIACAO" || type === "SIMULADO";
+      }
+    );
+  }
+  return data as NovaRespostaAPI;
+}
+
+const RESULTS_PERIOD_YEAR_MIN = 2018;
+
+function getResultsPeriodYearMax(): number {
+  return new Date().getFullYear() + 2;
+}
+
+/** Valida AAAA-MM para filtro de período (rejeita anos absurdos ex.: 0002). */
+function normalizeResultsPeriodYm(raw: string): "all" | string {
+  const t = raw.trim();
+  const m = /^(\d{4})-(\d{2})$/.exec(t);
+  if (!m) return "all";
+  const y = parseInt(m[1], 10);
+  const mo = parseInt(m[2], 10);
+  const yMax = getResultsPeriodYearMax();
+  if (y < RESULTS_PERIOD_YEAR_MIN || y > yMax || mo < 1 || mo > 12) return "all";
+  return `${String(y).padStart(4, "0")}-${String(mo).padStart(2, "0")}`;
+}
+
+const RESULTS_MONTH_NAMES_PT = [
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
+] as const;
+
 export default function Results() {
   const { autoLogin, user } = useAuth();
 
@@ -367,10 +587,53 @@ export default function Results() {
   // Estados dos filtros
   const [selectedState, setSelectedState] = useState<string>('all');
   const [selectedMunicipality, setSelectedMunicipality] = useState<string>('all');
+  /** `all` = sem filtro de mês/ano; senão `YYYY-MM` (mês de aplicação). */
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
+  const [periodPickerOpen, setPeriodPickerOpen] = useState(false);
+  /** Mês exibido no calendário (0–11) e ano — sincronizado com selects (tema escuro OK). */
+  const [periodDraft, setPeriodDraft] = useState<{ y: number; m: number }>(() => {
+    const n = new Date();
+    return { y: n.getFullYear(), m: n.getMonth() };
+  });
   const [selectedEvaluation, setSelectedEvaluation] = useState<string>('all');
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [selectedGrade, setSelectedGrade] = useState<string>('all');
   const [selectedClass, setSelectedClass] = useState<string>('all');
+
+  const normalizedSelectedPeriod = useMemo(
+    () => (selectedPeriod === 'all' ? 'all' : normalizeResultsPeriodYm(selectedPeriod)),
+    [selectedPeriod]
+  );
+
+  const periodoApi = normalizedSelectedPeriod === 'all' ? undefined : normalizedSelectedPeriod;
+
+  const periodCalendarSelected = useMemo(() => {
+    if (normalizedSelectedPeriod === 'all') return undefined;
+    return parse(`${normalizedSelectedPeriod}-01`, 'yyyy-MM-dd', new Date());
+  }, [normalizedSelectedPeriod]);
+
+  /** Corrige período inválido ou fora da faixa (ex. 0002-03 de sessão antiga). */
+  useEffect(() => {
+    if (selectedPeriod === 'all') return;
+    const n = normalizeResultsPeriodYm(selectedPeriod);
+    if (n === 'all') setSelectedPeriod('all');
+    else if (n !== selectedPeriod) setSelectedPeriod(n);
+  }, [selectedPeriod]);
+
+  useEffect(() => {
+    if (!periodPickerOpen) return;
+    if (normalizedSelectedPeriod !== 'all') {
+      const [yy, mm] = normalizedSelectedPeriod.split('-').map(Number);
+      setPeriodDraft({ y: yy, m: mm - 1 });
+      return;
+    }
+    const n = new Date();
+    setPeriodDraft({ y: n.getFullYear(), m: n.getMonth() });
+  }, [periodPickerOpen, normalizedSelectedPeriod]);
+
+  const previousPeriodRef = useRef<string | undefined>(undefined);
+  /** Para não zerar município ao mudar só o período: reset em cascata só quando o estado (UF) muda. */
+  const previousStateForMunicipalitiesRef = useRef<string | null>(null);
 
   // Estados dos dados dos filtros
   const [states, setStates] = useState<State[]>([]);
@@ -541,6 +804,7 @@ export default function Results() {
       const filters = {
         selectedState,
         selectedMunicipality,
+        selectedPeriod,
         selectedEvaluation,
         selectedSchool,
         selectedGrade,
@@ -551,12 +815,13 @@ export default function Results() {
     } catch (error) {
       console.error('Erro ao salvar filtros no sessionStorage:', error);
     }
-  }, [selectedState, selectedMunicipality, selectedEvaluation, selectedSchool, selectedGrade, selectedClass]);
+  }, [selectedState, selectedMunicipality, selectedPeriod, selectedEvaluation, selectedSchool, selectedGrade, selectedClass]);
 
   // ✅ NOVO: Função para carregar e validar filtros do sessionStorage
   const loadFiltersFromStorage = useCallback((): {
     selectedState: string;
     selectedMunicipality: string;
+    selectedPeriod: string;
     selectedEvaluation: string;
     selectedSchool: string;
     selectedGrade: string;
@@ -591,10 +856,15 @@ export default function Results() {
         typeof filters.selectedGrade === 'string' &&
         typeof filters.selectedClass === 'string'
       ) {
+        const rawPeriod =
+          typeof filters.selectedPeriod === 'string' ? filters.selectedPeriod : 'all';
+        const selectedPeriodNorm =
+          rawPeriod === 'all' ? 'all' : normalizeResultsPeriodYm(rawPeriod);
         // Retornar filtros validados (aceita "all" e outros valores)
         return {
           selectedState: filters.selectedState || 'all',
           selectedMunicipality: filters.selectedMunicipality || 'all',
+          selectedPeriod: selectedPeriodNorm,
           selectedEvaluation: filters.selectedEvaluation || 'all',
           selectedSchool: filters.selectedSchool || 'all',
           selectedGrade: filters.selectedGrade || 'all',
@@ -628,14 +898,36 @@ export default function Results() {
     
     // Salvar filtros quando mudarem
     saveFiltersToStorage();
-  }, [selectedState, selectedMunicipality, selectedEvaluation, selectedSchool, selectedGrade, selectedClass, saveFiltersToStorage]);
+  }, [selectedState, selectedMunicipality, selectedPeriod, selectedEvaluation, selectedSchool, selectedGrade, selectedClass, saveFiltersToStorage]);
+
+  const toastFilterOptionsError = useCallback(
+    (error: unknown) => {
+      const ax = error as { response?: { status?: number; data?: { error?: string; details?: string } } };
+      if (ax.response?.status !== 400) return;
+      const d = ax.response.data;
+      const description = d?.details ? `${d.error ?? ''}${d.error ? ' ' : ''}(${d.details})`.trim() : d?.error;
+      toast({
+        title: 'Filtro inválido',
+        description: description || 'Verifique o período (formato AAAA-MM).',
+        variant: 'destructive',
+      });
+    },
+    [toast]
+  );
 
   // Carregar filtros iniciais
-  const loadInitialFilters = useCallback(async () => {
+  const loadInitialFilters = useCallback(async (periodFromStorage?: string) => {
     try {
       setIsLoadingFilters(true);
 
-      const statesData = await EvaluationResultsApiService.getFilterStates();
+      const periodoRaw =
+        periodFromStorage !== undefined && periodFromStorage !== 'all'
+          ? normalizeResultsPeriodYm(periodFromStorage)
+          : 'all';
+      const periodo = periodoRaw === 'all' ? undefined : periodoRaw;
+
+      const opcoes = await resultsFetchOpcoesFiltros({ ...(periodo ? { periodo } : {}) });
+      const statesData = opcoes.estados || [];
       console.log('Estados carregados:', statesData);
       
       if (statesData && statesData.length > 0) {
@@ -650,17 +942,22 @@ export default function Results() {
       }
     } catch (error) {
       console.error("Erro ao carregar filtros iniciais:", error);
-      toast({
-        title: "Erro ao carregar filtros",
-        description: "Não foi possível carregar os filtros. Tente novamente.",
-        variant: "destructive",
-      });
+      const ax = error as { response?: { status?: number } };
+      if (ax.response?.status === 400) {
+        toastFilterOptionsError(error);
+      } else {
+        toast({
+          title: "Erro ao carregar filtros",
+          description: "Não foi possível carregar os filtros. Tente novamente.",
+          variant: "destructive",
+        });
+      }
       setStates([]);
     } finally {
       setIsLoadingFilters(false);
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, toastFilterOptionsError]);
 
   useEffect(() => {
     const initializeData = async () => {
@@ -688,6 +985,7 @@ export default function Results() {
         // Definir todos os filtros de uma vez
         setSelectedState(savedFilters.selectedState);
         setSelectedMunicipality(savedFilters.selectedMunicipality);
+        setSelectedPeriod(savedFilters.selectedPeriod ?? 'all');
         setSelectedEvaluation(savedFilters.selectedEvaluation);
         setSelectedSchool(savedFilters.selectedSchool);
         setSelectedGrade(savedFilters.selectedGrade);
@@ -707,7 +1005,7 @@ export default function Results() {
       // Marcar que os filtros foram carregados do storage
       filtersLoadedFromStorageRef.current = true;
       
-      await loadInitialFilters();
+      await loadInitialFilters(savedFilters?.selectedPeriod);
     };
 
     initializeData();
@@ -737,40 +1035,100 @@ export default function Results() {
     resetAfterEvaluation();
   }, [resetAfterEvaluation]);
 
-  // Carregar municípios quando estado for selecionado
+  // Ao mudar o período (fora da restauração), atualizar estados e zerar Avaliação → … ; municípios/aval. recarregam pelos efeitos.
+  useEffect(() => {
+    if (!filtersLoadedFromStorageRef.current) return;
+    if (previousPeriodRef.current === undefined) {
+      previousPeriodRef.current = selectedPeriod;
+      return;
+    }
+    if (isRestoringFiltersRef.current) {
+      previousPeriodRef.current = selectedPeriod;
+      return;
+    }
+    if (previousPeriodRef.current === selectedPeriod) return;
+    previousPeriodRef.current = selectedPeriod;
+
+    resetAfterEvaluation();
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setIsLoadingFilters(true);
+        const opcoes = await resultsFetchOpcoesFiltros({ ...(periodoApi ? { periodo: periodoApi } : {}) });
+        const statesData = opcoes.estados || [];
+        if (cancelled) return;
+        if (statesData?.length) {
+          setStates(
+            statesData.map((state) => ({
+              id: state.id,
+              name: state.nome,
+              uf: state.id,
+            }))
+          );
+        } else {
+          setStates([]);
+        }
+      } catch (error) {
+        if (!cancelled) toastFilterOptionsError(error);
+      } finally {
+        if (!cancelled) setIsLoadingFilters(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPeriod, periodoApi, resetAfterEvaluation, toastFilterOptionsError]);
+
+  // Carregar municípios quando estado ou período mudam (período só refiltra a lista; não limpa município já escolhido)
   useEffect(() => {
     const loadMunicipalities = async () => {
+      const previousState = previousStateForMunicipalitiesRef.current;
+      const stateChanged =
+        previousState !== null && previousState !== selectedState;
+      previousStateForMunicipalitiesRef.current = selectedState;
+
       if (selectedState !== 'all') {
         try {
           setIsLoadingFilters(true);
-          const municipalitiesData = await EvaluationResultsApiService.getFilterMunicipalities(selectedState);
+          const municipalitiesData = await resultsGetFilterMunicipalities(
+            selectedState,
+            periodoApi
+          );
           setMunicipalities(municipalitiesData.map(municipality => ({
             id: municipality.id,
             name: municipality.nome,
             state: selectedState
           })));
-          // ✅ CORRIGIDO: Não resetar em cascata se estamos restaurando filtros
           if (!isRestoringFiltersRef.current) {
             setEvaluationsByMunicipality([]);
-            resetAfterState();
+            if (stateChanged) {
+              resetAfterState();
+            } else {
+              resetAfterEvaluation();
+            }
           }
         } catch (error) {
           console.error("Erro ao carregar municípios:", error);
+          toastFilterOptionsError(error);
         } finally {
           setIsLoadingFilters(false);
         }
       } else {
         setMunicipalities([]);
         setEvaluationsByMunicipality([]);
-        // ✅ CORRIGIDO: Não resetar em cascata se estamos restaurando filtros
         if (!isRestoringFiltersRef.current) {
-          resetAfterState();
+          if (stateChanged) {
+            resetAfterState();
+          } else {
+            resetAfterEvaluation();
+          }
         }
       }
     };
 
     loadMunicipalities();
-  }, [selectedState, resetAfterState]);
+  }, [selectedState, resetAfterState, resetAfterEvaluation, periodoApi, toastFilterOptionsError]);
 
   // Carregar avaliações quando município for selecionado
   useEffect(() => {
@@ -780,10 +1138,12 @@ export default function Results() {
         try {
           setIsLoadingFilters(true);
 
-          const evaluationsData = await EvaluationResultsApiService.getFilterEvaluations({
+          const opEv = await resultsFetchOpcoesFiltros({
             estado: selectedState,
-            municipio: selectedMunicipality
+            municipio: selectedMunicipality,
+            ...(periodoApi ? { periodo: periodoApi } : {}),
           });
+          const evaluationsData = resultsFilterEvaluationsForDropdown(opEv.avaliacoes);
           setEvaluationsByMunicipality(evaluationsData.map(evaluation => ({
                     id: evaluation.id || 'unknown',
         titulo: evaluation.titulo || 'Sem título',
@@ -798,6 +1158,7 @@ export default function Results() {
           }
         } catch (error) {
           console.error("Erro ao carregar avaliações:", error);
+          toastFilterOptionsError(error);
           setEvaluationsByMunicipality([]);
         } finally {
           setIsLoadingFilters(false);
@@ -812,7 +1173,7 @@ export default function Results() {
     };
 
     loadEvaluations();
-  }, [selectedMunicipality, selectedState, resetAfterEvaluation]);
+  }, [selectedMunicipality, selectedState, resetAfterEvaluation, periodoApi, toastFilterOptionsError]);
 
   // Carregar escolas quando avaliação for selecionada
   useEffect(() => {
@@ -821,11 +1182,13 @@ export default function Results() {
       if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedEvaluation !== 'all') {
         try {
           setIsLoadingFilters(true);
-          const schoolsData = await EvaluationResultsApiService.getFilterSchoolsByEvaluation({
+          const opSc = await resultsFetchOpcoesFiltros({
             estado: selectedState,
             municipio: selectedMunicipality,
-            avaliacao: selectedEvaluation
+            avaliacao: selectedEvaluation,
+            ...(periodoApi ? { periodo: periodoApi } : {}),
           });
+          const schoolsData = opSc.escolas || [];
           setSchools(schoolsData.map(school => ({
             id: school.id,
             name: school.nome
@@ -837,6 +1200,7 @@ export default function Results() {
           }
         } catch (error) {
           console.error("Erro ao carregar escolas:", error);
+          toastFilterOptionsError(error);
           setSchools([]);
         } finally {
           setIsLoadingFilters(false);
@@ -851,7 +1215,7 @@ export default function Results() {
     };
 
     loadSchools();
-  }, [selectedEvaluation, selectedState, selectedMunicipality, resetAfterSchool]);
+  }, [selectedEvaluation, selectedState, selectedMunicipality, resetAfterSchool, periodoApi, toastFilterOptionsError]);
 
   // Carregar séries quando escola for selecionada
   useEffect(() => {
@@ -860,12 +1224,14 @@ export default function Results() {
       if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedEvaluation !== 'all' && selectedSchool !== 'all') {
         try {
           setIsLoadingFilters(true);
-          const gradesData = await EvaluationResultsApiService.getFilterGradesByEvaluation({
+          const opGr = await resultsFetchOpcoesFiltros({
             estado: selectedState,
             municipio: selectedMunicipality,
             avaliacao: selectedEvaluation,
-            escola: selectedSchool
+            escola: selectedSchool,
+            ...(periodoApi ? { periodo: periodoApi } : {}),
           });
+          const gradesData = opGr.series || [];
           setGrades(gradesData.map(grade => ({
             id: grade.id,
             name: grade.nome
@@ -877,6 +1243,7 @@ export default function Results() {
           }
         } catch (error) {
           console.error("Erro ao carregar séries:", error);
+          toastFilterOptionsError(error);
           setGrades([]);
         } finally {
           setIsLoadingFilters(false);
@@ -891,7 +1258,7 @@ export default function Results() {
     };
 
     loadGrades();
-  }, [selectedSchool, selectedState, selectedMunicipality, selectedEvaluation, resetAfterGrade]);
+  }, [selectedSchool, selectedState, selectedMunicipality, selectedEvaluation, resetAfterGrade, periodoApi, toastFilterOptionsError]);
 
   // Carregar turmas quando série for selecionada
   useEffect(() => {
@@ -900,13 +1267,15 @@ export default function Results() {
       if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedEvaluation !== 'all' && selectedSchool !== 'all' && selectedGrade !== 'all') {
         try {
           setIsLoadingFilters(true);
-          const classesData = await EvaluationResultsApiService.getFilterClassesByEvaluation({
+          const opCl = await resultsFetchOpcoesFiltros({
             estado: selectedState,
             municipio: selectedMunicipality,
             avaliacao: selectedEvaluation,
             escola: selectedSchool,
-            serie: selectedGrade
+            serie: selectedGrade,
+            ...(periodoApi ? { periodo: periodoApi } : {}),
           });
+          const classesData = opCl.turmas || [];
           setClasses(classesData.map(classItem => ({
             id: classItem.id,
             name: classItem.nome
@@ -918,6 +1287,7 @@ export default function Results() {
           }
         } catch (error) {
           console.error("Erro ao carregar turmas:", error);
+          toastFilterOptionsError(error);
           setClasses([]);
         } finally {
           setIsLoadingFilters(false);
@@ -932,7 +1302,7 @@ export default function Results() {
     };
 
     loadClasses();
-  }, [selectedGrade, selectedState, selectedMunicipality, selectedEvaluation, selectedSchool]);
+  }, [selectedGrade, selectedState, selectedMunicipality, selectedEvaluation, selectedSchool, periodoApi, toastFilterOptionsError]);
 
   // ✅ NOVO: Refs para debounce
   const loadAllDataTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -952,10 +1322,11 @@ export default function Results() {
         escola: selectedSchool !== 'all' ? selectedSchool : undefined,
         serie: selectedGrade !== 'all' ? selectedGrade : undefined,
         turma: selectedClass !== 'all' ? selectedClass : undefined,
+        ...(periodoApi ? { periodo: periodoApi } : {}),
       };
 
       // 🚀 CARREGAMENTO UNIFICADO: tenta buscar já filtrado (inclui escola/série/turma quando selecionados)
-      let evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(currentPage, perPage, filters);
+      let evaluationsResponse = await resultsFetchEvaluationsList(currentPage, perPage, filters);
       
    
       if (evaluationsResponse) {
@@ -971,10 +1342,11 @@ export default function Results() {
           hasFilter &&
           !evaluationsResponse.tabela_detalhada?.disciplinas?.length
         ) {
-          const fullResponse = await EvaluationResultsApiService.getEvaluationsList(1, 500, {
+          const fullResponse = await resultsFetchEvaluationsList(1, 500, {
             estado: selectedState,
             municipio: selectedMunicipality,
             avaliacao: selectedEvaluation,
+            ...(periodoApi ? { periodo: periodoApi } : {}),
           });
           const fullTabela = fullResponse?.tabela_detalhada as TabelaDetalhada | undefined;
           if (fullTabela?.disciplinas?.length) {
@@ -1070,11 +1442,16 @@ export default function Results() {
       }
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
-      toast({
-        title: "Erro ao carregar dados",
-        description: "Não foi possível carregar os dados. Tente novamente.",
-        variant: "destructive",
-      });
+      const ax = error as { response?: { status?: number; data?: { error?: string } } };
+      if (ax.response?.status === 400) {
+        toastFilterOptionsError(error);
+      } else {
+        toast({
+          title: "Erro ao carregar dados",
+          description: "Não foi possível carregar os dados. Tente novamente.",
+          variant: "destructive",
+        });
+      }
       setApiData(null);
       setEvaluationInfo(null);
     } finally {
@@ -1087,12 +1464,14 @@ export default function Results() {
     selectedSchool,
     selectedGrade,
     selectedClass,
+    periodoApi,
     schools,
     grades,
     classes,
     toast,
     currentPage,
-    perPage
+    perPage,
+    toastFilterOptionsError
   ]);
 
   // Usuários com restrição: obrigatório selecionar Escola. Admin e tecadmin usam o mesmo fluxo (Estado, Município, Avaliação).
@@ -1161,7 +1540,7 @@ export default function Results() {
         clearTimeout(loadAllDataTimeoutRef.current);
       }
     };
-  }, [loadAllData, selectedState, selectedMunicipality, selectedEvaluation, selectedSchool, isRestrictedUser]);
+  }, [loadAllData, selectedState, selectedMunicipality, selectedEvaluation, selectedSchool, selectedPeriod, isRestrictedUser]);
 
   const handleExportResults = async () => {
     try {
@@ -2166,7 +2545,7 @@ export default function Results() {
           </CardTitle>
         </CardHeader>
         <CardContent className="overflow-visible">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 w-full min-w-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4 w-full min-w-0">
             {/* Estado */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Estado</label>
@@ -2209,6 +2588,147 @@ export default function Results() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Período de aplicação (opcional): calendário — seleção efetiva só mês/ano (YYYY-MM) */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Período (mês/ano)</label>
+              <Popover open={periodPickerOpen} onOpenChange={setPeriodPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isLoadingFilters || selectedMunicipality === 'all'}
+                    className={cn(
+                      'w-full min-w-0 justify-start text-left font-normal',
+                      selectedPeriod === 'all' && 'text-muted-foreground'
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate">
+                      {periodCalendarSelected
+                        ? format(periodCalendarSelected, "MMMM 'de' yyyy", { locale: ptBR })
+                        : 'Selecionar mês e ano'}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-auto max-w-[min(100vw-1rem,20rem)] overflow-hidden border-border bg-popover p-0 text-popover-foreground shadow-lg"
+                  align="start"
+                >
+                  <div className="grid grid-cols-2 gap-2 border-b border-border px-3 pt-3 pb-2">
+                    <div className="min-w-0 space-y-1">
+                      <span className="text-xs font-medium text-muted-foreground">Mês</span>
+                      <Select
+                        value={String(periodDraft.m)}
+                        onValueChange={(v) => {
+                          const mi = parseInt(v, 10);
+                          const y = periodDraft.y;
+                          setPeriodDraft({ y, m: mi });
+                          const p = normalizeResultsPeriodYm(
+                            `${y}-${String(mi + 1).padStart(2, '0')}`
+                          );
+                          if (p !== 'all') setSelectedPeriod(p);
+                        }}
+                      >
+                        <SelectTrigger className="h-9 w-full min-w-0">
+                          <SelectValue placeholder="Mês" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {RESULTS_MONTH_NAMES_PT.map((name, i) => (
+                            <SelectItem key={i} value={String(i)}>
+                              {name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="min-w-0 space-y-1">
+                      <span className="text-xs font-medium text-muted-foreground">Ano</span>
+                      <Select
+                        value={String(periodDraft.y)}
+                        onValueChange={(v) => {
+                          const y = parseInt(v, 10);
+                          const mi = periodDraft.m;
+                          setPeriodDraft({ y, m: mi });
+                          const p = normalizeResultsPeriodYm(
+                            `${y}-${String(mi + 1).padStart(2, '0')}`
+                          );
+                          if (p !== 'all') setSelectedPeriod(p);
+                        }}
+                      >
+                        <SelectTrigger className="h-9 w-full min-w-0">
+                          <SelectValue placeholder="Ano" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {Array.from(
+                            {
+                              length:
+                                getResultsPeriodYearMax() - RESULTS_PERIOD_YEAR_MIN + 1,
+                            },
+                            (_, i) => RESULTS_PERIOD_YEAR_MIN + i
+                          ).map((y) => (
+                            <SelectItem key={y} value={String(y)}>
+                              {y}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <Calendar
+                    mode="single"
+                    locale={ptBR}
+                    month={new Date(periodDraft.y, periodDraft.m, 1)}
+                    onMonthChange={(d) => {
+                      const y = d.getFullYear();
+                      const m = d.getMonth();
+                      setPeriodDraft({ y, m });
+                      const p = normalizeResultsPeriodYm(
+                        `${y}-${String(m + 1).padStart(2, '0')}`
+                      );
+                      if (p !== 'all') setSelectedPeriod(p);
+                    }}
+                    selected={periodCalendarSelected}
+                    captionLayout="buttons"
+                    fromYear={RESULTS_PERIOD_YEAR_MIN}
+                    toYear={getResultsPeriodYearMax()}
+                    className="rounded-none border-0 bg-transparent p-0 text-popover-foreground shadow-none"
+                    onSelect={(date) => {
+                      if (date) {
+                        const y = date.getFullYear();
+                        const m = date.getMonth();
+                        setPeriodDraft({ y, m });
+                        const p = normalizeResultsPeriodYm(format(date, 'yyyy-MM'));
+                        if (p !== 'all') {
+                          setSelectedPeriod(p);
+                          setPeriodPickerOpen(false);
+                        }
+                      }
+                    }}
+                    initialFocus
+                  />
+                  <div className="space-y-2 border-t border-border bg-muted/15 px-3 py-2.5 dark:bg-muted/25">
+                    <p className="text-center text-xs leading-snug text-muted-foreground">
+                      Altere mês ou ano nos seletores, use as setas do calendário ou toque em um dia
+                      para aplicar e fechar.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-full text-muted-foreground hover:text-foreground"
+                      disabled={selectedPeriod === 'all'}
+                      onClick={() => {
+                        setSelectedPeriod('all');
+                        setPeriodPickerOpen(false);
+                      }}
+                    >
+                      Limpar período
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Avaliações */}
@@ -2311,16 +2831,16 @@ export default function Results() {
           {/* Informação sobre filtros */}
           <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
             <p className="text-sm text-blue-700 dark:text-blue-400">
-              💡 <strong>Hierarquia dos Filtros:</strong> Estado → Município → Avaliação → Escola → Série → Turma
+              💡 <strong>Hierarquia dos Filtros:</strong> Estado → Município → Período (opcional) → Avaliação → Escola → Série → Turma
             </p>
             <p className="text-sm text-blue-700 mt-1">
               {isRestrictedUser ? (
                 <>
-                  <strong>Estado</strong>, <strong>Município</strong>, <strong>Avaliação</strong> e <strong>Escola</strong> são obrigatórios para {isProfessor ? 'professores' : 'diretores e coordenadores'}. Série e Turma são opcionais e podem ser "Todos".
+                  <strong>Estado</strong>, <strong>Município</strong>, <strong>Avaliação</strong> e <strong>Escola</strong> são obrigatórios para {isProfessor ? 'professores' : 'diretores e coordenadores'}. <strong>Período</strong>, Série e Turma são opcionais.
                 </>
               ) : (
                 <>
-                  <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong> são obrigatórios. Escola, Série e Turma são opcionais e podem ser "Todos".
+                  <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong> são obrigatórios. <strong>Período</strong> restringe listas ao mês de aplicação (AAAA-MM). Escola, Série e Turma são opcionais e podem ser "Todos".
                 </>
               )}
             </p>

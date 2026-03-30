@@ -19,6 +19,7 @@ import {
   setNonStudentSidebarThemeInStorage,
 } from "@/constants/sidebarThemes";
 import type { SidebarThemeId } from "@/constants/sidebarThemes";
+import { MunicipalityBrandingSection } from "@/components/settings/MunicipalityBrandingSection";
 
 const FONT_OPTIONS = [
   { value: "Inter", label: "Inter" },
@@ -305,6 +306,8 @@ export default function Settings() {
             </div>
           </CardContent>
         </Card>
+
+        <MunicipalityBrandingSection />
 
         {/* Tema do menu lateral */}
         <Card>

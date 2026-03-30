@@ -14,6 +14,7 @@ import { DisciplineTables } from '@/components/evaluations/results/DisciplineTab
 import { ClassStatistics } from '@/components/evaluations/results/ClassStatistics';
 import { StudentRanking } from '@/components/evaluations/student/StudentRanking';
 import type { NovaRespostaAPI } from '@/services/evaluation/evaluationResultsApi';
+import { loadLogoAssetForLandscapePdf } from '@/utils/pdfCityBranding';
 
 interface OlimpiadaResultsModalProps {
   isOpen: boolean;
@@ -52,6 +53,7 @@ export function OlimpiadaResultsModal({
   const [error, setError] = useState<string | null>(null);
   const [apiData, setApiData] = useState<NovaRespostaAPI | null>(null);
   const [evaluationInfo, setEvaluationInfo] = useState<EvaluationInfoSummary | null>(null);
+  const [olimpiadaBrandingCityId, setOlimpiadaBrandingCityId] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen && olimpiadaId) {
@@ -499,7 +501,20 @@ export function OlimpiadaResultsModal({
         disciplinas: detailedReport.avaliacao?.disciplina ? [detailedReport.avaliacao.disciplina] : [],
       };
 
-      setEvaluationInfo(resumo);
+      const olimpiadaObj = olimpiadaResult.status === 'fulfilled' ? olimpiadaResult.value : null;
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const rawCityIds = [
+        (olimpiadaObj as { municipality_id?: string })?.municipality_id,
+        (olimpiadaObj as { city_id?: string })?.city_id,
+        (olimpiadaObj as { municipality?: { id?: string } })?.municipality?.id,
+        (detailedReport?.avaliacao as { municipio_id?: string } | undefined)?.municipio_id,
+        (detailedReport?.avaliacao as { city_id?: string } | undefined)?.city_id,
+        (detailedReport?.avaliacao as { municipality_id?: string } | undefined)?.municipality_id,
+      ];
+      const pickedCity = rawCityIds.find((x) => typeof x === 'string' && uuidRe.test(x.trim()));
+      setOlimpiadaBrandingCityId(pickedCity ? pickedCity.trim() : null);
+
+            setEvaluationInfo(resumo);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro ao carregar dados';
       console.error('Erro ao carregar resultados da olimpíada:', {
@@ -510,6 +525,7 @@ export function OlimpiadaResultsModal({
       setError(errorMessage);
       setApiData(null);
       setEvaluationInfo(null);
+      setOlimpiadaBrandingCityId(null);
       
       toast({
         title: 'Erro ao carregar resultados',
@@ -602,29 +618,14 @@ export function OlimpiadaResultsModal({
         return;
       }
 
-      // Carregar logo (padrão AcertoNiveis)
       let logoDataUrl = '';
       let logoWidth = 0;
       let logoHeight = 0;
-      try {
-        const logoPath = '/LOGO-1-menor.png';
-        const logoImg = new Image();
-        await new Promise<void>((resolve, reject) => {
-          logoImg.onload = () => resolve();
-          logoImg.onerror = reject;
-          logoImg.src = logoPath;
-        });
-        logoWidth = logoImg.width;
-        logoHeight = logoImg.height;
-        const response = await fetch(logoPath);
-        const blob = await response.blob();
-        logoDataUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(blob);
-        });
-      } catch {
-        // continuar sem logo
+      const logoLand = await loadLogoAssetForLandscapePdf(olimpiadaBrandingCityId);
+      if (logoLand) {
+        logoDataUrl = logoLand.dataUrl;
+        logoWidth = logoLand.iw;
+        logoHeight = logoLand.ih;
       }
 
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
@@ -902,7 +903,7 @@ export function OlimpiadaResultsModal({
         variant: 'destructive',
       });
     }
-  }, [apiData, evaluationInfo, rankedStudents, maxProficiency, toast]);
+  }, [apiData, evaluationInfo, rankedStudents, maxProficiency, toast, olimpiadaBrandingCityId]);
 
   // Estatísticas completas para os cards
   const stats = useMemo(() => {
