@@ -2,6 +2,7 @@ import type { Presentation19DeckData } from "@/types/presentation19-slides";
 import type { ExportChart, Presentation19ExportSpec, Presentation19SlideSpec } from "@/types/presentation19-export-spec";
 import { getProficiencyTableInfo } from "@/components/evaluations/results/utils/proficiency";
 import { getSubjectPaletteIndex } from "@/utils/competition/competitionSubjectColors";
+import { chunkPresentation19QuestionTableRows } from "@/utils/reports/presentation19/questionsTablePagination";
 
 const levelColors = {
   abaixo_do_basico: "#EF4444",
@@ -28,19 +29,23 @@ function clampToRange(value: number, min: number, max: number): number {
 }
 
 function buildPresenceChart(deckData: Presentation19DeckData): ExportChart {
+  const totals = deckData.presencaPorSerie.map((r) => Math.max(0, Number(r.totalPresentes ?? 0)));
+  const rawMax = Math.max(1, ...totals);
+  const axisMax = rawMax <= 10 ? 10 : Math.ceil(rawMax / 5) * 5;
+
   return {
     type: "bar",
     categoryKey: "serie",
-    valueKeys: [{ key: "presenca_media_pct", label: "Presença Média (%)", color: deckData.primaryColor }],
+    valueKeys: [{ key: "total_presentes", label: "Alunos presentes", color: deckData.primaryColor }],
     data: deckData.presencaPorSerie.map((r) => ({
       serie: r.serie,
-      presenca_media_pct: Number(clampToRange(r.presencaMediaPct, 0, 100).toFixed(1)),
+      total_presentes: Math.round(Math.max(0, Number(r.totalPresentes ?? 0))),
     })),
     yAxis: {
       min: 0,
-      max: 100,
-      ticks: [0, 25, 50, 75, 100],
-      scaleLabel: "%",
+      max: axisMax,
+      ticks: Array.from({ length: 5 }, (_, i) => Math.round((axisMax * i) / 4)),
+      scaleLabel: "alunos",
     },
   };
 }
@@ -133,6 +138,26 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
     })
     .slice(0, 4);
 
+  const questaoRows = deckData.questoesTabela.map((q) => [
+    q.questao,
+    q.habilidade,
+    `${q.percentualAcertos.toFixed(1).replace(".", ",")}%`,
+  ]);
+  const questionChunks = chunkPresentation19QuestionTableRows(questaoRows);
+  const firstQuestionsSlideIndex = 18;
+  const questionSlides: Presentation19SlideSpec[] = questionChunks.map((rows, pageIdx) => ({
+    index: firstQuestionsSlideIndex + pageIdx,
+    kind: "questions-table" as const,
+    table: {
+      columns: ["Questão", "Habilidade", "% Acertos"],
+      rows,
+    },
+    ...(questionChunks.length > 1
+      ? { questionsPage: { current: pageIdx + 1, total: questionChunks.length } }
+      : {}),
+  }));
+  const thankYouIndex = firstQuestionsSlideIndex + questionSlides.length;
+
   const slides: Presentation19SlideSpec[] = [
     { index: 1, kind: "cover-main" },
     { index: 2, kind: "cover-school" },
@@ -188,19 +213,8 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
     { index: 15, kind: "section-questions" },
     { index: 16, kind: "dynamic-series-cover" },
     { index: 17, kind: "dynamic-class-cover" },
-    {
-      index: 18,
-      kind: "questions-table",
-      table: {
-        columns: ["Questão", "Habilidade", "% Acertos"],
-        rows: deckData.questoesTabela.map((q) => [
-          q.questao,
-          q.habilidade,
-          `${q.percentualAcertos.toFixed(1).replace(".", ",")}%`,
-        ]),
-      },
-    },
-    { index: 19, kind: "thank-you" },
+    ...questionSlides,
+    { index: thankYouIndex, kind: "thank-you" },
   ];
 
   return { deckData, slides };

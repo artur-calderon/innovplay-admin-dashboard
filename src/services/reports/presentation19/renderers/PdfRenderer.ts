@@ -10,6 +10,13 @@ type RenderPdfArgs = {
 const page = { width: 1123, height: 793 };
 const content = { x: 40, y: 60, w: 1043, h: 680 };
 
+function formatBarValueLabel(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  const r = Math.round(value);
+  if (Math.abs(value - r) < 1e-6) return String(r);
+  return Number(value).toFixed(1);
+}
+
 function drawFrame(doc: jsPDF, primaryColor: string): void {
   doc.setFillColor(241, 245, 249);
   doc.rect(0, 0, page.width, page.height, "F");
@@ -101,7 +108,7 @@ function drawHorizontalBarChart(doc: jsPDF, chart: ExportChart, area: { x: numbe
     doc.text(cat, x + 6, rowCenterY + 3, { align: "left", maxWidth: leftLabelW - 10 });
     doc.setTextColor(15, 23, 42);
     doc.setFontSize(10);
-    doc.text(String(value), baselineX + barW + 6, rowCenterY + 4, { align: "left" });
+    doc.text(formatBarValueLabel(value), baselineX + barW + 3, rowCenterY + 4, { align: "left" });
   });
 }
 
@@ -148,7 +155,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
     doc.setTextColor(100, 116, 139);
     doc.setFontSize(8);
     const text = Number.isInteger(tick) ? String(Math.round(tick)) : tick.toFixed(1);
-    doc.text(text, axisLeftX - 4, gy - 2, { align: "right" });
+    doc.text(text, axisLeftX - 2, gy - 2, { align: "right" });
   }
   const colWidth = barsW / Math.max(1, categories.length);
   const hasMultipleSeries = chart.valueKeys.length > 1;
@@ -168,7 +175,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
         doc.rect(barX, barY, seriesW, barH, "F");
         doc.setTextColor(15, 23, 42);
         doc.setFontSize(8);
-        doc.text(String(Math.round(value)), barX + seriesW / 2, barY - 3, { align: "center" });
+        doc.text(formatBarValueLabel(value), barX + seriesW / 2, barY - 2, { align: "center" });
       });
     } else if (hasMultipleSeries && isStacked) {
       const singleW = Math.max(8, Math.min(22, innerW * 0.45));
@@ -187,7 +194,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
       });
       doc.setTextColor(15, 23, 42);
       doc.setFontSize(9);
-      doc.text(String(Math.round(total)), singleX + singleW / 2, currentTop - 3, { align: "center" });
+      doc.text(formatBarValueLabel(total), singleX + singleW / 2, currentTop - 2, { align: "center" });
     } else {
       const serie = chart.valueKeys[0];
       const value = Number(row[serie.key] ?? 0);
@@ -201,7 +208,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
       doc.rect(singleX, barY, singleW, barH, "F");
       doc.setTextColor(15, 23, 42);
       doc.setFontSize(10);
-      doc.text(`${Number(value).toFixed(1)}`, singleX + singleW / 2, barY - 4, { align: "center" });
+      doc.text(formatBarValueLabel(value), singleX + singleW / 2, barY - 2, { align: "center" });
     }
     doc.setTextColor(51, 65, 85);
     doc.setFontSize(10);
@@ -292,7 +299,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
     case "presence-table":
     case "levels-table":
     case "projection-table":
-    case "questions-table":
+    case "questions-table": {
       drawTitle(
         doc,
         slide.kind === "presence-table"
@@ -305,8 +312,21 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         100,
         deckData.primaryColor
       );
+      let tableStartY = 140;
+      if (slide.kind === "questions-table" && slide.questionsPage != null && slide.questionsPage.total > 1) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(11);
+        doc.setTextColor(82, 82, 91);
+        doc.text(
+          `Página ${slide.questionsPage.current}/${slide.questionsPage.total}`,
+          content.x + content.w,
+          118,
+          { align: "right" }
+        );
+        tableStartY = 152;
+      }
       autoTable(doc, {
-        startY: 140,
+        startY: tableStartY,
         margin: { left: content.x, right: content.x },
         head: [slide.table.columns],
         body: slide.table.rows,
@@ -315,6 +335,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         alternateRowStyles: { fillColor: [241, 245, 249] },
       });
       break;
+    }
     case "presence-chart":
       drawTitle(doc, "GRÁFICO DE PRESENÇA", 100, deckData.primaryColor);
       drawBarChart(doc, slide.chart, { x: content.x, y: 150, w: content.w, h: 470 });
