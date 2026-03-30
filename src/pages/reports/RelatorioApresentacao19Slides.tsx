@@ -17,14 +17,13 @@ import { mapAnswerSheetResultadosAgregadosToNovaResposta, type AnswerSheetResult
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext, cityIdQueryParamForAdmin } from "@/utils/userHierarchy";
 import { api } from "@/lib/api";
 import buildDeckDataForPresentation19Slides from "@/utils/reports/presentation19/buildDeckData";
+import { buildSlideSpec } from "@/utils/reports/presentation19/buildSlideSpec";
 import { normalizeRelatorioCompletoForAnaliseUI } from "@/utils/report/relatorioCompletoNormalize";
 import type { Presentation19DeckData, Presentation19Mode } from "@/types/presentation19-slides";
 import { Presentation19NativePreviewDeck } from "@/components/reports/presentation19/Presentation19NativePreviewDeck";
 import { exportPresentation19Pdf, exportPresentation19Pptx } from "@/services/reports/presentation19/Presentation19SlidesExportService";
 import type { RelatorioCompleto } from "@/types/evaluation-results";
 import { resolveReportLogoForPdf } from "@/utils/pdfCityBranding";
-
-const slidesCount = 19;
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -61,6 +60,8 @@ export default function RelatorioApresentacao19Slides() {
   const [logoDataUrl, setLogoDataUrl] = useState<string>("/LOGO-1-menor.png");
 
   const [deckData, setDeckData] = useState<Presentation19DeckData | null>(null);
+
+  const slidesCount = useMemo(() => (deckData ? buildSlideSpec(deckData).slides.length : 19), [deckData]);
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
@@ -547,7 +548,8 @@ export default function RelatorioApresentacao19Slides() {
                 <div>
                   <div className="font-bold">Pré-visualização</div>
                   <div className="text-xs text-muted-foreground">
-                    A exportação usa renderização nativa dos 19 slides (sem print de tela).
+                    A exportação usa renderização nativa (sem print de tela). Slides extras aparecem quando a tabela de
+                    questões tem mais de 15 linhas (uma página a cada 15 questões).
                   </div>
                 </div>
                 <div className="text-xs text-muted-foreground">{slidesCount} slides</div>

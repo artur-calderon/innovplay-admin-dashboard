@@ -14,6 +14,7 @@ import {
 import type { Presentation19DeckData, NiveisBySeriesRow } from "@/types/presentation19-slides";
 import { getProficiencyTableInfo } from "@/components/evaluations/results/utils/proficiency";
 import { getSubjectPaletteIndex } from "@/utils/competition/competitionSubjectColors";
+import { chunkPresentation19QuestionTableRows } from "@/utils/reports/presentation19/questionsTablePagination";
 
 type SlideFrameProps = {
   children: React.ReactNode;
@@ -163,7 +164,6 @@ function SimpleTable({
 }
 
 export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation19DeckData }) {
-  const QUESTIONS_PER_PAGE = 17;
   const fixedLevelColors = useMemo(
     () => ({
       abaixo: "#EF4444", // Vermelho
@@ -211,12 +211,22 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
     return Math.max(maxMath, maxOutras);
   }, [deckData.serie]);
 
+  const presenceAxisMax = useMemo(() => {
+    const raw = Math.max(1, ...presenceRows.map((r) => Math.max(0, Number(r.totalPresentes ?? 0))));
+    return raw <= 10 ? 10 : Math.ceil(raw / 5) * 5;
+  }, [presenceRows]);
+
   const presenceChartData = useMemo(() => {
     return presenceRows.map((r) => ({
       serie: r.serie,
-      presenca_media_pct: clampToRange(r.presencaMediaPct, 0, 100),
+      total_presentes: Math.max(0, Math.round(Number(r.totalPresentes ?? 0))),
     }));
   }, [presenceRows]);
+
+  const presenceYTicks = useMemo(
+    () => Array.from({ length: 5 }, (_, i) => Math.round((presenceAxisMax * i) / 4)),
+    [presenceAxisMax]
+  );
 
   const profGeneralData = useMemo(() => {
     const maxMath = getProficiencyTableInfo(deckData.serie, "Matemática").maxProficiency;
@@ -267,15 +277,10 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
     { label: "ABAIXO DO BÁSICO", description: "", color: fixedLevelColors.abaixo },
   ];
 
-  const questoesChunks = useMemo(() => {
-    const rows = deckData.questoesTabela ?? [];
-    if (rows.length === 0) return [[]];
-    const pages: Array<typeof rows> = [];
-    for (let i = 0; i < rows.length; i += QUESTIONS_PER_PAGE) {
-      pages.push(rows.slice(i, i + QUESTIONS_PER_PAGE));
-    }
-    return pages;
-  }, [deckData.questoesTabela]);
+  const questoesChunks = useMemo(
+    () => chunkPresentation19QuestionTableRows(deckData.questoesTabela ?? []),
+    [deckData.questoesTabela]
+  );
 
   const firstQuestionsSlideIndex = 18;
   const thanksSlideIndex = firstQuestionsSlideIndex + questoesChunks.length;
@@ -430,25 +435,26 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                 <XAxis dataKey="serie" interval={0} {...p19XAxisProps(12)} />
                 <YAxis
                   width={52}
-                  domain={[0, 100]}
-                  ticks={[0, 25, 50, 75, 100]}
+                  domain={[0, presenceAxisMax]}
+                  ticks={presenceYTicks}
                   padding={{ top: 0, bottom: 0 }}
                   tick={{ fontSize: 12, fill: "#334155" }}
-                  tickFormatter={(v) => `${Math.round(v)}%`}
+                  tickFormatter={(v) => String(Math.round(v))}
                 />
                 <Tooltip
                   wrapperStyle={{ borderRadius: 10, overflow: "hidden" }}
                   contentStyle={{ borderColor: "#e4e4e7" }}
                 />
                 <Bar
-                  dataKey="presenca_media_pct"
+                  dataKey="total_presentes"
                   fill={deckData.primaryColor}
                   radius={[8, 8, 0, 0]}
                 >
                   <LabelList
-                    dataKey="presenca_media_pct"
+                    dataKey="total_presentes"
                     position="top"
-                    formatter={(v: number) => `${Math.round(v)}%`}
+                    offset={-4}
+                    formatter={(v: number) => String(Math.round(Number(v)))}
                     style={{ fontSize: 11, fill: "#0f172a", fontWeight: 700 }}
                   />
                 </Bar>
@@ -799,7 +805,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
         </SlideFrame>
       </div>
 
-      {/* Slide 18+ (paginado com 17 questões por página) */}
+      {/* Slide 18+ (15 questões por página; da 16ª em diante nova página) */}
       {questoesChunks.map((questoesPage, pageIdx) => (
         <div key={`questions-page-${pageIdx}`} data-slide-index={firstQuestionsSlideIndex + pageIdx}>
           <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>

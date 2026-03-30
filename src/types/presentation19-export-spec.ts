@@ -52,8 +52,14 @@ export type Presentation19SlideSpec =
   | { index: 15; kind: "section-questions" }
   | { index: 16; kind: "dynamic-series-cover" }
   | { index: 17; kind: "dynamic-class-cover" }
-  | { index: 18; kind: "questions-table"; table: ExportTable }
-  | { index: 19; kind: "thank-you" };
+  | {
+      index: number;
+      kind: "questions-table";
+      table: ExportTable;
+      /** Só preenchido quando há mais de um slide de tabela de questões. */
+      questionsPage?: { current: number; total: number };
+    }
+  | { index: number; kind: "thank-you" };
 
 export type Presentation19ExportSpec = {
   deckData: Presentation19DeckData;

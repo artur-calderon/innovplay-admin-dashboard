@@ -103,7 +103,9 @@ function HorizontalBarChartPreview({ chart, height = 470 }: { chart: ExportChart
                     borderRadius: "0 8px 8px 0",
                   }}
                 />
-                <span style={{ marginLeft: 10, fontSize: 11, fontWeight: 700, color: "#0F172A", whiteSpace: "nowrap" }}>{value}</span>
+                <span style={{ marginLeft: 2, fontSize: 11, fontWeight: 700, color: "#0F172A", whiteSpace: "nowrap" }}>
+                  {Math.abs(value - Math.round(value)) < 1e-6 ? Math.round(value) : value.toFixed(1)}
+                </span>
               </div>
             </div>
           );
@@ -146,7 +148,7 @@ function BarChartPreview({ chart, height = 470 }: { chart: ExportChart; height?:
     .sort((a, b) => b - a);
 
   const LABEL_ROW_H = 30;
-  const AXIS_LAB_W = 30;
+  const AXIS_LAB_W = 24;
 
   const ratioOf = (val: number) => (Math.max(0, val - axisMin) / (maxValue - axisMin));
 
@@ -193,8 +195,8 @@ function BarChartPreview({ chart, height = 470 }: { chart: ExportChart; height?:
               style={{
                 position: "absolute",
                 left: -AXIS_LAB_W,
-                top: -9,
-                width: AXIS_LAB_W - 4,
+                top: -8,
+                width: AXIS_LAB_W - 2,
                 textAlign: "right",
                 fontSize: 9,
                 color: "#64748B",
@@ -212,7 +214,8 @@ function BarChartPreview({ chart, height = 470 }: { chart: ExportChart; height?:
             inset: 0,
             display: "flex",
             gap: 12,
-            alignItems: "flex-end",
+            /* stretch: colunas precisam da altura total do plot; só `absolute` não gera altura no fluxo */
+            alignItems: "stretch",
             paddingLeft: 6,
             zIndex: 2,
           }}
@@ -223,11 +226,11 @@ function BarChartPreview({ chart, height = 470 }: { chart: ExportChart; height?:
               style={{
                 flex: 1,
                 minWidth: 0,
+                minHeight: 0,
                 height: "100%",
                 display: "flex",
                 flexDirection: "column",
-                justifyContent: "flex-end",
-                alignItems: "center",
+                alignItems: "stretch",
               }}
             >
               {hasMultipleSeries ? (
@@ -235,62 +238,93 @@ function BarChartPreview({ chart, height = 470 }: { chart: ExportChart; height?:
                   (() => {
                     const stackTotal = chart.valueKeys.reduce((s, serie) => s + Math.max(0, Number(row[serie.key] ?? 0)), 0);
                     const stackFrac = Math.min(1, ratioOf(stackTotal));
+                    const growStack = stackTotal > 0 ? Math.max(1e-6, stackFrac) : 0;
+                    const growTop = stackTotal > 0 ? Math.max(1e-6, 1 - stackFrac) : 1;
                     return (
-                      <>
-                        <div
-                          style={{
-                            marginBottom: 4,
-                            fontSize: 9,
-                            fontWeight: 700,
-                            color: "#0F172A",
-                            lineHeight: 1,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {Math.round(stackTotal)}
-                        </div>
-                        <div
-                          style={{
-                            flex: 1,
-                            minHeight: 0,
-                            width: "100%",
-                            display: "flex",
-                            justifyContent: "center",
-                            alignItems: "flex-end",
-                          }}
-                        >
+                      <div
+                        style={{
+                          flex: 1,
+                          minHeight: 0,
+                          width: "100%",
+                          position: "relative",
+                          display: "flex",
+                          flexDirection: "column",
+                        }}
+                      >
+                        <div style={{ flex: growTop, flexBasis: 0, minHeight: 0 }} aria-hidden />
+                        {stackTotal > 0 && (
                           <div
                             style={{
-                              width: "min(28px, 72%)",
-                              height: `${stackFrac * 100}%`,
-                              minHeight: stackTotal > 0 ? 2 : 0,
+                              flex: growStack,
+                              flexBasis: 0,
+                              minHeight: 0,
                               display: "flex",
-                              flexDirection: "column-reverse",
-                              overflow: "hidden",
-                              borderRadius: "8px 8px 0 0",
+                              justifyContent: "center",
+                              alignItems: "flex-end",
                             }}
                           >
-                            {chart.valueKeys.map((serie) => {
-                              const value = Number(row[serie.key] ?? 0);
-                              const pct = stackTotal > 0 ? (value / stackTotal) * 100 : 0;
-                              return (
-                                <div
-                                  key={serie.key}
-                                  style={{ height: `${pct}%`, minHeight: value > 0 ? 1 : 0, background: serie.color }}
-                                  title={`${serie.label}: ${value}`}
-                                />
-                              );
-                            })}
+                            <div
+                              style={{
+                                width: "min(28px, 72%)",
+                                height: "100%",
+                                display: "flex",
+                                flexDirection: "column-reverse",
+                                overflow: "hidden",
+                                borderRadius: "8px 8px 0 0",
+                              }}
+                            >
+                              {chart.valueKeys.map((serie) => {
+                                const value = Number(row[serie.key] ?? 0);
+                                const pct = stackTotal > 0 ? (value / stackTotal) * 100 : 0;
+                                return (
+                                  <div
+                                    key={serie.key}
+                                    style={{ height: `${pct}%`, minHeight: value > 0 ? 1 : 0, background: serie.color }}
+                                    title={`${serie.label}: ${value}`}
+                                  />
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      </>
+                        )}
+                        {stackTotal > 0 && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: "50%",
+                              transform: "translateX(-50%)",
+                              bottom: `calc(${stackFrac * 100}% + 3px)`,
+                              fontSize: 9,
+                              fontWeight: 700,
+                              color: "#0F172A",
+                              lineHeight: 1,
+                              whiteSpace: "nowrap",
+                              pointerEvents: "none",
+                            }}
+                          >
+                            {Math.round(stackTotal)}
+                          </div>
+                        )}
+                      </div>
                     );
                   })()
                 ) : (
-                  <div style={{ height: "100%", width: "100%", display: "flex", alignItems: "flex-end", gap: 6, paddingInline: 4 }}>
+                  <div
+                    style={{
+                      height: "100%",
+                      width: "100%",
+                      minHeight: 0,
+                      display: "flex",
+                      alignItems: "stretch",
+                      gap: 6,
+                      paddingInline: 4,
+                    }}
+                  >
                     {chart.valueKeys.map((serie) => {
                       const value = Number(row[serie.key] ?? 0);
                       const q = ratioOf(value);
+                      const growBar = value > 0 ? Math.max(1e-6, q) : 0;
+                      const growTop = value > 0 ? Math.max(1e-6, 1 - q) : 1;
                       return (
                         <div
                           key={serie.key}
@@ -298,38 +332,54 @@ function BarChartPreview({ chart, height = 470 }: { chart: ExportChart; height?:
                             flex: 1,
                             minWidth: 0,
                             maxWidth: 28,
-                            height: "100%",
+                            minHeight: 0,
+                            position: "relative",
                             display: "flex",
                             flexDirection: "column",
-                            justifyContent: "flex-end",
-                            alignItems: "center",
                           }}
                           title={`${serie.label}: ${value}`}
                         >
-                          <div style={{ fontSize: 8, fontWeight: 700, color: "#0F172A", marginBottom: 3, whiteSpace: "nowrap" }}>
-                            {Math.round(value)}
-                          </div>
-                          <div
-                            style={{
-                              flex: 1,
-                              minHeight: 0,
-                              width: "100%",
-                              display: "flex",
-                              flexDirection: "column",
-                              justifyContent: "flex-end",
-                              alignItems: "center",
-                            }}
-                          >
+                          <div style={{ flex: growTop, flexBasis: 0, minHeight: 0 }} aria-hidden />
+                          {value > 0 && (
                             <div
                               style={{
-                                width: "100%",
-                                height: `${q * 100}%`,
-                                minHeight: value > 0 ? 2 : 0,
-                                background: serie.color,
-                                borderRadius: "6px 6px 0 0",
+                                flex: growBar,
+                                flexBasis: 0,
+                                minHeight: 0,
+                                display: "flex",
+                                justifyContent: "center",
+                                alignItems: "flex-end",
                               }}
-                            />
-                          </div>
+                            >
+                              <div
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  minHeight: 2,
+                                  background: serie.color,
+                                  borderRadius: "6px 6px 0 0",
+                                }}
+                              />
+                            </div>
+                          )}
+                          {value > 0 && (
+                            <div
+                              style={{
+                                position: "absolute",
+                                left: "50%",
+                                transform: "translateX(-50%)",
+                                bottom: `calc(${q * 100}% + 3px)`,
+                                fontSize: 8,
+                                fontWeight: 700,
+                                color: "#0F172A",
+                                whiteSpace: "nowrap",
+                                lineHeight: 1,
+                                pointerEvents: "none",
+                              }}
+                            >
+                              {Math.round(value)}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -341,41 +391,64 @@ function BarChartPreview({ chart, height = 470 }: { chart: ExportChart; height?:
                   const value = Number(row[serie.key] ?? 0);
                   const q = ratioOf(value);
                   const rowColor = String(row.color ?? serie.color);
+                  const labelText =
+                    Math.abs(value - Math.round(value)) < 1e-6 ? String(Math.round(value)) : value.toFixed(1);
+                  const growBar = value > 0 ? Math.max(1e-6, q) : 0;
+                  const growTop = value > 0 ? Math.max(1e-6, 1 - q) : 1;
                   return (
-                    <>
-                      <div
-                        style={{
-                          marginBottom: 4,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: "#0F172A",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {value.toFixed(1)}
-                      </div>
-                      <div
-                        style={{
-                          flex: 1,
-                          minHeight: 0,
-                          width: "100%",
-                          display: "flex",
-                          flexDirection: "column",
-                          justifyContent: "flex-end",
-                          alignItems: "center",
-                        }}
-                      >
+                    <div
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        minHeight: 0,
+                        height: "100%",
+                        position: "relative",
+                        display: "flex",
+                        flexDirection: "column",
+                      }}
+                    >
+                      <div style={{ flex: growTop, flexBasis: 0, minHeight: 0 }} aria-hidden />
+                      {value > 0 && (
                         <div
                           style={{
-                            width: "min(26px, 75%)",
-                            height: `${q * 100}%`,
-                            minHeight: value > 0 ? 2 : 0,
-                            background: rowColor,
-                            borderRadius: "8px 8px 0 0",
+                            flex: growBar,
+                            flexBasis: 0,
+                            minHeight: 0,
+                            display: "flex",
+                            justifyContent: "center",
+                            alignItems: "flex-end",
                           }}
-                        />
-                      </div>
-                    </>
+                        >
+                          <div
+                            style={{
+                              width: "min(26px, 75%)",
+                              height: "100%",
+                              minHeight: 2,
+                              background: rowColor,
+                              borderRadius: "8px 8px 0 0",
+                            }}
+                          />
+                        </div>
+                      )}
+                      {value > 0 && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            left: "50%",
+                            transform: "translateX(-50%)",
+                            bottom: `calc(${q * 100}% + 4px)`,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#0F172A",
+                            whiteSpace: "nowrap",
+                            lineHeight: 1,
+                            pointerEvents: "none",
+                          }}
+                        >
+                          {labelText}
+                        </div>
+                      )}
+                    </div>
                   );
                 })()
               )}
@@ -487,18 +560,29 @@ export function Presentation19NativePreviewDeck({ deckData }: Props) {
               )}
               {(slide.kind === "presence-table" || slide.kind === "levels-table" || slide.kind === "projection-table" || slide.kind === "questions-table") && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                  <Title
-                    text={
-                      slide.kind === "presence-table"
-                        ? "TABELA DE PRESENÇA"
-                        : slide.kind === "levels-table"
-                          ? "TABELA DE NÍVEIS"
-                          : slide.kind === "projection-table"
-                            ? "TABELA DE PROJEÇÃO"
-                            : "TABELA DE QUESTÕES"
-                    }
-                    primaryColor={deckData.primaryColor}
-                  />
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+                    <Title
+                      text={
+                        slide.kind === "presence-table"
+                          ? "TABELA DE PRESENÇA"
+                          : slide.kind === "levels-table"
+                            ? "TABELA DE NÍVEIS"
+                            : slide.kind === "projection-table"
+                              ? "TABELA DE PROJEÇÃO"
+                              : "TABELA DE QUESTÕES"
+                      }
+                      primaryColor={deckData.primaryColor}
+                    />
+                    </div>
+                    {slide.kind === "questions-table" &&
+                      slide.questionsPage != null &&
+                      slide.questionsPage.total > 1 && (
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#52525B", flexShrink: 0 }}>
+                          Página {slide.questionsPage.current}/{slide.questionsPage.total}
+                        </div>
+                      )}
+                  </div>
                   <table style={{ width: "100%", borderCollapse: "collapse", background: "#FCFCFD", border: "1px solid #CBD5E1", borderRadius: 12, overflow: "hidden" }}>
                     <thead>
                       <tr style={{ background: "#E2E8F0" }}>
