@@ -20,6 +20,11 @@ import type {
   Cabecalho,
   Estudante,
 } from '@/types/lista-frequencia';
+import {
+  loadCityBrandingPdfAssets,
+  paintLetterheadBackground,
+  drawMunicipalLogoTopCenter,
+} from '@/utils/pdfCityBranding';
 
 const STATUS_ORDER = ['P', 'A', 'T', 'NE', 'SE', 'SS', 'I'];
 
@@ -469,6 +474,10 @@ export default function ListaFrequencia() {
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
 
+      const cityBranding = await loadCityBrandingPdfAssets(
+        selectedMunicipio !== 'all' ? selectedMunicipio : null
+      );
+
       const textBlack: [number, number, number] = [0, 0, 0];
       const textGray: [number, number, number] = [80, 80, 80];
       const pink: [number, number, number] = [236, 72, 153];
@@ -479,8 +488,20 @@ export default function ListaFrequencia() {
         if (sectionIndex > 0) doc.addPage();
         let y = margin;
 
-        doc.setFillColor(255, 255, 255);
-        doc.rect(0, 0, pageWidth, pageHeight, 'F');
+        if (sectionIndex === 0) {
+          if (cityBranding.letterhead) {
+            paintLetterheadBackground(doc, cityBranding.letterhead, pageWidth, pageHeight);
+          } else {
+            doc.setFillColor(255, 255, 255);
+            doc.rect(0, 0, pageWidth, pageHeight, 'F');
+          }
+          if (cityBranding.logo) {
+            y = drawMunicipalLogoTopCenter(doc, pageWidth, margin, cityBranding.logo);
+          }
+        } else {
+          doc.setFillColor(255, 255, 255);
+          doc.rect(0, 0, pageWidth, pageHeight, 'F');
+        }
         doc.setTextColor(...textBlack);
 
         const tituloProva = (nomeAvaliacaoImpressao?.trim() || item.cabecalho.nome_prova_ano) || 'Nome da prova';

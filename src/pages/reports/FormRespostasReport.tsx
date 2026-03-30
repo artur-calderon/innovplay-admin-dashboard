@@ -27,115 +27,11 @@ import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { FormResultsFiltersApiService } from '@/services/formResultsFiltersApi';
 import { FormMultiSelect } from '@/components/ui/form-multi-select';
-import { getCityBranding } from '@/services/cityBrandingApi';
-
-type PdfImageAsset = { dataUrl: string; iw: number; ih: number };
-
-async function urlToPngAsset(url: string): Promise<PdfImageAsset | null> {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    const bmp = await createImageBitmap(blob);
-    const canvas = document.createElement('canvas');
-    canvas.width = bmp.width;
-    canvas.height = bmp.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      bmp.close();
-      return null;
-    }
-    ctx.drawImage(bmp, 0, 0);
-    bmp.close();
-    return { dataUrl: canvas.toDataURL('image/png'), iw: canvas.width, ih: canvas.height };
-  } catch {
-    return null;
-  }
-}
-
-/** Logo e timbrado do município (GET /city/:id/branding). */
-async function loadFormReportBrandingAssets(cityId: string | null | undefined): Promise<{
-  letterhead: PdfImageAsset | null;
-  logo: PdfImageAsset | null;
-}> {
-  if (!cityId || cityId === 'all') return { letterhead: null, logo: null };
-  try {
-    const branding = await getCityBranding(cityId);
-    const lhUrl = branding.presigned?.letterhead_image_url ?? null;
-    const logoUrl = branding.presigned?.logo_url ?? null;
-    const [letterhead, logo] = await Promise.all([
-      lhUrl ? urlToPngAsset(lhUrl) : Promise.resolve(null),
-      logoUrl ? urlToPngAsset(logoUrl) : Promise.resolve(null),
-    ]);
-    return { letterhead, logo };
-  } catch {
-    return { letterhead: null, logo: null };
-  }
-}
-
-/** Timbrado como fundo da página (preenche A4, estilo cover). */
-function paintLetterheadBackground(
-  doc: { addImage: (src: string, fmt: string, x: number, y: number, w: number, h: number) => void },
-  letterhead: PdfImageAsset,
-  pageWidthMm: number,
-  pageHeightMm: number
-) {
-  const imgRatio = letterhead.iw / letterhead.ih;
-  const pageRatio = pageWidthMm / pageHeightMm;
-  let drawW: number;
-  let drawH: number;
-  let drawX: number;
-  let drawY: number;
-  if (imgRatio > pageRatio) {
-    drawH = pageHeightMm;
-    drawW = pageHeightMm * imgRatio;
-    drawX = (pageWidthMm - drawW) / 2;
-    drawY = 0;
-  } else {
-    drawW = pageWidthMm;
-    drawH = pageWidthMm / imgRatio;
-    drawX = 0;
-    drawY = (pageHeightMm - drawH) / 2;
-  }
-  doc.addImage(letterhead.dataUrl, 'PNG', drawX, drawY, drawW, drawH);
-}
-
-/** Logo centralizado no topo; prefere logo municipal, senão /LOGO-1-menor.png. Retorna o novo Y abaixo do logo. */
-async function drawReportHeaderLogo(
-  doc: { addImage: (src: string, fmt: string, x: number, y: number, w: number, h: number) => void },
-  pageWidthMm: number,
-  y: number,
-  municipalLogo: PdfImageAsset | null
-): Promise<number> {
-  const maxW = 50;
-  const maxH = 26;
-  if (municipalLogo) {
-    let lw = maxW;
-    let lh = (municipalLogo.ih / municipalLogo.iw) * lw;
-    if (lh > maxH) {
-      lh = maxH;
-      lw = (municipalLogo.iw / municipalLogo.ih) * lh;
-    }
-    doc.addImage(municipalLogo.dataUrl, 'PNG', (pageWidthMm - lw) / 2, y, lw, lh);
-    return y + lh + 10;
-  }
-  try {
-    const logoResponse = await fetch('/LOGO-1-menor.png');
-    const logoBlob = await logoResponse.blob();
-    const logoDataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(logoBlob);
-    });
-    const logoWidth = 50;
-    const logoHeight = 22;
-    doc.addImage(logoDataUrl, 'PNG', (pageWidthMm - logoWidth) / 2, y, logoWidth, logoHeight);
-    return y + logoHeight + 10;
-  } catch {
-    return y;
-  }
-}
+import {
+  loadCityBrandingPdfAssets,
+  paintLetterheadBackground,
+  drawReportHeaderLogoWithFallback,
+} from '@/utils/pdfCityBranding';
 
 interface State {
   id: string;
@@ -687,18 +583,14 @@ const FormRespostasReport = () => {
 
         const branding =
           selectedMunicipality !== 'all'
-            ? await loadFormReportBrandingAssets(selectedMunicipality)
+            ? await loadCityBrandingPdfAssets(selectedMunicipality)
             : { letterhead: null, logo: null };
 
-        const paintPageBackground = () => {
-          if (branding.letterhead) {
-            paintLetterheadBackground(doc, branding.letterhead, pageWidth, pageHeight);
-          }
-        };
-
-        paintPageBackground();
+        if (branding.letterhead) {
+          paintLetterheadBackground(doc, branding.letterhead, pageWidth, pageHeight);
+        }
         let y = margin;
-        y = await drawReportHeaderLogo(doc, pageWidth, y, branding.logo);
+        y = await drawReportHeaderLogoWithFallback(doc, pageWidth, y, branding.logo);
 
         // Cores do sistema (primary: 267 84% 65% ≈ #7c3aed)
         const primaryRgb: [number, number, number] = [124, 58, 237];
@@ -749,7 +641,6 @@ const FormRespostasReport = () => {
         const ensureSpace = (heightNeeded: number) => {
           if (y + heightNeeded > pageHeight - margin) {
             doc.addPage();
-            paintPageBackground();
             y = margin;
           }
         };
@@ -895,18 +786,14 @@ const FormRespostasReport = () => {
 
       const branding =
         selectedMunicipality !== 'all'
-          ? await loadFormReportBrandingAssets(selectedMunicipality)
+          ? await loadCityBrandingPdfAssets(selectedMunicipality)
           : { letterhead: null, logo: null };
 
-      const paintPageBackground = () => {
-        if (branding.letterhead) {
-          paintLetterheadBackground(doc, branding.letterhead, pageWidth, pageHeight);
-        }
-      };
-
-      paintPageBackground();
+      if (branding.letterhead) {
+        paintLetterheadBackground(doc, branding.letterhead, pageWidth, pageHeight);
+      }
       let y = margin;
-      y = await drawReportHeaderLogo(doc, pageWidth, y, branding.logo);
+      y = await drawReportHeaderLogoWithFallback(doc, pageWidth, y, branding.logo);
 
       const primaryRgb: [number, number, number] = [124, 58, 237];
       const textDark: [number, number, number] = [31, 41, 55];
@@ -974,7 +861,6 @@ const FormRespostasReport = () => {
       const ensureSpace = (heightNeeded: number) => {
         if (y + heightNeeded > pageHeight - margin) {
           doc.addPage();
-          paintPageBackground();
           y = margin;
         }
       };

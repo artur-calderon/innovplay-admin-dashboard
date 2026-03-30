@@ -48,6 +48,7 @@ const AnswerSheetCorrection = React.lazy(() => import("@/pages/answer-sheet/Answ
 // reports
 const RelatorioEscolar = React.lazy(() => import("@/pages/reports/RelatorioEscolar"));
 const RelatorioEscolarCartaoResposta = React.lazy(() => import("@/pages/reports/RelatorioEscolarCartaoResposta"));
+const RelatorioApresentacao19Slides = React.lazy(() => import("@/pages/reports/RelatorioApresentacao19Slides"));
 const InseSaebReport = React.lazy(() => import("@/pages/reports/InseSaebReport"));
 const FormReports = React.lazy(() => import("@/pages/reports/FormReports"));
 const FormRespostasReport = React.lazy(() => import("@/pages/reports/FormRespostasReport"));
@@ -381,6 +382,7 @@ const App = () => {
               {/* Rotas de Relatórios */}
               <Route path="/app/relatorios/analise-avaliacoes" element={<PrivateRoute><AnaliseAvaliacoes /></PrivateRoute>} />
               <Route path="/app/relatorios/acerto-niveis" element={<PrivateRoute><AcertoNiveis /></PrivateRoute>} />
+              <Route path="/app/relatorios/relatorio-apresentacao-19-slides" element={<PrivateRoute><RelatorioApresentacao19Slides /></PrivateRoute>} />
               <Route
                 path="/app/relatorios/acerto-niveis-cartao"
                 element={

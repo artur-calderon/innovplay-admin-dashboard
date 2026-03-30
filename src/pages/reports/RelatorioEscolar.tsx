@@ -33,6 +33,10 @@ import {
   filtrarGabaritosOpcoesSomenteComHabilidadesVinculadas,
   type GabaritoOpcaoFiltrosResults,
 } from "@/utils/answer-sheet/answerSheetRelatorioGabaritoComHabilidades";
+import {
+  loadCityBrandingPdfAssets,
+  paintLetterheadBackground,
+} from "@/utils/pdfCityBranding";
 
 const normalizeText = (value: string) =>
   value
@@ -2455,35 +2459,41 @@ export default function RelatorioEscolar({
       const jsPDF = (await import('jspdf')).default;
       const autoTable = (await import('jspdf-autotable')).default;
 
-      // Carregar logo
+      const brandingCityId = repMunicipality !== "all" ? repMunicipality : null;
+      const cityBranding = await loadCityBrandingPdfAssets(brandingCityId);
+
       let logoDataUrl = '';
       let logoWidth = 0;
       let logoHeight = 0;
-      try {
-        const logoPath = '/LOGO-1-menor.png';
-        const logoImg = new Image();
-        const logoPromise = new Promise<void>((resolve, reject) => {
-          logoImg.onload = () => resolve();
-          logoImg.onerror = reject;
-          logoImg.src = logoPath;
-        });
-        
-        await logoPromise;
-        
-        // Obter dimensões reais da imagem
-        logoWidth = logoImg.width;
-        logoHeight = logoImg.height;
-        
-        // Converter para DataURL
-        const response = await fetch(logoPath);
-        const blob = await response.blob();
-        logoDataUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(blob);
-        });
-      } catch (error) {
-        // Continuar sem logo
+      if (cityBranding.logo) {
+        logoDataUrl = cityBranding.logo.dataUrl;
+        logoWidth = cityBranding.logo.iw;
+        logoHeight = cityBranding.logo.ih;
+      } else {
+        try {
+          const logoPath = '/LOGO-1-menor.png';
+          const logoImg = new Image();
+          const logoPromise = new Promise<void>((resolve, reject) => {
+            logoImg.onload = () => resolve();
+            logoImg.onerror = reject;
+            logoImg.src = logoPath;
+          });
+
+          await logoPromise;
+
+          logoWidth = logoImg.width;
+          logoHeight = logoImg.height;
+
+          const response = await fetch(logoPath);
+          const blob = await response.blob();
+          logoDataUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+        } catch {
+          // Continuar sem logo
+        }
       }
 
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -2528,10 +2538,13 @@ export default function RelatorioEscolar({
 
       // Função para adicionar capa inicial
       const addInitialCover = () => {
-        // Garantir fundo branco limpo - desenhar primeiro e cobrir toda a página
-        doc.setFillColor(...COLORS.white);
-        doc.rect(0, 0, pageWidth, pageHeight, 'F');
-        
+        if (cityBranding.letterhead) {
+          paintLetterheadBackground(doc, cityBranding.letterhead, pageWidth, pageHeight);
+        } else {
+          doc.setFillColor(...COLORS.white);
+          doc.rect(0, 0, pageWidth, pageHeight, 'F');
+        }
+
         const centerX = pageWidth / 2;
         let y = 20;
 
