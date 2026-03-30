@@ -80,7 +80,6 @@ function groupPresenceFromRelatorio(relatorio: Partial<RelatorioCompleto> | null
     matriculados?: number;
     avaliados?: number;
     percentual?: number;
-    faltosos?: number;
   };
 
   const source = (porTurma.length > 0 ? porTurma : porEscola) as PresenceSourceRow[];
@@ -96,7 +95,6 @@ function groupPresenceFromRelatorio(relatorio: Partial<RelatorioCompleto> | null
     if (!isValidSerieLabel(serie)) continue;
     const matriculados = clampToNumber(row.matriculados, 0);
     const avaliados = clampToNumber(row.avaliados, 0);
-    const faltosos = clampToNumber(row.faltosos, Math.max(0, matriculados - avaliados));
     const presencaMediaPct = matriculados > 0 ? (avaliados / matriculados) * 100 : 0;
 
     const cur = map.get(serie);
@@ -106,7 +104,7 @@ function groupPresenceFromRelatorio(relatorio: Partial<RelatorioCompleto> | null
         totalAlunos: matriculados,
         totalPresentes: avaliados,
         presencaMediaPct,
-        alunosFaltosos: faltosos,
+        alunosFaltosos: Math.max(0, matriculados - avaliados),
         turmaLabel,
       });
       continue;
@@ -114,8 +112,8 @@ function groupPresenceFromRelatorio(relatorio: Partial<RelatorioCompleto> | null
 
     const totalAlunos = cur.totalAlunos + matriculados;
     const totalPresentes = cur.totalPresentes + avaliados;
-    const alunosFaltosos = cur.alunosFaltosos + faltosos;
     const presencaMediaPctAtualizada = totalAlunos > 0 ? (totalPresentes / totalAlunos) * 100 : 0;
+    const alunosFaltosos = Math.max(0, totalAlunos - totalPresentes);
 
     map.set(serie, { ...cur, totalAlunos, totalPresentes, presencaMediaPct: presencaMediaPctAtualizada, alunosFaltosos });
   }
@@ -131,7 +129,8 @@ function groupPresenceFromNova(novaRespostaAgregados: NovaRespostaAPI | null, se
 
   const totalAlunos = clampToNumber(eg.total_alunos, 0);
   const totalPresentes = clampToNumber(eg.alunos_participantes, 0);
-  const alunosFaltosos = clampToNumber(eg.alunos_ausentes, Math.max(0, totalAlunos - totalPresentes));
+  /** Cartão resposta: faltosos = total de alunos − presentes (não usar só alunos_ausentes da API). */
+  const alunosFaltosos = Math.max(0, totalAlunos - totalPresentes);
   const presencaMediaPct = totalAlunos > 0 ? (totalPresentes / totalAlunos) * 100 : 0;
 
   return [
@@ -156,19 +155,20 @@ function buildPresenceFinalFallback(
   const totalPresentes =
     clampToNumber(relatorio?.total_alunos?.total_geral?.avaliados, NaN) ||
     clampToNumber(novaRespostaAgregados?.estatisticas_gerais?.alunos_participantes, 0);
-  const alunosFaltosos =
-    clampToNumber(novaRespostaAgregados?.estatisticas_gerais?.alunos_ausentes, Math.max(0, totalAlunos - totalPresentes));
   const serie = isValidSerieLabel(serieFallback) ? String(serieFallback).trim() : "GERAL";
 
   // Se não há nenhuma base numérica, não inventar linha.
   if (!Number.isFinite(totalAlunos) || totalAlunos <= 0) return [];
 
+  const presentesOk = Number.isFinite(totalPresentes) ? totalPresentes : 0;
+  const alunosFaltosos = Math.max(0, totalAlunos - presentesOk);
+
   return [
     {
       serie,
       totalAlunos,
-      totalPresentes,
-      presencaMediaPct: totalAlunos > 0 ? (totalPresentes / totalAlunos) * 100 : 0,
+      totalPresentes: presentesOk,
+      presencaMediaPct: totalAlunos > 0 ? (presentesOk / totalAlunos) * 100 : 0,
       alunosFaltosos,
     },
   ];

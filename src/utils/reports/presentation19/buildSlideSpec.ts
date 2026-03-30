@@ -61,6 +61,7 @@ function buildLevelsChart(deckData: Presentation19DeckData): ExportChart {
 
   return {
     type: "bar",
+    orientation: "horizontal",
     categoryKey: "nivel",
     valueKeys: [
       { key: "valor", label: "Alunos", color: levelColors.adequado },

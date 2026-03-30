@@ -36,13 +36,92 @@ function drawTitle(doc: jsPDF, title: string, y: number, primaryColor: string): 
   doc.text(title, content.x + 22, y);
 }
 
+/** Barras horizontais (categoria no eixo Y, valores crescendo para a direita). */
+function drawHorizontalBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: number; w: number; h: number }): void {
+  const { x, y, w, h } = area;
+  const topPad = 8;
+  const bottomPad = 38;
+  const leftLabelW = 122;
+  const plotTop = y + topPad;
+  const plotBottom = y + h - bottomPad;
+  const plotH = plotBottom - plotTop;
+  const baselineX = x + leftLabelW;
+  const plotRight = x + w - 10;
+  const chartAreaW = Math.max(40, plotRight - baselineX);
+
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(203, 213, 225);
+  doc.rect(x, y, w, h, "FD");
+
+  const rawMax = Math.max(
+    1,
+    ...chart.data.flatMap((d) => chart.valueKeys.map((s) => Number(d[s.key] ?? 0)))
+  );
+  const axisMin = Number.isFinite(chart.yAxis?.min) ? Number(chart.yAxis?.min) : 0;
+  const axisMax = Number.isFinite(chart.yAxis?.max) ? Number(chart.yAxis?.max) : Math.max(1, Math.ceil(rawMax * 1.15));
+  const maxValue = Math.max(axisMin + 1, axisMax);
+  const gridTicks = (chart.yAxis?.ticks?.length
+    ? chart.yAxis.ticks
+    : Array.from({ length: 5 }, (_, i) => axisMin + ((maxValue - axisMin) * i) / 4)
+  )
+    .filter((v, idx, arr) => Number.isFinite(v) && v >= axisMin && v <= maxValue && arr.indexOf(v) === idx)
+    .sort((a, b) => a - b);
+
+  doc.setDrawColor(100, 116, 139);
+  doc.setLineWidth(1.2);
+  doc.line(baselineX, plotTop, baselineX, plotBottom);
+
+  doc.setDrawColor(203, 213, 225);
+  for (const tick of gridTicks) {
+    const gx = baselineX + (chartAreaW * Math.max(0, tick - axisMin)) / (maxValue - axisMin);
+    doc.line(gx, plotTop, gx, plotBottom);
+    doc.setTextColor(100, 116, 139);
+    doc.setFontSize(8);
+    const text = Number.isInteger(tick) ? String(Math.round(tick)) : tick.toFixed(1);
+    doc.text(text, gx, plotBottom + 14, { align: "center" });
+  }
+
+  const n = Math.max(1, chart.data.length);
+  const rowH = plotH / n;
+  const serie = chart.valueKeys[0];
+
+  chart.data.forEach((row, idx) => {
+    const value = Number(row[serie.key] ?? 0);
+    const barW = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaW;
+    const rowCenterY = plotTop + (idx + 0.5) * rowH;
+    const barThickness = Math.min(34, rowH * 0.55);
+    const barY = rowCenterY - barThickness / 2;
+    const barColor = String(row.color ?? serie.color);
+    const rgb = hexToRgb(barColor);
+    doc.setFillColor(rgb.r, rgb.g, rgb.b);
+    doc.rect(baselineX, barY, Math.max(0, barW), barThickness, "F");
+    doc.setTextColor(51, 65, 85);
+    doc.setFontSize(9);
+    const cat = String(row[chart.categoryKey] ?? "");
+    doc.text(cat, x + 6, rowCenterY + 3, { align: "left", maxWidth: leftLabelW - 10 });
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(10);
+    doc.text(String(value), baselineX + barW + 6, rowCenterY + 4, { align: "left" });
+  });
+}
+
 function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: number; w: number; h: number }): void {
+  if (chart.orientation === "horizontal") {
+    drawHorizontalBarChart(doc, chart, area);
+    return;
+  }
+
   const { x, y, w, h } = area;
   const axisLeftX = x + 26;
   const barsStartX = axisLeftX + 8;
   const barsW = w - 34;
+  /** Linha do zero; rótulos das categorias abaixo deste nível. */
+  const topPad = 6;
+  const bottomPad = 34;
+  const baselineY = y + h - bottomPad;
+  doc.setFillColor(255, 255, 255);
   doc.setDrawColor(203, 213, 225);
-  doc.rect(x, y, w, h);
+  doc.rect(x, y, w, h, "FD");
   const categories = chart.data.map((d) => String(d[chart.categoryKey] ?? ""));
   const rawMax = Math.max(
     1,
@@ -51,7 +130,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
   const axisMin = Number.isFinite(chart.yAxis?.min) ? Number(chart.yAxis?.min) : 0;
   const axisMax = Number.isFinite(chart.yAxis?.max) ? Number(chart.yAxis?.max) : Math.max(1, Math.ceil(rawMax * 1.15));
   const maxValue = Math.max(axisMin + 1, axisMax);
-  const chartAreaH = h - 34;
+  const chartAreaH = baselineY - (y + topPad);
   const isStacked = chart.type === "stackedBar";
   const gridTicks = (chart.yAxis?.ticks?.length
     ? chart.yAxis.ticks
@@ -61,10 +140,10 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
     .sort((a, b) => a - b);
   doc.setDrawColor(100, 116, 139);
   doc.setLineWidth(1.2);
-  doc.line(axisLeftX, y + 2, axisLeftX, y + h - 18);
+  doc.line(axisLeftX, y + topPad, axisLeftX, baselineY);
   doc.setDrawColor(203, 213, 225);
   for (const tick of gridTicks) {
-    const gy = y + h - 18 - (chartAreaH * Math.max(0, tick - axisMin)) / (maxValue - axisMin);
+    const gy = baselineY - (chartAreaH * Math.max(0, tick - axisMin)) / (maxValue - axisMin);
     doc.line(axisLeftX, gy, x + w, gy);
     doc.setTextColor(100, 116, 139);
     doc.setFontSize(8);
@@ -82,11 +161,11 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
       chart.valueKeys.forEach((serie, sIdx) => {
         const value = Number(row[serie.key] ?? 0);
         const barH = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaH;
-        const barY = y + h - 18 - barH;
+        const barY = baselineY - barH;
         const barX = baseX + sIdx * (seriesW + gap);
         const rgb = hexToRgb(serie.color);
         doc.setFillColor(rgb.r, rgb.g, rgb.b);
-        doc.roundedRect(barX, barY, seriesW, barH, 3, 3, "F");
+        doc.rect(barX, barY, seriesW, barH, "F");
         doc.setTextColor(15, 23, 42);
         doc.setFontSize(8);
         doc.text(String(Math.round(value)), barX + seriesW / 2, barY - 3, { align: "center" });
@@ -94,7 +173,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
     } else if (hasMultipleSeries && isStacked) {
       const singleW = Math.max(8, Math.min(22, innerW * 0.45));
       const singleX = baseX + (innerW - singleW) / 2;
-      let currentTop = y + h - 18;
+      let currentTop = baselineY;
       let total = 0;
       chart.valueKeys.forEach((serie) => {
         const value = Number(row[serie.key] ?? 0);
@@ -113,20 +192,20 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
       const serie = chart.valueKeys[0];
       const value = Number(row[serie.key] ?? 0);
       const barH = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaH;
-      const barY = y + h - 18 - barH;
+      const barY = baselineY - barH;
       const barColor = String(row.color ?? serie.color);
       const rgb = hexToRgb(barColor);
       doc.setFillColor(rgb.r, rgb.g, rgb.b);
       const singleW = Math.max(8, Math.min(22, innerW * 0.45));
       const singleX = baseX + (innerW - singleW) / 2;
-      doc.roundedRect(singleX, barY, singleW, barH, 4, 4, "F");
+      doc.rect(singleX, barY, singleW, barH, "F");
       doc.setTextColor(15, 23, 42);
       doc.setFontSize(10);
       doc.text(`${Number(value).toFixed(1)}`, singleX + singleW / 2, barY - 4, { align: "center" });
     }
     doc.setTextColor(51, 65, 85);
     doc.setFontSize(10);
-    doc.text(String(row[chart.categoryKey] ?? ""), baseX + innerW / 2, y + h - 4, { align: "center" });
+    doc.text(String(row[chart.categoryKey] ?? ""), baseX + innerW / 2, y + h - 6, { align: "center" });
   });
 }
 
@@ -267,8 +346,9 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         const boxY = 140 + row * 250;
         const boxW = content.w / 2 - 16;
         const boxH = 220;
+        doc.setFillColor(255, 255, 255);
         doc.setDrawColor(212, 212, 216);
-        doc.roundedRect(boxX, boxY, boxW, boxH, 10, 10);
+        doc.roundedRect(boxX, boxY, boxW, boxH, 10, 10, "FD");
         doc.setFont("helvetica", "bold");
         doc.setFontSize(11);
         doc.text(entry.title, boxX + 8, boxY + 16);

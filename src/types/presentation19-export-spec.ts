@@ -17,6 +17,8 @@ export type ExportChartAxis = {
 
 export type ExportChart = {
   type: ExportChartType;
+  /** `vertical` = barras verticais (categoria no X). `horizontal` = barras horizontais (categoria no Y). */
+  orientation?: "vertical" | "horizontal";
   categoryKey: string;
   valueKeys: ExportChartSeries[];
   data: Array<Record<string, string | number>>;

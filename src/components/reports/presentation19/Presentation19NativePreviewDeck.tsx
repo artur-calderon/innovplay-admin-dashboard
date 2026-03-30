@@ -31,7 +31,109 @@ function Title({ text, primaryColor }: { text: string; primaryColor: string }) {
   );
 }
 
+const H_PREVIEW_LABEL_W = 168;
+
+function HorizontalBarChartPreview({ chart, height = 470 }: { chart: ExportChart; height?: number }) {
+  const rawMax = Math.max(1, ...chart.data.flatMap((d) => chart.valueKeys.map((s) => Number(d[s.key] ?? 0))));
+  const axisMin = Number.isFinite(chart.yAxis?.min) ? Number(chart.yAxis?.min) : 0;
+  const axisMax = Number.isFinite(chart.yAxis?.max) ? Number(chart.yAxis?.max) : Math.max(1, Math.ceil(rawMax * 1.15));
+  const maxValue = Math.max(axisMin + 1, axisMax);
+  const ticks = (chart.yAxis?.ticks?.length
+    ? chart.yAxis.ticks
+    : [0, 0.25, 0.5, 0.75, 1].map((r) => axisMin + (maxValue - axisMin) * r)
+  )
+    .filter((v, idx, arr) => Number.isFinite(v) && v >= axisMin && v <= maxValue && arr.indexOf(v) === idx)
+    .sort((a, b) => a - b);
+  const ratioOf = (val: number) => (Math.max(0, val - axisMin) / (maxValue - axisMin));
+  const serie = chart.valueKeys[0] ?? { key: "valor", label: "", color: "#22C55E" };
+
+  return (
+    <div
+      style={{
+        border: "1px solid #CBD5E1",
+        borderRadius: 12,
+        background: "#F8FAFC",
+        height,
+        padding: "12px 16px 10px",
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 4, paddingBottom: 4 }}>
+        {chart.data.map((row, idx) => {
+          const value = Number(row[serie.key] ?? 0);
+          const q = ratioOf(value);
+          const color = String(row.color ?? serie.color);
+          return (
+            <div key={idx} style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", gap: 10 }}>
+              <div
+                style={{
+                  width: H_PREVIEW_LABEL_W,
+                  flexShrink: 0,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "#334155",
+                  textAlign: "right",
+                  lineHeight: 1.2,
+                }}
+              >
+                {String(row[chart.categoryKey] ?? "")}
+              </div>
+              <div style={{ flex: 1, minWidth: 0, height: 30, position: "relative", display: "flex", alignItems: "center" }}>
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 2,
+                    bottom: 2,
+                    width: 2,
+                    background: "#64748B",
+                    borderRadius: 1,
+                  }}
+                />
+                <div
+                  style={{
+                    marginLeft: 2,
+                    width: `${q * 100}%`,
+                    height: "82%",
+                    maxHeight: 26,
+                    minHeight: value > 0 ? 6 : 0,
+                    background: color,
+                    borderRadius: "0 8px 8px 0",
+                  }}
+                />
+                <span style={{ marginLeft: 10, fontSize: 11, fontWeight: 700, color: "#0F172A", whiteSpace: "nowrap" }}>{value}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ position: "relative", height: 22, marginLeft: H_PREVIEW_LABEL_W + 10, marginRight: 8 }}>
+        {ticks.map((v) => (
+          <div
+            key={v}
+            style={{
+              position: "absolute",
+              left: `${ratioOf(v) * 100}%`,
+              transform: "translateX(-50%)",
+              fontSize: 9,
+              color: "#64748B",
+            }}
+          >
+            {Number(v).toFixed(Number.isInteger(v) ? 0 : 1)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function BarChartPreview({ chart, height = 470 }: { chart: ExportChart; height?: number }) {
+  if (chart.orientation === "horizontal") {
+    return <HorizontalBarChartPreview chart={chart} height={height} />;
+  }
+
   const categories = chart.data.map((d) => String(d[chart.categoryKey] ?? ""));
   const rawMax = Math.max(1, ...chart.data.flatMap((d) => chart.valueKeys.map((s) => Number(d[s.key] ?? 0))));
   const axisMin = Number.isFinite(chart.yAxis?.min) ? Number(chart.yAxis?.min) : 0;
@@ -42,81 +144,102 @@ function BarChartPreview({ chart, height = 470 }: { chart: ExportChart; height?:
   const gridValues = (chart.yAxis?.ticks?.length ? chart.yAxis.ticks : [0, 0.25, 0.5, 0.75, 1].map((r) => axisMin + (maxValue - axisMin) * r))
     .filter((v, idx, arr) => Number.isFinite(v) && v >= axisMin && v <= maxValue && arr.indexOf(v) === idx)
     .sort((a, b) => b - a);
-  const drawableH = height - 80;
+
+  const LABEL_ROW_H = 30;
+  const AXIS_LAB_W = 30;
+
+  const ratioOf = (val: number) => (Math.max(0, val - axisMin) / (maxValue - axisMin));
 
   return (
-    <div style={{ border: "1px solid #CBD5E1", borderRadius: 12, background: "#F8FAFC", height, padding: "12px 18px 24px", display: "flex", gap: 18, alignItems: "flex-end", position: "relative" }}>
-      <div
-        style={{
-          position: "absolute",
-          left: 30,
-          top: 12,
-          bottom: 24,
-          borderLeft: "2px solid #64748B",
-          pointerEvents: "none",
-          zIndex: 0,
-        }}
-      />
-      {gridValues.map((v) => (
+    <div
+      style={{
+        border: "1px solid #CBD5E1",
+        borderRadius: 12,
+        background: "#F8FAFC",
+        height,
+        padding: "12px 14px 8px",
+        display: "flex",
+        flexDirection: "column",
+        boxSizing: "border-box",
+      }}
+    >
+      <div style={{ flex: 1, minHeight: 0, position: "relative", marginLeft: AXIS_LAB_W }}>
         <div
-          key={`${v}`}
           style={{
             position: "absolute",
-            left: 30,
-            right: 12,
-            bottom: 24 + ((Math.max(0, v - axisMin) / (maxValue - axisMin)) * drawableH),
-            borderTop: "1px dashed #CBD5E1",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 2,
+            background: "#64748B",
+            zIndex: 1,
             pointerEvents: "none",
-            zIndex: 0,
+          }}
+        />
+        {gridValues.map((v) => (
+          <div
+            key={`${v}`}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: `${ratioOf(v) * 100}%`,
+              borderTop: "1px dashed #CBD5E1",
+              pointerEvents: "none",
+              zIndex: 0,
+            }}
+          >
+            <span
+              style={{
+                position: "absolute",
+                left: -AXIS_LAB_W,
+                top: -9,
+                width: AXIS_LAB_W - 4,
+                textAlign: "right",
+                fontSize: 9,
+                color: "#64748B",
+                background: "#F8FAFC",
+                paddingInline: 2,
+              }}
+            >
+              {Number(v).toFixed(Number.isInteger(v) ? 0 : 1)}
+            </span>
+          </div>
+        ))}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            gap: 12,
+            alignItems: "flex-end",
+            paddingLeft: 6,
+            zIndex: 2,
           }}
         >
-          <span style={{ position: "absolute", left: -28, top: -9, width: 24, textAlign: "right", fontSize: 9, color: "#64748B", background: "#F8FAFC", paddingInline: 2 }}>
-            {Number(v).toFixed(Number.isInteger(v) ? 0 : 1)}
-          </span>
-        </div>
-      ))}
-      {chart.data.map((row, idx) => (
-        <div key={idx} style={{ flex: 1, minWidth: 0, position: "relative", height: height - 24, zIndex: 2 }}>
-          <div style={{ position: "absolute", left: 0, right: 0, bottom: 24, height: drawableH, zIndex: 2 }}>
-            {hasMultipleSeries ? (
-              isStacked ? (
-                <div style={{ width: "100%", height: "100%", display: "flex", justifyContent: "center", alignItems: "flex-end", paddingInline: 8 }}>
-                  <div style={{ width: "100%", maxWidth: 30, display: "flex", flexDirection: "column-reverse", alignItems: "stretch", gap: 0 }}>
-                    {chart.valueKeys.map((serie) => {
-                      const value = Number(row[serie.key] ?? 0);
-                      const h = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * drawableH;
-                      return <div key={serie.key} style={{ height: h, background: serie.color }} title={`${serie.label}: ${value}`} />;
-                    })}
-                  </div>
-                </div>
-              ) : (
-                <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "flex-end", gap: 8, paddingInline: 6 }}>
-                  {chart.valueKeys.map((serie) => {
-                    const value = Number(row[serie.key] ?? 0);
-                    const h = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * drawableH;
+          {chart.data.map((row, idx) => (
+            <div
+              key={idx}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "flex-end",
+                alignItems: "center",
+              }}
+            >
+              {hasMultipleSeries ? (
+                isStacked ? (
+                  (() => {
+                    const stackTotal = chart.valueKeys.reduce((s, serie) => s + Math.max(0, Number(row[serie.key] ?? 0)), 0);
+                    const stackFrac = Math.min(1, ratioOf(stackTotal));
                     return (
-                      <div
-                        key={serie.key}
-                        style={{ flex: 1, minWidth: 0, maxWidth: 24, height: "100%", position: "relative" }}
-                        title={`${serie.label}: ${value}`}
-                      >
+                      <>
                         <div
                           style={{
-                            position: "absolute",
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            height: h,
-                            background: serie.color,
-                            borderRadius: "8px 8px 0 0",
-                          }}
-                        />
-                        <div
-                          style={{
-                            position: "absolute",
-                            left: "50%",
-                            transform: "translateX(-50%)",
-                            bottom: h + 3,
+                            marginBottom: 4,
                             fontSize: 9,
                             fontWeight: 700,
                             color: "#0F172A",
@@ -124,58 +247,171 @@ function BarChartPreview({ chart, height = 470 }: { chart: ExportChart; height?:
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {Math.round(value)}
+                          {Math.round(stackTotal)}
                         </div>
-                      </div>
+                        <div
+                          style={{
+                            flex: 1,
+                            minHeight: 0,
+                            width: "100%",
+                            display: "flex",
+                            justifyContent: "center",
+                            alignItems: "flex-end",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: "min(28px, 72%)",
+                              height: `${stackFrac * 100}%`,
+                              minHeight: stackTotal > 0 ? 2 : 0,
+                              display: "flex",
+                              flexDirection: "column-reverse",
+                              overflow: "hidden",
+                              borderRadius: "8px 8px 0 0",
+                            }}
+                          >
+                            {chart.valueKeys.map((serie) => {
+                              const value = Number(row[serie.key] ?? 0);
+                              const pct = stackTotal > 0 ? (value / stackTotal) * 100 : 0;
+                              return (
+                                <div
+                                  key={serie.key}
+                                  style={{ height: `${pct}%`, minHeight: value > 0 ? 1 : 0, background: serie.color }}
+                                  title={`${serie.label}: ${value}`}
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
                     );
-                  })}
-                </div>
-              )
-            ) : (
-              (() => {
-                const serie = chart.valueKeys[0];
-                const value = Number(row[serie.key] ?? 0);
-                const h = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * drawableH;
-                const rowColor = String(row.color ?? serie.color);
-                return (
-                  <div style={{ width: "100%", height: "100%", position: "relative", paddingInline: 10 }}>
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: "50%",
-                        transform: "translateX(-50%)",
-                        bottom: 0,
-                        width: "100%",
-                        maxWidth: 26,
-                        height: h,
-                        background: rowColor,
-                        borderRadius: "8px 8px 0 0",
-                      }}
-                    />
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: "50%",
-                        transform: "translateX(-50%)",
-                        bottom: h + 4,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: "#0F172A",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {value.toFixed(1)}
-                    </div>
+                  })()
+                ) : (
+                  <div style={{ height: "100%", width: "100%", display: "flex", alignItems: "flex-end", gap: 6, paddingInline: 4 }}>
+                    {chart.valueKeys.map((serie) => {
+                      const value = Number(row[serie.key] ?? 0);
+                      const q = ratioOf(value);
+                      return (
+                        <div
+                          key={serie.key}
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            maxWidth: 28,
+                            height: "100%",
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "flex-end",
+                            alignItems: "center",
+                          }}
+                          title={`${serie.label}: ${value}`}
+                        >
+                          <div style={{ fontSize: 8, fontWeight: 700, color: "#0F172A", marginBottom: 3, whiteSpace: "nowrap" }}>
+                            {Math.round(value)}
+                          </div>
+                          <div
+                            style={{
+                              flex: 1,
+                              minHeight: 0,
+                              width: "100%",
+                              display: "flex",
+                              flexDirection: "column",
+                              justifyContent: "flex-end",
+                              alignItems: "center",
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: "100%",
+                                height: `${q * 100}%`,
+                                minHeight: value > 0 ? 2 : 0,
+                                background: serie.color,
+                                borderRadius: "6px 6px 0 0",
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })()
-            )}
-          </div>
-          <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, fontSize: 10, color: "#334155", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                )
+              ) : (
+                (() => {
+                  const serie = chart.valueKeys[0];
+                  const value = Number(row[serie.key] ?? 0);
+                  const q = ratioOf(value);
+                  const rowColor = String(row.color ?? serie.color);
+                  return (
+                    <>
+                      <div
+                        style={{
+                          marginBottom: 4,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "#0F172A",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {value.toFixed(1)}
+                      </div>
+                      <div
+                        style={{
+                          flex: 1,
+                          minHeight: 0,
+                          width: "100%",
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "flex-end",
+                          alignItems: "center",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: "min(26px, 75%)",
+                            height: `${q * 100}%`,
+                            minHeight: value > 0 ? 2 : 0,
+                            background: rowColor,
+                            borderRadius: "8px 8px 0 0",
+                          }}
+                        />
+                      </div>
+                    </>
+                  );
+                })()
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div
+        style={{
+          display: "flex",
+          marginLeft: AXIS_LAB_W,
+          minHeight: LABEL_ROW_H,
+          paddingTop: 6,
+          gap: 12,
+          paddingLeft: 6,
+        }}
+      >
+        {chart.data.map((row, idx) => (
+          <div
+            key={`lab-${idx}`}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              fontSize: 10,
+              color: "#334155",
+              textAlign: "center",
+              fontWeight: 600,
+              lineHeight: 1.2,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
             {String(row[chart.categoryKey] ?? categories[idx])}
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }

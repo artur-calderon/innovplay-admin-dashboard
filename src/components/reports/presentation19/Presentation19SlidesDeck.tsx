@@ -38,6 +38,18 @@ function clampToRange(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** Margem inferior ampla para o eixo X ficar abaixo da linha zero; barras encostam no zero. */
+const P19_BAR_MARGIN = { top: 10, right: 16, bottom: 56, left: 8 } as const;
+
+function p19XAxisProps(fontSize: number) {
+  return {
+    tickLine: false as const,
+    tickMargin: 12,
+    axisLine: { stroke: "#64748b" },
+    tick: { fontSize, fill: "#334155", dy: 6 },
+  };
+}
+
 function SlideFrame({ children, primaryColor, logoDataUrl }: SlideFrameProps) {
   return (
     <div
@@ -413,16 +425,14 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
           <div className="h-full flex flex-col">
             <SlideTitle title="GRÁFICO DE PRESENÇA" primaryColor={deckData.primaryColor} />
             <div className="mt-6 flex-1">
-              <BarChart width={980} height={520} data={presenceChartData}>
+              <BarChart width={980} height={520} data={presenceChartData} margin={P19_BAR_MARGIN}>
                 <CartesianGrid stroke="#94a3b8" strokeOpacity={0.55} strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="serie"
-                  tick={{ fontSize: 12, fill: "#334155" }}
-                  interval={0}
-                />
+                <XAxis dataKey="serie" interval={0} {...p19XAxisProps(12)} />
                 <YAxis
+                  width={52}
                   domain={[0, 100]}
                   ticks={[0, 25, 50, 75, 100]}
+                  padding={{ top: 0, bottom: 0 }}
                   tick={{ fontSize: 12, fill: "#334155" }}
                   tickFormatter={(v) => `${Math.round(v)}%`}
                 />
@@ -490,18 +500,45 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
           <div className="h-full flex flex-col">
             <SlideTitle title="GRÁFICO DE NÍVEIS" primaryColor={deckData.primaryColor} />
             <div className="mt-6 flex-1">
-              <BarChart width={980} height={520} data={levelsChartData}>
-                <CartesianGrid stroke="#94a3b8" strokeOpacity={0.55} strokeDasharray="3 3" />
-                <XAxis dataKey="nivel" interval={0} tick={{ fontSize: 12, fill: "#334155" }} />
-                <YAxis domain={[0, levelsAxisMax]} ticks={linearTicks(0, levelsAxisMax, 4)} />
+              <BarChart
+                width={980}
+                height={520}
+                data={levelsChartData}
+                layout="vertical"
+                margin={{ top: 16, right: 52, bottom: 40, left: 24 }}
+              >
+                <CartesianGrid
+                  stroke="#94a3b8"
+                  strokeOpacity={0.55}
+                  strokeDasharray="3 3"
+                  horizontal={false}
+                  vertical
+                />
+                <XAxis
+                  type="number"
+                  domain={[0, levelsAxisMax]}
+                  ticks={linearTicks(0, levelsAxisMax, 4)}
+                  tick={{ fontSize: 12, fill: "#334155" }}
+                  tickLine={false}
+                  tickMargin={10}
+                  axisLine={{ stroke: "#64748b" }}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="nivel"
+                  width={172}
+                  tick={{ fontSize: 11, fill: "#334155" }}
+                  tickLine={false}
+                  axisLine={false}
+                />
                 <Tooltip />
-                <Bar dataKey="valor" radius={[8, 8, 0, 0]}>
+                <Bar dataKey="valor" barSize={28} radius={[0, 8, 8, 0]}>
                   {levelsChartData.map((entry, idx) => (
                     <Cell key={`cell-${idx}`} fill={entry.color} />
                   ))}
                   <LabelList
                     dataKey="valor"
-                    position="top"
+                    position="right"
                     formatter={(v: number) => String(v)}
                     style={{ fontSize: 11, fill: "#0f172a", fontWeight: 700 }}
                   />
@@ -556,10 +593,16 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
           <div className="h-full flex flex-col">
             <SlideTitle title="PROFICIÊNCIA GERAL POR TURMA" primaryColor={deckData.primaryColor} />
             <div className="mt-6 flex-1">
-              <BarChart width={980} height={520} data={profGeneralData}>
+              <BarChart width={980} height={520} data={profGeneralData} margin={P19_BAR_MARGIN}>
                 <CartesianGrid stroke="#94a3b8" strokeOpacity={0.55} strokeDasharray="3 3" />
-                <XAxis dataKey="turma" tick={{ fontSize: 12, fill: "#334155" }} interval={0} />
-                <YAxis domain={[0, generalProfAxisMax]} ticks={linearTicks(0, generalProfAxisMax, 4)} tick={{ fontSize: 12, fill: "#334155" }} />
+                <XAxis dataKey="turma" interval={0} {...p19XAxisProps(12)} />
+                <YAxis
+                  width={52}
+                  domain={[0, generalProfAxisMax]}
+                  ticks={linearTicks(0, generalProfAxisMax, 4)}
+                  padding={{ top: 0, bottom: 0 }}
+                  tick={{ fontSize: 12, fill: "#334155" }}
+                />
                 <Tooltip wrapperStyle={{ borderRadius: 10, overflow: "hidden" }} />
                 <Bar dataKey="proficiencia" fill={deckData.primaryColor} radius={[8, 8, 0, 0]}>
                   <LabelList
@@ -599,9 +642,20 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                       <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: barColor }} />
                     </div>
                     <div className="grid grid-cols-[1fr_132px] gap-2">
-                      <BarChart width={308} height={176} data={disc.data}>
-                        <XAxis dataKey="turma" tick={{ fontSize: 10, fill: "#334155" }} interval={0} />
-                        <YAxis domain={[0, maxDisc]} ticks={linearTicks(0, maxDisc, 4)} tick={{ fontSize: 10, fill: "#334155" }} />
+                      <BarChart
+                        width={308}
+                        height={176}
+                        data={disc.data}
+                        margin={{ top: 6, right: 6, bottom: 44, left: 2 }}
+                      >
+                        <XAxis dataKey="turma" interval={0} {...p19XAxisProps(10)} />
+                        <YAxis
+                          width={40}
+                          domain={[0, maxDisc]}
+                          ticks={linearTicks(0, maxDisc, 4)}
+                          padding={{ top: 0, bottom: 0 }}
+                          tick={{ fontSize: 10, fill: "#334155" }}
+                        />
                         <Tooltip wrapperStyle={{ borderRadius: 10, overflow: "hidden" }} />
                         <ReferenceLine y={0} stroke="#64748b" strokeOpacity={0.25} />
                         <ReferenceLine y={step} stroke="#64748b" strokeOpacity={0.18} strokeDasharray="3 3" />

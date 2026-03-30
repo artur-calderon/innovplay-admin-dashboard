@@ -90,6 +90,91 @@ function addSingleSeriesColoredBars(slide: PptxGenJS.Slide, chart: ExportChart, 
   const axisMax = Number.isFinite(chart.yAxis?.max) ? Number(chart.yAxis?.max) : 100;
   const maxValue = Math.max(axisMin + 1, axisMax);
   const ticks = chart.yAxis?.ticks?.length ? chart.yAxis.ticks : [axisMin, (axisMin + maxValue) / 2, maxValue];
+  const singleKey = chart.valueKeys[0]?.key ?? "valor";
+  const fallbackColor = chart.valueKeys[0]?.color ?? "#22C55E";
+
+  if (chart.orientation === "horizontal") {
+    const plotX = box.x + 0.35;
+    const plotY = box.y + 0.22;
+    const plotW = box.w - 0.45;
+    const plotH = box.h - 0.65;
+    const labelW = 1.35;
+    const baselineX = plotX + labelW;
+    const chartW = Math.max(0.5, plotW - labelW - 0.08);
+    const baselineYTop = plotY;
+    const baselineYBot = plotY + plotH - 0.35;
+
+    slide.addShape(PptxGenJS.ShapeType.line, {
+      x: baselineX,
+      y: baselineYTop,
+      w: 0,
+      h: baselineYBot - baselineYTop,
+      line: { color: "64748B", pt: 1 },
+    });
+
+    ticks.forEach((tick) => {
+      const ratio = (Number(tick) - axisMin) / (maxValue - axisMin);
+      const gx = baselineX + Math.max(0, Math.min(1, ratio)) * chartW;
+      slide.addShape(PptxGenJS.ShapeType.line, {
+        x: gx,
+        y: baselineYTop,
+        w: 0,
+        h: baselineYBot - baselineYTop,
+        line: { color: "CBD5E1", pt: 0.6, dash: "dash" },
+      });
+      slide.addText(Number.isInteger(tick) ? String(Math.round(tick)) : Number(tick).toFixed(1), {
+        x: gx - 0.14,
+        y: baselineYBot + 0.04,
+        w: 0.28,
+        h: 0.14,
+        fontSize: 8,
+        color: "64748B",
+        align: "center",
+      });
+    });
+
+    const n = Math.max(1, chart.data.length);
+    const rowH = (baselineYBot - baselineYTop) / n;
+    chart.data.forEach((row, idx) => {
+      const value = Number(row[singleKey] ?? 0);
+      const ratio = (Math.max(axisMin, value) - axisMin) / (maxValue - axisMin);
+      const barW = Math.max(0, Math.min(1, ratio)) * chartW;
+      const cy = baselineYTop + idx * rowH + rowH / 2;
+      const bh = Math.min(0.22, rowH * 0.55);
+      const by = cy - bh / 2;
+      const fillColor = hexNoHash(String(row.color ?? fallbackColor));
+      slide.addShape(PptxGenJS.ShapeType.rect, {
+        x: baselineX,
+        y: by,
+        w: Math.max(0.02, barW),
+        h: bh,
+        fill: { color: fillColor },
+        line: { color: fillColor, pt: 0 },
+      });
+      slide.addText(String(row[chart.categoryKey] ?? ""), {
+        x: plotX,
+        y: by - 0.02,
+        w: labelW - 0.05,
+        h: bh + 0.06,
+        fontSize: 8,
+        color: "334155",
+        align: "right",
+        valign: "middle",
+      });
+      slide.addText(String(Math.round(value)), {
+        x: baselineX + barW + 0.05,
+        y: by,
+        w: 0.5,
+        h: bh,
+        fontSize: 8,
+        bold: true,
+        color: "0F172A",
+        valign: "middle",
+      });
+    });
+    return;
+  }
+
   const plotX = box.x + 0.4;
   const plotY = box.y + 0.2;
   const plotW = box.w - 0.55;
@@ -128,8 +213,6 @@ function addSingleSeriesColoredBars(slide: PptxGenJS.Slide, chart: ExportChart, 
   const barAreaW = plotW - 0.05;
   const count = Math.max(1, chart.data.length);
   const colW = barAreaW / count;
-  const singleKey = chart.valueKeys[0]?.key ?? "valor";
-  const fallbackColor = chart.valueKeys[0]?.color ?? "#22C55E";
 
   chart.data.forEach((row, idx) => {
     const value = Number(row[singleKey] ?? 0);
@@ -139,13 +222,11 @@ function addSingleSeriesColoredBars(slide: PptxGenJS.Slide, chart: ExportChart, 
     const bw = colW * 0.56;
     const by = baselineY - barH;
     const fillColor = hexNoHash(String(row.color ?? fallbackColor));
-    slide.addShape(PptxGenJS.ShapeType.roundRect, {
+    slide.addShape(PptxGenJS.ShapeType.rect, {
       x: bx,
       y: by,
       w: bw,
       h: barH,
-      rx: 0.04,
-      ry: 0.04,
       fill: { color: fillColor },
       line: { color: fillColor, pt: 0 },
     });
