@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Trophy, Award, BookOpen } from "lucide-react";
 import { api } from "@/lib/api";
-import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import { EvaluationResultsApiService } from "@/services/evaluation/evaluationResultsApi";
 import { DashboardApiService } from "@/services/dashboardApi";
 
 interface StudentRanking {

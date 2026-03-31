@@ -332,7 +332,7 @@ export function EvolutionChart({
           
           // Validar variação obtida do backend também
           if (variacao !== 0 && Math.abs(variacao) > 1000) {
-            console.warn(`⚠️ Variação do backend extrema: ${variacao}% entre etapa ${index} e ${index + 1}. Limitando a ±1000%`);
+            console.warn(`⚠️ Variação do servidor extrema: ${variacao}% entre etapa ${index} e ${index + 1}. Limitando a ±1000%`);
             variacao = variacao > 0 ? 1000 : -1000;
           }
         }

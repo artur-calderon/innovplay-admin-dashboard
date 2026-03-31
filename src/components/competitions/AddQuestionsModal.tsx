@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { addCompetitionQuestions } from '@/services/competitionsApi';
+import { addCompetitionQuestions } from '@/services/competition/competitionsApi';
 import { QuestionBank } from '@/components/evaluations/QuestionBank';
 import { Loader2, BookOpen, ListOrdered } from 'lucide-react';
 

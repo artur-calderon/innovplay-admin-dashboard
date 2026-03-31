@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/authContext';
-import { getAvailableCompetitions } from '@/services/competitionsApi';
+import { getAvailableCompetitions } from '@/services/competition/competitionsApi';
 import type { Competition } from '@/types/competition-types';
 
 const OPEN_STATUSES = ['aberta', 'enrollment_open', 'active', 'scheduled'];

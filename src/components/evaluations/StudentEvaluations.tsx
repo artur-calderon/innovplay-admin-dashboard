@@ -45,7 +45,7 @@ import { useAuth } from "@/context/authContext";
 import { useNavigate, Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { EvaluationApiService } from "@/services/evaluationApi";
+import { EvaluationApiService } from "@/services/evaluation/evaluationApi";
 
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 

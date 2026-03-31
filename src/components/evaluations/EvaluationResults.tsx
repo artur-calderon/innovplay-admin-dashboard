@@ -34,7 +34,7 @@ import {
 } from "@/types/evaluation-results";
 
 import { useParams } from "react-router-dom";
-import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import { EvaluationResultsApiService } from "@/services/evaluation/evaluationResultsApi";
 // Constantes movidas do arquivo removido
 const ERROR_MESSAGES = {
   NETWORK_ERROR: "Erro de conexão. Verifique sua internet e tente novamente.",

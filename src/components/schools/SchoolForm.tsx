@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useState, useEffect, useMemo } from "react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,18 +33,30 @@ interface School {
 
 interface SchoolFormProps {
   school?: School;
+  /** Se definido em modo criação, o select mostra apenas este município (opção única). */
+  lockedMunicipality?: { id: string; name: string; state: string };
   onClose: () => void;
   onSave: (school: Partial<School>) => void;
   onDelete?: (schoolId: string) => void;
   isLoading?: boolean;
 }
 
-export default function SchoolForm({ school, onClose, onSave, onDelete, isLoading = false }: SchoolFormProps) {
+export default function SchoolForm({
+  school,
+  lockedMunicipality,
+  onClose,
+  onSave,
+  onDelete,
+  isLoading = false,
+}: SchoolFormProps) {
   const [formData, setFormData] = useState({
     name: school?.name || "",
     address: school?.address || "",
     domain: school?.domain || "",
-    city_id: school?.city_id || "",
+    city_id:
+      school?.city_id ||
+      (!school && lockedMunicipality ? lockedMunicipality.id : "") ||
+      "",
   });
   const [cities, setCities] = useState<City[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -79,6 +91,30 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
 
     fetchCities();
   }, [toast]);
+
+  const isCreateMode = !school;
+  const singleMunicipalityMode = isCreateMode && Boolean(lockedMunicipality);
+
+  const municipalityOptions: City[] = useMemo(() => {
+    if (!singleMunicipalityMode || !lockedMunicipality) return cities;
+    const fromApi = cities.find((c) => c.id === lockedMunicipality.id);
+    if (fromApi) return [fromApi];
+    return [
+      {
+        id: lockedMunicipality.id,
+        name: lockedMunicipality.name,
+        state: lockedMunicipality.state,
+        created_at: "",
+      },
+    ];
+  }, [singleMunicipalityMode, lockedMunicipality, cities]);
+
+  useEffect(() => {
+    if (!singleMunicipalityMode || !lockedMunicipality) return;
+    setFormData((prev) =>
+      prev.city_id === lockedMunicipality.id ? prev : { ...prev, city_id: lockedMunicipality.id }
+    );
+  }, [singleMunicipalityMode, lockedMunicipality]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -174,6 +210,11 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
             <Building className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600" />
             {school ? "Editar Escola" : "Nova Escola"}
           </DialogTitle>
+          <DialogDescription>
+            {school
+              ? "Atualize os dados da escola."
+              : "Cadastre uma nova escola informando nome, endereço e município."}
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 py-4" autoComplete="off">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -231,7 +272,7 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
               <span className="text-red-500">*</span>
             </Label>
             <Select
-              value={formData.city_id}
+              value={formData.city_id || undefined}
               onValueChange={(value) => setFormData({ ...formData, city_id: value })}
               disabled={isLoading || isDeleting || isSaving}
             >
@@ -239,13 +280,18 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
                 <SelectValue placeholder="Selecione um município" />
               </SelectTrigger>
               <SelectContent>
-                {cities.map((city) => (
+                {municipalityOptions.map((city) => (
                   <SelectItem key={city.id} value={city.id}>
-                    {city.name} - {city.state}
+                    {city.state ? `${city.name} - ${city.state}` : city.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {singleMunicipalityMode && lockedMunicipality && (
+              <p className="text-xs text-muted-foreground">
+                Somente o município do domínio (ou da sua conta) pode ser selecionado aqui.
+              </p>
+            )}
           </div>
           <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
             {school && onDelete && (

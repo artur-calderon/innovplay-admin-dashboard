@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Shield, Palette, Check } from 'lucide-react';
-import { storeApi } from '@/services/storeService';
+import { storeApi } from '@/services/store/storeService';
 import type { StudentPurchase } from '@/types/store';
 import { useStudentPreferences } from '@/context/StudentPreferencesContext';
 import { Skeleton } from '@/components/ui/skeleton';

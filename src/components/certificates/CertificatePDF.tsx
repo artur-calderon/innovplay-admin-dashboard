@@ -5,14 +5,19 @@ import { Button } from '@/components/ui/button';
 import { Download, Printer } from 'lucide-react';
 import { CertificateTemplateComponent } from './CertificateTemplate';
 import type { CertificateTemplate, Certificate } from '@/types/certificates';
+import { useAuth } from '@/context/authContext';
+import { resolveReportLogoForPdf } from '@/utils/pdfCityBranding';
 
 interface CertificatePDFProps {
   certificate: Certificate;
   template?: CertificateTemplate;
+  /** UUID do município para sobrepor a logo municipal no PDF (paisagem) */
+  brandingCityId?: string | null;
 }
 
-export function CertificatePDF({ certificate, template }: CertificatePDFProps) {
+export function CertificatePDF({ certificate, template, brandingCityId }: CertificatePDFProps) {
   const certificateRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
 
   const generatePDF = async () => {
     if (!certificateRef.current) return;
@@ -43,6 +48,21 @@ export function CertificatePDF({ certificate, template }: CertificatePDFProps) {
       
       // Preencher toda a página sem margens (full page)
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+
+      const cityId = brandingCityId ?? user?.city_id ?? user?.tenant_id ?? null;
+      const municipalLogo = await resolveReportLogoForPdf(cityId);
+      if (municipalLogo) {
+        const maxW = 55;
+        const maxH = 28;
+        let lw = maxW;
+        let lh = (municipalLogo.ih / municipalLogo.iw) * lw;
+        if (lh > maxH) {
+          lh = maxH;
+          lw = (municipalLogo.iw / municipalLogo.ih) * lh;
+        }
+        pdf.addImage(municipalLogo.dataUrl, 'PNG', (pdfWidth - lw) / 2, 8, lw, lh);
+      }
+
       pdf.save(`certificado-${certificate.student_name.replace(/\s+/g, '-')}.pdf`);
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);

@@ -52,7 +52,6 @@ export default defineConfig(({ mode }) => {
       __VITE_API_BASE_URL__: JSON.stringify(apiUrl),
       __VITE_DEBUG_MODE__: JSON.stringify(process.env.VITE_DEBUG_MODE || 'false'),
     },
-    // Expõe variáveis VITE_* e SUBDOMAIN_* para uso no frontend
-    envPrefix: ['VITE_', 'SUBDOMAIN_'],
+    envPrefix: 'VITE_', // Prefixo para variáveis de ambiente
   };
 });

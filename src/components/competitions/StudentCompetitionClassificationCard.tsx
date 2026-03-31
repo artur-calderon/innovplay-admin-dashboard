@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Trophy, Medal, Award } from 'lucide-react';
-import { getBandColor, type CompetitionBand } from '@/utils/competitionGamification';
+import { getBandColor, type CompetitionBand } from '@/utils/competition/competitionGamification';
 import { api } from '@/lib/api';
 
 interface CompetitionClassificationResponse {

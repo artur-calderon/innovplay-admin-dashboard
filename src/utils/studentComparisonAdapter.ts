@@ -5,7 +5,7 @@ import type {
   SubjectComparison,
   SkillsComparison,
   EvolutionMetrics,
-} from '@/services/evaluationComparisonApi';
+} from '@/services/evaluation/evaluationComparisonApi';
 
 /**
  * Resposta do endpoint de comparação do aluno (POST /test/student/compare).

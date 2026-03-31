@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { getSubjectColors } from '@/utils/competitionSubjectColors';
-import { REPORT_TAG_BASE } from '@/utils/reportTagStyles';
+import { getSubjectColors } from '@/utils/competition/competitionSubjectColors';
+import { REPORT_TAG_BASE } from '@/utils/report/reportTagStyles';
 
 export type DisciplineTagProps = Omit<BadgeProps, 'variant'> & {
   /** ID estável da disciplina (melhor consistência quando o nome varia). */

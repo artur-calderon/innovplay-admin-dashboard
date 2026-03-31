@@ -145,14 +145,14 @@ export function ManageSchoolLinksModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden px-4 sm:px-6">
+        <div className="flex-1 overflow-hidden px-4 sm:px-6 min-h-0">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center p-8 h-full">
               <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
               <span className="text-sm sm:text-base text-muted-foreground">Carregando vínculos...</span>
             </div>
           ) : (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6 h-full overflow-y-auto pr-2 pb-4 scroll-smooth mt-4">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6 h-full overflow-y-auto pr-2 pb-4 scroll-smooth mt-4 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent">
               {/* Directors Section */}
               <div className="flex flex-col min-h-0">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">

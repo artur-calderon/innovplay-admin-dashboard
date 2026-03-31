@@ -19,7 +19,7 @@ import {
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { EvaluationResultsApiService } from '@/services/evaluationResultsApi';
+import { EvaluationResultsApiService } from '@/services/evaluation/evaluationResultsApi';
 
 interface OlimpiadaCardProps {
   olimpiada: OlimpiadaCardData;

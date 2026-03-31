@@ -38,7 +38,7 @@ api.interceptors.request.use((config) => {
             const user = JSON.parse(userJson) as { role?: string; tenant_id?: string }
             const cityId = (config as typeof config & { meta?: { cityId?: string } }).meta?.cityId
             const role = (user?.role ?? '').toLowerCase()
-            const canSendCityId = ['admin', 'tecadm', 'diretor', 'coordenador'].includes(role)
+            const canSendCityId = ['admin', 'tecadm', 'diretor', 'coordenador', 'professor'].includes(role)
             const isCompetitionsRequest = typeof config.url === 'string' && config.url.includes('/competitions')
             const isDashboardRequest = typeof config.url === 'string' && config.url.includes('/dashboard/')
             // Admin/coordenador/diretor/tecadm: enviar X-City-ID quando informado (meta.cityId)
@@ -97,7 +97,12 @@ api.interceptors.response.use(
             // ✅ CORRIGIDO: Preservar erro original para endpoints críticos
             // Endpoints que precisam de tratamento específico de erro
             const url = error.config?.url || '';
-            const criticalEndpoints = ['/student-answers/submit', '/student-answers/save-partial', '/answer-sheets/correct-new'];
+            const criticalEndpoints = [
+                '/student-answers/submit',
+                '/student-answers/save-partial',
+                '/answer-sheets/correct-new',
+                '/school',
+            ];
             
             // Se o erro tem uma mensagem específica no campo 'error', preservar o erro original
             if (error.response?.data?.error) {

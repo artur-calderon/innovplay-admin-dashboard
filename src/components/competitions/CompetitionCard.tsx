@@ -33,7 +33,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { Competition, CompetitionStatus } from '@/types/competition-types';
-import { formatCompetitionLevel } from '@/utils/competitionLevel';
+import { formatCompetitionLevel } from '@/utils/competition/competitionLevel';
 import { CompetitionCountdown } from '@/components/competitions/CompetitionCountdown';
 
 interface CompetitionCardProps {

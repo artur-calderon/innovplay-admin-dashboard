@@ -15,10 +15,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { getCompetition, publishCompetition, updateCompetition } from '@/services/competitionsApi';
+import { getCompetition, publishCompetition, updateCompetition } from '@/services/competition/competitionsApi';
 import { parseISOToDatetimeLocal, convertDateTimeLocalToISONaive } from '@/utils/date';
 import { CalendarDays, CalendarRange, Clock, Loader2 } from 'lucide-react';
 import type { Competition } from '@/types/competition-types';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+
+function formatDatetimeLocalHuman(value: string): string {
+  const v = value?.trim();
+  if (!v) return '—';
+
+  // `datetime-local` costuma vir como: YYYY-MM-DDTHH:mm (sem timezone).
+  // Criamos um Date local e formatamos para PT-BR.
+  const date = new Date(v);
+  if (Number.isNaN(date.getTime())) return v;
+  return format(date, 'dd/MM/yyyy HH:mm', { locale: ptBR });
+}
 
 export interface EditCompetitionApplicationModalProps {
   open: boolean;
@@ -51,6 +64,7 @@ export function EditCompetitionApplicationModal({
       return;
     }
     setLoadingData(true);
+    // GET /competitions/:id (ROLES_EDIT) — não usar /details, que é orientado ao aluno.
     getCompetition(competitionId)
       .then((c) => {
         setCompetition(c);
@@ -71,22 +85,48 @@ export function EditCompetitionApplicationModal({
   function hasQuestions(c: Competition | null): boolean {
     if (!c) return false;
     const mode = (c.question_mode ?? 'manual').toLowerCase();
-    if (mode === 'manual') {
-      return (c.question_ids?.length ?? 0) > 0;
+    if (mode === 'manual' || mode.includes('manual')) {
+      const manualCount = (c.question_ids?.length ?? 0) + (c.selected_question_ids?.length ?? 0);
+      return manualCount > 0;
     }
-    if (mode === 'auto_random') {
-      const rules = c.question_rules;
-      if (typeof rules === 'object' && rules != null && 'num_questions' in rules) {
-        return Number((rules as { num_questions?: number }).num_questions) > 0;
+    if (mode === 'auto_random' || mode.includes('auto_random') || mode.includes('auto')) {
+      const qIdsCount = (c.question_ids?.length ?? 0) + (c.selected_question_ids?.length ?? 0);
+      if (qIdsCount > 0) return true;
+
+      const rulesRaw = c.question_rules;
+      const findNumQuestions = (rulesObj: unknown): number | null => {
+        if (!rulesObj || typeof rulesObj !== 'object') return null;
+        const r = rulesObj as Record<string, unknown>;
+
+        if (typeof r.num_questions === 'number') return r.num_questions;
+        if (typeof r.num_questions === 'string' && r.num_questions.trim()) {
+          const n = Number(r.num_questions);
+          return Number.isFinite(n) ? n : null;
+        }
+
+        // Tentativas de caminhos alternativos (variações de backend)
+        const nestedCandidates = [r.question_rules, r.rules, r.params, r.data].filter(Boolean);
+        for (const cand of nestedCandidates) {
+          const v = findNumQuestions(cand);
+          if (v != null) return v;
+        }
+        return null;
+      };
+
+      if (typeof rulesRaw === 'object' && rulesRaw != null) {
+        const n = findNumQuestions(rulesRaw);
+        return n != null ? n > 0 : false;
       }
-      if (typeof rules === 'string' && rules.trim()) {
+      if (typeof rulesRaw === 'string' && rulesRaw.trim()) {
         try {
-          const parsed = JSON.parse(rules) as { num_questions?: number };
-          return Number(parsed?.num_questions) > 0;
+          const parsed = JSON.parse(rulesRaw) as unknown;
+          const n = findNumQuestions(parsed);
+          return n != null ? n > 0 : false;
         } catch {
           return false;
         }
       }
+
       return false;
     }
     return false;
@@ -229,14 +269,21 @@ export function EditCompetitionApplicationModal({
                 Início das inscrições
               </Label>
               <div className="flex gap-2">
-                <Input
-                  id="enrollment_start"
-                  type="datetime-local"
-                  step="60"
-                  value={enrollmentStart}
-                  onChange={(e) => setEnrollmentStart(e.target.value)}
-                  className="w-full"
-                />
+                <div className="flex-1 space-y-1">
+                  <Input
+                    id="enrollment_start"
+                    type="datetime-local"
+                    step="60"
+                    value={enrollmentStart}
+                    onChange={(e) => setEnrollmentStart(e.target.value)}
+                    className="w-full"
+                  />
+                  {(enrollmentStart || enrollmentStart === '') && (
+                    <p className="text-xs text-muted-foreground">
+                      {formatDatetimeLocalHuman(enrollmentStart)}
+                    </p>
+                  )}
+                </div>
                 <Button
                   type="button"
                   variant="outline"
@@ -265,14 +312,19 @@ export function EditCompetitionApplicationModal({
                 Fim das inscrições
               </Label>
               <div className="flex gap-2">
-                <Input
-                  id="enrollment_end"
-                  type="datetime-local"
-                  step="60"
-                  value={enrollmentEnd}
-                  onChange={(e) => setEnrollmentEnd(e.target.value)}
-                  className="w-full"
-                />
+                <div className="flex-1 space-y-1">
+                  <Input
+                    id="enrollment_end"
+                    type="datetime-local"
+                    step="60"
+                    value={enrollmentEnd}
+                    onChange={(e) => setEnrollmentEnd(e.target.value)}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {formatDatetimeLocalHuman(enrollmentEnd)}
+                  </p>
+                </div>
                 <Button
                   type="button"
                   variant="outline"
@@ -301,14 +353,19 @@ export function EditCompetitionApplicationModal({
                 Início da prova
               </Label>
               <div className="flex gap-2">
-                <Input
-                  id="application"
-                  type="datetime-local"
-                  step="60"
-                  value={application}
-                  onChange={(e) => setApplication(e.target.value)}
-                  className="w-full"
-                />
+                <div className="flex-1 space-y-1">
+                  <Input
+                    id="application"
+                    type="datetime-local"
+                    step="60"
+                    value={application}
+                    onChange={(e) => setApplication(e.target.value)}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {formatDatetimeLocalHuman(application)}
+                  </p>
+                </div>
                 <Button
                   type="button"
                   variant="outline"
@@ -337,14 +394,19 @@ export function EditCompetitionApplicationModal({
                 Fim da prova
               </Label>
               <div className="flex gap-2">
-                <Input
-                  id="expiration"
-                  type="datetime-local"
-                  step="60"
-                  value={expiration}
-                  onChange={(e) => setExpiration(e.target.value)}
-                  className="w-full"
-                />
+                <div className="flex-1 space-y-1">
+                  <Input
+                    id="expiration"
+                    type="datetime-local"
+                    step="60"
+                    value={expiration}
+                    onChange={(e) => setExpiration(e.target.value)}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {formatDatetimeLocalHuman(expiration)}
+                  </p>
+                </div>
                 <Button
                   type="button"
                   variant="outline"
@@ -370,12 +432,12 @@ export function EditCompetitionApplicationModal({
             {(enrollmentStart || enrollmentEnd || application || expiration) && (
               <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground space-y-1">
                 <p>
-                  • Inscrições: <strong>{enrollmentStart || '—'}</strong> →{' '}
-                  <strong>{enrollmentEnd || '—'}</strong>
+                  • Inscrições: <strong>{formatDatetimeLocalHuman(enrollmentStart)}</strong> →{' '}
+                  <strong>{formatDatetimeLocalHuman(enrollmentEnd)}</strong>
                 </p>
                 <p>
-                  • Prova: <strong>{application || '—'}</strong> →{' '}
-                  <strong>{expiration || '—'}</strong>
+                  • Prova: <strong>{formatDatetimeLocalHuman(application)}</strong> →{' '}
+                  <strong>{formatDatetimeLocalHuman(expiration)}</strong>
                 </p>
               </div>
             )}

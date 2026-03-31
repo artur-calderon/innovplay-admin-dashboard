@@ -1,7 +1,7 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Star } from 'lucide-react';
-import { getBandColor, type CompetitionBand } from '@/utils/competitionGamification';
+import { getBandColor, type CompetitionBand } from '@/utils/competition/competitionGamification';
 
 interface StudentBandBadgeProps {
   band: CompetitionBand | string;

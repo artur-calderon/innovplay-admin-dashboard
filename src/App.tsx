@@ -14,119 +14,138 @@ import { PrivateRoute } from "./components/PrivateRoute";
 import { RoleRoute } from "./components/layout/RoleRoute";
 
 // Lazy loading para reduzir o tamanho dos chunks
-const Index = React.lazy(() => import("./pages/Index"));
-const Evaluations = React.lazy(() => import("./pages/Evaluations"));
-const NotFound = React.lazy(() => import("./pages/NotFound"));
-const Login = React.lazy(() => import("./pages/Login"));
-const SubdominioInvalido = React.lazy(() => import("./pages/SubdominioInvalido"));
-const SubdomainCheck = React.lazy(() => import("./components/SubdomainCheck"));
-const ForgotPassword = React.lazy(() => import("./pages/ForgotPassword"));
-const ResetPassword = React.lazy(() => import("./pages/ResetPassword"));
-const ChangePassword = React.lazy(() => import("./pages/ChangePassword"));
-const EmBreve = React.lazy(() => import("./pages/EmBreve"));
-const Settings = React.lazy(() => import("./pages/Settings"));
-const Certificates = React.lazy(() => import("./pages/Certificates"));
-const StudentCertificates = React.lazy(() => import("./pages/StudentCertificates"));
-const StudentEvaluations = React.lazy(() => import("./components/evaluations/StudentEvaluations"));
-const Profile = React.lazy(() => import("./pages/Profile"));
-const ClassDetails = React.lazy(() => import("./components/schools/ClassDetails"));
-const SchoolDetails = React.lazy(() => import("./components/schools/SchoolDetails"));
-const CreateEvaluation = React.lazy(() => import("./pages/CreateEvaluation"));
-const EditEvaluation = React.lazy(() => import("./pages/EditEvaluation"));
-const Cities = React.lazy(() => import("./pages/Cities"));
-const EditQuickLinks = React.lazy(() => import("./pages/EditQuickLinks"));
-const ViewEvaluation = React.lazy(() => import("./pages/ViewEvaluation"));
-const CreateQuestionPage = React.lazy(() => import("./pages/CreateQuestionPage"));
-const QuestionsPage = React.lazy(() => import("./pages/QuestionsPage"));
-const EditQuestionPage = React.lazy(() => import("./pages/EditQuestionPage"));
-const HabilidadesPage = React.lazy(() => import("./pages/HabilidadesPage"));
-const Gestao = React.lazy(() => import("./pages/Gestao"));
-const Serie = React.lazy(() => import("./pages/Serie"));
-const Disciplina = React.lazy(() => import("./pages/Disciplina"));
-const StudentAgenda = React.lazy(() => import("./pages/StudentAgendaOptimized"));
-const AdminAgenda = React.lazy(() => import("./pages/AdminAgendaOptimized"));
-const TakeEvaluation = React.lazy(() => import("./components/evaluations/TakeEvaluation/index"));
-const EvaluationCorrection = React.lazy(() => import("./pages/EvaluationCorrection"));
-const Results = React.lazy(() => import("./pages/Results"));
-const EvaluationResults = React.lazy(() => import("./components/evaluations/EvaluationResults"));
-const DetailedResultsView = React.lazy(() => import("./components/evaluations/DetailedResultsView"));
-const StudentDetailedResults = React.lazy(() => import("./components/evaluations/StudentDetailedResults"));
-const AnaliseAvaliacoes = React.lazy(() => import("./pages/AnaliseAvaliacoes"));
-const AcertoNiveis = React.lazy(() => import("./pages/AcertoNiveis"));
-const AcertoNiveisCartao = React.lazy(() => import("./pages/AcertoNiveisCartao"));
-const RelatorioEscolar = React.lazy(() => import("./pages/RelatorioEscolar"));
-const RelatorioEscolarCartaoResposta = React.lazy(() => import("./pages/RelatorioEscolarCartaoResposta"));
-const PhysicalTestPage = React.lazy(() => import("./pages/PhysicalTestPage"));
-const Evolution = React.lazy(() => import("./pages/Evolution"));
 
-// Lazy loading para componentes de jogos
-const GamesManagement = React.lazy(() => import("./pages/GamesManagement"));
-const AddGame = React.lazy(() => import("./pages/AddGame"));
-const StudentGames = React.lazy(() => import("./pages/StudentGames"));
+// auth
+const Login = React.lazy(() => import("@/pages/auth/Login"));
+const ForgotPassword = React.lazy(() => import("@/pages/auth/ForgotPassword"));
+const ResetPassword = React.lazy(() => import("@/pages/auth/ResetPassword"));
+const ChangePassword = React.lazy(() => import("@/pages/auth/ChangePassword"));
+
+// dashboard
+const Index = React.lazy(() => import("@/pages/dashboard/Index"));
+const ProfessorDashboard = React.lazy(() => import("@/pages/dashboard/ProfessorDashboard"));
+const StudentDashboard = React.lazy(() => import("@/pages/dashboard/StudentDashboard"));
+
+// evaluations
+const Evaluations = React.lazy(() => import("@/pages/evaluations/Evaluations"));
+const CreateEvaluation = React.lazy(() => import("@/pages/evaluations/CreateEvaluation"));
+const EditEvaluation = React.lazy(() => import("@/pages/evaluations/EditEvaluation"));
+const EvaluationCorrection = React.lazy(() => import("@/pages/evaluations/EvaluationCorrection"));
+const ViewEvaluation = React.lazy(() => import("@/pages/evaluations/ViewEvaluation"));
+const Results = React.lazy(() => import("@/pages/evaluations/Results"));
+const AcertoNiveis = React.lazy(() => import("@/pages/evaluations/AcertoNiveis"));
+const AcertoNiveisCartao = React.lazy(() => import("@/pages/evaluations/AcertoNiveisCartao"));
+const AnaliseAvaliacoes = React.lazy(() => import("@/pages/evaluations/AnaliseAvaliacoes"));
+
+// answer-sheet
+const AnswerSheetGenerator = React.lazy(() => import("@/pages/answer-sheet/AnswerSheetGenerator"));
+const AnswerSheetResults = React.lazy(() => import("@/pages/answer-sheet/AnswerSheetResults"));
+const AnswerSheetStudentDetailedResults = React.lazy(() => import("@/pages/answer-sheet/AnswerSheetStudentDetailedResults"));
+const AnswerSheetCreateGabarito = React.lazy(() => import("@/pages/answer-sheet/AnswerSheetCreateGabarito"));
+const AnswerSheetGenerateCards = React.lazy(() => import("@/pages/answer-sheet/AnswerSheetGenerateCards"));
+const AnswerSheetCorrection = React.lazy(() => import("@/pages/answer-sheet/AnswerSheetCorrection"));
+
+// reports
+const RelatorioEscolar = React.lazy(() => import("@/pages/reports/RelatorioEscolar"));
+const RelatorioEscolarCartaoResposta = React.lazy(() => import("@/pages/reports/RelatorioEscolarCartaoResposta"));
+const RelatorioApresentacao19Slides = React.lazy(() => import("@/pages/reports/RelatorioApresentacao19Slides"));
+const InseSaebReport = React.lazy(() => import("@/pages/reports/InseSaebReport"));
+const FormReports = React.lazy(() => import("@/pages/reports/FormReports"));
+const FormRespostasReport = React.lazy(() => import("@/pages/reports/FormRespostasReport"));
+const StudentResult = React.lazy(() => import("@/pages/reports/StudentResult"));
+const StudentResultsPage = React.lazy(() => import("@/pages/reports/StudentResultsPage"));
+const Evolution = React.lazy(() => import("@/pages/reports/Evolution"));
+
+// questions
+const CreateQuestionPage = React.lazy(() => import("@/pages/questions/CreateQuestionPage"));
+const EditQuestionPage = React.lazy(() => import("@/pages/questions/EditQuestionPage"));
+const QuestionsPage = React.lazy(() => import("@/pages/questions/QuestionsPage"));
+const HabilidadesPage = React.lazy(() => import("@/pages/questions/HabilidadesPage"));
+
+// forms
+const FormRegistration = React.lazy(() => import("@/pages/forms/FormRegistration"));
+const FormView = React.lazy(() => import("@/pages/forms/FormView"));
+const FormCreate = React.lazy(() => import("@/pages/forms/FormCreate"));
+const QuestionarioList = React.lazy(() => import("@/pages/forms/QuestionarioList"));
+const QuestionarioRespond = React.lazy(() => import("@/pages/forms/QuestionarioRespond"));
+
+// competitions
+const CompetitionList = React.lazy(() => import("@/pages/competitions/Competitions"));
+const CompetitionDetails = React.lazy(() => import("@/pages/competitions/CompetitionDetails"));
+const CompetitionAnalytics = React.lazy(() => import("@/pages/competitions/CompetitionAnalytics"));
+const CompetitionTemplatesList = React.lazy(() => import("@/pages/competitions/CompetitionTemplatesList"));
+const CompetitionTemplateDetails = React.lazy(() => import("@/pages/competitions/CompetitionTemplateDetails"));
+const CompetitionsStudent = React.lazy(() => import("@/pages/competitions/CompetitionsStudent"));
+const CompetitionStudentDetail = React.lazy(() => import("@/pages/competitions/CompetitionStudentDetail"));
+const CompetitionTest = React.lazy(() => import("@/pages/competitions/CompetitionTest"));
+const CompetitionRankingPage = React.lazy(() => import("@/pages/competitions/CompetitionRanking"));
+
+// games
+const GamesManagement = React.lazy(() => import("@/pages/games/GamesManagement"));
+const AddGame = React.lazy(() => import("@/pages/games/AddGame"));
+const StudentGames = React.lazy(() => import("@/pages/games/StudentGames"));
 const GameView = React.lazy(() => import("./components/games/GameView"));
 
-// Lazy loading para calculadora SAEB
-const IdebCalculatorPage = React.lazy(() => import("./pages/IdebCalculatorPage"));
-const IdebMetaCalculatorPage = React.lazy(() => import("./pages/IdebMetaCalculatorPage"));
+// store
+const Loja = React.lazy(() => import("@/pages/store/Loja"));
+const StoreAdmin = React.lazy(() => import("@/pages/store/StoreAdmin"));
+const StoreAdminForm = React.lazy(() => import("@/pages/store/StoreAdminForm"));
+const StoreAdminBatchForm = React.lazy(() => import("@/pages/store/StoreAdminBatchForm"));
+const CoinHistory = React.lazy(() => import("@/pages/store/CoinHistory"));
+const CoinsAdmin = React.lazy(() => import("@/pages/store/CoinsAdmin"));
 
-// Lazy loading para avisos
-const Avisos = React.lazy(() => import("./pages/Avisos"));
+// olimpiadas
+const Olimpiadas = React.lazy(() => import("@/pages/olimpiadas/Olimpiadas"));
+const OlimpiadasStudent = React.lazy(() => import("@/pages/olimpiadas/OlimpiadasStudent"));
+const OlimpiadaStudent = React.lazy(() => import("@/pages/olimpiadas/OlimpiadaStudent"));
+const TorneioExecucao = React.lazy(() => import("@/pages/olimpiadas/TorneioExecucao"));
 
-// Lazy loading para questionários
-const FormRegistration = React.lazy(() => import("./pages/FormRegistration"));
-const FormView = React.lazy(() => import("./pages/FormView"));
-const FormCreate = React.lazy(() => import("./pages/FormCreate"));
-const FormReports = React.lazy(() => import("./pages/FormReports"));
-const FormRespostasReport = React.lazy(() => import("./pages/FormRespostasReport"));
-const InseSaebReport = React.lazy(() => import("./pages/InseSaebReport"));
-const QuestionarioList = React.lazy(() => import("./pages/QuestionarioList"));
-const QuestionarioRespond = React.lazy(() => import("./pages/QuestionarioRespond"));
+// playtv
+const PlayTvManagement = React.lazy(() => import("@/pages/playtv/PlayTvManagement"));
+const PlayTvStudent = React.lazy(() => import("@/pages/playtv/PlayTvStudent"));
+const PlayTvVideoView = React.lazy(() => import("@/pages/playtv/PlayTvVideoView"));
 
-// Lazy loading para competições e torneios
-const TorneioExecucao = React.lazy(() => import("./pages/TorneioExecucao"));
+// plantao
+const PlantaoOnline = React.lazy(() => import("@/pages/plantao/PlantaoOnline"));
+const PlantaoOnlineStudent = React.lazy(() => import("@/pages/plantao/PlantaoOnlineStudent"));
 
-// Lazy loading para dashboards específicos
-const StudentDashboard = React.lazy(() => import("./pages/StudentDashboard"));
-const StudentResult = React.lazy(() => import("./pages/StudentResult"));
-const StudentResultsPage = React.lazy(() => import("./pages/StudentResultsPage"));
-const ConquistasPage = React.lazy(() => import("./pages/ConquistasPage"));
-const ProfessorDashboard = React.lazy(() => import("./pages/ProfessorDashboard"));
+// cadastros
+const Cities = React.lazy(() => import("@/pages/cadastros/Cities"));
+const Gestao = React.lazy(() => import("@/pages/cadastros/Gestao"));
+const Serie = React.lazy(() => import("@/pages/cadastros/Serie"));
+const Disciplina = React.lazy(() => import("@/pages/cadastros/Disciplina"));
 
-// Lazy loading para Play TV
-const PlayTvManagement = React.lazy(() => import("./pages/PlayTvManagement"));
-const PlayTvStudent = React.lazy(() => import("./pages/PlayTvStudent"));
-const PlayTvVideoView = React.lazy(() => import("./pages/PlayTvVideoView"));
+// physical-test
+const PhysicalTestPage = React.lazy(() => import("@/pages/physical-test/PhysicalTestPage"));
 
-// Lazy loading para Plantão Online
-const PlantaoOnline = React.lazy(() => import("./pages/PlantaoOnline"));
-const PlantaoOnlineStudent = React.lazy(() => import("./pages/PlantaoOnlineStudent"));
-const AnswerSheetGenerator = React.lazy(() => import("./pages/AnswerSheetGenerator"));
-const AnswerSheetResults = React.lazy(() => import("./pages/AnswerSheetResults"));
-const AnswerSheetStudentDetailedResults = React.lazy(() => import("./pages/AnswerSheetStudentDetailedResults"));
-const AnswerSheetCreateGabarito = React.lazy(() => import("./pages/AnswerSheetCreateGabarito"));
-const AnswerSheetGenerateCards = React.lazy(() => import("./pages/AnswerSheetGenerateCards"));
-const AnswerSheetCorrection = React.lazy(() => import("./pages/AnswerSheetCorrection"));
-const ListaFrequencia = React.lazy(() => import("./pages/ListaFrequencia"));
+// profile
+const Profile = React.lazy(() => import("@/pages/profile/Profile"));
+const ConquistasPage = React.lazy(() => import("@/pages/profile/ConquistasPage"));
+const Certificates = React.lazy(() => import("@/pages/profile/Certificates"));
+const StudentCertificates = React.lazy(() => import("@/pages/profile/StudentCertificates"));
 
-// Lazy loading para Olimpíadas
-const Olimpiadas = React.lazy(() => import("./pages/Olimpiadas"));
-const OlimpiadasStudent = React.lazy(() => import("./pages/OlimpiadasStudent"));
-const OlimpiadaStudent = React.lazy(() => import("./pages/OlimpiadaStudent"));
-const CoinHistory = React.lazy(() => import("./pages/CoinHistory"));
-const Loja = React.lazy(() => import("./pages/Loja"));
-const StoreAdmin = React.lazy(() => import("./pages/StoreAdmin"));
-const StoreAdminForm = React.lazy(() => import("./pages/StoreAdminForm"));
-const StoreAdminBatchForm = React.lazy(() => import("./pages/StoreAdminBatchForm"));
-const CoinsAdmin = React.lazy(() => import("./pages/CoinsAdmin"));
-const CompetitionList = React.lazy(() => import("./pages/Competitions"));
-const CompetitionDetails = React.lazy(() => import("./pages/CompetitionDetails"));
-const CompetitionAnalytics = React.lazy(() => import("./pages/Admin/Competitions/CompetitionAnalytics"));
-const CompetitionTemplatesList = React.lazy(() => import("./pages/Admin/Competitions/CompetitionTemplatesList"));
-const CompetitionTemplateDetails = React.lazy(() => import("./pages/Admin/Competitions/CompetitionTemplateDetails"));
-const CompetitionsStudent = React.lazy(() => import("./pages/CompetitionsStudent"));
-const CompetitionStudentDetail = React.lazy(() => import("./pages/CompetitionStudentDetail"));
-const CompetitionTest = React.lazy(() => import("./pages/CompetitionTest"));
-const CompetitionRankingPage = React.lazy(() => import("./pages/CompetitionRanking"));
+// raiz (misc / sem domínio próprio)
+const NotFound = React.lazy(() => import("@/pages/misc/NotFound"));
+const SubdominioInvalido = React.lazy(() => import("@/pages/auth/SubdominioInvalido"));
+const EmBreve = React.lazy(() => import("@/pages/misc/EmBreve"));
+const Settings = React.lazy(() => import("@/pages/profile/Settings"));
+const Avisos = React.lazy(() => import("@/pages/dashboard/Avisos"));
+const EditQuickLinks = React.lazy(() => import("@/pages/dashboard/EditQuickLinks"));
+const ListaFrequencia = React.lazy(() => import("@/pages/dashboard/ListaFrequencia"));
+const StudentAgenda = React.lazy(() => import("@/pages/agenda/StudentAgendaOptimized"));
+const AdminAgenda = React.lazy(() => import("@/pages/agenda/AdminAgendaOptimized"));
+const IdebCalculatorPage = React.lazy(() => import("@/pages/reports/IdebCalculatorPage"));
+const IdebMetaCalculatorPage = React.lazy(() => import("@/pages/reports/IdebMetaCalculatorPage"));
+
+// componentes carregados lazy via App (não são pages)
+const SubdomainCheck = React.lazy(() => import("./components/SubdomainCheck"));
+const StudentEvaluations = React.lazy(() => import("./components/evaluations/StudentEvaluations"));
+const ClassDetails = React.lazy(() => import("./components/schools/ClassDetails"));
+const SchoolDetails = React.lazy(() => import("./components/schools/SchoolDetails"));
+const TakeEvaluation = React.lazy(() => import("./components/evaluations/TakeEvaluation/index"));
+const EvaluationResults = React.lazy(() => import("./components/evaluations/EvaluationResults"));
+const DetailedResultsView = React.lazy(() => import("./components/evaluations/results/DetailedResultsView"));
+const StudentDetailedResults = React.lazy(() => import("./components/evaluations/student/StudentDetailedResults"));
 
 // Loading component
 const LoadingSpinner = () => (
@@ -152,6 +171,7 @@ const App = () => {
         <Toaster />
         <ToastContainer
           position="bottom-right"
+          style={{ zIndex: 2001 }}
           autoClose={5000}
           hideProgressBar={false}
           newestOnTop={false}
@@ -362,6 +382,7 @@ const App = () => {
               {/* Rotas de Relatórios */}
               <Route path="/app/relatorios/analise-avaliacoes" element={<PrivateRoute><AnaliseAvaliacoes /></PrivateRoute>} />
               <Route path="/app/relatorios/acerto-niveis" element={<PrivateRoute><AcertoNiveis /></PrivateRoute>} />
+              <Route path="/app/relatorios/relatorio-apresentacao-19-slides" element={<PrivateRoute><RelatorioApresentacao19Slides /></PrivateRoute>} />
               <Route
                 path="/app/relatorios/acerto-niveis-cartao"
                 element={
