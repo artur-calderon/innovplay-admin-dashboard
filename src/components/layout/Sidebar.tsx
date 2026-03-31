@@ -46,7 +46,8 @@ import {
   Medal,
   Star,
   Coins,
-  ShoppingBag
+  ShoppingBag,
+  Smartphone
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -239,6 +240,18 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
           role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
       ]
+    },
+    {
+      name: "Modo offline",
+      role: ["admin", "tecadm", "diretor", "coordenador"],
+      links: [
+        {
+          icon: Smartphone,
+          label: "Gerar código para o app",
+          href: "/app/modo-offline",
+          role: ["admin", "tecadm", "diretor", "coordenador"],
+        },
+      ],
     },
     {
       name: "Gestão",
