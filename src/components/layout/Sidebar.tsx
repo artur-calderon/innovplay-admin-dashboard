@@ -47,7 +47,8 @@ import {
   Star,
   Coins,
   ShoppingBag,
-  Smartphone
+  Smartphone,
+  LayoutGrid,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -339,6 +340,7 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
           role: ["admin", "professor", "diretor", "coordenador", "tecadm"],
           children: [
             { icon: Target, label: "Acerto e Níveis", href: "/app/relatorios/acerto-niveis", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: LayoutGrid, label: "Mapa de habilidades", href: "/app/relatorios/mapa-habilidades", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: PieChart, label: "Análise das Avaliações", href: "/app/relatorios/analise-avaliacoes", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: School, label: "Relatório Escolar", href: "/app/relatorios/relatorio-escolar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: Presentation, label: "Relatório Apresentação", href: "/app/relatorios/relatorio-apresentacao-19-slides", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },

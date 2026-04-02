@@ -33,6 +33,7 @@ const EditEvaluation = React.lazy(() => import("@/pages/evaluations/EditEvaluati
 const EvaluationCorrection = React.lazy(() => import("@/pages/evaluations/EvaluationCorrection"));
 const ViewEvaluation = React.lazy(() => import("@/pages/evaluations/ViewEvaluation"));
 const Results = React.lazy(() => import("@/pages/evaluations/Results"));
+const SkillsHeatMapPage = React.lazy(() => import("@/pages/evaluations/SkillsHeatMapPage"));
 const AcertoNiveis = React.lazy(() => import("@/pages/evaluations/AcertoNiveis"));
 const AcertoNiveisCartao = React.lazy(() => import("@/pages/evaluations/AcertoNiveisCartao"));
 const AnaliseAvaliacoes = React.lazy(() => import("@/pages/evaluations/AnaliseAvaliacoes"));
@@ -255,6 +256,7 @@ const App = () => {
               <Route path="/app/avaliacoes" element={<PrivateRoute><Evaluations /></PrivateRoute>} />
               <Route path="/app/avaliacoes/correcao" element={<PrivateRoute><EvaluationCorrection /></PrivateRoute>} />
               <Route path="/app/resultados" element={<PrivateRoute><Results /></PrivateRoute>} />
+              <Route path="/app/mapa-habilidades" element={<Navigate to="/app/relatorios/mapa-habilidades" replace />} />
               <Route path="/app/evolucao" element={<PrivateRoute><Evolution /></PrivateRoute>} />
               <Route path="/app/avaliacao/:id/resultados" element={<PrivateRoute><EvaluationResults /></PrivateRoute>} />
               <Route path="/app/avaliacao/:id/resultados-detalhados" element={<PrivateRoute><DetailedResultsView onBack={() => window.history.back()} /></PrivateRoute>} />
@@ -393,6 +395,7 @@ const App = () => {
               {/* Rotas de Relatórios */}
               <Route path="/app/relatorios/analise-avaliacoes" element={<PrivateRoute><AnaliseAvaliacoes /></PrivateRoute>} />
               <Route path="/app/relatorios/acerto-niveis" element={<PrivateRoute><AcertoNiveis /></PrivateRoute>} />
+              <Route path="/app/relatorios/mapa-habilidades" element={<PrivateRoute><SkillsHeatMapPage /></PrivateRoute>} />
               <Route path="/app/relatorios/relatorio-apresentacao-19-slides" element={<PrivateRoute><RelatorioApresentacao19Slides /></PrivateRoute>} />
               <Route
                 path="/app/relatorios/acerto-niveis-cartao"
