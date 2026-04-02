@@ -7,7 +7,6 @@ import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Calendar as CalendarIcon,
-  Download,
   Users,
   FileX,
   Eye,
@@ -41,6 +40,12 @@ import type { DisciplineStatsMap } from "@/components/evaluations/student/Studen
 import { saveBulletinStatsToStorage } from "@/components/evaluations/utils/bulletinStorage";
 
 import { cn } from "@/lib/utils";
+import {
+  RESULTS_PERIOD_YEAR_MIN,
+  getResultsPeriodYearMax,
+  normalizeResultsPeriodYm,
+  RESULTS_MONTH_NAMES_PT,
+} from "@/utils/resultsPeriod";
 import { DisciplineTables } from "@/components/evaluations/results/DisciplineTables";
 import { StudentCard } from "@/components/evaluations/student/StudentCard";
 import { QuestionData as TableQuestionData, DetailedReport as TableDetailedReport } from "@/types/results-table";
@@ -532,40 +537,9 @@ async function resultsFetchEvaluationsList(
   return data as NovaRespostaAPI;
 }
 
-const RESULTS_PERIOD_YEAR_MIN = 2018;
+type ResultsProps = { hidePageHeading?: boolean };
 
-function getResultsPeriodYearMax(): number {
-  return new Date().getFullYear() + 2;
-}
-
-/** Valida AAAA-MM para filtro de período (rejeita anos absurdos ex.: 0002). */
-function normalizeResultsPeriodYm(raw: string): "all" | string {
-  const t = raw.trim();
-  const m = /^(\d{4})-(\d{2})$/.exec(t);
-  if (!m) return "all";
-  const y = parseInt(m[1], 10);
-  const mo = parseInt(m[2], 10);
-  const yMax = getResultsPeriodYearMax();
-  if (y < RESULTS_PERIOD_YEAR_MIN || y > yMax || mo < 1 || mo > 12) return "all";
-  return `${String(y).padStart(4, "0")}-${String(mo).padStart(2, "0")}`;
-}
-
-const RESULTS_MONTH_NAMES_PT = [
-  "Janeiro",
-  "Fevereiro",
-  "Março",
-  "Abril",
-  "Maio",
-  "Junho",
-  "Julho",
-  "Agosto",
-  "Setembro",
-  "Outubro",
-  "Novembro",
-  "Dezembro",
-] as const;
-
-export default function Results() {
+export default function Results({ hidePageHeading = false }: ResultsProps = {}) {
   const { autoLogin, user } = useAuth();
 
   const [apiData, setApiData] = useState<NovaRespostaAPI | null>(null);
@@ -1542,173 +1516,6 @@ export default function Results() {
     };
   }, [loadAllData, selectedState, selectedMunicipality, selectedEvaluation, selectedSchool, selectedPeriod, isRestrictedUser]);
 
-  const handleExportResults = async () => {
-    try {
-      const XLSX = await import('xlsx');
-      const { saveAs } = await import('file-saver');
-
-      // ✅ CORRIGIDO: Usar tabela_detalhada filtrada se disponível, caso contrário usar resultados_detalhados
-      if (!apiData) {
-        toast({
-          title: "Nenhum dado para exportar",
-          description: "Não há dados disponíveis para gerar a planilha",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Obter nomes correspondentes aos IDs dos filtros
-      const selectedSchoolName = selectedSchool !== 'all' ? schools.find(s => s.id === selectedSchool)?.name : null;
-      const selectedGradeName = selectedGrade !== 'all' ? grades.find(g => g.id === selectedGrade)?.name : null;
-      const selectedClassName = selectedClass !== 'all' ? classes.find(c => c.id === selectedClass)?.name : null;
-
-      let worksheetData: (string | number)[][] = [];
-
-      // Se há filtros específicos e tabela_detalhada disponível, usar dados filtrados
-      if ((selectedClassName || selectedGradeName || selectedSchoolName) && apiData.tabela_detalhada?.disciplinas?.length) {
-        // Coletar alunos únicos que atendem aos filtros
-        const alunosMap = new Map<string, {
-          id: string;
-          nome: string;
-          turma: string;
-          serie: string;
-          escola: string;
-          nota: number;
-          proficiencia: number;
-          acertos: number;
-          total_questoes: number;
-        }>();
-
-        apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
-          disciplina.alunos.forEach(aluno => {
-            // Aplicar filtros
-            if (selectedClassName && aluno.turma !== selectedClassName) return;
-            if (selectedGradeName && aluno.serie !== selectedGradeName) return;
-            if (selectedSchoolName && aluno.escola !== selectedSchoolName) return;
-
-            // Verificar se participou
-            const participou = aluno.respostas_por_questao.some(resposta => resposta.respondeu);
-            if (!participou) return;
-
-            if (!alunosMap.has(aluno.id)) {
-              alunosMap.set(aluno.id, {
-                id: aluno.id,
-                nome: aluno.nome,
-                turma: aluno.turma,
-                serie: aluno.serie,
-                escola: aluno.escola,
-                nota: aluno.nota,
-                proficiencia: aluno.proficiencia,
-                acertos: aluno.total_acertos,
-                total_questoes: aluno.total_questoes_disciplina
-              });
-            } else {
-              // Consolidar dados de múltiplas disciplinas
-              const existing = alunosMap.get(aluno.id)!;
-              existing.acertos += aluno.total_acertos;
-              existing.total_questoes += aluno.total_questoes_disciplina;
-            }
-          });
-        });
-
-        const alunosArray = Array.from(alunosMap.values());
-        const totalAlunos = alunosArray.length;
-        const participantes = alunosArray.length; // Todos já são participantes
-        const mediaNota = alunosArray.length > 0
-          ? alunosArray.reduce((sum, a) => sum + a.nota, 0) / alunosArray.length
-          : 0;
-        const mediaProficiencia = alunosArray.length > 0
-          ? alunosArray.reduce((sum, a) => sum + a.proficiencia, 0) / alunosArray.length
-          : 0;
-
-        worksheetData = [
-          ['Avaliação', 'Disciplina', 'Escola', 'Série', 'Turma', 'Município', 'Estado', 'Participantes', 'Média', 'Proficiência', 'Status'],
-          [
-            evaluationInfo?.titulo || 'Avaliação',
-            evaluationInfo?.disciplina || evaluationInfo?.disciplinas?.join(', ') || 'Disciplina',
-            selectedSchoolName || evaluationInfo?.escola || 'Escola',
-            selectedGradeName || evaluationInfo?.serie || 'Série',
-            selectedClassName || 'Turma',
-            evaluationInfo?.municipio || 'Município',
-            apiData.estatisticas_gerais?.estado || 'Estado',
-            `${participantes}/${totalAlunos}`,
-            mediaNota.toFixed(1),
-            mediaProficiencia.toFixed(1),
-            'Concluída'
-          ]
-        ];
-
-        // Adicionar linha por aluno se necessário
-        if (alunosArray.length > 0) {
-          worksheetData.push(['']); // Linha em branco
-          worksheetData.push(['Alunos Detalhados']);
-          worksheetData.push(['Nome', 'Turma', 'Série', 'Escola', 'Nota', 'Proficiência', 'Acertos', 'Total Questões']);
-          alunosArray.forEach(aluno => {
-            worksheetData.push([
-              aluno.nome,
-              aluno.turma,
-              aluno.serie,
-              aluno.escola,
-              aluno.nota.toFixed(1),
-              aluno.proficiencia.toFixed(1),
-              aluno.acertos,
-              aluno.total_questoes
-            ]);
-          });
-        }
-      } else {
-        // Fallback: usar resultados_detalhados se disponível
-        if (!apiData.resultados_detalhados?.avaliacoes?.length) {
-          toast({
-            title: "Nenhum dado para exportar",
-            description: "Não há avaliações para gerar a planilha",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        worksheetData = [
-          ['Avaliação', 'Disciplina', 'Escola', 'Série', 'Turma', 'Município', 'Estado', 'Participantes', 'Média', 'Proficiência', 'Status'],
-          ...(apiData.resultados_detalhados.avaliacoes || []).map(evaluation => [
-            evaluation.titulo || 'Sem título',
-            evaluation.disciplina || 'Sem disciplina',
-            evaluation.escola || 'Sem escola',
-            evaluation.serie || 'Sem série',
-            evaluation.turma || 'Sem turma',
-            evaluation.municipio || 'Sem município',
-            evaluation.estado || 'Sem estado',
-            `${evaluation.alunos_participantes || 0}/${evaluation.total_alunos || 0}`,
-            (evaluation.media_nota || 0).toFixed(1),
-            (evaluation.media_proficiencia || 0).toFixed(1),
-            'Concluída'
-          ])
-        ];
-      }
-
-      const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Avaliações');
-
-      const fileName = `resultados-avaliacoes-${new Date().toISOString().split('T')[0]}.xlsx`;
-      const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-
-      saveAs(blob, fileName);
-
-      toast({
-        title: "Exportação concluída!",
-        description: "Os resultados foram exportados com sucesso.",
-      });
-    } catch (error) {
-      console.error("Erro na exportação:", error);
-      toast({
-        title: "Erro na exportação",
-        description: "Não foi possível exportar os resultados",
-        variant: "destructive",
-      });
-    }
-  };
-
   // Descobre se a disciplina é Matemática
   const isMath = useCallback((name?: string) => (name || "").toLowerCase().includes("matem"), []);
 
@@ -2505,8 +2312,8 @@ export default function Results() {
 
   return (
     <div className="w-full min-w-0 space-y-6">
-      {/* Header — mobile: título/desc alinhados, botões centralizados abaixo */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between lg:justify-between">
+      {/* Título da página — o botão Atualizar fica na mesma linha das abas (Gráficos / Tabelas / …) */}
+      {!hidePageHeading && (
         <div className="space-y-1.5">
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
             <BarChart3 className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
@@ -2516,23 +2323,7 @@ export default function Results() {
             Acompanhe o desempenho das avaliações e gere relatórios
           </p>
         </div>
-        <div className="flex flex-wrap justify-center gap-2 w-full sm:w-auto sm:justify-end">
-          <Button variant="outline" onClick={() => loadAllData()} disabled={isLoadingData}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingData ? 'animate-spin' : ''}`} />
-            Atualizar
-          </Button>
-          
-
-
-          
-          {apiData && (
-            <Button onClick={() => handleExportResults()}>
-              <Download className="h-4 w-4 mr-2" />
-              Exportar
-            </Button>
-          )}
-        </div>
-      </div>
+      )}
 
 
 
@@ -2988,39 +2779,59 @@ export default function Results() {
             // Mostrar conteúdo se houver avaliações detalhadas, independente das estatísticas gerais
             return (avaliacoesLength === 0 && dataLength === 0);
           })() ? (
-            <Card>
-              <CardContent className="text-center py-12">
-                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-                  <FileX className="h-8 w-8 text-muted-foreground" />
-                </div>
-                                 <h3 className="text-lg font-medium text-foreground mb-2">
-                   Nenhum resultado para mostrar
-                 </h3>
-                 <p className="text-muted-foreground">
-                   Não foram encontrados resultados para os filtros selecionados.
-                 </p>
-              </CardContent>
-            </Card>
+            <>
+              <div className="flex w-full min-w-0 flex-row flex-wrap items-center justify-end gap-3">
+                <Button variant="outline" onClick={() => loadAllData()} disabled={isLoadingData} className="shrink-0 gap-2">
+                  <RefreshCw className={`h-4 w-4 ${isLoadingData ? 'animate-spin' : ''}`} />
+                  Atualizar
+                </Button>
+              </div>
+              <Card>
+                <CardContent className="text-center py-12">
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                    <FileX className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-medium text-foreground mb-2">
+                    Nenhum resultado para mostrar
+                  </h3>
+                  <p className="text-muted-foreground">
+                    Não foram encontrados resultados para os filtros selecionados.
+                  </p>
+                </CardContent>
+              </Card>
+            </>
           ) : (
             <>
               {/* Abas com diferentes visualizações */}
               <Tabs defaultValue="charts" className="w-full">
-                <TabsList
-                  className={`grid w-full ${
-                    selectedEvaluation !== 'all'
-                      ? 'grid-cols-2 sm:grid-cols-4'
-                      : 'grid-cols-2 sm:grid-cols-3'
-                  }`}
-                >
-                  <TabsTrigger value="charts">Gráficos</TabsTrigger>
-                  <TabsTrigger value="tables">Tabelas</TabsTrigger>
-                  <TabsTrigger value="statistics">Estatísticas</TabsTrigger>
-                  {selectedEvaluation !== 'all' && (
-                    <TabsTrigger value="ranking">Ranking</TabsTrigger>
-                  )}
-                </TabsList>
-
-
+                <div className="flex w-full min-w-0 flex-row flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1 basis-[min(100%,36rem)]">
+                    <TabsList
+                      className={`grid w-full min-w-0 ${
+                        selectedEvaluation !== 'all'
+                          ? 'grid-cols-2 sm:grid-cols-4'
+                          : 'grid-cols-2 sm:grid-cols-3'
+                      }`}
+                    >
+                      <TabsTrigger value="charts">Gráficos</TabsTrigger>
+                      <TabsTrigger value="tables">Tabelas</TabsTrigger>
+                      <TabsTrigger value="statistics">Estatísticas</TabsTrigger>
+                      {selectedEvaluation !== 'all' && (
+                        <TabsTrigger value="ranking">Ranking</TabsTrigger>
+                      )}
+                    </TabsList>
+                  </div>
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={() => loadAllData()}
+                    disabled={isLoadingData}
+                    className="shrink-0 gap-2"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isLoadingData ? 'animate-spin' : ''}`} />
+                    Atualizar
+                  </Button>
+                </div>
 
                 <TabsContent value="charts" className="space-y-6">
                   

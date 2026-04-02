@@ -195,7 +195,7 @@ export default function AnswerSheetCorrection() {
   const quickLinks = [
     { icon: FilePlus, label: 'Cadastrar', href: '/app/cartao-resposta/cadastrar' },
     { icon: Ticket, label: 'Gerar cartões', href: '/app/cartao-resposta/gerar' },
-    { icon: BarChart3, label: 'Resultados', href: '/app/cartao-resposta/resultados' },
+    { icon: BarChart3, label: 'Resultados', href: '/app/resultados?aba=cartao' },
   ];
 
   return (

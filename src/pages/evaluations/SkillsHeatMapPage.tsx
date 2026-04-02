@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,14 +11,13 @@ import {
 } from '@/components/ui/select';
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, RefreshCw, LayoutGrid, X } from 'lucide-react';
+import { Loader2, RefreshCw, Thermometer } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
@@ -32,6 +31,8 @@ import {
   type SkillsMapHabilidade,
   type SkillsMapResponse,
 } from '@/services/evaluation/skillsMapApi';
+import { ResultsPeriodMonthYearPicker } from '@/components/filters';
+import { normalizeResultsPeriodYm } from '@/utils/resultsPeriod';
 
 const FAIXA_ORDER = [
   'abaixo_do_basico',
@@ -140,67 +141,6 @@ const FAIXA_DOT: Record<(typeof FAIXA_ORDER)[number], string> = {
   avancado: 'bg-emerald-700',
 };
 
-function resolveFaixaKey(f: SkillsMapHabilidade['faixa']): (typeof FAIXA_ORDER)[number] {
-  return (FAIXA_ORDER as readonly string[]).includes(f) ? (f as (typeof FAIXA_ORDER)[number]) : 'basico';
-}
-
-const FAIXA_MODAL_THEME: Record<
-  (typeof FAIXA_ORDER)[number],
-  {
-    hero: string;
-    shell: string;
-    barGradient: string;
-    swatches: [string, string, string];
-    chip: string;
-    chipDotRing: string;
-    closeBtn: string;
-    bodyAccent: string;
-  }
-> = {
-  abaixo_do_basico: {
-    hero: 'from-rose-600 via-red-600 to-orange-500 text-white',
-    shell: 'border-rose-500/35 shadow-[0_24px_64px_-12px_rgba(225,29,72,0.35)]',
-    barGradient: 'from-rose-300 to-orange-300',
-    swatches: ['bg-rose-600', 'bg-red-600', 'bg-orange-500'],
-    chip: 'border-white/25 bg-black/20 text-white backdrop-blur-md',
-    chipDotRing: 'ring-white/50',
-    closeBtn: 'text-white hover:bg-white/15 focus-visible:ring-white/50',
-    bodyAccent: 'border-rose-500/15 bg-rose-500/[0.06]',
-  },
-  basico: {
-    hero: 'from-amber-400 via-amber-300 to-yellow-200 text-amber-950',
-    shell: 'border-amber-400/45 shadow-[0_24px_64px_-12px_rgba(217,119,6,0.2)]',
-    barGradient: 'from-amber-600 to-yellow-500',
-    swatches: ['bg-amber-600', 'bg-amber-400', 'bg-yellow-300'],
-    chip: 'border-amber-950/15 bg-amber-950/10 text-amber-950 backdrop-blur-md',
-    chipDotRing: 'ring-amber-950/30',
-    closeBtn:
-      'text-amber-950 hover:bg-amber-950/10 focus-visible:ring-amber-950/40',
-    bodyAccent: 'border-amber-500/20 bg-amber-500/[0.07]',
-  },
-  adequado: {
-    hero: 'from-lime-400 via-emerald-300 to-teal-200 text-emerald-950',
-    shell: 'border-emerald-400/40 shadow-[0_24px_64px_-12px_rgba(16,185,129,0.22)]',
-    barGradient: 'from-lime-500 to-emerald-600',
-    swatches: ['bg-lime-500', 'bg-emerald-400', 'bg-teal-500'],
-    chip: 'border-emerald-950/15 bg-emerald-950/10 text-emerald-950 backdrop-blur-md',
-    chipDotRing: 'ring-emerald-950/30',
-    closeBtn:
-      'text-emerald-950 hover:bg-emerald-950/10 focus-visible:ring-emerald-950/40',
-    bodyAccent: 'border-emerald-500/20 bg-emerald-500/[0.07]',
-  },
-  avancado: {
-    hero: 'from-emerald-700 via-emerald-600 to-green-500 text-white',
-    shell: 'border-emerald-500/35 shadow-[0_24px_64px_-12px_rgba(5,150,105,0.35)]',
-    barGradient: 'from-emerald-300 to-green-300',
-    swatches: ['bg-emerald-800', 'bg-emerald-600', 'bg-green-500'],
-    chip: 'border-white/25 bg-black/20 text-white backdrop-blur-md',
-    chipDotRing: 'ring-white/50',
-    closeBtn: 'text-white hover:bg-white/15 focus-visible:ring-white/50',
-    bodyAccent: 'border-emerald-500/15 bg-emerald-500/[0.08]',
-  },
-};
-
 function HeatMapLegendInside() {
   return (
     <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
@@ -279,6 +219,13 @@ export default function SkillsHeatMapPage() {
   const { toast } = useToast();
   const [tab, setTab] = useState<'online' | 'cartao'>('online');
 
+  const [selectedPeriod, setSelectedPeriod] = useState('all');
+  const periodoYm = useMemo(() => {
+    if (selectedPeriod === 'all') return undefined;
+    const n = normalizeResultsPeriodYm(selectedPeriod);
+    return n === 'all' ? undefined : n;
+  }, [selectedPeriod]);
+
   const [oEstado, setOEstado] = useState('all');
   const [oMunicipio, setOMunicipio] = useState('all');
   const [oAvaliacao, setOAvaliacao] = useState('all');
@@ -321,17 +268,41 @@ export default function SkillsHeatMapPage() {
   const [dialogErros, setDialogErros] = useState<SkillsMapErrosResponse | null>(null);
   const [loadingErros, setLoadingErros] = useState(false);
 
+  const periodChangeRef = useRef(false);
+  useEffect(() => {
+    if (!periodChangeRef.current) {
+      periodChangeRef.current = true;
+      return;
+    }
+    setOMunicipio('all');
+    setOAvaliacao('all');
+    setOEscola('all');
+    setOSerie('all');
+    setOTurma('all');
+    setODisciplina('all');
+    setMapOnline(null);
+    setCMunicipio('all');
+    setCGabarito('all');
+    setCEscola('all');
+    setCSerie('all');
+    setCTurma('all');
+    setCDisciplina('all');
+    setMapCartao(null);
+  }, [selectedPeriod]);
+
   const loadOnlineEstados = useCallback(async () => {
     try {
       setLoadingFilters(true);
-      const data = await fetchEvaluationFilterOptions({});
+      const data = await fetchEvaluationFilterOptions({
+        ...(periodoYm ? { periodo: periodoYm } : {}),
+      });
       setOEstados(normEntities(data.estados));
     } catch {
       toast({ title: 'Erro', description: 'Não foi possível carregar estados.', variant: 'destructive' });
     } finally {
       setLoadingFilters(false);
     }
-  }, [toast]);
+  }, [toast, periodoYm]);
 
   useEffect(() => {
     loadOnlineEstados();
@@ -345,7 +316,10 @@ export default function SkillsHeatMapPage() {
     (async () => {
       try {
         setLoadingFilters(true);
-        const data = await fetchEvaluationFilterOptions({ estado: oEstado });
+        const data = await fetchEvaluationFilterOptions({
+          estado: oEstado,
+          ...(periodoYm ? { periodo: periodoYm } : {}),
+        });
         setOMunicipios(normEntities(data.municipios));
       } catch {
         setOMunicipios([]);
@@ -353,7 +327,7 @@ export default function SkillsHeatMapPage() {
         setLoadingFilters(false);
       }
     })();
-  }, [oEstado]);
+  }, [oEstado, periodoYm]);
 
   useEffect(() => {
     if (oEstado === 'all' || oMunicipio === 'all') {
@@ -363,7 +337,11 @@ export default function SkillsHeatMapPage() {
     (async () => {
       try {
         setLoadingFilters(true);
-        const data = await fetchEvaluationFilterOptions({ estado: oEstado, municipio: oMunicipio });
+        const data = await fetchEvaluationFilterOptions({
+          estado: oEstado,
+          municipio: oMunicipio,
+          ...(periodoYm ? { periodo: periodoYm } : {}),
+        });
         setOAvaliacoes(filterEvaluationsForDropdown(data.avaliacoes || []));
       } catch {
         setOAvaliacoes([]);
@@ -371,7 +349,7 @@ export default function SkillsHeatMapPage() {
         setLoadingFilters(false);
       }
     })();
-  }, [oEstado, oMunicipio]);
+  }, [oEstado, oMunicipio, periodoYm]);
 
   useEffect(() => {
     if (oEstado === 'all' || oMunicipio === 'all' || oAvaliacao === 'all') {
@@ -385,6 +363,7 @@ export default function SkillsHeatMapPage() {
           estado: oEstado,
           municipio: oMunicipio,
           avaliacao: oAvaliacao,
+          ...(periodoYm ? { periodo: periodoYm } : {}),
         });
         setOEscolas(normEntities(data.escolas));
       } catch {
@@ -393,7 +372,7 @@ export default function SkillsHeatMapPage() {
         setLoadingFilters(false);
       }
     })();
-  }, [oEstado, oMunicipio, oAvaliacao]);
+  }, [oEstado, oMunicipio, oAvaliacao, periodoYm]);
 
   useEffect(() => {
     if (oEstado === 'all' || oMunicipio === 'all' || oAvaliacao === 'all') {
@@ -408,6 +387,7 @@ export default function SkillsHeatMapPage() {
           municipio: oMunicipio,
           avaliacao: oAvaliacao,
           ...(oEscola !== 'all' ? { escola: oEscola } : {}),
+          ...(periodoYm ? { periodo: periodoYm } : {}),
         });
         setOSeries(normEntities(data.series));
       } catch {
@@ -416,7 +396,7 @@ export default function SkillsHeatMapPage() {
         setLoadingFilters(false);
       }
     })();
-  }, [oEstado, oMunicipio, oAvaliacao, oEscola]);
+  }, [oEstado, oMunicipio, oAvaliacao, oEscola, periodoYm]);
 
   useEffect(() => {
     if (oEstado === 'all' || oMunicipio === 'all' || oAvaliacao === 'all' || oSerie === 'all') {
@@ -432,6 +412,7 @@ export default function SkillsHeatMapPage() {
           avaliacao: oAvaliacao,
           ...(oEscola !== 'all' ? { escola: oEscola } : {}),
           serie: oSerie,
+          ...(periodoYm ? { periodo: periodoYm } : {}),
         });
         setOTurmas(normEntities(data.turmas));
       } catch {
@@ -440,19 +421,21 @@ export default function SkillsHeatMapPage() {
         setLoadingFilters(false);
       }
     })();
-  }, [oEstado, oMunicipio, oAvaliacao, oEscola, oSerie]);
+  }, [oEstado, oMunicipio, oAvaliacao, oEscola, oSerie, periodoYm]);
 
   const loadCartaoEstados = useCallback(async () => {
     try {
       setLoadingFilters(true);
-      const data = await fetchAnswerSheetFilterOptions({});
+      const data = await fetchAnswerSheetFilterOptions({
+        ...(periodoYm ? { periodo: periodoYm } : {}),
+      });
       setCEstados(normEntities(data.estados));
     } catch {
       toast({ title: 'Erro', description: 'Não foi possível carregar estados.', variant: 'destructive' });
     } finally {
       setLoadingFilters(false);
     }
-  }, [toast]);
+  }, [toast, periodoYm]);
 
   useEffect(() => {
     loadCartaoEstados();
@@ -466,7 +449,10 @@ export default function SkillsHeatMapPage() {
     (async () => {
       try {
         setLoadingFilters(true);
-        const data = await fetchAnswerSheetFilterOptions({ estado: cEstado });
+        const data = await fetchAnswerSheetFilterOptions({
+          estado: cEstado,
+          ...(periodoYm ? { periodo: periodoYm } : {}),
+        });
         setCMunicipios(normEntities(data.municipios));
       } catch {
         setCMunicipios([]);
@@ -474,7 +460,7 @@ export default function SkillsHeatMapPage() {
         setLoadingFilters(false);
       }
     })();
-  }, [cEstado]);
+  }, [cEstado, periodoYm]);
 
   useEffect(() => {
     if (cEstado === 'all' || cMunicipio === 'all') {
@@ -484,7 +470,11 @@ export default function SkillsHeatMapPage() {
     (async () => {
       try {
         setLoadingFilters(true);
-        const data = await fetchAnswerSheetFilterOptions({ estado: cEstado, municipio: cMunicipio });
+        const data = await fetchAnswerSheetFilterOptions({
+          estado: cEstado,
+          municipio: cMunicipio,
+          ...(periodoYm ? { periodo: periodoYm } : {}),
+        });
         setCGabaritos(normEntities(data.gabaritos));
       } catch {
         setCGabaritos([]);
@@ -492,7 +482,7 @@ export default function SkillsHeatMapPage() {
         setLoadingFilters(false);
       }
     })();
-  }, [cEstado, cMunicipio]);
+  }, [cEstado, cMunicipio, periodoYm]);
 
   useEffect(() => {
     if (cEstado === 'all' || cMunicipio === 'all' || cGabarito === 'all') {
@@ -506,6 +496,7 @@ export default function SkillsHeatMapPage() {
           estado: cEstado,
           municipio: cMunicipio,
           gabarito: cGabarito,
+          ...(periodoYm ? { periodo: periodoYm } : {}),
         });
         setCEscolas(normEntities(data.escolas));
       } catch {
@@ -514,7 +505,7 @@ export default function SkillsHeatMapPage() {
         setLoadingFilters(false);
       }
     })();
-  }, [cEstado, cMunicipio, cGabarito]);
+  }, [cEstado, cMunicipio, cGabarito, periodoYm]);
 
   useEffect(() => {
     if (cEstado === 'all' || cMunicipio === 'all' || cGabarito === 'all') {
@@ -529,6 +520,7 @@ export default function SkillsHeatMapPage() {
           municipio: cMunicipio,
           gabarito: cGabarito,
           ...(cEscola !== 'all' ? { escola: cEscola } : {}),
+          ...(periodoYm ? { periodo: periodoYm } : {}),
         });
         setCSeries(normEntities(data.series));
       } catch {
@@ -537,7 +529,7 @@ export default function SkillsHeatMapPage() {
         setLoadingFilters(false);
       }
     })();
-  }, [cEstado, cMunicipio, cGabarito, cEscola]);
+  }, [cEstado, cMunicipio, cGabarito, cEscola, periodoYm]);
 
   useEffect(() => {
     if (cEstado === 'all' || cMunicipio === 'all' || cGabarito === 'all' || cSerie === 'all') {
@@ -553,6 +545,7 @@ export default function SkillsHeatMapPage() {
           gabarito: cGabarito,
           ...(cEscola !== 'all' ? { escola: cEscola } : {}),
           serie: cSerie,
+          ...(periodoYm ? { periodo: periodoYm } : {}),
         });
         setCTurmas(normEntities(data.turmas));
       } catch {
@@ -561,7 +554,7 @@ export default function SkillsHeatMapPage() {
         setLoadingFilters(false);
       }
     })();
-  }, [cEstado, cMunicipio, cGabarito, cEscola, cSerie]);
+  }, [cEstado, cMunicipio, cGabarito, cEscola, cSerie, periodoYm]);
 
   const canLoadOnlineMap =
     oEstado !== 'all' &&
@@ -592,6 +585,7 @@ export default function SkillsHeatMapPage() {
         serie: oSerie,
         turma: oTurma,
         disciplina: oDisciplina,
+        ...(periodoYm ? { periodo: periodoYm } : {}),
       });
       setMapOnline(data);
       setODisciplinas(data.disciplinas_disponiveis || []);
@@ -614,6 +608,7 @@ export default function SkillsHeatMapPage() {
     oSerie,
     oTurma,
     oDisciplina,
+    periodoYm,
     toast,
   ]);
 
@@ -636,6 +631,7 @@ export default function SkillsHeatMapPage() {
         serie: cSerie,
         turma: cTurma,
         disciplina: cDisciplina,
+        ...(periodoYm ? { periodo: periodoYm } : {}),
       });
       setMapCartao(data);
       setCDisciplinas(data.disciplinas_disponiveis || []);
@@ -658,6 +654,7 @@ export default function SkillsHeatMapPage() {
     cSerie,
     cTurma,
     cDisciplina,
+    periodoYm,
     toast,
   ]);
 
@@ -686,6 +683,7 @@ export default function SkillsHeatMapPage() {
         turma: oTurma,
         disciplina: oDisciplina,
         skill_id: h.skill_id,
+        ...(periodoYm ? { periodo: periodoYm } : {}),
       });
       setDialogErros(data);
     } catch {
@@ -711,6 +709,7 @@ export default function SkillsHeatMapPage() {
         disciplina: cDisciplina,
         skill_id: h.skill_id,
         bloco_disciplina: h.subject_id ?? null,
+        ...(periodoYm ? { periodo: periodoYm } : {}),
       });
       setDialogErros(data);
     } catch {
@@ -723,20 +722,41 @@ export default function SkillsHeatMapPage() {
   return (
     <div className="container max-w-[1400px] py-6 space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <LayoutGrid className="h-8 w-8 text-primary" />
+        <Thermometer className="h-8 w-8 text-primary" aria-hidden />
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Mapa de calor de habilidades</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Mapa de habilidades</h1>
           <p className="text-sm text-muted-foreground">
             Desempenho por habilidade em faixas de acertos; clique para ver alunos que erraram.
           </p>
         </div>
       </div>
 
+      <ResultsPeriodMonthYearPicker
+        value={selectedPeriod}
+        onChange={setSelectedPeriod}
+        disabled={loadingFilters}
+      />
+
       <Tabs value={tab} onValueChange={(v) => setTab(v as 'online' | 'cartao')}>
-        <TabsList>
-          <TabsTrigger value="online">Avaliação online</TabsTrigger>
-          <TabsTrigger value="cartao">Cartão-resposta</TabsTrigger>
-        </TabsList>
+        <div className="flex w-full min-w-0 flex-row flex-wrap items-center justify-between gap-3">
+          <TabsList className="min-h-0 min-w-0 flex-1 basis-[min(100%,28rem)] justify-start">
+            <TabsTrigger value="online">Avaliação online</TabsTrigger>
+            <TabsTrigger value="cartao">Cartão-resposta</TabsTrigger>
+          </TabsList>
+          <Button
+            type="button"
+            onClick={() => (tab === 'online' ? void loadOnlineMap() : void loadCartaoMap())}
+            disabled={
+              loadingMap ||
+              loadingFilters ||
+              (tab === 'online' ? !canLoadOnlineMap : !canLoadCartaoMap)
+            }
+            className="shrink-0 gap-2"
+          >
+            {loadingMap ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Atualizar mapa
+          </Button>
+        </div>
 
         <TabsContent value="online" className="space-y-4">
           <Card>
@@ -827,12 +847,6 @@ export default function SkillsHeatMapPage() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="flex items-end md:col-span-2 lg:col-span-4">
-                <Button onClick={loadOnlineMap} disabled={!canLoadOnlineMap || loadingMap || loadingFilters} className="gap-2">
-                  {loadingMap ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  Atualizar mapa
-                </Button>
               </div>
             </CardContent>
           </Card>
@@ -946,12 +960,6 @@ export default function SkillsHeatMapPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex items-end md:col-span-2 lg:col-span-4">
-                <Button onClick={loadCartaoMap} disabled={!canLoadCartaoMap || loadingMap || loadingFilters} className="gap-2">
-                  {loadingMap ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  Atualizar mapa
-                </Button>
-              </div>
             </CardContent>
           </Card>
 
@@ -976,167 +984,48 @@ export default function SkillsHeatMapPage() {
       </Tabs>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent
-          hideClose
-          ariaTitle={
-            dialogSkill
-              ? `Habilidade: ${skillDisplayTitle(dialogSkill)} — ${FAIXA_LABELS[resolveFaixaKey(dialogSkill.faixa)]}`
-              : 'Detalhes da habilidade'
-          }
-          className={cn(
-            'max-w-lg gap-0 overflow-hidden border-2 p-0 sm:rounded-2xl',
-            'bg-background/95 backdrop-blur-xl',
-            dialogSkill && FAIXA_MODAL_THEME[resolveFaixaKey(dialogSkill.faixa)].shell
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {dialogSkill ? `Habilidade ${skillDisplayTitle(dialogSkill)}` : 'Alunos que erraram'}
+            </DialogTitle>
+            {dialogSkill &&
+              (() => {
+                const dn = skillDisciplinaLabel(dialogSkill);
+                return dn ? (
+                  <DialogDescription className="text-sm text-muted-foreground font-normal">{dn}</DialogDescription>
+                ) : null;
+              })()}
+          </DialogHeader>
+          {loadingErros && (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
           )}
-        >
-          {dialogSkill && (() => {
-            const faixaKey = resolveFaixaKey(dialogSkill.faixa);
-            const theme = FAIXA_MODAL_THEME[faixaKey];
-            const heroMuted =
-              faixaKey === 'basico'
-                ? 'text-amber-950/80'
-                : faixaKey === 'adequado'
-                  ? 'text-emerald-950/75'
-                  : 'text-white/85';
-            return (
-              <>
-                <div
-                  className={cn(
-                    'relative overflow-hidden bg-gradient-to-br px-5 pb-5 pt-6 sm:px-6 sm:pb-6 sm:pt-7',
-                    theme.hero
+          {!loadingErros && dialogErros && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{dialogErros.percentual_erros.toFixed(1)}%</span>
+                {' '}dos alunos no escopo erraram ao menos um item desta habilidade ({dialogErros.total_alunos_que_erraram} de {dialogErros.total_alunos_escopo}).
+              </p>
+              <ScrollArea className="h-[280px] rounded-md border p-2">
+                <ul className="space-y-2 text-sm">
+                  {dialogErros.alunos.length === 0 ? (
+                    <li className="text-muted-foreground">Nenhum aluno nesta situação.</li>
+                  ) : (
+                    dialogErros.alunos.map((a) => (
+                      <li key={a.id} className="border-b border-border/50 py-2 last:border-0">
+                        <div className="font-medium">{a.nome}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {[a.escola, a.serie, a.turma].filter(Boolean).join(' · ')}
+                        </div>
+                      </li>
+                    ))
                   )}
-                >
-                  <div
-                    className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-white/10 blur-3xl"
-                    aria-hidden
-                  />
-                  <DialogClose
-                    className={cn(
-                      'absolute right-3 top-3 z-[1100] rounded-full p-2 transition-colors',
-                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
-                      theme.closeBtn
-                    )}
-                  >
-                    <X className="h-5 w-5" />
-                    <span className="sr-only">Fechar</span>
-                  </DialogClose>
-
-                  <div className="relative mb-4 flex flex-wrap items-center gap-2 pr-12">
-                    <div
-                      className={cn(
-                        'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] sm:text-xs',
-                        theme.chip
-                      )}
-                    >
-                      <span className="flex items-center gap-1" aria-hidden>
-                        {theme.swatches.map((sw) => (
-                          <span
-                            key={sw}
-                            className={cn(
-                              'h-2.5 w-2.5 rounded-full shadow-sm ring-2',
-                              sw,
-                              theme.chipDotRing
-                            )}
-                          />
-                        ))}
-                      </span>
-                      <span className="max-w-[220px] leading-tight sm:max-w-none">
-                        Nível · {FAIXA_LABELS[faixaKey]}
-                      </span>
-                    </div>
-                  </div>
-
-                  <DialogHeader className="relative space-y-2 p-0 text-left">
-                    <DialogTitle className="text-xl font-bold tracking-tight sm:text-2xl">
-                      {skillDisplayTitle(dialogSkill)}
-                    </DialogTitle>
-                    {skillDisciplinaLabel(dialogSkill) && (
-                      <DialogDescription className={cn('text-sm font-medium', heroMuted)}>
-                        {skillDisciplinaLabel(dialogSkill)}
-                      </DialogDescription>
-                    )}
-                  </DialogHeader>
-
-                  <div className="relative mt-5 flex flex-wrap items-end gap-2">
-                    <span className="text-4xl font-black tabular-nums tracking-tight sm:text-5xl">
-                      {dialogSkill.percentual_acertos.toFixed(1)}%
-                    </span>
-                    <span className={cn('pb-1 text-sm font-medium', heroMuted)}>acertaram no escopo</span>
-                  </div>
-                  <div
-                    className={cn(
-                      'relative mt-4 h-2.5 w-full overflow-hidden rounded-full ring-1',
-                      faixaKey === 'basico' && 'bg-amber-950/15 ring-amber-950/10',
-                      faixaKey === 'adequado' && 'bg-emerald-950/12 ring-emerald-950/10',
-                      (faixaKey === 'abaixo_do_basico' || faixaKey === 'avancado') &&
-                        'bg-black/20 ring-black/10 dark:bg-black/30 dark:ring-white/10'
-                    )}
-                    role="presentation"
-                  >
-                    <div
-                      className={cn(
-                        'h-full rounded-full bg-gradient-to-r transition-[width] duration-500 ease-out',
-                        theme.barGradient
-                      )}
-                      style={{
-                        width: `${Math.min(100, Math.max(0, dialogSkill.percentual_acertos))}%`,
-                      }}
-                    />
-                  </div>
-                  <p className={cn('relative mt-3 text-[11px] font-medium sm:text-xs', heroMuted)}>
-                    Faixa de cor do mapa alinhada a este nível de desempenho (0–100% de acertos).
-                  </p>
-                </div>
-
-                <div className="space-y-4 p-5 sm:p-6">
-                  {loadingErros && (
-                    <div className="flex justify-center py-10">
-                      <Loader2 className="h-9 w-9 animate-spin opacity-60" />
-                    </div>
-                  )}
-                  {!loadingErros && dialogErros && (
-                    <div className="space-y-4">
-                      <div
-                        className={cn(
-                          'rounded-xl border px-4 py-3 text-sm shadow-sm',
-                          theme.bodyAccent
-                        )}
-                      >
-                        <p className="text-muted-foreground leading-relaxed">
-                          <span className="font-semibold text-foreground">
-                            {dialogErros.percentual_erros.toFixed(1)}%
-                          </span>{' '}
-                          dos alunos no escopo erraram ao menos um item desta habilidade (
-                          {dialogErros.total_alunos_que_erraram} de {dialogErros.total_alunos_escopo}).
-                        </p>
-                      </div>
-                      <ScrollArea className="h-[280px] rounded-xl border border-border/80 bg-muted/20 p-3 shadow-inner">
-                        <ul className="space-y-1 text-sm">
-                          {dialogErros.alunos.length === 0 ? (
-                            <li className="rounded-lg px-2 py-6 text-center text-muted-foreground">
-                              Nenhum aluno nesta situação.
-                            </li>
-                          ) : (
-                            dialogErros.alunos.map((a) => (
-                              <li
-                                key={a.id}
-                                className="rounded-lg border border-border/40 bg-background/80 px-3 py-2.5 transition-colors hover:bg-muted/40"
-                              >
-                                <div className="font-medium leading-snug">{a.nome}</div>
-                                <div className="mt-0.5 text-xs text-muted-foreground">
-                                  {[a.escola, a.serie, a.turma].filter(Boolean).join(' · ')}
-                                </div>
-                              </li>
-                            ))
-                          )}
-                        </ul>
-                      </ScrollArea>
-                    </div>
-                  )}
-                </div>
-              </>
-            );
-          })()}
+                </ul>
+              </ScrollArea>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

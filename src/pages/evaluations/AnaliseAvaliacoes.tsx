@@ -143,6 +143,7 @@ export default function AnaliseAvaliacoes() {
   const [selectedMunicipality, setSelectedMunicipality] = useState<string>('all');
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [selectedEvaluation, setSelectedEvaluation] = useState<string>('all');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
   const [reportAnswerSheet, setReportAnswerSheet] = useState(false);
 
   // Estados para hierarquia do usuário
@@ -537,7 +538,7 @@ export default function AnaliseAvaliacoes() {
     };
 
     loadData();
-  }, [allRequiredFiltersSelected, selectedState, selectedMunicipality, selectedSchool, selectedEvaluation, reportAnswerSheet, adminCityIdQuery, toast]);
+  }, [allRequiredFiltersSelected, selectedState, selectedMunicipality, selectedSchool, selectedEvaluation, selectedPeriod, reportAnswerSheet, adminCityIdQuery, toast]);
 
   if (isLoading) {
     return (
@@ -626,6 +627,11 @@ export default function AnaliseAvaliacoes() {
         fallbackSchools={fallbackSchools}
         // Prop para ordenação personalizada: Avaliação antes de Escola
         loadSchoolsAfterEvaluation={true}
+        selectedPeriod={selectedPeriod}
+        onPeriodChange={(p) => {
+          setSelectedPeriod(p);
+          setApiData(null);
+        }}
       />
 
       {/* Mensagem quando não há filtros suficientes */}

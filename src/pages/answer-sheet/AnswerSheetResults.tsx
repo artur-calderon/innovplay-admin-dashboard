@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   ArrowLeft,
   BarChart3,
+  Calendar as CalendarIcon,
   Filter,
   Loader2,
   RefreshCw,
@@ -27,6 +28,10 @@ import {
   Table2,
   Eye,
 } from 'lucide-react';
+import { format, parse } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { ResultsCharts } from '@/components/evaluations/results/ResultsCharts';
@@ -35,6 +40,12 @@ import { ClassStatistics } from '@/components/evaluations/results/ClassStatistic
 import { StudentCard } from '@/components/evaluations/student/StudentCard';
 import { DisciplineTables } from '@/components/evaluations/results/DisciplineTables';
 import { cn } from '@/lib/utils';
+import {
+  RESULTS_PERIOD_YEAR_MIN,
+  getResultsPeriodYearMax,
+  normalizeResultsPeriodYm,
+  RESULTS_MONTH_NAMES_PT,
+} from '@/utils/resultsPeriod';
 import { getReportProficiencyTagClass } from '@/utils/report/reportTagStyles';
 
 // Opções dos filtros (resposta de GET /answer-sheets/opcoes-filtros-results)
@@ -189,13 +200,17 @@ const FILTERS_STORAGE_KEY = 'answer_sheet_results_filters';
 type AnswerSheetStoredFilters = {
   estado: string;
   municipio: string;
+  /** '' ou `YYYY-MM` — mês da correção (`corrected_at`). */
+  periodo: string;
   gabarito: string;
   escola: string;
   serie: string;
   turma: string;
 };
 
-export default function AnswerSheetResults() {
+type AnswerSheetResultsProps = { hidePageHeading?: boolean };
+
+export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSheetResultsProps = {}) {
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -205,6 +220,13 @@ export default function AnswerSheetResults() {
   // Filtros (cascata: estado -> municipio -> gabarito -> escola -> serie -> turma)
   const [estado, setEstado] = useState<string>('all');
   const [municipio, setMunicipio] = useState<string>('all');
+  /** `all` = sem filtro; senão `YYYY-MM` (mês da correção). */
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
+  const [periodPickerOpen, setPeriodPickerOpen] = useState(false);
+  const [periodDraft, setPeriodDraft] = useState<{ y: number; m: number }>(() => {
+    const n = new Date();
+    return { y: n.getFullYear(), m: n.getMonth() };
+  });
   const [gabarito, setGabarito] = useState<string>('all');
   const [escola, setEscola] = useState<string>('all');
   const [serie, setSerie] = useState<string>('all');
@@ -236,6 +258,7 @@ export default function AnswerSheetResults() {
       }
       if (!stored) return null;
       const f = JSON.parse(stored) as Record<string, unknown>;
+      const periodoStored = typeof f.periodo === 'string' ? f.periodo : '';
       if (
         typeof f.estado === 'string' &&
         typeof f.municipio === 'string' &&
@@ -247,6 +270,10 @@ export default function AnswerSheetResults() {
         return {
           estado: f.estado || 'all',
           municipio: f.municipio || 'all',
+          periodo: (() => {
+            const n = normalizeResultsPeriodYm(periodoStored);
+            return n === 'all' ? '' : n;
+          })(),
           gabarito: f.gabarito || 'all',
           escola: f.escola || 'all',
           serie: f.serie || 'all',
@@ -271,6 +298,7 @@ export default function AnswerSheetResults() {
       const payload: AnswerSheetStoredFilters & { timestamp: number } = {
         estado,
         municipio,
+        periodo: selectedPeriod === 'all' ? '' : selectedPeriod,
         gabarito,
         escola,
         serie,
@@ -281,13 +309,15 @@ export default function AnswerSheetResults() {
     } catch (e) {
       console.error('Erro ao salvar filtros (cartão resposta):', e);
     }
-  }, [estado, municipio, gabarito, escola, serie, turma]);
+  }, [estado, municipio, selectedPeriod, gabarito, escola, serie, turma]);
 
   useEffect(() => {
     const saved = loadFiltersFromStorage();
     if (saved) {
       setEstado(saved.estado);
       setMunicipio(saved.municipio);
+      const pNorm = normalizeResultsPeriodYm(saved.periodo ?? '');
+      setSelectedPeriod(pNorm === 'all' ? 'all' : pNorm);
       setGabarito(saved.gabarito);
       setEscola(saved.escola);
       setSerie(saved.serie);
@@ -301,13 +331,63 @@ export default function AnswerSheetResults() {
       return;
     }
     saveFiltersToStorage();
-  }, [estado, municipio, gabarito, escola, serie, turma, saveFiltersToStorage]);
+  }, [estado, municipio, selectedPeriod, gabarito, escola, serie, turma, saveFiltersToStorage]);
+
+  const normalizedSelectedPeriod = useMemo(
+    () => (selectedPeriod === 'all' ? 'all' : normalizeResultsPeriodYm(selectedPeriod)),
+    [selectedPeriod]
+  );
+
+  const periodoApi = normalizedSelectedPeriod === 'all' ? undefined : normalizedSelectedPeriod;
+
+  const periodCalendarSelected = useMemo(() => {
+    if (normalizedSelectedPeriod === 'all') return undefined;
+    return parse(`${normalizedSelectedPeriod}-01`, 'yyyy-MM-dd', new Date());
+  }, [normalizedSelectedPeriod]);
+
+  useEffect(() => {
+    if (selectedPeriod === 'all') return;
+    const n = normalizeResultsPeriodYm(selectedPeriod);
+    if (n === 'all') setSelectedPeriod('all');
+    else if (n !== selectedPeriod) setSelectedPeriod(n);
+  }, [selectedPeriod]);
+
+  useEffect(() => {
+    if (!periodPickerOpen) return;
+    if (normalizedSelectedPeriod !== 'all') {
+      const [yy, mm] = normalizedSelectedPeriod.split('-').map(Number);
+      setPeriodDraft({ y: yy, m: mm - 1 });
+      return;
+    }
+    const n = new Date();
+    setPeriodDraft({ y: n.getFullYear(), m: n.getMonth() });
+  }, [periodPickerOpen, normalizedSelectedPeriod]);
+
+  const applyPeriodYmAndResetCascade = useCallback((ymRaw: string) => {
+    const p = normalizeResultsPeriodYm(ymRaw);
+    if (p === 'all') return;
+    setSelectedPeriod(p);
+    setGabarito('all');
+    setEscola('all');
+    setSerie('all');
+    setTurma('all');
+  }, []);
+
+  const clearPeriodAndResetCascade = useCallback(() => {
+    setSelectedPeriod('all');
+    setGabarito('all');
+    setEscola('all');
+    setSerie('all');
+    setTurma('all');
+    setPeriodPickerOpen(false);
+  }, []);
 
   // Carregar opções de filtros (cascata)
   const fetchOpcoesFiltros = useCallback(async () => {
     const params = new URLSearchParams();
     if (estado && estado !== 'all') params.set('estado', estado);
     if (municipio && municipio !== 'all') params.set('municipio', municipio);
+    if (periodoApi) params.set('periodo', periodoApi);
     if (gabarito && gabarito !== 'all') params.set('gabarito', gabarito);
     if (escola && escola !== 'all') params.set('escola', escola);
     if (serie && serie !== 'all') params.set('serie', serie);
@@ -331,7 +411,7 @@ export default function AnswerSheetResults() {
     } finally {
       setIsLoadingFilters(false);
     }
-  }, [estado, municipio, gabarito, escola, serie, turma, toast]);
+  }, [estado, municipio, periodoApi, gabarito, escola, serie, turma, toast]);
 
   useEffect(() => {
     fetchOpcoesFiltros();
@@ -341,6 +421,7 @@ export default function AnswerSheetResults() {
   const setEstadoAndReset = (v: string) => {
     setEstado(v);
     setMunicipio('all');
+    setSelectedPeriod('all');
     setGabarito('all');
     setEscola('all');
     setSerie('all');
@@ -348,6 +429,7 @@ export default function AnswerSheetResults() {
   };
   const setMunicipioAndReset = (v: string) => {
     setMunicipio(v);
+    setSelectedPeriod('all');
     setGabarito('all');
     setEscola('all');
     setSerie('all');
@@ -379,6 +461,7 @@ export default function AnswerSheetResults() {
     params.set('estado', estado);
     params.set('municipio', municipio);
     params.set('gabarito', gabarito);
+    if (periodoApi) params.set('periodo', periodoApi);
     if (escola && escola !== 'all') params.set('escola', escola);
     if (serie && serie !== 'all') params.set('serie', serie);
     if (turma && turma !== 'all') params.set('turma', turma);
@@ -403,7 +486,7 @@ export default function AnswerSheetResults() {
     } finally {
       setIsLoadingData(false);
     }
-  }, [estado, municipio, gabarito, escola, serie, turma, toast]);
+  }, [estado, municipio, gabarito, periodoApi, escola, serie, turma, toast]);
 
   useEffect(() => {
     loadResultadosAgregados();
@@ -477,11 +560,12 @@ export default function AnswerSheetResults() {
       if (escola && escola !== 'all') qs.set('escola', escola);
       if (serie && serie !== 'all') qs.set('serie', serie);
       if (turma && turma !== 'all') qs.set('turma', turma);
+      if (periodoApi) qs.set('periodo', periodoApi);
       navigate(
         `/app/cartao-resposta/resultados/gabarito/${gabarito}/aluno/${studentRowId}?${qs.toString()}`
       );
     },
-    [navigate, hasMinimumFilters, estado, municipio, gabarito, escola, serie, turma]
+    [navigate, hasMinimumFilters, estado, municipio, gabarito, escola, serie, turma, periodoApi]
   );
 
   // Estatísticas derivadas (para card Informações e métricas)
@@ -681,33 +765,42 @@ export default function AnswerSheetResults() {
   }, [disciplinasTabela, geralAlunos]);
 
   return (
-    <div className="w-full min-w-0 space-y-6 pb-8">
+    <div className={cn('w-full min-w-0 space-y-6', !hidePageHeading && 'pb-8')}>
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1.5">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
-            <BarChart3 className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
-            Resultados dos Cartões Resposta
-          </h1>
-          <p className="text-muted-foreground text-sm sm:text-base">
-            Acompanhe o desempenho das correções por estado, município e cartão resposta
-          </p>
-          {apiData?.estatisticas_gerais && (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="text-xs">
-                Nível: {(apiData.nivel_granularidade || apiData.estatisticas_gerais.tipo || 'município').charAt(0).toUpperCase() + (apiData.nivel_granularidade || apiData.estatisticas_gerais.tipo || 'município').slice(1)}
-              </Badge>
-              <span className="text-xs text-muted-foreground">
-                {apiData.estatisticas_gerais.nome || apiData.estatisticas_gerais.escola || 'Dados gerais'}
-              </span>
-            </div>
-          )}
-        </div>
+      <div
+        className={cn(
+          'flex flex-col gap-4 sm:flex-row sm:items-center',
+          hidePageHeading ? 'sm:justify-end' : 'sm:justify-between'
+        )}
+      >
+        {!hidePageHeading && (
+          <div className="space-y-1.5">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+              <BarChart3 className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
+              Resultados dos Cartões Resposta
+            </h1>
+            <p className="text-muted-foreground text-sm sm:text-base">
+              Acompanhe o desempenho das correções por estado, município e cartão resposta
+            </p>
+            {apiData?.estatisticas_gerais && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="text-xs">
+                  Nível: {(apiData.nivel_granularidade || apiData.estatisticas_gerais.tipo || 'município').charAt(0).toUpperCase() + (apiData.nivel_granularidade || apiData.estatisticas_gerais.tipo || 'município').slice(1)}
+                </Badge>
+                <span className="text-xs text-muted-foreground">
+                  {apiData.estatisticas_gerais.nome || apiData.estatisticas_gerais.escola || 'Dados gerais'}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex flex-wrap justify-center sm:justify-end gap-2">
-          <Button variant="outline" onClick={handleBack}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Voltar
-          </Button>
+          {!hidePageHeading && (
+            <Button variant="outline" onClick={handleBack}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Voltar
+            </Button>
+          )}
           {hasMinimumFilters && (
             <Button variant="outline" onClick={loadResultadosAgregados} disabled={isLoadingData}>
               <RefreshCw className={cn('h-4 w-4 mr-2', isLoadingData && 'animate-spin')} />
@@ -716,6 +809,16 @@ export default function AnswerSheetResults() {
           )}
         </div>
       </div>
+      {hidePageHeading && apiData?.estatisticas_gerais && (
+        <div className="flex flex-wrap items-center gap-2 -mt-2">
+          <Badge variant="outline" className="text-xs">
+            Nível: {(apiData.nivel_granularidade || apiData.estatisticas_gerais.tipo || 'município').charAt(0).toUpperCase() + (apiData.nivel_granularidade || apiData.estatisticas_gerais.tipo || 'município').slice(1)}
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            {apiData.estatisticas_gerais.nome || apiData.estatisticas_gerais.escola || 'Dados gerais'}
+          </span>
+        </div>
+      )}
 
       {/* Filtros */}
       <Card className="overflow-visible">
@@ -725,11 +828,11 @@ export default function AnswerSheetResults() {
             Filtros
           </CardTitle>
           <CardDescription>
-            Estado, município e cartão resposta são obrigatórios. Refine com escola, série e turma.
+            Estado, município e cartão resposta são obrigatórios. Opcionalmente restrinja pelo mês da correção. Refine com escola, série e turma.
           </CardDescription>
         </CardHeader>
         <CardContent className="overflow-visible">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 w-full min-w-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4 w-full min-w-0">
             <div className="space-y-2">
               <label className="text-sm font-medium">Estado</label>
               <Select value={estado} onValueChange={setEstadoAndReset} disabled={isLoadingFilters}>
@@ -761,6 +864,136 @@ export default function AnswerSheetResults() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Período (mês/ano)</label>
+              <Popover open={periodPickerOpen} onOpenChange={setPeriodPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isLoadingFilters || municipio === 'all'}
+                    className={cn(
+                      'w-full min-w-0 justify-start text-left font-normal',
+                      selectedPeriod === 'all' && 'text-muted-foreground'
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate">
+                      {periodCalendarSelected
+                        ? format(periodCalendarSelected, "MMMM 'de' yyyy", { locale: ptBR })
+                        : 'Selecionar mês e ano'}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-auto max-w-[min(100vw-1rem,20rem)] overflow-hidden border-border bg-popover p-0 text-popover-foreground shadow-lg"
+                  align="start"
+                >
+                  <div className="grid grid-cols-2 gap-2 border-b border-border px-3 pt-3 pb-2">
+                    <div className="min-w-0 space-y-1">
+                      <span className="text-xs font-medium text-muted-foreground">Mês</span>
+                      <Select
+                        value={String(periodDraft.m)}
+                        onValueChange={(v) => {
+                          const mi = parseInt(v, 10);
+                          const y = periodDraft.y;
+                          setPeriodDraft({ y, m: mi });
+                          applyPeriodYmAndResetCascade(`${y}-${String(mi + 1).padStart(2, '0')}`);
+                        }}
+                      >
+                        <SelectTrigger className="h-9 w-full min-w-0">
+                          <SelectValue placeholder="Mês" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {RESULTS_MONTH_NAMES_PT.map((name, i) => (
+                            <SelectItem key={i} value={String(i)}>
+                              {name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="min-w-0 space-y-1">
+                      <span className="text-xs font-medium text-muted-foreground">Ano</span>
+                      <Select
+                        value={String(periodDraft.y)}
+                        onValueChange={(v) => {
+                          const y = parseInt(v, 10);
+                          const mi = periodDraft.m;
+                          setPeriodDraft({ y, m: mi });
+                          applyPeriodYmAndResetCascade(`${y}-${String(mi + 1).padStart(2, '0')}`);
+                        }}
+                      >
+                        <SelectTrigger className="h-9 w-full min-w-0">
+                          <SelectValue placeholder="Ano" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {Array.from(
+                            {
+                              length: getResultsPeriodYearMax() - RESULTS_PERIOD_YEAR_MIN + 1,
+                            },
+                            (_, i) => RESULTS_PERIOD_YEAR_MIN + i
+                          ).map((y) => (
+                            <SelectItem key={y} value={String(y)}>
+                              {y}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <Calendar
+                    mode="single"
+                    locale={ptBR}
+                    month={new Date(periodDraft.y, periodDraft.m, 1)}
+                    onMonthChange={(d) => {
+                      const y = d.getFullYear();
+                      const m = d.getMonth();
+                      setPeriodDraft({ y, m });
+                      applyPeriodYmAndResetCascade(`${y}-${String(m + 1).padStart(2, '0')}`);
+                    }}
+                    selected={periodCalendarSelected}
+                    captionLayout="buttons"
+                    fromYear={RESULTS_PERIOD_YEAR_MIN}
+                    toYear={getResultsPeriodYearMax()}
+                    className="rounded-none border-0 bg-transparent p-0 text-popover-foreground shadow-none"
+                    onSelect={(date) => {
+                      if (date) {
+                        const y = date.getFullYear();
+                        const m = date.getMonth();
+                        setPeriodDraft({ y, m });
+                        const p = normalizeResultsPeriodYm(format(date, 'yyyy-MM'));
+                        if (p !== 'all') {
+                          setSelectedPeriod(p);
+                          setGabarito('all');
+                          setEscola('all');
+                          setSerie('all');
+                          setTurma('all');
+                          setPeriodPickerOpen(false);
+                        }
+                      }
+                    }}
+                    initialFocus
+                  />
+                  <div className="space-y-2 border-t border-border bg-muted/15 px-3 py-2.5 dark:bg-muted/25">
+                    <p className="text-center text-xs leading-snug text-muted-foreground">
+                      Filtro pelo mês de <strong>correção</strong> (data registrada). Altere mês/ano, use o calendário ou toque
+                      em um dia para aplicar e fechar.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-full text-muted-foreground hover:text-foreground"
+                      disabled={selectedPeriod === 'all'}
+                      onClick={clearPeriodAndResetCascade}
+                    >
+                      Limpar período
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Cartão resposta</label>
@@ -828,7 +1061,7 @@ export default function AnswerSheetResults() {
             </div>
             <div className="mt-4 p-3 rounded-lg bg-muted/50 border border-border col-span-full">
               <p className="text-sm text-muted-foreground">
-                <strong>Ordem dos filtros:</strong> Estado → Município → Cartão resposta → Escola → Série → Turma
+                <strong>Ordem dos filtros:</strong> Estado → Município → Período (opcional) → Cartão resposta → Escola → Série → Turma
               </p>
             </div>
           </div>

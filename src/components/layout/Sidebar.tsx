@@ -48,7 +48,7 @@ import {
   Coins,
   ShoppingBag,
   Smartphone,
-  LayoutGrid,
+  Thermometer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -114,6 +114,7 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
   const corretorAllowedHrefs = new Set([
     '/app',
     '/app/avaliacoes',
+    '/app/resultados',
     '/logout',
     '/app/agenda',
     '/app/configuracoes',
@@ -300,9 +301,6 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
             { icon: FilePlus, label: "Cadastrar Cartão Resposta", href: "/app/cartao-resposta/cadastrar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: Ticket, label: "Gerar cartões", href: "/app/cartao-resposta/gerar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: ScanLine, label: "Corrigir cartões", href: "/app/cartao-resposta/corrigir", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-            { icon: BarChart3, label: "Resultados (Cartão)", href: "/app/cartao-resposta/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-            { icon: FileText, label: "Acerto e Níveis (cartão)", href: "/app/relatorios/acerto-niveis-cartao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-            { icon: School, label: "Relatório Escolar (Cartão)", href: "/app/relatorios/relatorio-escolar-cartao-resposta", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
           ]
         },
         {
@@ -321,8 +319,8 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
           ]
         },
         { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-        { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: TrendingUp, label: "Evolução", href: "/app/evolucao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+        { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         {
           icon: NotebookPen,
           label: "Questionários",
@@ -340,7 +338,7 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
           role: ["admin", "professor", "diretor", "coordenador", "tecadm"],
           children: [
             { icon: Target, label: "Acerto e Níveis", href: "/app/relatorios/acerto-niveis", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-            { icon: LayoutGrid, label: "Mapa de habilidades", href: "/app/relatorios/mapa-habilidades", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: Thermometer, label: "Mapa de habilidades", href: "/app/relatorios/mapa-habilidades", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: PieChart, label: "Análise das Avaliações", href: "/app/relatorios/analise-avaliacoes", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: School, label: "Relatório Escolar", href: "/app/relatorios/relatorio-escolar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: Presentation, label: "Relatório Apresentação", href: "/app/relatorios/relatorio-apresentacao-19-slides", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },

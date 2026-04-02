@@ -16,7 +16,8 @@ import { useToast } from "@/hooks/use-toast";
 import { EvaluationResultsApiService, NovaRespostaAPI, REPORT_ENTITY_TYPE_ANSWER_SHEET } from "@/services/evaluation/evaluationResultsApi";
 import { RelatorioCompleto } from "@/types/evaluation-results";
 import { useAuth } from "@/context/authContext";
-import { FilterComponentAnalise } from "@/components/filters";
+import { FilterComponentAnalise, ResultsPeriodMonthYearPicker } from "@/components/filters";
+import { normalizeResultsPeriodYm } from "@/utils/resultsPeriod";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext, cityIdQueryParamForAdmin } from "@/utils/userHierarchy";
 import { cn } from "@/lib/utils";
 import {
@@ -844,11 +845,14 @@ export interface RelatorioEscolarProps {
   reportAnswerSheet?: boolean;
   /** Usa GET `/answer-sheets/resultados-agregados` (filtros: estado, município, gabarito, …). */
   answerSheetsResultadosAgregados?: boolean;
+  /** Quando true, omite o bloco de título (usado no hub com abas). */
+  hidePageHeading?: boolean;
 }
 
 export default function RelatorioEscolar({
   reportAnswerSheet: reportAnswerSheetProp = false,
   answerSheetsResultadosAgregados = false,
+  hidePageHeading = false,
 }: RelatorioEscolarProps = {}) {
   const isAnswerSheetAgregados = answerSheetsResultadosAgregados;
   const reportAnswerSheet = reportAnswerSheetProp || isAnswerSheetAgregados;
@@ -868,6 +872,7 @@ export default function RelatorioEscolar({
   const [selectedMunicipality, setSelectedMunicipality] = useState<string>('all');
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [selectedEvaluation, setSelectedEvaluation] = useState<string>('all');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
   const reportEntityTypeParam =
     reportAnswerSheet && !isAnswerSheetAgregados ? REPORT_ENTITY_TYPE_ANSWER_SHEET : undefined;
 
@@ -895,6 +900,12 @@ export default function RelatorioEscolar({
     () => cityIdQueryParamForAdmin(user?.role, municipalityForAdmin === 'all' ? undefined : municipalityForAdmin),
     [user?.role, municipalityForAdmin]
   );
+
+  const periodoYmRelatorio = useMemo(() => {
+    if (selectedPeriod === 'all') return undefined;
+    const n = normalizeResultsPeriodYm(selectedPeriod);
+    return n === 'all' ? undefined : n;
+  }, [selectedPeriod]);
 
   // Estados para hierarquia do usuário
   const [userHierarchyContext, setUserHierarchyContext] = useState<UserHierarchyContext | null>(null);
@@ -1248,6 +1259,20 @@ export default function RelatorioEscolar({
     setApiData(null);
   }, []);
 
+  const asPeriodResetInitRef = useRef(false);
+  useEffect(() => {
+    if (!isAnswerSheetAgregados) return;
+    if (!asPeriodResetInitRef.current) {
+      asPeriodResetInitRef.current = true;
+      return;
+    }
+    setAsGabarito('all');
+    setAsEscola('all');
+    setAsSerie('all');
+    setAsTurma('all');
+    setApiData(null);
+  }, [selectedPeriod, isAnswerSheetAgregados]);
+
   const fetchAsOpcoesFiltros = useCallback(async () => {
     if (!isAnswerSheetAgregados) return;
     const params = new URLSearchParams();
@@ -1257,6 +1282,7 @@ export default function RelatorioEscolar({
     if (asEscola && asEscola !== 'all') params.set('escola', asEscola);
     if (asSerie && asSerie !== 'all') params.set('serie', asSerie);
     if (asTurma && asTurma !== 'all') params.set('turma', asTurma);
+    if (periodoYmRelatorio) params.set('periodo', periodoYmRelatorio);
     const query = params.toString();
     try {
       setIsLoadingFilters(true);
@@ -1292,6 +1318,7 @@ export default function RelatorioEscolar({
     asEscola,
     asSerie,
     asTurma,
+    periodoYmRelatorio,
     toast,
   ]);
 
@@ -3384,6 +3411,7 @@ export default function RelatorioEscolar({
             escola: selectedSchool !== 'all' ? selectedSchool : undefined,
             ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
             ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+            ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
           };
 
           const evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(1, 1, filters);
@@ -3431,6 +3459,7 @@ export default function RelatorioEscolar({
                     escola: undefined, // Remover filtro de escola para obter todos os dados do município
                     ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
                     ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+                    ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
                   };
                   
                   const municipioResponse = await EvaluationResultsApiService.getEvaluationsList(1, 1, municipioFilters);
@@ -3529,6 +3558,7 @@ export default function RelatorioEscolar({
     selectedMunicipality,
     selectedSchool,
     selectedEvaluation,
+    selectedPeriod,
     adminCityIdQuery,
     reportEntityTypeParam,
     toast,
@@ -3552,6 +3582,7 @@ export default function RelatorioEscolar({
         if (asEscola !== 'all') params.set('escola', asEscola);
         if (asSerie !== 'all') params.set('serie', asSerie);
         if (asTurma !== 'all') params.set('turma', asTurma);
+        if (periodoYmRelatorio) params.set('periodo', periodoYmRelatorio);
         const res = await api.get<AnswerSheetResultadosAgregadosRaw>(
           `/answer-sheets/resultados-agregados?${params.toString()}`
         );
@@ -3586,6 +3617,7 @@ export default function RelatorioEscolar({
     asEscola,
     asSerie,
     asTurma,
+    periodoYmRelatorio,
     toast,
   ]);
 
@@ -3602,33 +3634,37 @@ export default function RelatorioEscolar({
 
   return (
     <div className="w-full min-w-0 space-y-6">
-      {/* Header — mobile: título/desc alinhados, badge centralizado abaixo */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1.5">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
-            <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
-            {reportAnswerSheet ? "Relatório Escolar — Cartão resposta" : "Relatório Escolar"}
-          </h1>
-          <p className="text-muted-foreground text-sm sm:text-base">
-            {reportAnswerSheet
-              ? "Relatórios escolares com base em cartões-resposta corrigidos"
-              : "Relatórios escolares detalhados do seu município"}
-          </p>
-          {user?.role && (
-            <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
-              {getRestrictionMessage(user.role)}
-            </p>
-          )}
-        </div>
-        <div className="flex justify-center w-full sm:w-auto sm:justify-end">
-          <Badge variant="outline" className="text-sm">
-            {user?.role === 'admin' ? 'Administrador' :
-             user?.role === 'professor' ? 'Professor' :
-             user?.role === 'diretor' ? 'Diretor' :
-             user?.role === 'coordenador' ? 'Coordenador' : 'Técnico Administrativo'}
-          </Badge>
-        </div>
-      </div>
+      {!hidePageHeading && (
+        <>
+          {/* Header — mobile: título/desc alinhados, badge centralizado abaixo */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1.5">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+                <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
+                {reportAnswerSheet ? "Relatório Escolar — Cartão resposta" : "Relatório Escolar"}
+              </h1>
+              <p className="text-muted-foreground text-sm sm:text-base">
+                {reportAnswerSheet
+                  ? "Relatórios escolares com base em cartões-resposta corrigidos"
+                  : "Relatórios escolares detalhados do seu município"}
+              </p>
+              {user?.role && (
+                <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
+                  {getRestrictionMessage(user.role)}
+                </p>
+              )}
+            </div>
+            <div className="flex justify-center w-full sm:w-auto sm:justify-end">
+              <Badge variant="outline" className="text-sm">
+                {user?.role === 'admin' ? 'Administrador' :
+                 user?.role === 'professor' ? 'Professor' :
+                 user?.role === 'diretor' ? 'Diretor' :
+                 user?.role === 'coordenador' ? 'Coordenador' : 'Técnico Administrativo'}
+              </Badge>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Filtros */}
       {isAnswerSheetAgregados ? (
@@ -3643,7 +3679,7 @@ export default function RelatorioEscolar({
             </CardDescription>
           </CardHeader>
           <CardContent className="overflow-visible">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 w-full min-w-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4 w-full min-w-0">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Estado</label>
                 <Select value={asEstado} onValueChange={setAsEstadoAndReset} disabled={isLoadingFilters}>
@@ -3676,6 +3712,14 @@ export default function RelatorioEscolar({
                   </SelectContent>
                 </Select>
               </div>
+              <ResultsPeriodMonthYearPicker
+                value={selectedPeriod}
+                onChange={(p) => {
+                  setSelectedPeriod(p);
+                  setApiData(null);
+                }}
+                disabled={isLoadingFilters || asMunicipio === 'all'}
+              />
               <div className="space-y-2">
                 <label className="text-sm font-medium">Cartão resposta</label>
                 <Select value={asGabarito} onValueChange={setAsGabaritoAndReset} disabled={isLoadingFilters || asMunicipio === 'all'}>
@@ -3774,6 +3818,11 @@ export default function RelatorioEscolar({
           fallbackSchools={fallbackSchools}
           loadSchoolsAfterEvaluation={true}
           reportEntityType={reportEntityTypeParam}
+          selectedPeriod={selectedPeriod}
+          onPeriodChange={(p) => {
+            setSelectedPeriod(p);
+            setApiData(null);
+          }}
         />
       )}
 

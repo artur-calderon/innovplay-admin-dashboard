@@ -1,5 +1,6 @@
 import { api, apiWithRetry, apiWithTimeout } from '@/lib/api';
 import { EvaluationResultsData, StudentProficiency, ResultsFilters, calculateProficiency, RelatorioCompleto } from '@/types/evaluation-results';
+import { normalizeResultsPeriodYm } from '@/utils/resultsPeriod';
 
 /** Query param para relatórios baseados em cartão-resposta (gabarito), alinhado ao backend. */
 export const REPORT_ENTITY_TYPE_ANSWER_SHEET = 'answer_sheet' as const;
@@ -10,6 +11,8 @@ export type AvaliacaoResourceRequestOptions = {
   report_entity_type?: ReportEntityTypeQuery;
   city_id?: string;
   metaCityId?: string;
+  /** YYYY-MM: mês de aplicação (ClassTest.application), quando suportado pelo endpoint. */
+  periodo?: string;
 };
 
 // ✅ NOVO: Interfaces para status e processamento de relatórios
@@ -587,6 +590,8 @@ export class EvaluationResultsApiService {
       report_entity_type?: ReportEntityTypeQuery;
       /** Somente admin: município selecionado (query). */
       city_id?: string;
+      /** YYYY-MM: aplicação (online) ou corrected_at (cartão). */
+      periodo?: string;
     } = {}
   ): Promise<NovaRespostaAPI | null> {
     try {
@@ -620,6 +625,12 @@ export class EvaluationResultsApiService {
       }
       if (filters.city_id) {
         params.append('city_id', filters.city_id);
+      }
+      const periodoYm = filters.periodo?.trim()
+        ? normalizeResultsPeriodYm(filters.periodo)
+        : 'all';
+      if (periodoYm !== 'all') {
+        params.append('periodo', periodoYm);
       }
 
       const requestConfig = filters.municipio && filters.municipio !== 'all'
@@ -681,6 +692,10 @@ export class EvaluationResultsApiService {
     const params = new URLSearchParams();
     if (options?.report_entity_type) params.append('report_entity_type', options.report_entity_type);
     if (options?.city_id) params.append('city_id', options.city_id);
+    if (options?.periodo?.trim()) {
+      const p = normalizeResultsPeriodYm(options.periodo);
+      if (p !== 'all') params.append('periodo', p);
+    }
     const qs = params.toString();
     return qs ? `?${qs}` : '';
   }
@@ -1657,6 +1672,8 @@ export class EvaluationResultsApiService {
     report_entity_type?: ReportEntityTypeQuery;
     /** Somente admin: município selecionado (token sem cidade). */
     city_id?: string;
+    /** YYYY-MM quando aplicável (avaliação online: aplicação; cartão: correções). */
+    periodo?: string;
   }): Promise<FilterOptionsResponse> {
     try {
       const isAnswerSheet = params.report_entity_type === REPORT_ENTITY_TYPE_ANSWER_SHEET;
@@ -1676,6 +1693,10 @@ export class EvaluationResultsApiService {
       }
       if (params.city_id) {
         queryParams.append('city_id', params.city_id);
+      }
+      if (params.periodo?.trim()) {
+        const p = normalizeResultsPeriodYm(params.periodo);
+        if (p !== 'all') queryParams.append('periodo', p);
       }
 
       const basePath = isAnswerSheet
@@ -1723,7 +1744,8 @@ export class EvaluationResultsApiService {
   // ✅ REFATORADO: Buscar estados usando rota unificada
   static async getFilterStates(
     reportEntityType?: ReportEntityTypeQuery,
-    cityIdQuery?: string
+    cityIdQuery?: string,
+    periodo?: string
   ): Promise<Array<{
     id: string;
     nome: string;
@@ -1732,6 +1754,7 @@ export class EvaluationResultsApiService {
       const response = await this.getFilterOptions({
         ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
         ...(cityIdQuery ? { city_id: cityIdQuery } : {}),
+        ...(periodo?.trim() ? { periodo } : {}),
       });
       return response.estados || [];
     } catch (error) {
@@ -1745,7 +1768,8 @@ export class EvaluationResultsApiService {
   static async getFilterMunicipalities(
     stateId: string,
     reportEntityType?: ReportEntityTypeQuery,
-    cityIdQuery?: string
+    cityIdQuery?: string,
+    periodo?: string
   ): Promise<Array<{
     id: string;
     nome: string;
@@ -1757,6 +1781,7 @@ export class EvaluationResultsApiService {
         estado: stateId,
         ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
         ...(cityIdQuery ? { city_id: cityIdQuery } : {}),
+        ...(periodo?.trim() ? { periodo } : {}),
       });
       
       if (response.municipios && Array.isArray(response.municipios) && response.municipios.length > 0) {
@@ -1807,6 +1832,7 @@ export class EvaluationResultsApiService {
     estado?: string;
     report_entity_type?: ReportEntityTypeQuery;
     city_id?: string;
+    periodo?: string;
   }): Promise<Array<{
     id: string;
     nome: string;
@@ -1823,6 +1849,7 @@ export class EvaluationResultsApiService {
         municipio: params.municipio,
         ...(params.report_entity_type ? { report_entity_type: params.report_entity_type } : {}),
         ...(params.city_id ? { city_id: params.city_id } : {}),
+        ...(params.periodo?.trim() ? { periodo: params.periodo } : {}),
       });
       return response.escolas || [];
     } catch (error) {
@@ -1838,6 +1865,7 @@ export class EvaluationResultsApiService {
     escola?: string;
     report_entity_type?: ReportEntityTypeQuery;
     city_id?: string;
+    periodo?: string;
   }): Promise<Array<{
     id: string;
     nome: string;
@@ -1849,6 +1877,7 @@ export class EvaluationResultsApiService {
         escola: filters.escola,
         ...(filters.report_entity_type ? { report_entity_type: filters.report_entity_type } : {}),
         ...(filters.city_id ? { city_id: filters.city_id } : {}),
+        ...(filters.periodo?.trim() ? { periodo: filters.periodo } : {}),
       });
       return response.series || [];
     } catch (error) {
@@ -1865,6 +1894,7 @@ export class EvaluationResultsApiService {
     serie?: string;
     report_entity_type?: ReportEntityTypeQuery;
     city_id?: string;
+    periodo?: string;
   }): Promise<Array<{
     id: string;
     nome: string;
@@ -1877,6 +1907,7 @@ export class EvaluationResultsApiService {
         serie: filters.serie,
         ...(filters.report_entity_type ? { report_entity_type: filters.report_entity_type } : {}),
         ...(filters.city_id ? { city_id: filters.city_id } : {}),
+        ...(filters.periodo?.trim() ? { periodo: filters.periodo } : {}),
       });
       return response.turmas || [];
     } catch (error) {
@@ -1892,6 +1923,7 @@ export class EvaluationResultsApiService {
     escola?: string;
     report_entity_type?: ReportEntityTypeQuery;
     city_id?: string;
+    periodo?: string;
   }): Promise<Array<{
     id: string;
     titulo: string;
@@ -1903,6 +1935,7 @@ export class EvaluationResultsApiService {
         escola: filters.escola,
         ...(filters.report_entity_type ? { report_entity_type: filters.report_entity_type } : {}),
         ...(filters.city_id ? { city_id: filters.city_id } : {}),
+        ...(filters.periodo?.trim() ? { periodo: filters.periodo } : {}),
       });
       const avaliacoes = response.avaliacoes || [];
       // Para cartões resposta, manter a lista como veio do backend (gabaritos).
@@ -1954,6 +1987,7 @@ export class EvaluationResultsApiService {
     avaliacao: string;
     report_entity_type?: ReportEntityTypeQuery;
     city_id?: string;
+    periodo?: string;
   }): Promise<Array<{
     id: string;
     nome: string;
@@ -1965,6 +1999,7 @@ export class EvaluationResultsApiService {
         avaliacao: filters.avaliacao,
         ...(filters.report_entity_type ? { report_entity_type: filters.report_entity_type } : {}),
         ...(filters.city_id ? { city_id: filters.city_id } : {}),
+        ...(filters.periodo?.trim() ? { periodo: filters.periodo } : {}),
       });
       return response.escolas || [];
     } catch (error) {
@@ -1981,6 +2016,7 @@ export class EvaluationResultsApiService {
     escola: string;
     report_entity_type?: ReportEntityTypeQuery;
     city_id?: string;
+    periodo?: string;
   }): Promise<Array<{
     id: string;
     nome: string;
@@ -1993,6 +2029,7 @@ export class EvaluationResultsApiService {
         escola: filters.escola,
         ...(filters.report_entity_type ? { report_entity_type: filters.report_entity_type } : {}),
         ...(filters.city_id ? { city_id: filters.city_id } : {}),
+        ...(filters.periodo?.trim() ? { periodo: filters.periodo } : {}),
       });
       return response.series || [];
     } catch (error) {
@@ -2010,6 +2047,7 @@ export class EvaluationResultsApiService {
     serie: string;
     report_entity_type?: ReportEntityTypeQuery;
     city_id?: string;
+    periodo?: string;
   }): Promise<Array<{
     id: string;
     nome: string;
@@ -2023,6 +2061,7 @@ export class EvaluationResultsApiService {
         serie: filters.serie,
         ...(filters.report_entity_type ? { report_entity_type: filters.report_entity_type } : {}),
         ...(filters.city_id ? { city_id: filters.city_id } : {}),
+        ...(filters.periodo?.trim() ? { periodo: filters.periodo } : {}),
       });
       return response.turmas || [];
     } catch (error) {

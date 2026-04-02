@@ -1,4 +1,11 @@
 import { api } from '@/lib/api';
+import { normalizeResultsPeriodYm } from '@/utils/resultsPeriod';
+
+function appendPeriodo(q: URLSearchParams, periodo?: string) {
+  if (!periodo?.trim()) return;
+  const p = normalizeResultsPeriodYm(periodo);
+  if (p !== 'all') q.set('periodo', p);
+}
 
 export type SkillsMapFaixa = 'abaixo_do_basico' | 'basico' | 'adequado' | 'avancado';
 
@@ -55,6 +62,7 @@ export type EvaluationFilterParams = {
   escola?: string;
   serie?: string;
   turma?: string;
+  periodo?: string;
 };
 
 export async function fetchEvaluationFilterOptions(params: EvaluationFilterParams) {
@@ -65,6 +73,7 @@ export async function fetchEvaluationFilterOptions(params: EvaluationFilterParam
   if (params.escola && params.escola !== 'all') q.set('escola', params.escola);
   if (params.serie && params.serie !== 'all') q.set('serie', params.serie);
   if (params.turma && params.turma !== 'all') q.set('turma', params.turma);
+  appendPeriodo(q, params.periodo);
   const url = `/evaluation-results/opcoes-filtros${q.toString() ? `?${q}` : ''}`;
   const { data } = await api.get(url, withCityMeta(params.municipio));
   return data;
@@ -77,6 +86,7 @@ export type AnswerSheetFilterParams = {
   escola?: string;
   serie?: string;
   turma?: string;
+  periodo?: string;
 };
 
 export async function fetchAnswerSheetFilterOptions(params: AnswerSheetFilterParams) {
@@ -87,6 +97,7 @@ export async function fetchAnswerSheetFilterOptions(params: AnswerSheetFilterPar
   if (params.escola && params.escola !== 'all') q.set('escola', params.escola);
   if (params.serie && params.serie !== 'all') q.set('serie', params.serie);
   if (params.turma && params.turma !== 'all') q.set('turma', params.turma);
+  appendPeriodo(q, params.periodo);
   const url = `/answer-sheets/opcoes-filtros-results${q.toString() ? `?${q}` : ''}`;
   const { data } = await api.get(url, withCityMeta(params.municipio));
   return data;
@@ -103,6 +114,7 @@ export async function fetchSkillsMapOnline(
   if (params.serie && params.serie !== 'all') q.set('serie', params.serie);
   if (params.turma && params.turma !== 'all') q.set('turma', params.turma);
   q.set('disciplina', params.disciplina && params.disciplina !== 'all' ? params.disciplina : 'all');
+  appendPeriodo(q, params.periodo);
   const { data } = await api.get<SkillsMapResponse>(
     `/evaluation-results/mapa-habilidades?${q}`,
     withCityMeta(params.municipio)
@@ -122,6 +134,7 @@ export async function fetchSkillsMapOnlineErros(
   if (params.turma && params.turma !== 'all') q.set('turma', params.turma);
   q.set('disciplina', params.disciplina && params.disciplina !== 'all' ? params.disciplina : 'all');
   q.set('skill_id', params.skill_id);
+  appendPeriodo(q, params.periodo);
   const { data } = await api.get<SkillsMapErrosResponse>(
     `/evaluation-results/mapa-habilidades/erros?${q}`,
     withCityMeta(params.municipio)
@@ -140,6 +153,7 @@ export async function fetchSkillsMapCartao(
   if (params.serie && params.serie !== 'all') q.set('serie', params.serie);
   if (params.turma && params.turma !== 'all') q.set('turma', params.turma);
   q.set('disciplina', params.disciplina && params.disciplina !== 'all' ? params.disciplina : 'all');
+  appendPeriodo(q, params.periodo);
   const { data } = await api.get<SkillsMapResponse>(
     `/answer-sheets/mapa-habilidades?${q}`,
     withCityMeta(params.municipio)
@@ -167,6 +181,7 @@ export async function fetchSkillsMapCartaoErros(
   if (params.bloco_disciplina && params.bloco_disciplina !== 'all') {
     q.set('bloco_disciplina', params.bloco_disciplina);
   }
+  appendPeriodo(q, params.periodo);
   const { data } = await api.get<SkillsMapErrosResponse>(
     `/answer-sheets/mapa-habilidades/erros?${q}`,
     withCityMeta(params.municipio)

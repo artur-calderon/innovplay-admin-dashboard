@@ -1524,7 +1524,7 @@ export default function AnswerSheetGenerator() {
   <Button
     variant="outline"
     className="h-10 px-4"
-    onClick={() => navigate('/app/cartao-resposta/resultados')}
+    onClick={() => navigate('/app/resultados?aba=cartao')}
   >
     <FileText className="h-4 w-4 mr-2" />
     Resultados

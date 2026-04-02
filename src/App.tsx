@@ -32,23 +32,20 @@ const CreateEvaluation = React.lazy(() => import("@/pages/evaluations/CreateEval
 const EditEvaluation = React.lazy(() => import("@/pages/evaluations/EditEvaluation"));
 const EvaluationCorrection = React.lazy(() => import("@/pages/evaluations/EvaluationCorrection"));
 const ViewEvaluation = React.lazy(() => import("@/pages/evaluations/ViewEvaluation"));
-const Results = React.lazy(() => import("@/pages/evaluations/Results"));
 const SkillsHeatMapPage = React.lazy(() => import("@/pages/evaluations/SkillsHeatMapPage"));
-const AcertoNiveis = React.lazy(() => import("@/pages/evaluations/AcertoNiveis"));
-const AcertoNiveisCartao = React.lazy(() => import("@/pages/evaluations/AcertoNiveisCartao"));
 const AnaliseAvaliacoes = React.lazy(() => import("@/pages/evaluations/AnaliseAvaliacoes"));
 
 // answer-sheet
 const AnswerSheetGenerator = React.lazy(() => import("@/pages/answer-sheet/AnswerSheetGenerator"));
-const AnswerSheetResults = React.lazy(() => import("@/pages/answer-sheet/AnswerSheetResults"));
 const AnswerSheetStudentDetailedResults = React.lazy(() => import("@/pages/answer-sheet/AnswerSheetStudentDetailedResults"));
 const AnswerSheetCreateGabarito = React.lazy(() => import("@/pages/answer-sheet/AnswerSheetCreateGabarito"));
 const AnswerSheetGenerateCards = React.lazy(() => import("@/pages/answer-sheet/AnswerSheetGenerateCards"));
 const AnswerSheetCorrection = React.lazy(() => import("@/pages/answer-sheet/AnswerSheetCorrection"));
 
 // reports
-const RelatorioEscolar = React.lazy(() => import("@/pages/reports/RelatorioEscolar"));
-const RelatorioEscolarCartaoResposta = React.lazy(() => import("@/pages/reports/RelatorioEscolarCartaoResposta"));
+const RelatoriosAcertoNiveisHub = React.lazy(() => import("@/pages/reports/RelatoriosAcertoNiveisHub"));
+const RelatoriosRelatorioEscolarHub = React.lazy(() => import("@/pages/reports/RelatoriosRelatorioEscolarHub"));
+const RelatoriosResultadosHub = React.lazy(() => import("@/pages/reports/RelatoriosResultadosHub"));
 const RelatorioApresentacao19Slides = React.lazy(() => import("@/pages/reports/RelatorioApresentacao19Slides"));
 const InseSaebReport = React.lazy(() => import("@/pages/reports/InseSaebReport"));
 const FormReports = React.lazy(() => import("@/pages/reports/FormReports"));
@@ -255,7 +252,14 @@ const App = () => {
               <Route index element={<PrivateRoute><Index /></PrivateRoute>} />
               <Route path="/app/avaliacoes" element={<PrivateRoute><Evaluations /></PrivateRoute>} />
               <Route path="/app/avaliacoes/correcao" element={<PrivateRoute><EvaluationCorrection /></PrivateRoute>} />
-              <Route path="/app/resultados" element={<PrivateRoute><Results /></PrivateRoute>} />
+              <Route
+                path="/app/resultados"
+                element={
+                  <PrivateRoute>
+                    <RelatoriosResultadosHub defaultTab="avaliacao" />
+                  </PrivateRoute>
+                }
+              />
               <Route path="/app/mapa-habilidades" element={<Navigate to="/app/relatorios/mapa-habilidades" replace />} />
               <Route path="/app/evolucao" element={<PrivateRoute><Evolution /></PrivateRoute>} />
               <Route path="/app/avaliacao/:id/resultados" element={<PrivateRoute><EvaluationResults /></PrivateRoute>} />
@@ -288,7 +292,14 @@ const App = () => {
                   </PrivateRoute>
                 }
               />
-              <Route path="/app/cartao-resposta/resultados" element={<PrivateRoute><AnswerSheetResults /></PrivateRoute>} />
+              <Route
+                path="/app/cartao-resposta/resultados"
+                element={
+                  <PrivateRoute>
+                    <RelatoriosResultadosHub defaultTab="cartao" />
+                  </PrivateRoute>
+                }
+              />
               <Route path="/app/lista-frequencia" element={<PrivateRoute><ListaFrequencia /></PrivateRoute>} />
               <Route path="/app/certificados" element={<PrivateRoute><Certificates /></PrivateRoute>} />
               <Route path="/app/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
@@ -394,20 +405,42 @@ const App = () => {
 
               {/* Rotas de Relatórios */}
               <Route path="/app/relatorios/analise-avaliacoes" element={<PrivateRoute><AnaliseAvaliacoes /></PrivateRoute>} />
-              <Route path="/app/relatorios/acerto-niveis" element={<PrivateRoute><AcertoNiveis /></PrivateRoute>} />
-              <Route path="/app/relatorios/mapa-habilidades" element={<PrivateRoute><SkillsHeatMapPage /></PrivateRoute>} />
-              <Route path="/app/relatorios/relatorio-apresentacao-19-slides" element={<PrivateRoute><RelatorioApresentacao19Slides /></PrivateRoute>} />
+              <Route path="/app/relatorios/acerto-niveis" element={<PrivateRoute><RelatoriosAcertoNiveisHub /></PrivateRoute>} />
               <Route
                 path="/app/relatorios/acerto-niveis-cartao"
                 element={
                   <PrivateRoute>
-                    <AcertoNiveisCartao answerSheetsResultadosAgregados />
+                    <Navigate to="/app/relatorios/acerto-niveis?aba=cartao" replace />
                   </PrivateRoute>
                 }
               />
-              <Route path="/app/relatorios/acerto-niveis-cartao-resposta" element={<Navigate to="/app/relatorios/acerto-niveis-cartao" replace />} />
-              <Route path="/app/relatorios/relatorio-escolar" element={<PrivateRoute><RelatorioEscolar /></PrivateRoute>} />
-              <Route path="/app/relatorios/relatorio-escolar-cartao-resposta" element={<PrivateRoute><RelatorioEscolarCartaoResposta /></PrivateRoute>} />
+              <Route path="/app/relatorios/mapa-habilidades" element={<PrivateRoute><SkillsHeatMapPage /></PrivateRoute>} />
+              <Route path="/app/relatorios/relatorio-apresentacao-19-slides" element={<PrivateRoute><RelatorioApresentacao19Slides /></PrivateRoute>} />
+              <Route
+                path="/app/relatorios/acerto-niveis-cartao-resposta"
+                element={
+                  <PrivateRoute>
+                    <Navigate to="/app/relatorios/acerto-niveis?aba=cartao" replace />
+                  </PrivateRoute>
+                }
+              />
+              <Route path="/app/relatorios/relatorio-escolar" element={<PrivateRoute><RelatoriosRelatorioEscolarHub /></PrivateRoute>} />
+              <Route
+                path="/app/relatorios/relatorio-escolar-cartao-resposta"
+                element={
+                  <PrivateRoute>
+                    <Navigate to="/app/relatorios/relatorio-escolar?aba=cartao" replace />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/app/relatorios/resultados"
+                element={
+                  <PrivateRoute>
+                    <Navigate to="/app/resultados" replace />
+                  </PrivateRoute>
+                }
+              />
             </Route>
 
             {/* Rota de avaliação em tela cheia para admin/professor */}
