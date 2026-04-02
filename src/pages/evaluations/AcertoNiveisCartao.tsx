@@ -21,6 +21,8 @@ import {
   type GabaritoOpcaoFiltrosResults,
 } from "@/utils/answer-sheet/answerSheetRelatorioGabaritoComHabilidades";
 import { loadLogoAssetForLandscapePdf } from "@/utils/pdfCityBranding";
+import { ResultsPeriodMonthYearPicker } from "@/components/filters";
+import { normalizeResultsPeriodYm } from "@/utils/resultsPeriod";
 
 // Types from the original component
 type StudentResult = {
@@ -537,9 +539,13 @@ function normalizeOpcoesProximosFiltrosShape(
 
 export type AcertoNiveisProps = {
   answerSheetsResultadosAgregados?: boolean;
+  hidePageHeading?: boolean;
 };
 
-export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }: AcertoNiveisProps = {}) {
+export default function AcertoNiveis({
+  answerSheetsResultadosAgregados = false,
+  hidePageHeading = false,
+}: AcertoNiveisProps = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -592,6 +598,13 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
   /** Fora do modo agregados, esta página usa apenas cartões resposta (API com `report_entity_type`). */
   const reportEntityTypeParam = !isAnswerSheetAgregados ? REPORT_ENTITY_TYPE_ANSWER_SHEET : undefined;
 
+  const [selectedPeriod, setSelectedPeriod] = useState<string>("all");
+  const periodoYmRelatorio = useMemo(() => {
+    if (selectedPeriod === "all") return undefined;
+    const n = normalizeResultsPeriodYm(selectedPeriod);
+    return n === "all" ? undefined : n;
+  }, [selectedPeriod]);
+
   const asNorm = (o: { id: string; nome?: string; name?: string; titulo?: string }) =>
     o.nome ?? o.name ?? o.titulo ?? o.id;
 
@@ -633,6 +646,80 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
   };
   const fetchEvaluationDataCacheRef = useRef<Map<string, FetchEvaluationDataResult>>(new Map());
   const fetchEvaluationDataInFlightRef = useRef<Map<string, Promise<FetchEvaluationDataResult>>>(new Map());
+
+  const cartaoPeriodResetRef = useRef(false);
+  useEffect(() => {
+    if (!cartaoPeriodResetRef.current) {
+      cartaoPeriodResetRef.current = true;
+      return;
+    }
+    if (isAnswerSheetAgregados) {
+      setAsGabarito("all");
+      setAsEscola("all");
+      setAsSerie("all");
+      setAsTurma("all");
+    } else {
+      setSelectedEvaluationId("");
+      setEvaluations([]);
+      setSchools([]);
+      setGrades([]);
+      setClasses([]);
+      setSelectedSchoolId("");
+      setSelectedGradeId("");
+      setSelectedClassId("");
+    }
+    setEvaluationInfo(null);
+    setStudents([]);
+    setAllStudents([]);
+    setDetailedReport(null);
+    setTabelaDetalhada(null);
+    setAllTabelaDetalhada(null);
+    fetchEvaluationDataCacheRef.current.clear();
+    fetchEvaluationDataInFlightRef.current.clear();
+    agregadosSkillsByGabaritoRef.current = null;
+  }, [selectedPeriod, isAnswerSheetAgregados]);
+
+  useEffect(() => {
+    if (isAnswerSheetAgregados) return;
+    if (!selectedState || !selectedMunicipality) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setIsLoading(true);
+        const avs = await EvaluationResultsApiService.getFilterEvaluations({
+          estado: selectedState,
+          municipio: selectedMunicipality,
+          ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+          ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+          ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
+        });
+        if (!cancelled) setEvaluations(avs);
+      } catch {
+        if (!cancelled) {
+          toast({
+            title: "Erro",
+            description: "Não foi possível carregar avaliações",
+            variant: "destructive",
+          });
+          setEvaluations([]);
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isAnswerSheetAgregados,
+    selectedState,
+    selectedMunicipality,
+    reportEntityTypeParam,
+    adminCityIdQuery,
+    periodoYmRelatorio,
+    toast,
+  ]);
+
   // Estado para estatísticas gerais (similar ao apiData em Results.tsx)
   const [estatisticasGerais, setEstatisticasGerais] = useState<{
     serie?: string;
@@ -735,6 +822,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
     if (asEscola && asEscola !== "all") params.set("escola", asEscola);
     if (asSerie && asSerie !== "all") params.set("serie", asSerie);
     if (asTurma && asTurma !== "all") params.set("turma", asTurma);
+    if (periodoYmRelatorio) params.set("periodo", periodoYmRelatorio);
     const query = params.toString();
     try {
       setIsLoadingFiltersAg(true);
@@ -770,6 +858,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
     asEscola,
     asSerie,
     asTurma,
+    periodoYmRelatorio,
     toast,
   ]);
 
@@ -823,6 +912,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
         if (asEscola !== "all") params.set("escola", asEscola);
         if (asSerie !== "all") params.set("serie", asSerie);
         if (asTurma !== "all") params.set("turma", asTurma);
+        if (periodoYmRelatorio) params.set("periodo", periodoYmRelatorio);
         const agregadosPath = `/answer-sheets/resultados-agregados?${params.toString()}`;
 
         const skillsParams = {
@@ -957,6 +1047,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
     asTurma,
     toast,
     adminCityIdQuery,
+    periodoYmRelatorio,
   ]);
 
   const looksLikeRealSkillCode = (value?: string) => {
@@ -988,6 +1079,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
       turma?: string;
       report_entity_type?: typeof REPORT_ENTITY_TYPE_ANSWER_SHEET;
       city_id?: string;
+      periodo?: string;
     } = {};
 
     const estadoValor = getStateFilterValue();
@@ -999,9 +1091,10 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
     if (overrides.classId) filters.turma = overrides.classId;
     if (!isAnswerSheetAgregados) filters.report_entity_type = REPORT_ENTITY_TYPE_ANSWER_SHEET;
     if (adminCityIdQuery) filters.city_id = adminCityIdQuery;
+    if (periodoYmRelatorio) filters.periodo = periodoYmRelatorio;
 
     return filters;
-  }, [selectedMunicipality, getStateFilterValue, isAnswerSheetAgregados, adminCityIdQuery]);
+  }, [selectedMunicipality, getStateFilterValue, isAnswerSheetAgregados, adminCityIdQuery, periodoYmRelatorio]);
 
   const fetchEvaluationData = React.useCallback(
     async (
@@ -1020,7 +1113,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
         };
       }
 
-      const cacheKey = `${evaluationId}|${overrides.schoolId ?? ''}|${overrides.gradeId ?? ''}|${overrides.classId ?? ''}|${!isAnswerSheetAgregados ? 'as' : 'ev'}|${adminCityIdQuery ?? ''}`;
+      const cacheKey = `${evaluationId}|${overrides.schoolId ?? ''}|${overrides.gradeId ?? ''}|${overrides.classId ?? ''}|${!isAnswerSheetAgregados ? 'as' : 'ev'}|${adminCityIdQuery ?? ''}|${periodoYmRelatorio ?? ''}`;
 
       // Reutilizar requisição já em andamento (evita duplicatas)
       const inFlight = fetchEvaluationDataInFlightRef.current.get(cacheKey);
@@ -1096,7 +1189,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
       fetchEvaluationDataInFlightRef.current.set(cacheKey, promise);
       return promise;
     },
-    [buildUnifiedFilters, isAnswerSheetAgregados, adminCityIdQuery]
+    [buildUnifiedFilters, isAnswerSheetAgregados, adminCityIdQuery, periodoYmRelatorio]
   );
 
   // ✅ OTIMIZAÇÃO: Filtrar dados no frontend quando possível usando useMemo
@@ -1217,7 +1310,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
           setSelectedMunicipality(context.municipality.id);
 
           // Carregar estado baseado no município
-          const statesResp = await EvaluationResultsApiService.getFilterStates(reportEntityTypeParam, adminCityIdQuery);
+          const statesResp = await EvaluationResultsApiService.getFilterStates(reportEntityTypeParam, adminCityIdQuery, periodoYmRelatorio);
           setStates(statesResp);
           const userState = statesResp.find(
             (s) =>
@@ -1233,24 +1326,10 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
 
             // Carregar municípios do estado pré-selecionado
             try {
-              const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id, reportEntityTypeParam, adminCityIdQuery);
+              const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id, reportEntityTypeParam, adminCityIdQuery, periodoYmRelatorio);
               setMunicipalities(mun);
             } catch (error) {
               // Silenciar
-            }
-
-            if (!isAnswerSheetAgregados) {
-              try {
-                const avs = await EvaluationResultsApiService.getFilterEvaluations({
-                  estado: userState.id,
-                  municipio: context.municipality.id,
-                  ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
-                  ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
-                });
-                setEvaluations(avs);
-              } catch (error) {
-                // Silenciar
-              }
             }
           }
         } else if (context.school && context.school.municipality_id) {
@@ -1260,7 +1339,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
 
             setSelectedMunicipality(municipalityData.id);
 
-            const statesResp = await EvaluationResultsApiService.getFilterStates(reportEntityTypeParam, adminCityIdQuery);
+            const statesResp = await EvaluationResultsApiService.getFilterStates(reportEntityTypeParam, adminCityIdQuery, periodoYmRelatorio);
             setStates(statesResp);
             const userState = statesResp.find(
               (s) =>
@@ -1275,24 +1354,10 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
               }
 
               try {
-                const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id, reportEntityTypeParam, adminCityIdQuery);
+                const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id, reportEntityTypeParam, adminCityIdQuery, periodoYmRelatorio);
                 setMunicipalities(mun);
               } catch (error) {
                 // Silenciar
-              }
-
-              if (!isAnswerSheetAgregados) {
-                try {
-                  const avs = await EvaluationResultsApiService.getFilterEvaluations({
-                    estado: userState.id,
-                    municipio: municipalityData.id,
-                    ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
-                    ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
-                  });
-                  setEvaluations(avs);
-                } catch (error) {
-                  // Silenciar
-                }
               }
             }
           } catch (error) {
@@ -1360,7 +1425,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
     };
 
     loadUserHierarchy();
-  }, [user?.id, user?.role, toast, reportEntityTypeParam, adminCityIdQuery, isAnswerSheetAgregados]);
+  }, [user?.id, user?.role, toast, reportEntityTypeParam, adminCityIdQuery, isAnswerSheetAgregados, periodoYmRelatorio]);
 
   useEffect(() => {
     // Carregar lista de estados (apenas se for admin)
@@ -1375,7 +1440,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
 
       try {
         setIsLoading(true);
-        const resp = await EvaluationResultsApiService.getFilterStates(reportEntityTypeParam, adminCityIdQuery);
+        const resp = await EvaluationResultsApiService.getFilterStates(reportEntityTypeParam, adminCityIdQuery, periodoYmRelatorio);
         setStates(resp);
       } catch (e) {
         toast({ title: "Erro", description: "Não foi possível carregar estados", variant: "destructive" });
@@ -1387,7 +1452,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
     if (!isLoadingHierarchy) {
       loadStates();
     }
-  }, [toast, user?.role, isLoadingHierarchy, states.length, reportEntityTypeParam, adminCityIdQuery, isAnswerSheetAgregados]);
+  }, [toast, user?.role, isLoadingHierarchy, states.length, reportEntityTypeParam, adminCityIdQuery, isAnswerSheetAgregados, periodoYmRelatorio]);
 
   const handleChangeState = async (stateId: string) => {
     // Verificar se usuário pode alterar estado
@@ -1417,7 +1482,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
     if (!stateId) return;
     try {
       setIsLoading(true);
-      const mun = await EvaluationResultsApiService.getFilterMunicipalities(stateId, reportEntityTypeParam, adminCityIdQuery);
+      const mun = await EvaluationResultsApiService.getFilterMunicipalities(stateId, reportEntityTypeParam, adminCityIdQuery, periodoYmRelatorio);
       setMunicipalities(mun);
     } catch (e) {
       toast({ title: "Erro", description: "Não foi possível carregar municípios", variant: "destructive" });
@@ -1449,21 +1514,6 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
     setEvaluationInfo(null);
     setStudents([]);
     setDetailedReport(null);
-    if (!selectedState || !municipioId) return;
-    try {
-      setIsLoading(true);
-      const avs = await EvaluationResultsApiService.getFilterEvaluations({
-        estado: selectedState,
-        municipio: municipioId,
-        ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
-        ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
-      });
-      setEvaluations(avs);
-    } catch (e) {
-      toast({ title: "Erro", description: "Não foi possível carregar avaliações", variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const handleSelectSchool = async (schoolId: string) => {
@@ -1561,6 +1611,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
               escola: schoolId,
               ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
               ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+              ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
             });
             setGrades(series);
           } catch (e) {
@@ -1584,6 +1635,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
         escola: schoolId,
         ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
         ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+        ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
       });
       setGrades(series);
 
@@ -1673,6 +1725,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
           serie: gradeId,
           ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
           ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+          ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
         }).then(turmas => {
           setClasses(turmas);
         }).catch(() => {});
@@ -1695,6 +1748,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
           serie: gradeId,
           ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
           ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+          ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
         }),
         fetchEvaluationData(selectedEvaluationId, { schoolId: selectedSchoolId, gradeId })
       ]);
@@ -1813,6 +1867,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
         EvaluationResultsApiService.getEvaluationById(evaluationId, {
           ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
           ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+          ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
           ...(selectedMunicipality ? { metaCityId: selectedMunicipality } : {}),
         }),
         EvaluationResultsApiService.getSkillsByEvaluation(evaluationId, {
@@ -1842,6 +1897,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
             avaliacao: evaluationId,
             ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
             ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+            ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
           }).catch(() => [])
           : Promise.resolve([])
       ]);
@@ -2145,6 +2201,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
             avaliacao: selectedEvaluationId,
             ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
             ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+            ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
           });
           const tdResp = resp as unknown as { tabela_detalhada?: TabelaDetalhadaPorDisciplina };
           const td = (tdResp && tdResp.tabela_detalhada && Array.isArray(tdResp.tabela_detalhada.disciplinas))
@@ -4134,30 +4191,32 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
 
   return (
     <div className="w-full min-w-0 space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1.5">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
-            <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
-            Acerto e Níveis — Cartão resposta
-          </h1>
-          <p className="text-muted-foreground text-sm sm:text-base">
-            Dados agregados do cartão resposta. Selecione estado, município e cartão para exportar o PDF.
-          </p>
-          {user?.role && (
-            <p className="text-sm text-blue-600 mt-1">
-              {getRestrictionMessage(user.role)}
+      {!hidePageHeading && (
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1.5">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+              <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
+              Acerto e Níveis — Cartão resposta
+            </h1>
+            <p className="text-muted-foreground text-sm sm:text-base">
+              Dados agregados do cartão resposta. Selecione estado, município e cartão para exportar o PDF.
             </p>
-          )}
+            {user?.role && (
+              <p className="text-sm text-blue-600 mt-1">
+                {getRestrictionMessage(user.role)}
+              </p>
+            )}
+          </div>
+          <div className="flex justify-center w-full sm:w-auto sm:justify-end">
+            <Badge variant="outline" className="text-sm">
+              {user?.role === 'admin' ? 'Administrador' :
+                user?.role === 'professor' ? 'Professor' :
+                  user?.role === 'diretor' ? 'Diretor' :
+                    user?.role === 'coordenador' ? 'Coordenador' : 'Técnico Administrativo'}
+            </Badge>
+          </div>
         </div>
-        <div className="flex justify-center w-full sm:w-auto sm:justify-end">
-          <Badge variant="outline" className="text-sm">
-            {user?.role === 'admin' ? 'Administrador' :
-              user?.role === 'professor' ? 'Professor' :
-                user?.role === 'diretor' ? 'Diretor' :
-                  user?.role === 'coordenador' ? 'Coordenador' : 'Técnico Administrativo'}
-          </Badge>
-        </div>
-      </div>
+      )}
 
       <Card className="overflow-visible">
         <CardHeader>
@@ -4170,7 +4229,7 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
           </CardDescription>
         </CardHeader>
         <CardContent className="overflow-visible">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 w-full min-w-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4 w-full min-w-0">
             <div className="space-y-2">
               <div className="text-sm font-medium flex flex-wrap items-center gap-2">
                 Estado
@@ -4268,6 +4327,16 @@ export default function AcertoNiveis({ answerSheetsResultadosAgregados = false }
                 </Select>
               )}
             </div>
+
+            <ResultsPeriodMonthYearPicker
+              value={selectedPeriod}
+              onChange={setSelectedPeriod}
+              disabled={
+                isAnswerSheetAgregados
+                  ? isLoadingFiltersAg || asEstado === "all" || asMunicipio === "all"
+                  : isLoading || !selectedState || !selectedMunicipality
+              }
+            />
 
             <div className="space-y-2">
               <label className="text-sm font-medium">
