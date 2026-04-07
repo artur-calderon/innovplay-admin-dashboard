@@ -14,6 +14,8 @@ import type { jsPDF } from "jspdf";
 import type { CellHookData, Styles } from "jspdf-autotable";
 import { normalizeProficiencyLevelLabel, type ReportProficiencyLabel } from "@/utils/report/reportTagStyles";
 import { loadLogoAssetForLandscapePdf } from "@/utils/pdfCityBranding";
+import { ResultsPeriodMonthYearPicker } from "@/components/filters";
+import { normalizeResultsPeriodYm } from "@/utils/resultsPeriod";
 
 // Types from the original component
 type StudentResult = {
@@ -502,7 +504,7 @@ function normalizeOpcoesProximosFiltrosShape(
   };
 }
 
-export default function AcertoNiveis() {
+export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHeading?: boolean } = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -524,6 +526,13 @@ export default function AcertoNiveis() {
     () => cityIdQueryParamForAdmin(user?.role, selectedMunicipality || undefined),
     [user?.role, selectedMunicipality]
   );
+
+  const [selectedPeriod, setSelectedPeriod] = useState<string>("all");
+  const periodoYmRelatorio = useMemo(() => {
+    if (selectedPeriod === "all") return undefined;
+    const n = normalizeResultsPeriodYm(selectedPeriod);
+    return n === "all" ? undefined : n;
+  }, [selectedPeriod]);
 
   // Estados para hierarquia do usuário
   const [userHierarchyContext, setUserHierarchyContext] = useState<UserHierarchyContext | null>(null);
@@ -553,6 +562,64 @@ export default function AcertoNiveis() {
   };
   const fetchEvaluationDataCacheRef = useRef<Map<string, FetchEvaluationDataResult>>(new Map());
   const fetchEvaluationDataInFlightRef = useRef<Map<string, Promise<FetchEvaluationDataResult>>>(new Map());
+
+  const acertoPeriodResetRef = useRef(false);
+  useEffect(() => {
+    if (!acertoPeriodResetRef.current) {
+      acertoPeriodResetRef.current = true;
+      return;
+    }
+    setSelectedEvaluationId("");
+    setEvaluations([]);
+    setSchools([]);
+    setGrades([]);
+    setClasses([]);
+    setSelectedSchoolId("");
+    setSelectedGradeId("");
+    setSelectedClassId("");
+    setEvaluationInfo(null);
+    setStudents([]);
+    setAllStudents([]);
+    setDetailedReport(null);
+    setTabelaDetalhada(null);
+    setAllTabelaDetalhada(null);
+    fetchEvaluationDataCacheRef.current.clear();
+    fetchEvaluationDataInFlightRef.current.clear();
+  }, [selectedPeriod]);
+
+  // Recarrega avaliações quando município/estado/período mudam (igual Results.tsx).
+  // Sem isso, ao mudar só o período o efeito acima zera `evaluations` e o dropdown fica vazio.
+  useEffect(() => {
+    if (!selectedState || !selectedMunicipality) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setIsLoading(true);
+        const avs = await EvaluationResultsApiService.getFilterEvaluations({
+          estado: selectedState,
+          municipio: selectedMunicipality,
+          ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+          ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
+        });
+        if (!cancelled) setEvaluations(avs);
+      } catch {
+        if (!cancelled) {
+          toast({
+            title: "Erro",
+            description: "Não foi possível carregar avaliações",
+            variant: "destructive",
+          });
+          setEvaluations([]);
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedState, selectedMunicipality, adminCityIdQuery, periodoYmRelatorio, toast]);
+
   // Estado para estatísticas gerais (similar ao apiData em Results.tsx)
   const [estatisticasGerais, setEstatisticasGerais] = useState<{
     serie?: string;
@@ -608,6 +675,7 @@ export default function AcertoNiveis() {
       serie?: string;
       turma?: string;
       city_id?: string;
+      periodo?: string;
     } = {};
 
     const estadoValor = getStateFilterValue();
@@ -618,16 +686,17 @@ export default function AcertoNiveis() {
     if (overrides.gradeId) filters.serie = overrides.gradeId;
     if (overrides.classId) filters.turma = overrides.classId;
     if (adminCityIdQuery) filters.city_id = adminCityIdQuery;
+    if (periodoYmRelatorio) filters.periodo = periodoYmRelatorio;
 
     return filters;
-  }, [selectedMunicipality, getStateFilterValue, adminCityIdQuery]);
+  }, [selectedMunicipality, getStateFilterValue, adminCityIdQuery, periodoYmRelatorio]);
 
   const fetchEvaluationData = React.useCallback(
     async (
       evaluationId: string,
       overrides: { schoolId?: string; gradeId?: string; classId?: string } = {}
     ): Promise<FetchEvaluationDataResult> => {
-      const cacheKey = `${evaluationId}|${overrides.schoolId ?? ''}|${overrides.gradeId ?? ''}|${overrides.classId ?? ''}|ev|${adminCityIdQuery ?? ''}`;
+      const cacheKey = `${evaluationId}|${overrides.schoolId ?? ''}|${overrides.gradeId ?? ''}|${overrides.classId ?? ''}|ev|${adminCityIdQuery ?? ''}|${periodoYmRelatorio ?? ''}`;
 
       // Reutilizar requisição já em andamento (evita duplicatas)
       const inFlight = fetchEvaluationDataInFlightRef.current.get(cacheKey);
@@ -703,7 +772,7 @@ export default function AcertoNiveis() {
       fetchEvaluationDataInFlightRef.current.set(cacheKey, promise);
       return promise;
     },
-    [buildUnifiedFilters, adminCityIdQuery]
+    [buildUnifiedFilters, adminCityIdQuery, periodoYmRelatorio]
   );
 
   // ✅ OTIMIZAÇÃO: Filtrar dados no frontend quando possível usando useMemo
@@ -801,7 +870,7 @@ export default function AcertoNiveis() {
           setSelectedMunicipality(context.municipality.id);
 
           // Carregar estado baseado no município
-          const statesResp = await EvaluationResultsApiService.getFilterStates(undefined, adminCityIdQuery);
+          const statesResp = await EvaluationResultsApiService.getFilterStates(undefined, adminCityIdQuery, periodoYmRelatorio);
           setStates(statesResp);
           const userState = statesResp.find(
             (s) =>
@@ -813,19 +882,8 @@ export default function AcertoNiveis() {
 
             // Carregar municípios do estado pré-selecionado
             try {
-              const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id, undefined, adminCityIdQuery);
+              const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id, undefined, adminCityIdQuery, periodoYmRelatorio);
               setMunicipalities(mun);
-            } catch (error) {
-              // Silenciar
-            }
-
-            try {
-                const avs = await EvaluationResultsApiService.getFilterEvaluations({
-                  estado: userState.id,
-                  municipio: context.municipality.id,
-                  ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
-                });
-              setEvaluations(avs);
             } catch (error) {
               // Silenciar
             }
@@ -837,7 +895,7 @@ export default function AcertoNiveis() {
 
             setSelectedMunicipality(municipalityData.id);
 
-            const statesResp = await EvaluationResultsApiService.getFilterStates(undefined, adminCityIdQuery);
+            const statesResp = await EvaluationResultsApiService.getFilterStates(undefined, adminCityIdQuery, periodoYmRelatorio);
             setStates(statesResp);
             const userState = statesResp.find(
               (s) =>
@@ -848,19 +906,8 @@ export default function AcertoNiveis() {
               setSelectedState(userState.id);
 
               try {
-                const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id, undefined, adminCityIdQuery);
+                const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id, undefined, adminCityIdQuery, periodoYmRelatorio);
                 setMunicipalities(mun);
-              } catch (error) {
-                // Silenciar
-              }
-
-              try {
-                const avs = await EvaluationResultsApiService.getFilterEvaluations({
-                  estado: userState.id,
-                  municipio: municipalityData.id,
-                  ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
-                });
-                setEvaluations(avs);
               } catch (error) {
                 // Silenciar
               }
@@ -927,7 +974,7 @@ export default function AcertoNiveis() {
     };
 
     loadUserHierarchy();
-  }, [user?.id, user?.role, toast, adminCityIdQuery]);
+  }, [user?.id, user?.role, toast, adminCityIdQuery, periodoYmRelatorio]);
 
   useEffect(() => {
     // Carregar lista de estados (apenas se for admin)
@@ -940,7 +987,7 @@ export default function AcertoNiveis() {
 
       try {
         setIsLoading(true);
-        const resp = await EvaluationResultsApiService.getFilterStates(undefined, adminCityIdQuery);
+        const resp = await EvaluationResultsApiService.getFilterStates(undefined, adminCityIdQuery, periodoYmRelatorio);
         setStates(resp);
       } catch (e) {
         toast({ title: "Erro", description: "Não foi possível carregar estados", variant: "destructive" });
@@ -952,7 +999,7 @@ export default function AcertoNiveis() {
     if (!isLoadingHierarchy) {
       loadStates();
     }
-  }, [toast, user?.role, isLoadingHierarchy, states.length, adminCityIdQuery]);
+  }, [toast, user?.role, isLoadingHierarchy, states.length, adminCityIdQuery, periodoYmRelatorio]);
 
   const handleChangeState = async (stateId: string) => {
     // Verificar se usuário pode alterar estado
@@ -982,7 +1029,7 @@ export default function AcertoNiveis() {
     if (!stateId) return;
     try {
       setIsLoading(true);
-      const mun = await EvaluationResultsApiService.getFilterMunicipalities(stateId, undefined, adminCityIdQuery);
+      const mun = await EvaluationResultsApiService.getFilterMunicipalities(stateId, undefined, adminCityIdQuery, periodoYmRelatorio);
       setMunicipalities(mun);
     } catch (e) {
       toast({ title: "Erro", description: "Não foi possível carregar municípios", variant: "destructive" });
@@ -1014,20 +1061,6 @@ export default function AcertoNiveis() {
     setEvaluationInfo(null);
     setStudents([]);
     setDetailedReport(null);
-    if (!selectedState || !municipioId) return;
-    try {
-      setIsLoading(true);
-      const avs = await EvaluationResultsApiService.getFilterEvaluations({
-        estado: selectedState,
-        municipio: municipioId,
-        ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
-      });
-      setEvaluations(avs);
-    } catch (e) {
-      toast({ title: "Erro", description: "Não foi possível carregar avaliações", variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const handleSelectSchool = async (schoolId: string) => {
@@ -1124,6 +1157,7 @@ export default function AcertoNiveis() {
               avaliacao: selectedEvaluationId,
               escola: schoolId,
               ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+            ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
             });
             setGrades(series);
           } catch (e) {
@@ -1146,6 +1180,7 @@ export default function AcertoNiveis() {
         avaliacao: selectedEvaluationId,
         escola: schoolId,
         ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+            ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
       });
       setGrades(series);
 
@@ -1234,6 +1269,7 @@ export default function AcertoNiveis() {
           escola: selectedSchoolId,
           serie: gradeId,
           ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+            ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
         }).then(turmas => {
           setClasses(turmas);
         }).catch(() => {});
@@ -1255,6 +1291,7 @@ export default function AcertoNiveis() {
           escola: selectedSchoolId,
           serie: gradeId,
           ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+            ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
         }),
         fetchEvaluationData(selectedEvaluationId, { schoolId: selectedSchoolId, gradeId })
       ]);
@@ -1368,6 +1405,7 @@ export default function AcertoNiveis() {
 
       const info = await EvaluationResultsApiService.getEvaluationById(evaluationId, {
         ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+        ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
         ...(selectedMunicipality ? { metaCityId: selectedMunicipality } : {}),
       });
 
@@ -1389,6 +1427,7 @@ export default function AcertoNiveis() {
             municipio: selectedMunicipality,
             avaliacao: evaluationId,
             ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+            ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
           }).catch(() => [])
           : Promise.resolve([])
       ]);
@@ -1680,6 +1719,7 @@ export default function AcertoNiveis() {
             municipio: selectedMunicipality,
             avaliacao: selectedEvaluationId,
             ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+            ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
           });
           const tdResp = resp as unknown as { tabela_detalhada?: TabelaDetalhadaPorDisciplina };
           const td = (tdResp && tdResp.tabela_detalhada && Array.isArray(tdResp.tabela_detalhada.disciplinas))
@@ -3765,30 +3805,32 @@ export default function AcertoNiveis() {
 
   return (
     <div className="w-full min-w-0 space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1.5">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
-            <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
-            Acerto e Níveis
-          </h1>
-          <p className="text-muted-foreground text-sm sm:text-base">
-            Selecione estado, município e avaliação para ver resultados e exportar o PDF consolidado.
-          </p>
-          {user?.role && (
-            <p className="text-sm text-blue-600 mt-1">
-              {getRestrictionMessage(user.role)}
+      {!hidePageHeading && (
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1.5">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+              <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 shrink-0" />
+              Acerto e Níveis
+            </h1>
+            <p className="text-muted-foreground text-sm sm:text-base">
+              Selecione estado, município e avaliação para ver resultados e exportar o PDF consolidado.
             </p>
-          )}
+            {user?.role && (
+              <p className="text-sm text-blue-600 mt-1">
+                {getRestrictionMessage(user.role)}
+              </p>
+            )}
+          </div>
+          <div className="flex justify-center w-full sm:w-auto sm:justify-end">
+            <Badge variant="outline" className="text-sm">
+              {user?.role === 'admin' ? 'Administrador' :
+                user?.role === 'professor' ? 'Professor' :
+                  user?.role === 'diretor' ? 'Diretor' :
+                    user?.role === 'coordenador' ? 'Coordenador' : 'Técnico Administrativo'}
+            </Badge>
+          </div>
         </div>
-        <div className="flex justify-center w-full sm:w-auto sm:justify-end">
-          <Badge variant="outline" className="text-sm">
-            {user?.role === 'admin' ? 'Administrador' :
-              user?.role === 'professor' ? 'Professor' :
-                user?.role === 'diretor' ? 'Diretor' :
-                  user?.role === 'coordenador' ? 'Coordenador' : 'Técnico Administrativo'}
-          </Badge>
-        </div>
-      </div>
+      )}
 
       <Card className="overflow-visible">
         <CardHeader>
@@ -3802,7 +3844,7 @@ export default function AcertoNiveis() {
         </CardHeader>
         <CardContent className="overflow-visible">
           {/* Filtros Principais */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6 w-full min-w-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 w-full min-w-0">
             <div>
               <div className="text-sm font-medium mb-2 flex items-center gap-2">
                 Estado
@@ -3847,6 +3889,11 @@ export default function AcertoNiveis() {
                 </SelectContent>
               </Select>
             </div>
+            <ResultsPeriodMonthYearPicker
+              value={selectedPeriod}
+              onChange={setSelectedPeriod}
+              disabled={isLoading || !selectedMunicipality}
+            />
             <div>
               <div className="text-sm font-medium mb-2">Avaliação</div>
               <Select value={selectedEvaluationId} onValueChange={handleSelectEvaluation} disabled={!selectedMunicipality}>

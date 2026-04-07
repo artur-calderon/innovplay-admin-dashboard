@@ -24,6 +24,7 @@ import { Presentation19NativePreviewDeck } from "@/components/reports/presentati
 import { exportPresentation19Pdf, exportPresentation19Pptx } from "@/services/reports/presentation19/Presentation19SlidesExportService";
 import type { RelatorioCompleto } from "@/types/evaluation-results";
 import { resolveReportLogoForPdf } from "@/utils/pdfCityBranding";
+import { normalizeResultsPeriodYm } from "@/utils/resultsPeriod";
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -47,6 +48,7 @@ export default function RelatorioApresentacao19Slides() {
   const [selectedState, setSelectedState] = useState<string>("all");
   const [selectedMunicipality, setSelectedMunicipality] = useState<string>("all");
   const [selectedSchool, setSelectedSchool] = useState<string>("all");
+  const [selectedPeriod, setSelectedPeriod] = useState<string>("all");
 
   // filtros específicos por aba (evaluation_id vs gabarito)
   const [selectedEvaluationAnswerSheet, setSelectedEvaluationAnswerSheet] = useState<string>("all");
@@ -103,6 +105,12 @@ export default function RelatorioApresentacao19Slides() {
     () => cityIdQueryParamForAdmin(user?.role, selectedMunicipality === "all" ? undefined : selectedMunicipality),
     [user?.role, selectedMunicipality]
   );
+
+  const periodoApi = useMemo(() => {
+    if (selectedPeriod === "all") return undefined;
+    const n = normalizeResultsPeriodYm(selectedPeriod);
+    return n === "all" ? undefined : n;
+  }, [selectedPeriod]);
 
   // hierarquia do usuário (permissões + pre-seleções)
   useEffect(() => {
@@ -203,6 +211,7 @@ export default function RelatorioApresentacao19Slides() {
         params.set("estado", selectedState);
         params.set("municipio", selectedMunicipality);
         params.set("gabarito", evaluationId);
+        if (periodoApi) params.set("periodo", periodoApi);
 
         const res2 = await api.get<AnswerSheetResultadosAgregadosRaw>(
           `/answer-sheets/resultados-agregados?${params.toString()}`,
@@ -224,6 +233,7 @@ export default function RelatorioApresentacao19Slides() {
         params.set("municipio", selectedMunicipality);
         params.set("avaliacao", evaluationId);
         if (adminCityIdQuery) params.set("city_id", adminCityIdQuery);
+        if (periodoApi) params.set("periodo", periodoApi);
 
         const resEval = await api.get<NovaRespostaAPI>(
           `/evaluation-results/avaliacoes?${params.toString()}`,
@@ -263,6 +273,7 @@ export default function RelatorioApresentacao19Slides() {
     selectedMunicipality,
     selectedSchool,
     selectedState,
+    periodoApi,
     toast,
   ]);
 
@@ -409,6 +420,11 @@ export default function RelatorioApresentacao19Slides() {
               fallbackSchools={fallbackSchools}
               loadSchoolsAfterEvaluation={true}
               adminCityIdQuery={adminCityIdQuery}
+              selectedPeriod={selectedPeriod}
+              onPeriodChange={(p) => {
+                setSelectedPeriod(p);
+                setDeckData(null);
+              }}
             />
           </TabsContent>
 
@@ -431,6 +447,11 @@ export default function RelatorioApresentacao19Slides() {
               fallbackSchools={fallbackSchools}
               loadSchoolsAfterEvaluation={true}
               adminCityIdQuery={adminCityIdQuery}
+              selectedPeriod={selectedPeriod}
+              onPeriodChange={(p) => {
+                setSelectedPeriod(p);
+                setDeckData(null);
+              }}
               // sem reportEntityType
             />
           </TabsContent>
