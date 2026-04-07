@@ -163,7 +163,13 @@ function getProficiencyLevelRgb(level: ReportProficiencyLabel): [number, number,
  * Tabelas massivas (detalhada por questão / por disciplina) — alta densidade.
  * Não usar na tabela "RELATÓRIO DE DESEMPENHO GERAL" (resumo).
  */
-const PDF_BULK_DENSITY = 0.62;
+const PDF_TABLE_SCALE = 1.25;
+const scalePdfTable = (value: number) => value * PDF_TABLE_SCALE;
+const PDF_DETAIL_TABLE_EXTRA_SCALE = 1.25;
+const scaleDetailTableExtra = (value: number) => value * PDF_DETAIL_TABLE_EXTRA_SCALE;
+const PDF_COMPACT_TABLE_SCALE = 0.5;
+const scaleCompactTable = (value: number) => value * PDF_COMPACT_TABLE_SCALE;
+const PDF_BULK_DENSITY = 0.62 * PDF_TABLE_SCALE;
 
 const PDF_BULK_LANDSCAPE_FONT = (numCols: number) =>
   Math.max(0.9, Math.min(2.45, 2.35 * (18 / Math.max(1, numCols)) * PDF_BULK_DENSITY));
@@ -179,9 +185,9 @@ const PDF_BULK_HEAD_CELL_PAD: { vertical: number; horizontal: number } = {
   horizontal: 0.095 * PDF_BULK_DENSITY,
 };
 
-const PDF_BULK_Q_ICON_TARGET_MM = 0.88;
-const PDF_BULK_Q_ICON_MIN_MM = 0.52;
-const PDF_BULK_Q_ICON_CELL_PAD_MM = 0.09;
+const PDF_BULK_Q_ICON_TARGET_MM = scalePdfTable(0.88);
+const PDF_BULK_Q_ICON_MIN_MM = scalePdfTable(0.52);
+const PDF_BULK_Q_ICON_CELL_PAD_MM = scalePdfTable(0.09);
 
 function pdfBulkQuestionMarkIconHalfExtentMm(cellWidth: number, cellHeight: number): number {
   const innerW = cellWidth - PDF_BULK_Q_ICON_CELL_PAD_MM;
@@ -196,7 +202,20 @@ const PDF_BULK_NAME_COL_PAD_V_MUL = 0.42;
 
 function pdfBulkBodyRowHeightToMatchNameMm(fontSizePt: number, padVerticalMm: number): number {
   const lineMm = fontSizePt * 0.3528 * 1.02;
-  return Math.max(1.5, lineMm + padVerticalMm * 2);
+  return Math.max(scalePdfTable(1.5), lineMm + padVerticalMm * 2);
+}
+
+function pdfSkillResponsiveFontSize(questionsCount: number, dynamicFontSize: number): number {
+  const q = Math.max(1, questionsCount);
+  if (q <= 10) return Math.max(scalePdfTable(7.2), dynamicFontSize * 1.9);
+  if (q <= 15) return Math.max(scalePdfTable(6.1), dynamicFontSize * 1.6);
+  if (q <= 22) return Math.max(scalePdfTable(5.1), dynamicFontSize * 1.35);
+
+  const infoFactor = Math.min(1.45, 24 / Math.max(1, questionsCount));
+  return Math.max(
+    scalePdfTable(3.6),
+    Math.min(scalePdfTable(8.8), dynamicFontSize * (0.98 + infoFactor * 0.22))
+  );
 }
 
 type DrawProficiencyNivelPdfOpts = {
@@ -222,8 +241,8 @@ function drawProficiencyNivelInPdfCell(
   let fillY = cell.y;
   let fillH = cell.height;
   if (chipMax != null && chipMax > 0 && Number.isFinite(chipMax)) {
-    const m = 0.1;
-    fillH = Math.min(chipMax, Math.max(1.05, cell.height - m * 2));
+    const m = scalePdfTable(0.1);
+    fillH = Math.min(chipMax, Math.max(scalePdfTable(1.05), cell.height - m * 2));
     fillY = cell.y + (cell.height - fillH) / 2;
   }
 
@@ -238,22 +257,22 @@ function drawProficiencyNivelInPdfCell(
   const chipMode = chipMax != null && chipMax > 0;
 
   if (compact) {
-    fs = Math.max(1.15, Math.min(2.05, fontSize));
+    fs = Math.max(scalePdfTable(1.15), Math.min(scalePdfTable(2.05), fontSize));
     if (chipMode) {
-      fs = Math.min(fs, Math.max(1.1, fillH * 0.38));
+      fs = Math.min(fs, Math.max(scalePdfTable(1.1), fillH * 0.38));
     } else {
-      fs = Math.min(fs, Math.max(1.05, fillH * 0.48));
+      fs = Math.min(fs, Math.max(scalePdfTable(1.05), fillH * 0.48));
     }
-    pad = chipMode ? 0.22 : 0.28;
-    lineH = Math.max(fs * (chipMode ? 0.2 : 0.24), chipMode ? 1.05 : 1.02);
+    pad = chipMode ? scalePdfTable(0.22) : scalePdfTable(0.28);
+    lineH = Math.max(fs * (chipMode ? 0.2 : 0.24), chipMode ? scalePdfTable(1.05) : scalePdfTable(1.02));
   } else {
-    fs = Math.max(5, label.length > 24 && fontSize > 6 ? fontSize - 1.25 : fontSize);
-    pad = 2;
-    lineH = Math.max(fs * 0.42, 2.8);
+    fs = Math.max(scalePdfTable(5), label.length > 24 && fontSize > scalePdfTable(6) ? fontSize - scalePdfTable(1.25) : fontSize);
+    pad = scalePdfTable(2);
+    lineH = Math.max(fs * 0.42, scalePdfTable(2.8));
   }
 
   d.setFontSize(fs);
-  const maxW = Math.max(compact ? 2.2 : 4, cell.width - pad * 2);
+  const maxW = Math.max(compact ? scalePdfTable(2.2) : scalePdfTable(4), cell.width - pad * 2);
   const lines = d.splitTextToSize(label, maxW);
   const totalH = lines.length * lineH;
   const startY = fillY + (fillH - totalH) / 2 + lineH * (compact ? 0.14 : 0.25);
@@ -2618,8 +2637,8 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
           theme: 'grid',
           margin: { left: margin, right: margin },
           styles: {
-            fontSize: 9,
-            cellPadding: 2.5,
+            fontSize: scaleCompactTable(scalePdfTable(9)),
+            cellPadding: scaleCompactTable(scalePdfTable(2.5)),
             lineColor: [200, 200, 200],
             lineWidth: 0.1,
             valign: 'middle'
@@ -2629,8 +2648,8 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
             textColor: [0, 0, 0],
             fontStyle: 'bold',
             halign: 'center',
-            fontSize: 9,
-            cellPadding: 2.5,
+            fontSize: scaleCompactTable(scalePdfTable(9)),
+            cellPadding: scaleCompactTable(scalePdfTable(2.5)),
           },
           bodyStyles: { textColor: [33, 33, 33] },
           alternateRowStyles: { fillColor: [250, 250, 250] },
@@ -2642,7 +2661,7 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
           },
           didParseCell: (data: CellHookData) => {
             if (data.section === 'body' && data.column.index === 3) {
-              data.cell.styles.minCellHeight = 16;
+              data.cell.styles.minCellHeight = scaleCompactTable(scalePdfTable(16));
             }
           },
           didDrawCell: (data: CellHookData) => {
@@ -2651,7 +2670,12 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
             const textValue = (Array.isArray(data.cell.text) ? data.cell.text[0] : data.cell.text || '')
               .toString()
               .trim();
-            drawProficiencyNivelInPdfCell(data.doc as jsPDF, data.cell, textValue, 9);
+            drawProficiencyNivelInPdfCell(
+              data.doc as jsPDF,
+              data.cell,
+              textValue,
+              scaleCompactTable(scalePdfTable(9))
+            );
           }
         });
 
@@ -2720,10 +2744,10 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
 
           const numCols = Math.max(1, chunk.length);
 
-          const dynamicFontSize = PDF_BULK_LANDSCAPE_FONT(numCols);
-          const bulkPadH = PDF_BULK_LANDSCAPE_CELL_PAD_H(numCols);
-          const bulkPadV = PDF_BULK_LANDSCAPE_CELL_PAD_V(numCols);
-          const nameColFont = Math.max(0.78, dynamicFontSize * PDF_BULK_NAME_COL_FONT_MUL);
+          const dynamicFontSize = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_FONT(numCols));
+          const bulkPadH = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_CELL_PAD_H(numCols));
+          const bulkPadV = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_CELL_PAD_V(numCols));
+          const nameColFont = Math.max(scalePdfTable(0.78), dynamicFontSize * PDF_BULK_NAME_COL_FONT_MUL);
           // Fonte mínima de 6pt para que getStringUnitWidth meça algo legível
           const nameBodyFont = Math.max(6, nameColFont);
           const namePadV = bulkPadV * PDF_BULK_NAME_COL_PAD_V_MUL;
@@ -2740,7 +2764,7 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
 
           const spaceForQuestions = Math.max(0, availableWidth - nameColWidth - finalColsWidth);
           // Colunas estreitas para cabeçalho vertical
-          const questionColWidth = Math.min(5.5, spaceForQuestions / numCols);
+          const questionColWidth = spaceForQuestions / numCols;
 
           const columnStyles: Record<string, Partial<Styles>> = {
             '0': { cellWidth: nameColWidth, halign: 'left', overflow: 'ellipsize' },
@@ -2760,9 +2784,10 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
           }
 
           const numQuestoesThisChunk = chunk.length;
+          const skillCodeFontSize = pdfSkillResponsiveFontSize(numQuestoesThisChunk, dynamicFontSize);
           // Altura da linha de habilidade — máx 12 chars por código
-          const SKILL_ROW_H = 14;
-          const PCT_ROW_H = 5.5;
+          const SKILL_ROW_H = scaleDetailTableExtra(scalePdfTable(14));
+          const PCT_ROW_H = scaleDetailTableExtra(scalePdfTable(5.5));
 
           autoTable(doc, {
             startY: startY,
@@ -2770,7 +2795,7 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
             body: bodyRows,
             theme: 'grid',
             margin: { left: landscapeMargin, right: landscapeMargin },
-            tableWidth: 'auto',
+            tableWidth: availableWidth,
             showHead: 'everyPage',
             styles: {
               fontSize: dynamicFontSize,
@@ -2800,7 +2825,7 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
                   data.cell.styles.cellPadding = { vertical: namePadV, horizontal: bulkPadH };
                 } else if (data.column.index > numQuestoesThisChunk) {
                   // Colunas de resumo (Total de acertos, Proficiência, Nível)
-                  data.cell.styles.fontSize = 6;
+                  data.cell.styles.fontSize = scalePdfTable(6);
                   data.cell.styles.fontStyle = 'bold';
                 }
               }
@@ -2808,15 +2833,15 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
                 data.cell.styles.cellPadding = PDF_BULK_HEAD_CELL_PAD;
                 if (data.row.index === 0) {
                   // Número da questão: fonte legível mínima de 6pt
-                  data.cell.styles.fontSize = Math.max(6, dynamicFontSize);
+                  data.cell.styles.fontSize = Math.max(scalePdfTable(6), dynamicFontSize);
                   data.cell.styles.fontStyle = 'bold';
-                  data.cell.styles.cellPadding = { vertical: 0.8, horizontal: 0.5 };
+                  data.cell.styles.cellPadding = { vertical: scalePdfTable(0.8), horizontal: scalePdfTable(0.5) };
                 } else if (data.row.index === 1) {
                   data.cell.styles.minCellHeight = SKILL_ROW_H;
-                  data.cell.styles.cellPadding = 0.5;
+                  data.cell.styles.cellPadding = scalePdfTable(0.5);
                   if (data.column.index === 0) {
                     // Label "Habilidade" na primeira coluna — fonte legível
-                    data.cell.styles.fontSize = 7;
+                    data.cell.styles.fontSize = scalePdfTable(7);
                     data.cell.styles.fontStyle = 'bold';
                     data.cell.styles.valign = 'middle';
                   } else if (data.column.index <= numQuestoesThisChunk) {
@@ -2825,10 +2850,10 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
                   }
                 } else if (data.row.index === 2) {
                   data.cell.styles.minCellHeight = PCT_ROW_H;
-                  data.cell.styles.cellPadding = 0.5;
+                  data.cell.styles.cellPadding = scalePdfTable(0.5);
                   if (data.column.index === 0) {
                     // Label "% Turma" na primeira coluna — fonte legível
-                    data.cell.styles.fontSize = 7;
+                    data.cell.styles.fontSize = scalePdfTable(7);
                     data.cell.styles.fontStyle = 'bold';
                     data.cell.styles.valign = 'middle';
                   } else if (data.column.index <= numQuestoesThisChunk) {
@@ -2871,14 +2896,14 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
               // Habilidade (row 1): desenhar texto vertical nas colunas de questão — centralizado
               if (section === 'head' && row.index === 1 && column.index > 0 && column.index <= numQuestoesThisChunk) {
                 const skillCode = headerRow2[column.index] || '';
-                if (skillCode) {
+                  if (skillCode) {
                   d.setFillColor(219, 234, 254);
                   d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-                  d.setFontSize(4);
+                    d.setFontSize(skillCodeFontSize);
                   d.setFont('helvetica', 'bold');
                   d.setTextColor(0, 0, 0);
                   const cx = cell.x + cell.width / 2;
-                  const textWidthMm = d.getStringUnitWidth(skillCode) * 4 / d.internal.scaleFactor;
+                    const textWidthMm = d.getStringUnitWidth(skillCode) * skillCodeFontSize / d.internal.scaleFactor;
                   const cy = cell.y + (cell.height + textWidthMm) / 2;
                   d.text(skillCode, cx, cy, { angle: 90, maxWidth: cell.height - 2 });
                   d.setDrawColor(0, 0, 0);
@@ -2896,13 +2921,16 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
                 d.setFillColor(fillRgb[0], fillRgb[1], fillRgb[2]);
                 d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
                 if (pctText) {
-                  d.setFontSize(4.5);
+                    d.setFontSize(scaleDetailTableExtra(scalePdfTable(4.5)));
                   d.setFont('helvetica', 'bold');
                   d.setTextColor(textRgb[0], textRgb[1], textRgb[2]);
                   const cx = cell.x + cell.width / 2;
                   const cy = cell.y + cell.height - 1;
                   d.text(pctText, cx, cy, { angle: 90 });
                 }
+                d.setDrawColor(0, 0, 0);
+                d.setLineWidth(0.25);
+                d.rect(cell.x, cell.y, cell.width, cell.height);
               }
               // Nível: fundo colorido + texto preto dimensionado para caber na célula
               if (isLastChunk && section === 'body' && column.index === chunk.length + 3) {
@@ -2912,7 +2940,7 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
                 d.setFillColor(nr, ng, nb);
                 d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
                 if (nivelLabel) {
-                  const fs = Math.max(3.5, Math.min(5, cell.height / 0.3528 * 0.65));
+                  const fs = Math.max(scalePdfTable(3.5), Math.min(scalePdfTable(5), cell.height / 0.3528 * 0.65));
                   d.setFontSize(fs);
                   d.setFont('helvetica', 'bold');
                   d.setTextColor(0, 0, 0);
@@ -3104,10 +3132,10 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
 
             const numColsDisc = Math.max(1, chunk.length);
 
-            const dynamicFontSize = PDF_BULK_LANDSCAPE_FONT(numColsDisc);
-            const bulkPadHDisc = PDF_BULK_LANDSCAPE_CELL_PAD_H(numColsDisc);
-            const bulkPadVDisc = PDF_BULK_LANDSCAPE_CELL_PAD_V(numColsDisc);
-            const nameColFontDisc = Math.max(0.78, dynamicFontSize * PDF_BULK_NAME_COL_FONT_MUL);
+            const dynamicFontSize = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_FONT(numColsDisc));
+            const bulkPadHDisc = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_CELL_PAD_H(numColsDisc));
+            const bulkPadVDisc = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_CELL_PAD_V(numColsDisc));
+            const nameColFontDisc = Math.max(scalePdfTable(0.78), dynamicFontSize * PDF_BULK_NAME_COL_FONT_MUL);
             // Fonte mínima de 6pt para que getStringUnitWidth meça algo legível
             const nameBodyFontDisc = Math.max(6, nameColFontDisc);
             const namePadVDisc = bulkPadVDisc * PDF_BULK_NAME_COL_PAD_V_MUL;
@@ -3124,7 +3152,7 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
 
             const spaceForQuestionsDisc = Math.max(0, availableWidth - nameColWidth - finalColsWidth);
             // Colunas estreitas para cabeçalho vertical
-            const questionColWidth = Math.min(5.5, spaceForQuestionsDisc / numColsDisc);
+            const questionColWidth = spaceForQuestionsDisc / numColsDisc;
 
             const columnStyles: Record<string, Partial<Styles>> = {
               '0': { cellWidth: nameColWidth, halign: 'left', overflow: 'ellipsize' },
@@ -3143,9 +3171,10 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
               };
             }
             const numQuestoesThisChunk = chunk.length;
+            const skillCodeFontSize = pdfSkillResponsiveFontSize(numQuestoesThisChunk, dynamicFontSize);
             // Altura da linha de habilidade — máx 12 chars por código
-            const SKILL_ROW_H_DISC = 14;
-            const PCT_ROW_H_DISC = 5.5;
+            const SKILL_ROW_H_DISC = scaleDetailTableExtra(scalePdfTable(14));
+            const PCT_ROW_H_DISC = scaleDetailTableExtra(scalePdfTable(5.5));
 
             autoTable(doc, {
               startY: y,
@@ -3153,7 +3182,7 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
               body: bodyRows,
               theme: 'grid',
               margin: { left: landscapeMargin, right: landscapeMargin },
-              tableWidth: 'auto',
+              tableWidth: availableWidth,
               showHead: 'everyPage',
               styles: {
                 fontSize: dynamicFontSize,
@@ -3183,7 +3212,7 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
                     data.cell.styles.cellPadding = { vertical: namePadVDisc, horizontal: bulkPadHDisc };
                   } else if (data.column.index > numQuestoesThisChunk) {
                     // Colunas de resumo (Total de acertos, Nota, Proficiência, Nível)
-                    data.cell.styles.fontSize = 6;
+                  data.cell.styles.fontSize = scalePdfTable(6);
                     data.cell.styles.fontStyle = 'bold';
                   }
                 }
@@ -3191,15 +3220,15 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
                   data.cell.styles.cellPadding = PDF_BULK_HEAD_CELL_PAD;
                   if (data.row.index === 0) {
                     // Número da questão: fonte legível mínima de 6pt
-                    data.cell.styles.fontSize = Math.max(6, dynamicFontSize);
+                    data.cell.styles.fontSize = Math.max(scalePdfTable(6), dynamicFontSize);
                     data.cell.styles.fontStyle = 'bold';
-                    data.cell.styles.cellPadding = { vertical: 0.8, horizontal: 0.5 };
+                    data.cell.styles.cellPadding = { vertical: scalePdfTable(0.8), horizontal: scalePdfTable(0.5) };
                   } else if (data.row.index === 1) {
                     data.cell.styles.minCellHeight = SKILL_ROW_H_DISC;
-                    data.cell.styles.cellPadding = 0.5;
+                    data.cell.styles.cellPadding = scalePdfTable(0.5);
                     if (data.column.index === 0) {
                       // Label "Habilidade" na primeira coluna — fonte legível
-                      data.cell.styles.fontSize = 7;
+                      data.cell.styles.fontSize = scalePdfTable(7);
                       data.cell.styles.fontStyle = 'bold';
                       data.cell.styles.valign = 'middle';
                     } else if (data.column.index <= numQuestoesThisChunk) {
@@ -3207,10 +3236,10 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
                     }
                   } else if (data.row.index === 2) {
                     data.cell.styles.minCellHeight = PCT_ROW_H_DISC;
-                    data.cell.styles.cellPadding = 0.5;
+                    data.cell.styles.cellPadding = scalePdfTable(0.5);
                     if (data.column.index === 0) {
                       // Label "% Turma" na primeira coluna — fonte legível
-                      data.cell.styles.fontSize = 7;
+                      data.cell.styles.fontSize = scalePdfTable(7);
                       data.cell.styles.fontStyle = 'bold';
                       data.cell.styles.valign = 'middle';
                     } else if (data.column.index <= numQuestoesThisChunk) {
@@ -3256,7 +3285,7 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
                   d.setFillColor(nr, ng, nb);
                   d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
                   if (nivelLabel) {
-                    const fs = Math.max(3.5, Math.min(5, cell.height / 0.3528 * 0.65));
+                  const fs = Math.max(scalePdfTable(3.5), Math.min(scalePdfTable(5), cell.height / 0.3528 * 0.65));
                     d.setFontSize(fs);
                     d.setFont('helvetica', 'bold');
                     d.setTextColor(0, 0, 0);
@@ -3272,11 +3301,11 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
                   if (skillCode) {
                     d.setFillColor(219, 234, 254);
                     d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-                    d.setFontSize(4);
+                    d.setFontSize(skillCodeFontSize);
                     d.setFont('helvetica', 'bold');
                     d.setTextColor(0, 0, 0);
                     const cx = cell.x + cell.width / 2;
-                    const textWidthMm = d.getStringUnitWidth(skillCode) * 4 / d.internal.scaleFactor;
+                    const textWidthMm = d.getStringUnitWidth(skillCode) * skillCodeFontSize / d.internal.scaleFactor;
                     const cy = cell.y + (cell.height + textWidthMm) / 2;
                     d.text(skillCode, cx, cy, { angle: 90, maxWidth: cell.height - 2 });
                     d.setDrawColor(0, 0, 0);
@@ -3294,13 +3323,16 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
                   d.setFillColor(fillRgb[0], fillRgb[1], fillRgb[2]);
                   d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
                   if (pctText) {
-                    d.setFontSize(4.5);
+                    d.setFontSize(scaleDetailTableExtra(scalePdfTable(4.5)));
                     d.setFont('helvetica', 'bold');
                     d.setTextColor(textRgb[0], textRgb[1], textRgb[2]);
                     const cx = cell.x + cell.width / 2;
                     const cy = cell.y + cell.height - 1;
                     d.text(pctText, cx, cy, { angle: 90 });
                   }
+                  d.setDrawColor(0, 0, 0);
+                  d.setLineWidth(0.25);
+                  d.rect(cell.x, cell.y, cell.width, cell.height);
                 }
               },
             });
@@ -3765,8 +3797,8 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
             theme: 'grid',
             margin: { left: margin, right: margin },
             styles: {
-              fontSize: 10,
-              cellPadding: 3,
+              fontSize: scaleCompactTable(scalePdfTable(10)),
+              cellPadding: scaleCompactTable(scalePdfTable(3)),
               lineColor: [200, 200, 200],
               lineWidth: 0.1
             },

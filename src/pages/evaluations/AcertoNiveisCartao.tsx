@@ -178,7 +178,13 @@ function getProficiencyLevelRgb(level: ReportProficiencyLabel): [number, number,
  * Padding corpo: `CELL_PAD_V` menor que `CELL_PAD_H` para baixar a altura das linhas.
  * `PDF_BULK_DENSITY`: 1.0 menos compacto; valores menores encolhem fonte, paddings, linhas e ícones.
  */
-const PDF_BULK_DENSITY = 0.62;
+const PDF_TABLE_SCALE = 1.25;
+const scalePdfTable = (value: number) => value * PDF_TABLE_SCALE;
+const PDF_DETAIL_TABLE_EXTRA_SCALE = 1.25;
+const scaleDetailTableExtra = (value: number) => value * PDF_DETAIL_TABLE_EXTRA_SCALE;
+const PDF_COMPACT_TABLE_SCALE = 0.5;
+const scaleCompactTable = (value: number) => value * PDF_COMPACT_TABLE_SCALE;
+const PDF_BULK_DENSITY = 0.62 * PDF_TABLE_SCALE;
 
 const PDF_BULK_LANDSCAPE_FONT = (numCols: number) =>
   Math.max(0.9, Math.min(2.45, 2.35 * (18 / Math.max(1, numCols)) * PDF_BULK_DENSITY));
@@ -198,9 +204,9 @@ const PDF_BULK_HEAD_CELL_PAD: { vertical: number; horizontal: number } = {
  * ✓/✗ nas colunas de questão: mesmo tamanho em todas as tabelas bulk (detalhe geral e por disciplina).
  * Só reduz se a célula for menor que o alvo; evita ícones minúsculos quando a linha é baixa.
  */
-const PDF_BULK_Q_ICON_TARGET_MM = 0.88;
-const PDF_BULK_Q_ICON_MIN_MM = 0.52;
-const PDF_BULK_Q_ICON_CELL_PAD_MM = 0.09;
+const PDF_BULK_Q_ICON_TARGET_MM = scalePdfTable(0.88);
+const PDF_BULK_Q_ICON_MIN_MM = scalePdfTable(0.52);
+const PDF_BULK_Q_ICON_CELL_PAD_MM = scalePdfTable(0.09);
 
 function pdfBulkQuestionMarkIconHalfExtentMm(cellWidth: number, cellHeight: number): number {
   const innerW = cellWidth - PDF_BULK_Q_ICON_CELL_PAD_MM;
@@ -217,7 +223,20 @@ const PDF_BULK_NAME_COL_PAD_V_MUL = 0.42;
 /** Altura da linha = 1 linha do nome (ellipsize) + padding vertical — no limite. */
 function pdfBulkBodyRowHeightToMatchNameMm(fontSizePt: number, padVerticalMm: number): number {
   const lineMm = fontSizePt * 0.3528 * 1.02;
-  return Math.max(1.5, lineMm + padVerticalMm * 2);
+  return Math.max(scalePdfTable(1.5), lineMm + padVerticalMm * 2);
+}
+
+function pdfSkillResponsiveFontSize(questionsCount: number, dynamicFontSize: number): number {
+  const q = Math.max(1, questionsCount);
+  if (q <= 10) return Math.max(scalePdfTable(7.2), dynamicFontSize * 1.9);
+  if (q <= 15) return Math.max(scalePdfTable(6.1), dynamicFontSize * 1.6);
+  if (q <= 22) return Math.max(scalePdfTable(5.1), dynamicFontSize * 1.35);
+
+  const infoFactor = Math.min(1.45, 24 / Math.max(1, questionsCount));
+  return Math.max(
+    scalePdfTable(3.6),
+    Math.min(scalePdfTable(8.8), dynamicFontSize * (0.98 + infoFactor * 0.22))
+  );
 }
 
 
@@ -246,8 +265,8 @@ function drawProficiencyNivelInPdfCell(
   let fillY = cell.y;
   let fillH = cell.height;
   if (chipMax != null && chipMax > 0 && Number.isFinite(chipMax)) {
-    const m = 0.1;
-    fillH = Math.min(chipMax, Math.max(1.05, cell.height - m * 2));
+    const m = scalePdfTable(0.1);
+    fillH = Math.min(chipMax, Math.max(scalePdfTable(1.05), cell.height - m * 2));
     fillY = cell.y + (cell.height - fillH) / 2;
   }
 
@@ -262,22 +281,22 @@ function drawProficiencyNivelInPdfCell(
   const chipMode = chipMax != null && chipMax > 0;
 
   if (compact) {
-    fs = Math.max(1.15, Math.min(2.05, fontSize));
+    fs = Math.max(scalePdfTable(1.15), Math.min(scalePdfTable(2.05), fontSize));
     if (chipMode) {
-      fs = Math.min(fs, Math.max(1.1, fillH * 0.38));
+      fs = Math.min(fs, Math.max(scalePdfTable(1.1), fillH * 0.38));
     } else {
-      fs = Math.min(fs, Math.max(1.05, fillH * 0.48));
+      fs = Math.min(fs, Math.max(scalePdfTable(1.05), fillH * 0.48));
     }
-    pad = chipMode ? 0.22 : 0.28;
-    lineH = Math.max(fs * (chipMode ? 0.2 : 0.24), chipMode ? 1.05 : 1.02);
+    pad = chipMode ? scalePdfTable(0.22) : scalePdfTable(0.28);
+    lineH = Math.max(fs * (chipMode ? 0.2 : 0.24), chipMode ? scalePdfTable(1.05) : scalePdfTable(1.02));
   } else {
-    fs = Math.max(5, label.length > 24 && fontSize > 6 ? fontSize - 1.25 : fontSize);
-    pad = 2;
-    lineH = Math.max(fs * 0.42, 2.8);
+    fs = Math.max(scalePdfTable(5), label.length > 24 && fontSize > scalePdfTable(6) ? fontSize - scalePdfTable(1.25) : fontSize);
+    pad = scalePdfTable(2);
+    lineH = Math.max(fs * 0.42, scalePdfTable(2.8));
   }
 
   d.setFontSize(fs);
-  const maxW = Math.max(compact ? 2.2 : 4, cell.width - pad * 2);
+  const maxW = Math.max(compact ? scalePdfTable(2.2) : scalePdfTable(4), cell.width - pad * 2);
   const lines = d.splitTextToSize(label, maxW);
   const totalH = lines.length * lineH;
   const startY = fillY + (fillH - totalH) / 2 + lineH * (compact ? 0.14 : 0.25);
@@ -3124,8 +3143,8 @@ export default function AcertoNiveis({
           theme: 'grid',
           margin: { left: margin, right: margin },
           styles: {
-            fontSize: 9,
-            cellPadding: 2.5,
+            fontSize: scaleCompactTable(scalePdfTable(9)),
+            cellPadding: scaleCompactTable(scalePdfTable(2.5)),
             lineColor: [200, 200, 200],
             lineWidth: 0.1,
             valign: 'middle'
@@ -3135,8 +3154,8 @@ export default function AcertoNiveis({
             textColor: [0, 0, 0],
             fontStyle: 'bold',
             halign: 'center',
-            fontSize: 9,
-            cellPadding: 2.5,
+            fontSize: scaleCompactTable(scalePdfTable(9)),
+            cellPadding: scaleCompactTable(scalePdfTable(2.5)),
           },
           bodyStyles: { textColor: [33, 33, 33] },
           alternateRowStyles: { fillColor: [250, 250, 250] },
@@ -3148,7 +3167,7 @@ export default function AcertoNiveis({
           },
           didParseCell: (data: CellHookData) => {
             if (data.section === 'body' && data.column.index === 3) {
-              data.cell.styles.minCellHeight = 16;
+              data.cell.styles.minCellHeight = scaleCompactTable(scalePdfTable(16));
             }
           },
           didDrawCell: (data: CellHookData) => {
@@ -3157,7 +3176,12 @@ export default function AcertoNiveis({
             const textValue = (Array.isArray(data.cell.text) ? data.cell.text[0] : data.cell.text || '')
               .toString()
               .trim();
-            drawProficiencyNivelInPdfCell(data.doc as jsPDF, data.cell, textValue, 9);
+            drawProficiencyNivelInPdfCell(
+              data.doc as jsPDF,
+              data.cell,
+              textValue,
+              scaleCompactTable(scalePdfTable(9))
+            );
           }
         });
 
@@ -3225,10 +3249,10 @@ export default function AcertoNiveis({
           const spaceForQuestions = Math.max(0, availableWidth - nameColWidth - finalColsWidth);
           const questionColWidth = spaceForQuestions / numCols;
 
-          const dynamicFontSize = PDF_BULK_LANDSCAPE_FONT(numCols);
-          const bulkPadH = PDF_BULK_LANDSCAPE_CELL_PAD_H(numCols);
-          const bulkPadV = PDF_BULK_LANDSCAPE_CELL_PAD_V(numCols);
-          const nameColFont = Math.max(0.78, dynamicFontSize * PDF_BULK_NAME_COL_FONT_MUL);
+          const dynamicFontSize = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_FONT(numCols));
+          const bulkPadH = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_CELL_PAD_H(numCols));
+          const bulkPadV = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_CELL_PAD_V(numCols));
+          const nameColFont = Math.max(scalePdfTable(0.78), dynamicFontSize * PDF_BULK_NAME_COL_FONT_MUL);
           const namePadV = bulkPadV * PDF_BULK_NAME_COL_PAD_V_MUL;
           const bodyRowHeightMm = pdfBulkBodyRowHeightToMatchNameMm(nameColFont, namePadV);
 
@@ -3250,13 +3274,14 @@ export default function AcertoNiveis({
           }
 
           const numQuestoesThisChunk = chunk.length;
+          const skillHeaderFontSize = pdfSkillResponsiveFontSize(numQuestoesThisChunk, dynamicFontSize);
           autoTable(doc, {
             startY: startY,
             head: [headerRow1, headerRow2, headerRow3],
             body: bodyRows,
             theme: 'grid',
             margin: { left: landscapeMargin, right: landscapeMargin },
-            tableWidth: 'auto',
+            tableWidth: availableWidth,
             showHead: 'everyPage',
             styles: {
               fontSize: dynamicFontSize,
@@ -3290,13 +3315,13 @@ export default function AcertoNiveis({
                 data.cell.styles.cellPadding = PDF_BULK_HEAD_CELL_PAD;
                 const fs = dynamicFontSize;
                 if (data.row.index === 0) {
-                  data.cell.styles.fontSize = Math.max(1.05, fs * 0.72);
+                  data.cell.styles.fontSize = Math.max(scalePdfTable(1.05), fs * 0.72);
                 } else if (data.row.index === 1) {
-                  data.cell.styles.fontSize = Math.max(1.02, fs - 0.82);
+                  data.cell.styles.fontSize = skillHeaderFontSize;
                   data.cell.styles.fontStyle = 'normal';
                   data.cell.styles.font = 'courier';
                 } else if (data.row.index === 2) {
-                  data.cell.styles.fontSize = Math.max(1.08, fs - 0.32);
+                  data.cell.styles.fontSize = Math.max(scalePdfTable(1.08), fs - scalePdfTable(0.32));
                 }
               }
             },
@@ -3332,7 +3357,7 @@ export default function AcertoNiveis({
               }
               if (section === 'head' && row.index === 1) {
                 cell.styles.fillColor = [219, 234, 254];
-                cell.styles.fontSize = Math.max(1.02, dynamicFontSize - 0.82);
+                cell.styles.fontSize = skillHeaderFontSize;
                 cell.styles.fontStyle = 'normal';
                 cell.styles.font = 'courier';
               }
@@ -3343,12 +3368,15 @@ export default function AcertoNiveis({
                   cell.styles.fillColor = pct >= 60 ? [220, 252, 231] : [254, 226, 226];
                   cell.styles.textColor = pct >= 60 ? [22, 163, 74] : [239, 68, 68];
                   cell.styles.fontStyle = 'bold';
-                  cell.styles.fontSize = Math.max(1.08, dynamicFontSize - 0.32);
+                  cell.styles.fontSize = Math.max(scalePdfTable(1.08), dynamicFontSize - scalePdfTable(0.32));
                 }
+                d.setDrawColor(0, 0, 0);
+                d.setLineWidth(0.25);
+                d.rect(cell.x, cell.y, cell.width, cell.height);
               }
               if (isLastChunk && section === 'body' && column.index === chunk.length + 3) {
                 const raw = (Array.isArray(cell.text) ? cell.text[0] : cell.text ?? '').toString().trim();
-                drawProficiencyNivelInPdfCell(d as jsPDF, cell, raw || '—', Math.max(1.2, dynamicFontSize * 0.82), {
+                drawProficiencyNivelInPdfCell(d as jsPDF, cell, raw || '—', Math.max(scalePdfTable(1.2), dynamicFontSize * 0.82), {
                   compact: true,
                 });
               }
@@ -3544,10 +3572,10 @@ export default function AcertoNiveis({
             const questionColWidth = spaceForQuestionsDisc / numColsDisc;
 
             // Escala fontes para caber em uma página com todas as questões
-            const dynamicFontSize = PDF_BULK_LANDSCAPE_FONT(numColsDisc);
-            const bulkPadHDisc = PDF_BULK_LANDSCAPE_CELL_PAD_H(numColsDisc);
-            const bulkPadVDisc = PDF_BULK_LANDSCAPE_CELL_PAD_V(numColsDisc);
-            const nameColFontDisc = Math.max(0.78, dynamicFontSize * PDF_BULK_NAME_COL_FONT_MUL);
+            const dynamicFontSize = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_FONT(numColsDisc));
+            const bulkPadHDisc = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_CELL_PAD_H(numColsDisc));
+            const bulkPadVDisc = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_CELL_PAD_V(numColsDisc));
+            const nameColFontDisc = Math.max(scalePdfTable(0.78), dynamicFontSize * PDF_BULK_NAME_COL_FONT_MUL);
             const namePadVDisc = bulkPadVDisc * PDF_BULK_NAME_COL_PAD_V_MUL;
             const bodyRowHeightMmDisc = pdfBulkBodyRowHeightToMatchNameMm(nameColFontDisc, namePadVDisc);
 
@@ -3568,6 +3596,7 @@ export default function AcertoNiveis({
               };
             }
             const numQuestoesThisChunk = chunk.length;
+            const skillHeaderFontSize = pdfSkillResponsiveFontSize(numQuestoesThisChunk, dynamicFontSize);
 
             autoTable(doc, {
               startY: y,
@@ -3575,7 +3604,7 @@ export default function AcertoNiveis({
               body: bodyRows,
               theme: 'grid',
               margin: { left: landscapeMargin, right: landscapeMargin },
-              tableWidth: 'auto',
+              tableWidth: availableWidth,
               showHead: 'everyPage',
               styles: {
                 fontSize: dynamicFontSize,
@@ -3609,13 +3638,13 @@ export default function AcertoNiveis({
                   data.cell.styles.cellPadding = PDF_BULK_HEAD_CELL_PAD;
                   const fs = dynamicFontSize;
                   if (data.row.index === 0) {
-                    data.cell.styles.fontSize = Math.max(1.05, fs * 0.72);
+                    data.cell.styles.fontSize = Math.max(scalePdfTable(1.05), fs * 0.72);
                   } else if (data.row.index === 1) {
-                    data.cell.styles.fontSize = Math.max(1.02, fs - 0.82);
+                    data.cell.styles.fontSize = skillHeaderFontSize;
                     data.cell.styles.fontStyle = 'normal';
                     data.cell.styles.font = 'courier';
                   } else if (data.row.index === 2) {
-                    data.cell.styles.fontSize = Math.max(1.08, fs - 0.32);
+                    data.cell.styles.fontSize = Math.max(scalePdfTable(1.08), fs - scalePdfTable(0.32));
                   }
                 }
               },
@@ -3650,13 +3679,13 @@ export default function AcertoNiveis({
                 }
                 if (isLastChunk && section === 'body' && column.index === chunk.length + 4) {
                   const raw = (Array.isArray(cell.text) ? cell.text[0] : cell.text ?? '').toString().trim();
-                  drawProficiencyNivelInPdfCell(d as jsPDF, cell, raw || '—', Math.max(1.2, dynamicFontSize * 0.82), {
+                  drawProficiencyNivelInPdfCell(d as jsPDF, cell, raw || '—', Math.max(scalePdfTable(1.2), dynamicFontSize * 0.82), {
                     compact: true,
                   });
                 }
                 if (section === 'head' && row.index === 1) {
                   cell.styles.fillColor = [219, 234, 254];
-                  cell.styles.fontSize = Math.max(1.02, dynamicFontSize - 0.82);
+                  cell.styles.fontSize = skillHeaderFontSize;
                   cell.styles.fontStyle = 'normal';
                   cell.styles.font = 'courier';
                 }
@@ -3667,8 +3696,11 @@ export default function AcertoNiveis({
                     cell.styles.fillColor = pct >= 60 ? [220, 252, 231] : [254, 226, 226];
                     cell.styles.textColor = pct >= 60 ? [22, 163, 74] : [239, 68, 68];
                     cell.styles.fontStyle = 'bold';
-                    cell.styles.fontSize = Math.max(1.08, dynamicFontSize - 0.32);
+                    cell.styles.fontSize = Math.max(scalePdfTable(1.08), dynamicFontSize - scalePdfTable(0.32));
                   }
+                  d.setDrawColor(0, 0, 0);
+                  d.setLineWidth(0.25);
+                  d.rect(cell.x, cell.y, cell.width, cell.height);
                 }
               },
             });
@@ -4147,8 +4179,8 @@ export default function AcertoNiveis({
             theme: 'grid',
             margin: { left: margin, right: margin },
             styles: {
-              fontSize: 7,
-              cellPadding: 1.15,
+              fontSize: scaleCompactTable(scalePdfTable(7)),
+              cellPadding: scaleCompactTable(scalePdfTable(1.15)),
               lineColor: [200, 200, 200],
               lineWidth: 0.1,
               valign: 'middle',
@@ -4158,8 +4190,8 @@ export default function AcertoNiveis({
               textColor: [0, 0, 0],
               fontStyle: 'bold',
               halign: 'center',
-              fontSize: 7,
-              cellPadding: 1.15,
+              fontSize: scaleCompactTable(scalePdfTable(7)),
+              cellPadding: scaleCompactTable(scalePdfTable(1.15)),
             },
             bodyStyles: { textColor: [33, 33, 33] },
             alternateRowStyles: { fillColor: [250, 250, 250] },
