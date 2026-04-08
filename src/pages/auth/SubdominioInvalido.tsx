@@ -1,5 +1,5 @@
 import { AlertCircle, Loader2 } from "lucide-react";
-import LOGO_WHITE from "/AFIRME PLAY LOGO branco.png";
+import LOGO_WHITE from "/AFIRME-PLAY-LOGO-branco.png";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
