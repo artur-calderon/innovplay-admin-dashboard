@@ -102,7 +102,7 @@ export async function resolveReportLogoForPdf(
 
 export async function loadDefaultReportLogoAsset(): Promise<PdfImageAsset | null> {
   try {
-    const logoPath = '/LOGO-1-menor.png';
+    const logoPath = '/LOGO-1.png';
     const response = await fetch(logoPath);
     if (!response.ok) return null;
     const blob = await response.blob();
