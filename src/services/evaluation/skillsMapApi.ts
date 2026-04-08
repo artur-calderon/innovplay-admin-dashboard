@@ -32,20 +32,32 @@ export interface SkillsMapResponse {
   habilidades: SkillsMapHabilidade[];
   por_faixa: Record<SkillsMapFaixa, SkillsMapHabilidade[]>;
   filtros_aplicados?: Record<string, string | undefined>;
+  /** Alunos matriculados no recorte (turma/escopo), antes de excluir faltosos. */
+  total_alunos_escopo_turma?: number;
+  /** Alunos com prova/cartão participando (base dos percentuais do mapa). */
+  total_alunos_participantes?: number;
+  /** @deprecated Preferir total_alunos_participantes; mantido = participantes. */
   total_alunos_escopo?: number;
 }
 
+export type SkillsMapAlunoLinha = {
+  id: string;
+  nome: string;
+  escola?: string;
+  serie?: string;
+  turma?: string;
+};
+
 export interface SkillsMapErrosResponse {
   percentual_erros: number;
+  percentual_acertos?: number;
   total_alunos_escopo: number;
   total_alunos_que_erraram: number;
-  alunos: Array<{
-    id: string;
-    nome: string;
-    escola?: string;
-    serie?: string;
-    turma?: string;
-  }>;
+  total_alunos_que_acertaram?: number;
+  alunos_que_erraram?: SkillsMapAlunoLinha[];
+  alunos_que_acertaram?: SkillsMapAlunoLinha[];
+  /** Lista de quem errou (legado; igual a alunos_que_erraram). */
+  alunos: SkillsMapAlunoLinha[];
   filtros_aplicados?: Record<string, string | undefined>;
 }
 
