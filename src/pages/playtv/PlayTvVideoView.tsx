@@ -1,12 +1,39 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Calendar, School, BookOpen, GraduationCap, User } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  ArrowLeft,
+  Calendar,
+  School,
+  BookOpen,
+  GraduationCap,
+  User,
+  ExternalLink,
+  Paperclip,
+  Link2,
+  Download,
+  Loader2,
+  Pencil,
+  Trash2,
+  MapPin,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { VideoPlayer } from '@/components/playtv/VideoPlayer';
-import { PlayTvVideo } from '@/types/playtv';
+import { PlayTvVideo, isPlayTvFileResource, isPlayTvLinkResource } from '@/types/playtv';
+import {
+  canEditPlayTvVideo,
+  getPlayTvApiErrorMessage,
+  PLAY_TV_MAX_UPLOAD_BYTES,
+  uploadPlayTvFileResource,
+} from '@/lib/playtv';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/context/authContext';
+import { getUserHierarchyContext } from '@/utils/userHierarchy';
+import { PlayTvVideoEditDialog } from '@/components/playtv/PlayTvVideoEditDialog';
 
 interface ApiError {
   response?: {
@@ -18,12 +45,35 @@ interface ApiError {
   message?: string;
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
 export default function PlayTvVideoView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [video, setVideo] = useState<PlayTvVideo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [downloadingResourceId, setDownloadingResourceId] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [userContext, setUserContext] = useState<{
+    municipio_id?: string;
+    escola_id?: string;
+    turmas?: Array<{ class_id: string; school_id: string; grade_id: string; subject_id?: string }>;
+  }>({});
+  const [contextLoaded, setContextLoaded] = useState(false);
+
+  const [attachTitle, setAttachTitle] = useState('');
+  const [attachFile, setAttachFile] = useState<File | null>(null);
+  const [isUploadingAttach, setIsUploadingAttach] = useState(false);
+
+  const isStudentView = location.pathname.startsWith('/aluno');
 
   const fetchVideo = useCallback(async () => {
     if (!id) return;
@@ -51,10 +101,139 @@ export default function PlayTvVideoView() {
     }
   }, [id, fetchVideo]);
 
+  useEffect(() => {
+    if (isStudentView) {
+      setContextLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const ctx = await getUserHierarchyContext(user.id, user.role);
+        const turmas =
+          ctx.classes?.map((c) => ({
+            class_id: c.class_id,
+            school_id: c.school_id,
+            grade_id: c.grade_id,
+            subject_id: undefined as string | undefined,
+          })) ?? [];
+        if (!cancelled) {
+          setUserContext({
+            municipio_id: ctx.municipality?.id,
+            escola_id: ctx.school?.id,
+            turmas,
+          });
+        }
+      } catch {
+        if (!cancelled) setUserContext({});
+      } finally {
+        if (!cancelled) setContextLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isStudentView, user.id, user.role]);
+
   const handleBack = () => {
     // Verificar se o usuário é aluno ou admin/professor
     const isStudent = window.location.pathname.includes('/aluno');
     navigate(isStudent ? '/aluno/play-tv' : '/app/play-tv');
+  };
+
+  const handleDownloadFile = async (resourceId: string) => {
+    if (!id || !resourceId) return;
+    setDownloadingResourceId(resourceId);
+    try {
+      const res = await api.get<{ download_url?: string }>(
+        `/play-tv/videos/${id}/resources/${resourceId}/download`
+      );
+      const downloadUrl = res.data?.download_url;
+      if (downloadUrl) {
+        window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch (err) {
+      console.error('Erro ao obter link de download:', err);
+      toast({
+        title: 'Download',
+        description: getPlayTvApiErrorMessage(err, 'Não foi possível baixar o arquivo.'),
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloadingResourceId(null);
+    }
+  };
+
+  const canEdit =
+    !isStudentView &&
+    contextLoaded &&
+    video !== null &&
+    canEditPlayTvVideo(video, user.role, userContext);
+
+  const handleDeleteResource = async (resourceId: string, resourceLabel: string) => {
+    if (!id || !resourceId) return;
+    if (!confirm(`Remover o material "${resourceLabel}"?`)) return;
+    try {
+      await api.delete(`/play-tv/videos/${id}/resources/${resourceId}`);
+      toast({ title: 'Recurso removido', description: 'O material foi excluído.' });
+      fetchVideo();
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: 'Erro',
+        description: getPlayTvApiErrorMessage(err, 'Não foi possível remover o recurso.'),
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleAttachFile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !attachFile || !attachTitle.trim()) {
+      toast({
+        title: 'Anexo',
+        description: 'Selecione um arquivo e informe o nome para exibição.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (attachFile.size > PLAY_TV_MAX_UPLOAD_BYTES) {
+      toast({
+        title: 'Anexo',
+        description: 'O arquivo excede o limite de 50 MB.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (attachTitle.trim().length > 200) {
+      toast({
+        title: 'Anexo',
+        description: 'O nome pode ter no máximo 200 caracteres.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const linkCount = (video?.resources ?? []).filter(isPlayTvLinkResource).length;
+    const fileCount = (video?.resources ?? []).filter(isPlayTvFileResource).length;
+    const sortOrder = linkCount + fileCount;
+
+    setIsUploadingAttach(true);
+    try {
+      await uploadPlayTvFileResource(api, id, attachFile, attachTitle.trim(), sortOrder);
+      toast({ title: 'Anexo enviado', description: 'O arquivo foi vinculado ao vídeo.' });
+      setAttachTitle('');
+      setAttachFile(null);
+      fetchVideo();
+    } catch (err) {
+      toast({
+        title: 'Erro no envio',
+        description: getPlayTvApiErrorMessage(err),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUploadingAttach(false);
+    }
   };
 
   if (isLoading) {
@@ -118,12 +297,175 @@ export default function PlayTvVideoView() {
             </div>
           </div>
         </div>
+        {!isStudentView && canEdit && (
+          <Button variant="default" size="sm" className="shrink-0" onClick={() => setEditOpen(true)}>
+            <Pencil className="w-4 h-4 mr-2" />
+            Editar vídeo
+          </Button>
+        )}
       </div>
+
+      {video.entire_municipality && (
+        <Badge variant="secondary" className="w-fit gap-1">
+          <MapPin className="w-3 h-3" />
+          Município inteiro
+        </Badge>
+      )}
 
       {/* Player de Vídeo - agora com estilo próprio */}
       <div className="w-full">
-        <VideoPlayer url={video.url} title={video.title} />
+        <VideoPlayer url={video.url} title={video.title ?? undefined} />
       </div>
+
+      {video.resources && video.resources.length > 0 && (
+        <Card className="shadow-md border-primary/15">
+          <CardHeader className="pb-3 border-b border-primary/10">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Paperclip className="w-5 h-5 text-primary" />
+              Materiais complementares
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-4 space-y-3">
+            {[...video.resources]
+              .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+              .map((r) => {
+                if (isPlayTvLinkResource(r)) {
+                  return (
+                    <div
+                      key={r.id ?? r.url + r.title}
+                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/80 bg-muted/20 px-4 py-3"
+                    >
+                      <div className="flex items-start gap-3 min-w-0">
+                        <Link2 className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{r.title}</p>
+                          <p className="text-xs text-muted-foreground truncate">{r.url}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 shrink-0">
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={r.url} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            Abrir link
+                          </a>
+                        </Button>
+                        {canEdit && r.id && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteResource(r.id!, r.title)}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Remover
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+                if (isPlayTvFileResource(r)) {
+                  const canDownload = Boolean(r.id);
+                  const busy = downloadingResourceId === r.id;
+                  return (
+                    <div
+                      key={r.id ?? r.file_name + r.title}
+                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/80 bg-muted/20 px-4 py-3"
+                    >
+                      <div className="flex items-start gap-3 min-w-0">
+                        <Paperclip className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{r.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {r.file_name}
+                            {typeof r.size_bytes === 'number' ? ` · ${formatFileSize(r.size_bytes)}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!canDownload || busy}
+                          onClick={() => r.id && handleDownloadFile(r.id)}
+                        >
+                          {busy ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <Download className="w-4 h-4 mr-2" />
+                          )}
+                          Baixar
+                        </Button>
+                        {canEdit && r.id && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteResource(r.id!, r.title)}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Remover
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })}
+          </CardContent>
+        </Card>
+      )}
+
+      {canEdit && (
+        <Card className="border-dashed">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Adicionar anexo (arquivo)</CardTitle>
+            <CardDescription>PDF ou outros arquivos até 50 MB. Não substitui links existentes.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleAttachFile} className="flex flex-col sm:flex-row flex-wrap gap-3 items-end">
+              <div className="space-y-1 flex-1 min-w-[200px]">
+                <Label htmlFor="attach-title">Nome exibido</Label>
+                <Input
+                  id="attach-title"
+                  value={attachTitle}
+                  maxLength={200}
+                  onChange={(e) => setAttachTitle(e.target.value)}
+                  placeholder="Ex.: Lista de exercícios"
+                />
+              </div>
+              <div className="space-y-1 flex-1 min-w-[200px]">
+                <Label htmlFor="attach-file">Arquivo</Label>
+                <Input
+                  id="attach-file"
+                  type="file"
+                  className="cursor-pointer"
+                  onChange={(e) => setAttachFile(e.target.files?.[0] ?? null)}
+                />
+              </div>
+              <Button type="submit" disabled={isUploadingAttach}>
+                {isUploadingAttach ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  'Enviar'
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {!isStudentView && video && (
+        <PlayTvVideoEditDialog
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          video={video}
+          onSaved={() => fetchVideo()}
+        />
+      )}
 
       {/* Informações do Vídeo - layout vertical único */}
       <Card className="shadow-lg border-primary/20 bg-gradient-to-br from-card to-primary/5">
@@ -178,6 +520,22 @@ export default function PlayTvVideoView() {
                   >
                     <School className="w-3 h-3 mr-1.5 flex-shrink-0 text-primary" />
                     <span className="break-words">{school.name}</span>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {video.classes && video.classes.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="font-semibold text-foreground flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                Turmas
+              </h4>
+              <div className="flex flex-wrap gap-2 pl-3.5">
+                {video.classes.map((c) => (
+                  <Badge key={c.id} variant="outline" className="border-primary/30 bg-primary/5">
+                    {c.name}
                   </Badge>
                 ))}
               </div>
