@@ -13,11 +13,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FormMultiSelect, FormOption } from "@/components/ui/form-multi-select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Edit, Trash2, AlertCircle, Calendar, Link2, Plus, Paperclip, Download, X } from 'lucide-react';
-import { CalendarApi as CalendarService, type CalendarTargetsResponse, type CalendarTarget } from "@/services/calendarApi";
+import { EventDetailDialog } from "@/components/agenda/EventDetailDialog";
+import {
+  CalendarApi as CalendarService,
+  isCalendarEventCreatedByUser,
+  type CalendarTargetsResponse,
+  type CalendarRoleGroupId,
+} from "@/services/calendarApi";
+import { EventAudiencePanel } from "@/components/agenda/EventAudiencePanel";
+import {
+  buildEventTargetsFromAudience,
+  summarizeAudience,
+  parseTargetsFromEvent,
+  summarizeStoredTargets,
+  type AudienceMode,
+} from "@/lib/calendarAudience";
 import { toLocalOffsetISO } from "@/utils/date";
 import { toast } from 'react-toastify';
 import { useAuth } from "@/context/authContext";
@@ -37,16 +49,6 @@ interface EventLinkResource {
   type: 'link';
   title: string;
   url: string;
-  sort_order?: number;
-}
-
-interface EventFileResource {
-  id: string;
-  type: 'file';
-  title: string;
-  file_name?: string;
-  mime_type?: string;
-  size_bytes?: number;
   sort_order?: number;
 }
 
@@ -80,6 +82,13 @@ export default function AdminAgendaOptimized() {
   const [selectedEscolaIds, setSelectedEscolaIds] = useState<string[]>([]);
   const [selectedTurmaIds, setSelectedTurmaIds] = useState<string[]>([]);
 
+  const [audienceMode, setAudienceMode] = useState<AudienceMode>("entities");
+  const [allMunicipality, setAllMunicipality] = useState(false);
+  const [roleGroupId, setRoleGroupId] = useState<CalendarRoleGroupId | "">("");
+  const [roleGroupSchoolIds, setRoleGroupSchoolIds] = useState<string[]>([]);
+  const [roleGroupGradeIds, setRoleGroupGradeIds] = useState<string[]>([]);
+  const [roleGroupClassIds, setRoleGroupClassIds] = useState<string[]>([]);
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -87,8 +96,6 @@ export default function AdminAgendaOptimized() {
     startTime: '',
     endTime: '',
     allDay: false,
-    scope: 'SCHOOL' as 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS' | 'USER',
-    scopeId: '',
   });
   const [createLinkResources, setCreateLinkResources] = useState<EventLinkResource[]>([]);
   const [editLinkResources, setEditLinkResources] = useState<EventLinkResource[]>([]);
@@ -97,12 +104,17 @@ export default function AdminAgendaOptimized() {
 
   const fetchEvents = useCallback(async (startISO: string, endISO: string) => {
     try {
-      const list = await CalendarService.listEvents(startISO, endISO);
-      setCurrentEvents(list as CustomEventInput[]);
+      const list = await CalendarService.listMyEvents(startISO, endISO);
+      const uid = user?.id;
+      const enriched = list.map((ev) => ({
+        ...ev,
+        editable: isCalendarEventCreatedByUser(uid, ev),
+      }));
+      setCurrentEvents(enriched as CustomEventInput[]);
     } catch (_) {
       toast.error('Não foi possível carregar os eventos');
     }
-  }, []);
+  }, [user?.id]);
 
   // Carregar targets quando abrir o modal
   useEffect(() => {
@@ -133,6 +145,56 @@ export default function AdminAgendaOptimized() {
     setSelectedEscolaIds([]);
     setSelectedTurmaIds([]);
     setTargetsData({});
+    setAudienceMode("entities");
+    setAllMunicipality(false);
+    setRoleGroupId("");
+    setRoleGroupSchoolIds([]);
+    setRoleGroupGradeIds([]);
+    setRoleGroupClassIds([]);
+  };
+
+  const resetAudienceForNewEvent = () => {
+    setAudienceMode("entities");
+    setAllMunicipality(false);
+    setRoleGroupId("");
+    setRoleGroupSchoolIds([]);
+    setRoleGroupGradeIds([]);
+    setRoleGroupClassIds([]);
+    setSelectedMunicipioIds([]);
+    setSelectedEscolaIds([]);
+    setSelectedTurmaIds([]);
+  };
+
+  const handleAudienceModeChange = (mode: AudienceMode) => {
+    setAudienceMode(mode);
+    if (mode === "self") {
+      setAllMunicipality(false);
+      setRoleGroupId("");
+      setRoleGroupSchoolIds([]);
+      setRoleGroupGradeIds([]);
+      setRoleGroupClassIds([]);
+    }
+    if (mode === "entities") {
+      setRoleGroupId("");
+      setRoleGroupSchoolIds([]);
+      setRoleGroupGradeIds([]);
+      setRoleGroupClassIds([]);
+    }
+    if (mode === "role_group") {
+      setAllMunicipality(false);
+      setSelectedMunicipioIds([]);
+      setSelectedEscolaIds([]);
+      setSelectedTurmaIds([]);
+    }
+  };
+
+  const handleAllMunicipalityChange = (value: boolean) => {
+    setAllMunicipality(value);
+    if (value) {
+      setSelectedMunicipioIds([]);
+      setSelectedEscolaIds([]);
+      setSelectedTurmaIds([]);
+    }
   };
 
   // Filtrar escolas baseado nos municípios selecionados usando city_id diretamente
@@ -179,107 +241,89 @@ export default function AdminAgendaOptimized() {
     return turmas;
   }, [targetsData.turmas, targetsData.escolas, selectedEscolaIds, selectedMunicipioIds]);
 
-
-  // Construir targets para a API baseado nos targets selecionados (múltiplos)
-  const buildEventTargets = (): {
-    visibility_scope: 'MUNICIPALITY' | 'SCHOOL' | 'GRADE' | 'CLASS' | 'USER';
-    targets: Array<{ target_type: 'ALL' | 'MUNICIPALITY' | 'SCHOOL' | 'GRADE' | 'CLASS' | 'USER'; target_id?: string }>;
-  } => {
-    if (user?.role === 'aluno' && user?.id) {
-      return {
-        visibility_scope: 'USER',
-        targets: [{ target_type: 'USER', target_id: user.id }],
-      };
+  const roleGroupTurmasForGrades = useMemo(() => {
+    let list = targetsData.turmas || [];
+    if (roleGroupSchoolIds.length > 0) {
+      list = list.filter((t) => t.escola_id && roleGroupSchoolIds.includes(t.escola_id));
     }
+    return list;
+  }, [targetsData.turmas, roleGroupSchoolIds]);
 
-    // Prioridade: Turmas > Escolas > Municípios
+  const roleGroupGradeOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    roleGroupTurmasForGrades.forEach((t) => {
+      if (t.serie_id) map.set(t.serie_id, t.serie_nome || t.serie_id);
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [roleGroupTurmasForGrades]);
 
-    // Se há turmas selecionadas, usar apenas turmas
-    if (selectedTurmaIds.length > 0) {
-      const turmasSelecionadas = targetsData.turmas?.filter(t =>
-        selectedTurmaIds.includes(t.id)
-      ) || [];
-
-      if (turmasSelecionadas.length > 0) {
-        return {
-          visibility_scope: 'CLASS',
-          targets: turmasSelecionadas.map(turma => ({
-            target_type: 'CLASS' as const,
-            target_id: turma.id
-          }))
-        };
-      }
+  const roleGroupClassTurmas = useMemo(() => {
+    let list = roleGroupTurmasForGrades;
+    if (roleGroupGradeIds.length > 0) {
+      list = list.filter((t) => t.serie_id && roleGroupGradeIds.includes(t.serie_id));
     }
+    return list;
+  }, [roleGroupTurmasForGrades, roleGroupGradeIds]);
 
-    // Se há escolas selecionadas (e não é professor), usar apenas escolas
-    if (selectedEscolaIds.length > 0 && user?.role !== 'professor') {
-      const escolasSelecionadas = targetsData.escolas?.filter(e =>
-        selectedEscolaIds.includes(e.id)
-      ) || [];
+  const audienceSummaryLines = useMemo(
+    () =>
+      summarizeAudience(audienceMode, {
+        targetsData,
+        userName: user?.name,
+        userId: user?.id,
+        neutralSelfWording: false,
+        allMunicipality,
+        roleGroupId,
+        roleGroupSchoolIds,
+        roleGroupGradeIds,
+        roleGroupClassIds,
+        selectedMunicipioIds,
+        selectedEscolaIds,
+        selectedTurmaIds,
+      }),
+    [
+      audienceMode,
+      targetsData,
+      user?.name,
+      user?.id,
+      allMunicipality,
+      roleGroupId,
+      roleGroupSchoolIds,
+      roleGroupGradeIds,
+      roleGroupClassIds,
+      selectedMunicipioIds,
+      selectedEscolaIds,
+      selectedTurmaIds,
+    ]
+  );
 
-      if (escolasSelecionadas.length > 0) {
-        return {
-          visibility_scope: 'SCHOOL',
-          targets: escolasSelecionadas.map(escola => ({
-            target_type: 'SCHOOL' as const,
-            target_id: escola.id
-          }))
-        };
-      }
-    }
+  const viewAudienceLines = useMemo(() => {
+    const raw = selected?.extendedProps?.targets;
+    if (!Array.isArray(raw) || raw.length === 0) return null;
+    return summarizeStoredTargets(raw, targetsData, { neutralSelf: true });
+  }, [selected?.extendedProps?.targets, targetsData]);
 
-    // Para Diretor/Coordenador: se não há turmas selecionadas mas há turmas disponíveis,
-    // significa que quer enviar para toda a escola
-    // Neste caso, precisamos obter a escola_id das turmas disponíveis
-    if ((user?.role === 'diretor' || user?.role === 'coordenador') &&
-      selectedTurmaIds.length === 0 &&
-      targetsData.turmas &&
-      targetsData.turmas.length > 0) {
-      // Obter escola_id das turmas disponíveis (devem ser todas da mesma escola)
-      const escolaIds = new Set(
-        targetsData.turmas
-          .map(t => t.escola_id)
-          .filter((id): id is string => !!id)
-      );
+  const canManageSelected = useMemo(
+    () => isCalendarEventCreatedByUser(user?.id, selected),
+    [user?.id, selected]
+  );
 
-      // Se há apenas uma escola, enviar para ela
-      if (escolaIds.size === 1) {
-        const escolaId = Array.from(escolaIds)[0];
-        return {
-          visibility_scope: 'SCHOOL',
-          targets: [{
-            target_type: 'SCHOOL' as const,
-            target_id: escolaId
-          }]
-        };
-      }
-    }
-
-    // Se há municípios selecionados, usar municípios
-    if (selectedMunicipioIds.length > 0) {
-      const municipiosSelecionados = targetsData.municipios?.filter(m =>
-        selectedMunicipioIds.includes(m.id)
-      ) || [];
-
-      if (municipiosSelecionados.length > 0) {
-        return {
-          visibility_scope: 'MUNICIPALITY',
-          targets: municipiosSelecionados.map(municipio => ({
-            target_type: 'MUNICIPALITY' as const,
-            target_id: municipio.id
-          }))
-        };
-      }
-    }
-
-    if (user?.role === 'admin' || user?.role === 'tecadm') {
-      return {
-        visibility_scope: 'MUNICIPALITY',
-        targets: [{ target_type: 'ALL' }],
-      };
-    }
-
-    throw new Error('Nenhum target selecionado');
+  // Construir targets para a API (entidades, perfil ou só eu)
+  const buildEventTargets = () => {
+    return buildEventTargetsFromAudience({
+      mode: user?.role === "aluno" ? "self" : audienceMode,
+      userId: user?.id,
+      userRole: user?.role,
+      allMunicipality,
+      roleGroupId,
+      roleGroupSchoolIds,
+      roleGroupGradeIds,
+      roleGroupClassIds,
+      selectedMunicipioIds,
+      selectedEscolaIds,
+      selectedTurmaIds,
+      targetsData,
+    });
   };
 
   // Validar formulário
@@ -294,25 +338,62 @@ export default function AdminAgendaOptimized() {
       return false;
     }
 
-    // Validar que professor só pode selecionar turmas (CLASS)
-    if (user?.role === 'professor') {
-      if (selectedTurmaIds.length === 0) {
-        toast.error('Professores só podem criar eventos para turmas específicas. Selecione pelo menos uma turma.');
+    if (user?.role === 'aluno' && !user?.id) {
+      toast.error('Não foi possível identificar seu usuário.');
+      return false;
+    }
+
+    const mode = user?.role === 'aluno' ? 'self' : audienceMode;
+
+    if (mode === 'self' && !user?.id) {
+      toast.error('Só é possível “apenas para mim” com usuário autenticado.');
+      return false;
+    }
+
+    if (mode === 'role_group') {
+      if (!roleGroupId) {
+        toast.error('Selecione um perfil de destinatário (por perfil).');
+        return false;
+      }
+      const narrowRole =
+        user?.role === 'professor' ||
+        user?.role === 'diretor' ||
+        user?.role === 'coordenador';
+      const hasRoleFilters =
+        roleGroupSchoolIds.length > 0 ||
+        roleGroupGradeIds.length > 0 ||
+        roleGroupClassIds.length > 0;
+      if (narrowRole && !hasRoleFilters) {
+        toast.error(
+          'Para este perfil, refine por escola, série ou turma ao enviar “por perfil”.'
+        );
         return false;
       }
     }
-    // Para Diretor/Coordenador: pode não selecionar turmas (enviará para toda a escola)
-    // ou selecionar turmas específicas
-    else if (user?.role === 'diretor' || user?.role === 'coordenador') {
-      // Não precisa validar - se não há turmas selecionadas, enviará para toda a escola
-      // Se há turmas selecionadas, enviará apenas para essas turmas
-    }
-    // Para outros roles (Admin, Tecadm), deve ter pelo menos um target selecionado
-    else if (user?.role !== 'admin' && user?.role !== 'tecadm') {
-      if (selectedTurmaIds.length === 0 && selectedEscolaIds.length === 0 && selectedMunicipioIds.length === 0) {
-        toast.error('Selecione pelo menos um destinatário');
-        return false;
+
+    if (mode === 'entities' && !allMunicipality) {
+      if (user?.role === 'professor') {
+        if (selectedTurmaIds.length === 0) {
+          toast.error('Selecione ao menos uma turma (ou use “Por perfil” / “Só eu”).');
+          return false;
+        }
+      } else if (user?.role !== 'admin' && user?.role !== 'tecadm') {
+        if (
+          selectedTurmaIds.length === 0 &&
+          selectedEscolaIds.length === 0 &&
+          selectedMunicipioIds.length === 0
+        ) {
+          toast.error('Selecione destinatários ou marque “Todo o município”.');
+          return false;
+        }
       }
+    }
+
+    try {
+      buildEventTargets();
+    } catch {
+      toast.error('Defina para quem o evento será enviado. Veja o resumo abaixo.');
+      return false;
     }
 
     return true;
@@ -462,8 +543,6 @@ export default function AdminAgendaOptimized() {
         startTime: '',
         endTime: '',
         allDay: false,
-        scope: 'SCHOOL',
-        scopeId: '',
       });
       setCreatedTitle(created.title || 'Evento criado');
       setIsSuccessOpen(true);
@@ -477,6 +556,10 @@ export default function AdminAgendaOptimized() {
 
   const openEditFromSelected = () => {
     if (!selected) return;
+    if (!isCalendarEventCreatedByUser(user?.id, selected)) {
+      toast.error('Apenas o criador pode editar este evento.');
+      return;
+    }
     const eventTargets = Array.isArray(selected.extendedProps?.targets)
       ? selected.extendedProps.targets
       : [];
@@ -484,21 +567,16 @@ export default function AdminAgendaOptimized() {
       ? selected.extendedProps.resources
       : [];
     const linkResources = eventResources.filter((r: any) => r?.type === 'link');
-    setSelectedMunicipioIds(
-      eventTargets
-        .filter((t: any) => t?.target_type === 'MUNICIPALITY' && t?.target_id)
-        .map((t: any) => String(t.target_id))
-    );
-    setSelectedEscolaIds(
-      eventTargets
-        .filter((t: any) => t?.target_type === 'SCHOOL' && t?.target_id)
-        .map((t: any) => String(t.target_id))
-    );
-    setSelectedTurmaIds(
-      eventTargets
-        .filter((t: any) => t?.target_type === 'CLASS' && t?.target_id)
-        .map((t: any) => String(t.target_id))
-    );
+    const parsed = parseTargetsFromEvent(eventTargets);
+    setAudienceMode(parsed.mode);
+    setAllMunicipality(parsed.allMunicipality);
+    setRoleGroupId(parsed.roleGroupId);
+    setRoleGroupSchoolIds(parsed.roleGroupSchoolIds);
+    setRoleGroupGradeIds(parsed.roleGroupGradeIds);
+    setRoleGroupClassIds(parsed.roleGroupClassIds);
+    setSelectedMunicipioIds(parsed.selectedMunicipioIds);
+    setSelectedEscolaIds(parsed.selectedEscolaIds);
+    setSelectedTurmaIds(parsed.selectedTurmaIds);
     setFormData({
       title: String(selected.title || ''),
       description: selected.extendedProps?.description || '',
@@ -506,8 +584,6 @@ export default function AdminAgendaOptimized() {
       startTime: (selected.start as string)?.slice(0, 16) || '',
       endTime: (selected.end as string)?.slice(0, 16) || '',
       allDay: !!selected.allDay,
-      scope: 'SCHOOL',
-      scopeId: '',
     });
     setEditLinkResources(
       linkResources.map((link: any, index: number) => ({
@@ -524,6 +600,10 @@ export default function AdminAgendaOptimized() {
 
   const updateEvent = async () => {
     if (!selected?.id) return;
+    if (!isCalendarEventCreatedByUser(user?.id, selected)) {
+      toast.error('Apenas o criador pode atualizar este evento.');
+      return;
+    }
     try {
       const startISO = toLocalOffsetISO(new Date(formData.startTime));
       const endISO = toLocalOffsetISO(new Date(formData.endTime));
@@ -576,17 +656,6 @@ export default function AdminAgendaOptimized() {
     } catch (_) { toast.error('Erro ao atualizar evento'); }
   };
 
-  const getSelectedResources = () => {
-    const resources = Array.isArray(selected?.extendedProps?.resources)
-      ? selected?.extendedProps?.resources
-      : [];
-    return resources;
-  };
-
-  const selectedResources = getSelectedResources();
-  const selectedLinkResources = selectedResources.filter((item: any) => item?.type === 'link');
-  const selectedFileResources = selectedResources.filter((item: any) => item?.type === 'file') as EventFileResource[];
-
   const addLinkResource = (isEdit = false) => {
     const newItem: EventLinkResource = { type: 'link', title: '', url: '' };
     if (isEdit) {
@@ -620,6 +689,10 @@ export default function AdminAgendaOptimized() {
   };
 
   const handleDeleteResource = async (eventId: string, resourceId: string) => {
+    if (String(selected?.id) !== String(eventId) || !isCalendarEventCreatedByUser(user?.id, selected)) {
+      toast.error('Apenas o criador pode remover anexos deste evento.');
+      return;
+    }
     try {
       await CalendarService.deleteEventResource(eventId, resourceId);
       toast.success('Recurso removido');
@@ -633,6 +706,10 @@ export default function AdminAgendaOptimized() {
 
   const publishEvent = async () => {
     if (!selected?.id) return;
+    if (!isCalendarEventCreatedByUser(user?.id, selected)) {
+      toast.error('Apenas o criador pode publicar este evento.');
+      return;
+    }
     try {
       await CalendarService.publishEvent(String(selected.id));
       await refetchCurrentRange();
@@ -642,6 +719,10 @@ export default function AdminAgendaOptimized() {
 
   const deleteEvent = async () => {
     if (!selected?.id) return;
+    if (!isCalendarEventCreatedByUser(user?.id, selected)) {
+      toast.error('Apenas o criador pode excluir este evento.');
+      return;
+    }
     try {
       await CalendarService.deleteEvent(String(selected.id));
       setIsViewOpen(false);
@@ -708,9 +789,12 @@ export default function AdminAgendaOptimized() {
       {/* Criar evento */}
       <Dialog open={isCreateOpen} onOpenChange={(open) => {
         setIsCreateOpen(open);
-
-        if (!open) {
+        if (open) {
+          resetAudienceForNewEvent();
+        } else {
           resetTargetsForm();
+          setCreateLinkResources([]);
+          setPendingCreateFiles([]);
           setCreateLinkResources([]);
           setPendingCreateFiles([]);
           setFormData({
@@ -720,13 +804,11 @@ export default function AdminAgendaOptimized() {
             startTime: '',
             endTime: '',
             allDay: false,
-            scope: 'SCHOOL',
-            scopeId: '',
           });
         }
       }}>
         <DialogContent
-          className="max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full !top-[50%] !left-[50%] !translate-x-[-50%] !translate-y-[-50%]"
+          className="max-w-3xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full !top-[50%] !left-[50%] !translate-x-[-50%] !translate-y-[-50%]"
           onInteractOutside={(e) => {
             // No mobile, prevenir fechamento acidental por toque fora
             const isMobile = window.innerWidth < 640;
@@ -751,7 +833,10 @@ export default function AdminAgendaOptimized() {
         >
           <DialogHeader>
             <DialogTitle>Criar Novo Evento</DialogTitle>
-            <DialogDescription>Preencha os dados do evento que será exibido para alunos e professores</DialogDescription>
+            <DialogDescription>
+              Preencha os dados e escolha com clareza o público: só você, escolas/turmas ou um perfil (ex. professores)
+              com filtros opcionais.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -827,233 +912,34 @@ export default function AdminAgendaOptimized() {
               )}
             </div>
 
-            {/* Seção de Destinatários */}
-            <div className="space-y-4 p-4 border rounded-lg bg-muted">
-              <Label className="text-base font-semibold">Destinatário</Label>
-
-              {isLoadingTargets ? (
-                <div className="text-sm text-muted-foreground flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 animate-spin" />
-                  Carregando opções...
-                </div>
-              ) : (
-                <>
-                  {(!targetsData.municipios && !targetsData.escolas && !targetsData.turmas) ? (
-                    <Alert>
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>
-                        Nenhuma opção de destinatário disponível. Verifique suas permissões.
-                      </AlertDescription>
-                    </Alert>
-                  ) : (
-                    <div className="space-y-4">
-                      {/* Municípios - Apenas Admin pode selecionar múltiplos municípios */}
-                      {targetsData.municipios && targetsData.municipios.length > 0 && user?.role === 'admin' && (
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Município(s)</label>
-                          <FormMultiSelect
-                            options={targetsData.municipios.map(m => ({ id: m.id, name: m.nome }))}
-                            selected={selectedMunicipioIds}
-                            onChange={(values) => {
-                              setSelectedMunicipioIds(values);
-                              // Limpar seleções de níveis inferiores quando selecionar municípios
-                              setSelectedEscolaIds([]);
-                              setSelectedTurmaIds([]);
-                            }}
-                            placeholder={selectedMunicipioIds.length === 0 ? "Selecione município(s)" : `${selectedMunicipioIds.length} selecionado(s)`}
-                          />
-                          {selectedMunicipioIds.length > 0 && (
-                            <p className="text-xs text-muted-foreground">
-                              {selectedMunicipioIds.length} município{selectedMunicipioIds.length !== 1 ? 's' : ''} selecionado{selectedMunicipioIds.length !== 1 ? 's' : ''}
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Escolas - Admin e Tecadm podem selecionar múltiplas escolas */}
-                      {targetsData.escolas && targetsData.escolas.length > 0 && (user?.role === 'admin' || user?.role === 'tecadm') && (
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">
-                            Escola(s)
-                            {user?.role === 'professor' && <span className="text-muted-foreground text-xs ml-2">(selecione para filtrar turmas)</span>}
-                          </label>
-                          <FormMultiSelect
-                            options={filteredEscolas.map(e => ({
-                              id: e.id,
-                              name: e.municipio_nome ? `${e.nome} (${e.municipio_nome})` : e.nome
-                            }))}
-                            selected={selectedEscolaIds}
-                            onChange={(values) => {
-                              setSelectedEscolaIds(values);
-                              // Limpar apenas seleção de turmas quando mudar escolas
-                              setSelectedTurmaIds([]);
-                              // NÃO limpar municípios - manter seleção
-                            }}
-                            placeholder={
-                              filteredEscolas.length === 0
-                                ? (selectedMunicipioIds.length > 0
-                                  ? "Nenhuma escola disponível para os municípios selecionados"
-                                  : "Nenhuma escola disponível")
-                                : (selectedEscolaIds.length === 0
-                                  ? "Selecione escola(s)"
-                                  : `${selectedEscolaIds.length} selecionada(s)`)
-                            }
-                            className={filteredEscolas.length === 0 ? "opacity-50" : ""}
-                          />
-                          {selectedMunicipioIds.length > 0 && filteredEscolas.length > 0 && (
-                            <p className="text-xs text-muted-foreground">
-                              {filteredEscolas.length} escola{filteredEscolas.length !== 1 ? 's' : ''} disponível{filteredEscolas.length !== 1 ? 'eis' : ''} para os municípios selecionados
-                            </p>
-                          )}
-                          {selectedEscolaIds.length > 0 && (
-                            <p className="text-xs text-muted-foreground">
-                              {selectedEscolaIds.length} escola{selectedEscolaIds.length !== 1 ? 's' : ''} selecionada{selectedEscolaIds.length !== 1 ? 's' : ''}
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Escolas - Professor: Select simples apenas para filtrar turmas */}
-                      {targetsData.escolas && targetsData.escolas.length > 0 && user?.role === 'professor' && (
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">
-                            Escola <span className="text-muted-foreground text-xs ml-2">(selecione para filtrar turmas)</span>
-                          </label>
-                          <Select
-                            value={selectedEscolaIds[0] || ''}
-                            onValueChange={(value) => {
-                              setSelectedEscolaIds(value ? [value] : []);
-                              // Limpar seleção de turmas quando mudar escola
-                              setSelectedTurmaIds([]);
-                            }}
-                            disabled={isLoadingTargets || filteredEscolas.length === 0}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione uma escola para filtrar turmas" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {filteredEscolas.length > 0 ? (
-                                filteredEscolas.map(escola => (
-                                  <SelectItem key={escola.id} value={escola.id}>
-                                    {escola.nome}
-                                    {escola.municipio_nome && ` (${escola.municipio_nome})`}
-                                  </SelectItem>
-                                ))
-                              ) : (
-                                <SelectItem value="no-schools" disabled>
-                                  Nenhuma escola disponível
-                                </SelectItem>
-                              )}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-
-                      {/* Escolas - Diretor/Coordenador: não mostra (só vê turmas da sua escola) */}
-
-                      {/* Turmas - Todos os roles podem selecionar múltiplas turmas */}
-                      {targetsData.turmas && targetsData.turmas.length > 0 && (
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">
-                            Turma(s)
-                            {(user?.role === 'diretor' || user?.role === 'coordenador') && (
-                              <span className="text-muted-foreground text-xs ml-2">
-                                (deixe vazio para enviar para toda a escola)
-                              </span>
-                            )}
-                          </label>
-                          <FormMultiSelect
-                            options={filteredTurmas.map(t => ({
-                              id: t.id,
-                              name: `${t.nome}${t.serie_nome ? ` - ${t.serie_nome}` : ''}${t.escola_nome ? ` (${t.escola_nome})` : ''}`
-                            }))}
-                            selected={selectedTurmaIds}
-                            onChange={(values) => {
-                              setSelectedTurmaIds(values);
-                              // NÃO limpar seleções de níveis superiores - manter municípios e escolas
-                            }}
-                            placeholder={
-                              filteredTurmas.length === 0
-                                ? (user?.role === 'professor' && selectedEscolaIds.length === 0
-                                  ? "Selecione uma escola primeiro"
-                                  : selectedMunicipioIds.length > 0 && selectedEscolaIds.length === 0
-                                    ? "Selecione uma escola primeiro"
-                                    : "Nenhuma turma disponível")
-                                : (selectedTurmaIds.length === 0
-                                  ? (user?.role === 'diretor' || user?.role === 'coordenador'
-                                    ? "Selecione turma(s) ou deixe vazio para toda a escola"
-                                    : "Selecione turma(s)")
-                                  : `${selectedTurmaIds.length} selecionada(s)`)
-                            }
-                            className={filteredTurmas.length === 0 ? "opacity-50" : ""}
-                          />
-                          {user?.role === 'professor' && selectedEscolaIds.length === 0 && (
-                            <p className="text-xs text-muted-foreground">
-                              Selecione uma escola primeiro para filtrar as turmas
-                            </p>
-                          )}
-                          {selectedMunicipioIds.length > 0 && selectedEscolaIds.length === 0 && (
-                            <p className="text-xs text-muted-foreground">
-                              Selecione uma escola para ver as turmas disponíveis
-                            </p>
-                          )}
-                          {filteredTurmas.length > 0 && (
-                            <p className="text-xs text-muted-foreground">
-                              {filteredTurmas.length} turma{filteredTurmas.length !== 1 ? 's' : ''} disponível{filteredTurmas.length !== 1 ? 'eis' : ''}
-                              {selectedTurmaIds.length > 0 && ` • ${selectedTurmaIds.length} selecionada(s)`}
-                              {(user?.role === 'diretor' || user?.role === 'coordenador') && selectedTurmaIds.length === 0 && (
-                                <span className="block mt-1">• Se nenhuma turma for selecionada, o evento será enviado para toda a escola</span>
-                              )}
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Mostrar targets selecionados */}
-                      {(selectedTurmaIds.length > 0 || selectedEscolaIds.length > 0 || selectedMunicipioIds.length > 0) && (
-                        <Alert>
-                          <AlertCircle className="h-4 w-4" />
-                          <AlertDescription>
-                            <div className="space-y-1">
-                              <div>
-                                <strong>Destinatários selecionados:</strong>
-                              </div>
-                              {selectedTurmaIds.length > 0 && (
-                                <div className="text-sm">
-                                  <strong>Turmas ({selectedTurmaIds.length}):</strong>{' '}
-                                  {targetsData.turmas
-                                    ?.filter(t => selectedTurmaIds.includes(t.id))
-                                    .map(t => t.nome)
-                                    .join(', ') || 'Nenhuma'}
-                                </div>
-                              )}
-                              {selectedEscolaIds.length > 0 && user?.role !== 'professor' && (
-                                <div className="text-sm">
-                                  <strong>Escolas ({selectedEscolaIds.length}):</strong>{' '}
-                                  {targetsData.escolas
-                                    ?.filter(e => selectedEscolaIds.includes(e.id))
-                                    .map(e => e.nome)
-                                    .join(', ') || 'Nenhuma'}
-                                </div>
-                              )}
-                              {selectedMunicipioIds.length > 0 && (
-                                <div className="text-sm">
-                                  <strong>Municípios ({selectedMunicipioIds.length}):</strong>{' '}
-                                  {targetsData.municipios
-                                    ?.filter(m => selectedMunicipioIds.includes(m.id))
-                                    .map(m => m.nome)
-                                    .join(', ') || 'Nenhum'}
-                                </div>
-                              )}
-                            </div>
-                          </AlertDescription>
-                        </Alert>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+            <EventAudiencePanel
+              user={{ id: user?.id, role: user?.role, name: user?.name }}
+              targetsData={targetsData}
+              isLoadingTargets={isLoadingTargets}
+              filteredEscolas={filteredEscolas}
+              entityFilteredTurmas={filteredTurmas}
+              roleGroupGradeOptions={roleGroupGradeOptions}
+              roleGroupClassTurmas={roleGroupClassTurmas}
+              audienceMode={user?.role === "aluno" ? "self" : audienceMode}
+              onAudienceModeChange={handleAudienceModeChange}
+              allMunicipality={allMunicipality}
+              onAllMunicipalityChange={handleAllMunicipalityChange}
+              roleGroupId={roleGroupId}
+              onRoleGroupIdChange={setRoleGroupId}
+              roleGroupSchoolIds={roleGroupSchoolIds}
+              onRoleGroupSchoolIdsChange={setRoleGroupSchoolIds}
+              roleGroupGradeIds={roleGroupGradeIds}
+              onRoleGroupGradeIdsChange={setRoleGroupGradeIds}
+              roleGroupClassIds={roleGroupClassIds}
+              onRoleGroupClassIdsChange={setRoleGroupClassIds}
+              selectedMunicipioIds={selectedMunicipioIds}
+              onSelectedMunicipioIdsChange={setSelectedMunicipioIds}
+              selectedEscolaIds={selectedEscolaIds}
+              onSelectedEscolaIdsChange={setSelectedEscolaIds}
+              selectedTurmaIds={selectedTurmaIds}
+              onSelectedTurmaIdsChange={setSelectedTurmaIds}
+              summaryLines={audienceSummaryLines}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
@@ -1062,103 +948,51 @@ export default function AdminAgendaOptimized() {
         </DialogContent>
       </Dialog>
 
-      {/* Visualizar evento */}
-      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-lg w-[95vw] sm:w-full">
-          <DialogHeader>
-            <DialogTitle>{selected?.title || 'Evento'}</DialogTitle>
-            <DialogDescription>{selected?.extendedProps?.description || 'Sem descrição'}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 text-sm">
-            {selected?.extendedProps?.location && (
-              <div>
-                <strong>Local:</strong> {selected.extendedProps.location}
+      <EventDetailDialog
+        open={isViewOpen}
+        onOpenChange={setIsViewOpen}
+        selected={selected}
+        audienceLines={viewAudienceLines}
+        emptyDescriptionHint={
+          canManageSelected
+            ? 'Nenhuma descrição adicionada — você pode editar o evento para incluir mais detalhes.'
+            : 'Nenhuma descrição adicionada para este evento.'
+        }
+        onDownloadFile={handleDownloadFileResource}
+        onDeleteFile={canManageSelected ? handleDeleteResource : undefined}
+        footer={
+          canManageSelected ? (
+            <>
+              <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+                <Button variant="outline" className="flex-1 sm:flex-initial" onClick={() => setIsViewOpen(false)}>
+                  Fechar
+                </Button>
+                <Button variant="secondary" className="flex-1 sm:flex-initial gap-2" onClick={openEditFromSelected}>
+                  <Edit className="h-4 w-4" />
+                  Editar
+                </Button>
               </div>
-            )}
-            {selected?.start && (
-              <div>
-                <strong>
-                  {hasTimeInfo(selected.start as string) ? 'Início:' : 'Data:'}
-                </strong>{' '}
-                {hasTimeInfo(selected.start as string)
-                  ? format(new Date(selected.start as string), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
-                  : format(new Date(selected.start as string), "dd/MM/yyyy", { locale: ptBR })
-                }
+              <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+                <Button className="flex-1 sm:flex-initial shadow-sm" onClick={publishEvent}>
+                  Publicar
+                </Button>
+                <Button variant="destructive" className="flex-1 sm:flex-initial gap-2 shadow-sm" onClick={deleteEvent}>
+                  <Trash2 className="h-4 w-4" />
+                  Excluir
+                </Button>
               </div>
-            )}
-            {selected?.end && hasTimeInfo(selected.end as string) && (
-              <div>
-                <strong>Fim:</strong>{' '}
-                {format(new Date(selected.end as string), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-              </div>
-            )}
-            {selected?.end && !hasTimeInfo(selected.end as string) && (
-              <div>
-                <strong>Até:</strong>{' '}
-                {format(new Date(selected.end as string), "dd/MM/yyyy", { locale: ptBR })}
-              </div>
-            )}
-            {selectedLinkResources.length > 0 && (
-              <div className="space-y-2 pt-2">
-                <strong>Links:</strong>
-                <div className="space-y-1">
-                  {selectedLinkResources.map((resource: any) => (
-                    <a
-                      key={resource.id || resource.url}
-                      href={resource.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary underline block"
-                    >
-                      {resource.title || resource.url}
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
-            {selectedFileResources.length > 0 && (
-              <div className="space-y-2 pt-2">
-                <strong>Arquivos:</strong>
-                <div className="space-y-2">
-                  {selectedFileResources.map((resource) => (
-                    <div key={resource.id} className="flex items-center justify-between gap-2">
-                      <span className="truncate">{resource.title || resource.file_name || 'Arquivo'}</span>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => selected?.id && handleDownloadFileResource(String(selected.id), resource.id)}
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => selected?.id && handleDeleteResource(String(selected.id), resource.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-          <DialogFooter className="flex gap-2">
-            <Button variant="outline" onClick={() => setIsViewOpen(false)}>Fechar</Button>
-            <Button variant="secondary" onClick={openEditFromSelected}><Edit className="h-4 w-4 mr-2" />Editar</Button>
-            <Button onClick={publishEvent}>Publicar</Button>
-            <Button variant="destructive" onClick={deleteEvent}><Trash2 className="h-4 w-4 mr-2" />Excluir</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </>
+          ) : (
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIsViewOpen(false)}>
+              Fechar
+            </Button>
+          )
+        }
+      />
 
       {/* Editar evento */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
+        <DialogContent className="max-w-3xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
           <DialogHeader>
             <DialogTitle>Editar Evento</DialogTitle>
             <DialogDescription>Atualize os dados do evento</DialogDescription>
@@ -1189,114 +1023,34 @@ export default function AdminAgendaOptimized() {
               <Input id="edit-location" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} />
             </div>
 
-            {/* Seção de Destinatários (edição) */}
-            <div className="space-y-4 p-4 border rounded-lg bg-muted">
-              <Label className="text-base font-semibold">Destinatário</Label>
-
-              {isLoadingTargets ? (
-                <div className="text-sm text-muted-foreground flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 animate-spin" />
-                  Carregando opções...
-                </div>
-              ) : (
-                <>
-                  {(!targetsData.municipios && !targetsData.escolas && !targetsData.turmas) ? (
-                    <Alert>
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>
-                        Nenhuma opção de destinatário disponível. Verifique suas permissões.
-                      </AlertDescription>
-                    </Alert>
-                  ) : (
-                    <div className="space-y-4">
-                      {targetsData.municipios && targetsData.municipios.length > 0 && user?.role === 'admin' && (
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Município(s)</label>
-                          <FormMultiSelect
-                            options={targetsData.municipios.map(m => ({ id: m.id, name: m.nome }))}
-                            selected={selectedMunicipioIds}
-                            onChange={(values) => {
-                              setSelectedMunicipioIds(values);
-                              setSelectedEscolaIds([]);
-                              setSelectedTurmaIds([]);
-                            }}
-                            placeholder={selectedMunicipioIds.length === 0 ? "Selecione município(s)" : `${selectedMunicipioIds.length} selecionado(s)`}
-                          />
-                        </div>
-                      )}
-
-                      {targetsData.escolas && targetsData.escolas.length > 0 && (user?.role === 'admin' || user?.role === 'tecadm') && (
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Escola(s)</label>
-                          <FormMultiSelect
-                            options={filteredEscolas.map(e => ({
-                              id: e.id,
-                              name: e.municipio_nome ? `${e.nome} (${e.municipio_nome})` : e.nome
-                            }))}
-                            selected={selectedEscolaIds}
-                            onChange={(values) => {
-                              setSelectedEscolaIds(values);
-                              setSelectedTurmaIds([]);
-                            }}
-                            placeholder={selectedEscolaIds.length === 0 ? "Selecione escola(s)" : `${selectedEscolaIds.length} selecionada(s)`}
-                            className={filteredEscolas.length === 0 ? "opacity-50" : ""}
-                          />
-                        </div>
-                      )}
-
-                      {targetsData.escolas && targetsData.escolas.length > 0 && user?.role === 'professor' && (
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Escola</label>
-                          <Select
-                            value={selectedEscolaIds[0] || ''}
-                            onValueChange={(value) => {
-                              setSelectedEscolaIds(value ? [value] : []);
-                              setSelectedTurmaIds([]);
-                            }}
-                            disabled={isLoadingTargets || filteredEscolas.length === 0}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione uma escola para filtrar turmas" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {filteredEscolas.map(escola => (
-                                <SelectItem key={escola.id} value={escola.id}>
-                                  {escola.nome}
-                                  {escola.municipio_nome && ` (${escola.municipio_nome})`}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-
-                      {targetsData.turmas && targetsData.turmas.length > 0 && (
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">
-                            Turma(s)
-                            {(user?.role === 'diretor' || user?.role === 'coordenador') && (
-                              <span className="text-muted-foreground text-xs ml-2">
-                                (deixe vazio para enviar para toda a escola)
-                              </span>
-                            )}
-                          </label>
-                          <FormMultiSelect
-                            options={filteredTurmas.map(t => ({
-                              id: t.id,
-                              name: `${t.nome}${t.serie_nome ? ` - ${t.serie_nome}` : ''}${t.escola_nome ? ` (${t.escola_nome})` : ''}`
-                            }))}
-                            selected={selectedTurmaIds}
-                            onChange={setSelectedTurmaIds}
-                            placeholder={selectedTurmaIds.length === 0 ? "Selecione turma(s)" : `${selectedTurmaIds.length} selecionada(s)`}
-                            className={filteredTurmas.length === 0 ? "opacity-50" : ""}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+            <EventAudiencePanel
+              user={{ id: user?.id, role: user?.role, name: user?.name }}
+              targetsData={targetsData}
+              isLoadingTargets={isLoadingTargets}
+              filteredEscolas={filteredEscolas}
+              entityFilteredTurmas={filteredTurmas}
+              roleGroupGradeOptions={roleGroupGradeOptions}
+              roleGroupClassTurmas={roleGroupClassTurmas}
+              audienceMode={user?.role === "aluno" ? "self" : audienceMode}
+              onAudienceModeChange={handleAudienceModeChange}
+              allMunicipality={allMunicipality}
+              onAllMunicipalityChange={handleAllMunicipalityChange}
+              roleGroupId={roleGroupId}
+              onRoleGroupIdChange={setRoleGroupId}
+              roleGroupSchoolIds={roleGroupSchoolIds}
+              onRoleGroupSchoolIdsChange={setRoleGroupSchoolIds}
+              roleGroupGradeIds={roleGroupGradeIds}
+              onRoleGroupGradeIdsChange={setRoleGroupGradeIds}
+              roleGroupClassIds={roleGroupClassIds}
+              onRoleGroupClassIdsChange={setRoleGroupClassIds}
+              selectedMunicipioIds={selectedMunicipioIds}
+              onSelectedMunicipioIdsChange={setSelectedMunicipioIds}
+              selectedEscolaIds={selectedEscolaIds}
+              onSelectedEscolaIdsChange={setSelectedEscolaIds}
+              selectedTurmaIds={selectedTurmaIds}
+              onSelectedTurmaIdsChange={setSelectedTurmaIds}
+              summaryLines={audienceSummaryLines}
+            />
             <div className="space-y-3 p-4 border rounded-lg">
               <div className="flex items-center justify-between">
                 <Label className="text-base font-semibold flex items-center gap-2">
