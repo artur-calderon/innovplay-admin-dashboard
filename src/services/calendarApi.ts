@@ -118,6 +118,7 @@ export interface CalendarTarget {
   id: string;
   nome: string;
   target_type: 'ALL' | 'MUNICIPALITY' | 'SCHOOL' | 'GRADE' | 'CLASS' | 'USER';
+  target_type: 'ALL' | 'MUNICIPALITY' | 'SCHOOL' | 'GRADE' | 'CLASS' | 'USER';
   serie_id?: string;
   serie_nome?: string;
   escola_id?: string;
@@ -201,6 +202,36 @@ export const CalendarApi = {
   async getTargets(): Promise<CalendarTargetsResponse> {
     const { data } = await api.get('/calendar/targets/me');
     return data;
+  },
+
+  async uploadEventFileResource(
+    eventId: string,
+    payload: { file: File; title: string; sort_order?: number }
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', payload.file);
+    formData.append('title', payload.title);
+    if (typeof payload.sort_order === 'number') {
+      formData.append('sort_order', String(payload.sort_order));
+    }
+    const { data } = await api.post(`/calendar/events/${eventId}/resources/file`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data?.resource;
+  },
+
+  async getEventResourceDownloadUrl(eventId: string, resourceId: string): Promise<{
+    download_url: string;
+    expires_in_seconds: number;
+    file_name?: string;
+  }> {
+    const { data } = await api.get(`/calendar/events/${eventId}/resources/${resourceId}/download`);
+    return data;
+  },
+
+  async deleteEventResource(eventId: string, resourceId: string): Promise<boolean> {
+    const { data } = await api.delete(`/calendar/events/${eventId}/resources/${resourceId}`);
+    return !!data?.success;
   },
 
   async uploadEventFileResource(

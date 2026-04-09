@@ -101,6 +101,10 @@ export default function AdminAgendaOptimized() {
   const [editLinkResources, setEditLinkResources] = useState<EventLinkResource[]>([]);
   const [pendingCreateFiles, setPendingCreateFiles] = useState<File[]>([]);
   const [pendingEditFiles, setPendingEditFiles] = useState<File[]>([]);
+  const [createLinkResources, setCreateLinkResources] = useState<EventLinkResource[]>([]);
+  const [editLinkResources, setEditLinkResources] = useState<EventLinkResource[]>([]);
+  const [pendingCreateFiles, setPendingCreateFiles] = useState<File[]>([]);
+  const [pendingEditFiles, setPendingEditFiles] = useState<File[]>([]);
 
   const fetchEvents = useCallback(async (startISO: string, endISO: string) => {
     try {
@@ -120,6 +124,7 @@ export default function AdminAgendaOptimized() {
   useEffect(() => {
     const loadTargets = async () => {
       if (!isCreateOpen && !isEditOpen) {
+      if (!isCreateOpen && !isEditOpen) {
         resetTargetsForm();
         return;
       }
@@ -137,6 +142,7 @@ export default function AdminAgendaOptimized() {
     };
 
     loadTargets();
+  }, [isCreateOpen, isEditOpen]);
   }, [isCreateOpen, isEditOpen]);
 
   // Resetar formulário de targets
@@ -517,6 +523,15 @@ export default function AdminAgendaOptimized() {
             url: item.url.trim(),
             sort_order: index,
           })),
+        resources: createLinkResources
+          .filter((item) => item.title.trim() && item.url.trim())
+          .map((item, index) => ({
+            id: item.id,
+            type: 'link',
+            title: item.title.trim(),
+            url: item.url.trim(),
+            sort_order: index,
+          })),
         is_published: true,
         recurrence_rule: null,
       });
@@ -532,8 +547,22 @@ export default function AdminAgendaOptimized() {
         }
       }
 
+
+      if (pendingCreateFiles.length > 0 && created.id) {
+        for (let i = 0; i < pendingCreateFiles.length; i += 1) {
+          const file = pendingCreateFiles[i];
+          await CalendarService.uploadEventFileResource(String(created.id), {
+            file,
+            title: file.name,
+            sort_order: i,
+          });
+        }
+      }
+
       setIsCreateOpen(false);
       resetTargetsForm();
+      setCreateLinkResources([]);
+      setPendingCreateFiles([]);
       setCreateLinkResources([]);
       setPendingCreateFiles([]);
       setFormData({
@@ -616,6 +645,7 @@ export default function AdminAgendaOptimized() {
       // Se houver hora, forçar all_day: false
       const allDayValue = hasTime ? false : !!formData.allDay;
       const { visibility_scope, targets } = buildEventTargets();
+      const { visibility_scope, targets } = buildEventTargets();
 
       await CalendarService.updateEvent(String(selected.id), {
         title: formData.title,
@@ -648,8 +678,32 @@ export default function AdminAgendaOptimized() {
           });
         }
       }
+        visibility_scope,
+        targets,
+        resources: editLinkResources
+          .filter((item) => item.title.trim() && item.url.trim())
+          .map((item, index) => ({
+            id: item.id,
+            type: 'link',
+            title: item.title.trim(),
+            url: item.url.trim(),
+            sort_order: index,
+          })),
+      });
+
+      if (pendingEditFiles.length > 0) {
+        for (let i = 0; i < pendingEditFiles.length; i += 1) {
+          const file = pendingEditFiles[i];
+          await CalendarService.uploadEventFileResource(String(selected.id), {
+            file,
+            title: file.name,
+            sort_order: i,
+          });
+        }
+      }
       setIsEditOpen(false);
       setIsViewOpen(false);
+      setPendingEditFiles([]);
       setPendingEditFiles([]);
       await refetchCurrentRange();
       toast.success('Evento atualizado');
@@ -793,6 +847,8 @@ export default function AdminAgendaOptimized() {
           resetAudienceForNewEvent();
         } else {
           resetTargetsForm();
+          setCreateLinkResources([]);
+          setPendingCreateFiles([]);
           setCreateLinkResources([]);
           setPendingCreateFiles([]);
           setFormData({
