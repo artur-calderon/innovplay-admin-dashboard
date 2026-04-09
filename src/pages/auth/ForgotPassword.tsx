@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { useSettings } from "@/hooks/useSettings";
 
 import LOGO from "/LOGO-1.png";
-import LOGO_WHITE from "/AFIRME PLAY LOGO branco.png";
+import LOGO_WHITE from "/AFIRME-PLAY-LOGO-branco.png";
 
 export default function ForgotPassword() {
     const [email, setEmail] = useState("");

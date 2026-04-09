@@ -142,11 +142,17 @@ interface GeralAluno {
   respostas_por_questao?: Array<{ questao: number; acertou: boolean; respondeu: boolean; resposta: string }>;
 }
 
-// Disciplina em tabela_detalhada.disciplinas (questões podem ter só numero na API)
+// Disciplina em tabela_detalhada.disciplinas (API pode enviar skills[] em vez de codigo_habilidade)
 interface DisciplinaTabela {
   id: string;
   nome: string;
-  questoes: Array<{ numero: number; habilidade?: string; codigo_habilidade?: string; question_id?: string }>;
+  questoes: Array<{
+    numero: number;
+    habilidade?: string;
+    codigo_habilidade?: string;
+    question_id?: string;
+    skills?: Array<{ code?: string; id?: string }>;
+  }>;
   alunos: Array<{
     id: string;
     nome: string;
@@ -718,13 +724,20 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
   // Mapear tabela_detalhada da API para o formato esperado por DisciplineTables (questões com numero + campos opcionais)
   const tabelaDetalhadaForDisciplineTables = useMemo(() => {
     if (!disciplinasTabela.length && !geralAlunos.length) return null;
+    const codigoHabilidadeFromQuestao = (q: DisciplinaTabela['questoes'][number]) => {
+      const fromSkills = (q.skills ?? [])
+        .map((s) => (typeof s?.code === 'string' ? s.code.trim() : ''))
+        .filter(Boolean);
+      if (fromSkills.length > 0) return fromSkills.join(', ');
+      return (q.codigo_habilidade ?? '').trim();
+    };
     const disciplinas = disciplinasTabela.map((d) => ({
       id: d.id,
       nome: d.nome,
       questoes: (d.questoes || []).map((q) => ({
         numero: q.numero,
         habilidade: q.habilidade ?? '',
-        codigo_habilidade: q.codigo_habilidade ?? '',
+        codigo_habilidade: codigoHabilidadeFromQuestao(q),
         question_id: q.question_id ?? `q-${q.numero}`,
       })),
       alunos: (d.alunos || []).map((a) => ({

@@ -171,17 +171,9 @@ export default function PlayTvManagement() {
     }
 
     if (user.role === 'tecadm' && userContext.municipio_id) {
-      // Tecadmin vê vídeos do seu município (que está no seu estado)
-      // Filtrar vídeos onde pelo menos uma escola pertence ao município do tecadmin
-      return videos.filter(video => 
-        video.schools.some(school => {
-          // Assumindo que as escolas têm city_id que corresponde ao município
-          // Como não temos city_id direto nas escolas do vídeo, vamos verificar se
-          // a escola está na lista de escolas do município
-          // Por enquanto, retornar todos os vídeos se tiver município definido
-          // O backend deve filtrar corretamente
-          return true;
-        })
+      // Escopo municipal no vídeo ou vídeos direcionados a escolas (backend já restringe por cidade)
+      return videos.filter(
+        (video) => video.entire_municipality === true || video.schools.length > 0
       );
     }
 

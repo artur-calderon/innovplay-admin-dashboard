@@ -1,6 +1,46 @@
 import { api } from '@/lib/api';
 import type { EventInput } from '@fullcalendar/core';
 
+export type CalendarRoleGroupId =
+  | 'admin'
+  | 'tecadm'
+  | 'diretor'
+  | 'coordenador'
+  | 'professor'
+  | 'aluno';
+
+export type CalendarVisibilityScope =
+  | 'MUNICIPALITY'
+  | 'SCHOOL'
+  | 'GRADE'
+  | 'CLASS'
+  | 'USER'
+  | 'USERS';
+
+export type CalendarTargetPayload =
+  | { target_type: 'ALL'; target_id?: never }
+  | { target_type: 'MUNICIPALITY'; target_id: string }
+  | { target_type: 'SCHOOL'; target_id: string }
+  | { target_type: 'GRADE'; target_id: string }
+  | { target_type: 'CLASS'; target_id: string }
+  | { target_type: 'USER'; target_id: string }
+  | {
+      target_type: 'ROLE_GROUP';
+      target_id: CalendarRoleGroupId;
+      filters?: {
+        school_ids?: string[];
+        grade_ids?: string[];
+        class_ids?: string[];
+      };
+    };
+
+/** Quem criou o evento (JWT `id` deve coincidir com `id` para mutação/anexos). */
+export interface CalendarCreatedBy {
+  id: string;
+  role?: string;
+  name?: string;
+}
+
 export interface CalendarEventDTO {
   id: string;
   title: string;
@@ -8,7 +48,28 @@ export interface CalendarEventDTO {
   end: string;
   allDay: boolean;
   timezone?: string;
+  /** Raiz ou só em `extendedProps`, conforme a API — normalizado em `mapDtoToFullCalendar`. */
+  created_by?: CalendarCreatedBy;
   extendedProps?: Record<string, any>;
+}
+
+export function getCalendarEventCreatedBy(event: EventInput | null | undefined): CalendarCreatedBy | undefined {
+  const ep = event?.extendedProps as Record<string, unknown> | undefined;
+  const raw = ep?.created_by as CalendarCreatedBy | undefined;
+  if (raw && raw.id != null && raw.id !== '') {
+    return { ...raw, id: String(raw.id) };
+  }
+  return undefined;
+}
+
+export function isCalendarEventCreatedByUser(
+  userId: string | undefined | null,
+  event: EventInput | null | undefined
+): boolean {
+  if (userId == null || userId === '' || !event) return false;
+  const cb = getCalendarEventCreatedBy(event);
+  if (!cb) return false;
+  return String(cb.id) === String(userId);
 }
 
 export interface CreateEventBody {
@@ -19,8 +80,15 @@ export interface CreateEventBody {
   end_at: string;   // ISO com timezone
   all_day: boolean;
   timezone?: string;
-  visibility_scope: 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS';
-  targets: Array<{ target_type: 'MUNICIPALITY' | 'SCHOOL' | 'GRADE' | 'CLASS'; target_id: string }>;
+  visibility_scope: CalendarVisibilityScope;
+  targets: CalendarTargetPayload[];
+  resources?: Array<{
+    id?: string;
+    type: 'link';
+    title: string;
+    url: string;
+    sort_order?: number;
+  }>;
   is_published?: boolean;
   recurrence_rule?: string | null;
 }
@@ -33,8 +101,15 @@ export interface UpdateEventBody {
   end_at?: string;
   all_day?: boolean;
   timezone?: string;
-  visibility_scope?: 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS';
-  targets?: Array<{ target_type: 'MUNICIPALITY' | 'SCHOOL' | 'GRADE' | 'CLASS'; target_id: string }>;
+  visibility_scope?: CalendarVisibilityScope;
+  targets?: CalendarTargetPayload[];
+  resources?: Array<{
+    id?: string;
+    type: 'link';
+    title: string;
+    url: string;
+    sort_order?: number;
+  }>;
   is_published?: boolean;
   recurrence_rule?: string | null;
 }
@@ -42,7 +117,7 @@ export interface UpdateEventBody {
 export interface CalendarTarget {
   id: string;
   nome: string;
-  target_type: 'MUNICIPALITY' | 'SCHOOL' | 'GRADE' | 'CLASS';
+  target_type: 'ALL' | 'MUNICIPALITY' | 'SCHOOL' | 'GRADE' | 'CLASS' | 'USER';
   serie_id?: string;
   serie_nome?: string;
   escola_id?: string;
@@ -58,6 +133,9 @@ export interface CalendarTargetsResponse {
 }
 
 export function mapDtoToFullCalendar(e: CalendarEventDTO): EventInput {
+  const fromExt = e.extendedProps?.created_by as CalendarCreatedBy | undefined;
+  const createdBy = e.created_by ?? fromExt;
+
   return {
     id: e.id,
     title: e.title,
@@ -68,22 +146,22 @@ export function mapDtoToFullCalendar(e: CalendarEventDTO): EventInput {
       ...(e.extendedProps || {}),
       // Preservar timezone em extendedProps para uso no frontend
       ...(e.timezone && { timezone: e.timezone }),
+      ...(createdBy && createdBy.id != null && createdBy.id !== '' && { created_by: { ...createdBy, id: String(createdBy.id) } }),
     },
   } as EventInput;
 }
 
-export const CalendarApi = {
-  async listMyEvents(startISO: string, endISO: string): Promise<EventInput[]> {
-    const { data } = await api.get('/calendar/my-events', { params: { start: startISO, end: endISO } });
-    const items: CalendarEventDTO[] = Array.isArray(data) ? data : (data?.events || []);
-    return items.map(mapDtoToFullCalendar);
-  },
+async function listMyEventsFromApi(startISO: string, endISO: string): Promise<EventInput[]> {
+  const { data } = await api.get('/calendar/my-events', { params: { start: startISO, end: endISO } });
+  const items: CalendarEventDTO[] = Array.isArray(data) ? data : (data?.events || []);
+  return items.map(mapDtoToFullCalendar);
+}
 
-  async listEvents(startISO: string, endISO: string): Promise<EventInput[]> {
-    const { data } = await api.get('/calendar/events', { params: { start: startISO, end: endISO } });
-    const items: CalendarEventDTO[] = data?.events || [];
-    return items.map(mapDtoToFullCalendar);
-  },
+export const CalendarApi = {
+  listMyEvents: listMyEventsFromApi,
+
+  /** @deprecated Use `listMyEvents`. `GET /calendar/events` foi descontinuado. */
+  listEvents: listMyEventsFromApi,
 
   async getEvent(eventId: string): Promise<EventInput> {
     const { data } = await api.get(`/calendar/events/${eventId}`);
@@ -123,6 +201,36 @@ export const CalendarApi = {
   async getTargets(): Promise<CalendarTargetsResponse> {
     const { data } = await api.get('/calendar/targets/me');
     return data;
+  },
+
+  async uploadEventFileResource(
+    eventId: string,
+    payload: { file: File; title: string; sort_order?: number }
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', payload.file);
+    formData.append('title', payload.title);
+    if (typeof payload.sort_order === 'number') {
+      formData.append('sort_order', String(payload.sort_order));
+    }
+    const { data } = await api.post(`/calendar/events/${eventId}/resources/file`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data?.resource;
+  },
+
+  async getEventResourceDownloadUrl(eventId: string, resourceId: string): Promise<{
+    download_url: string;
+    expires_in_seconds: number;
+    file_name?: string;
+  }> {
+    const { data } = await api.get(`/calendar/events/${eventId}/resources/${resourceId}/download`);
+    return data;
+  },
+
+  async deleteEventResource(eventId: string, resourceId: string): Promise<boolean> {
+    const { data } = await api.delete(`/calendar/events/${eventId}/resources/${resourceId}`);
+    return !!data?.success;
   },
 };
 

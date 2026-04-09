@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { User, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 
-import LOGO_WHITE from "/LOGOTIPO-SECUNDARIO.png"
+import LOGO_WHITE from "/AFIRME-PLAY-LOGO-branco.png"
 
 export default function Login() {
   const [matricula, setMatricula] = useState("");
