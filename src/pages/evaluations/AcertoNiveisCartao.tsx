@@ -3228,7 +3228,7 @@ export default function AcertoNiveis({
         const MIN_NIVEL_MM = 40;
         const nameWidth = Math.min(140, availableWidth * 0.5);
         const restWidth = availableWidth - nameWidth - MIN_NIVEL_MM;
-        const otherWidth = Math.max(20, restWidth / 2);
+        const otherWidth = Math.max(16, restWidth / 3);
 
         // Preparar dados da tabela (usando sempre a mesma regra de acerto)
         const bodyRows: (string | number)[][] = [];
@@ -3242,6 +3242,7 @@ export default function AcertoNiveis({
           const row = [
             `${i + 1}. ${s.nome}`,
             `${acertos}/${total}`,
+            s.nota.toFixed(1),
             s.proficiencia.toFixed(1),
             normalizeProficiencyLevelLabel(s.classificacao),
           ];
@@ -3251,7 +3252,7 @@ export default function AcertoNiveis({
         // Gerar tabela
         autoTable(doc, {
           startY: startY,
-          head: [["Aluno", "Acertos", "Proficiência", "Nível"]],
+          head: [["Aluno", "Acertos", "Nota", "Proficiência", "Nível"]],
           body: bodyRows,
           theme: 'grid',
           margin: { left: margin, right: margin },
@@ -3276,15 +3277,16 @@ export default function AcertoNiveis({
             0: { cellWidth: nameWidth, halign: 'left' },
             1: { cellWidth: otherWidth, halign: 'center' },
             2: { cellWidth: otherWidth, halign: 'center' },
-            3: { cellWidth: MIN_NIVEL_MM, halign: 'center' }
+            3: { cellWidth: otherWidth, halign: 'center' },
+            4: { cellWidth: MIN_NIVEL_MM, halign: 'center' }
           },
           didParseCell: (data: CellHookData) => {
-            if (data.section === 'body' && data.column.index === 3) {
+            if (data.section === 'body' && data.column.index === 4) {
               data.cell.styles.minCellHeight = scaleCompactTable(scalePdfTable(16));
             }
           },
           didDrawCell: (data: CellHookData) => {
-            if (data.section !== 'body' || data.column.index !== 3) return;
+            if (data.section !== 'body' || data.column.index !== 4) return;
 
             const cellRaw = Array.isArray(data.cell.text) ? data.cell.text[0] : data.cell.text;
             const textValue = String(cellRaw ?? '').trim();
@@ -3330,9 +3332,9 @@ export default function AcertoNiveis({
             headerRow3.push(`${Math.round((correct / denomLocal) * 100)}%`);
           });
           if (isLastChunk) {
-            headerRow1.push("Total de acertos", "Proficiência", "Nível");
-            headerRow2.push("", "", "");
-            headerRow3.push("", "", "");
+            headerRow1.push("Total de acertos", "Nota", "Proficiência", "Nível");
+            headerRow2.push("", "", "", "");
+            headerRow3.push("", "", "", "");
           }
 
           const bodyRows: (string | number)[][] = [];
@@ -3343,6 +3345,7 @@ export default function AcertoNiveis({
             });
             if (isLastChunk) {
               row.push(`${acertosPorAluno[idx]}/${totalQuestoes}`);
+              row.push(s.nota.toFixed(1));
               row.push(s.proficiencia.toFixed(1));
               row.push(normalizeProficiencyLevelLabel(s.classificacao));
             }
@@ -3352,9 +3355,10 @@ export default function AcertoNiveis({
           const availableWidth = landscapeWidth - (2 * landscapeMargin);
           const MIN_NIVEL_WIDTH_MM = 20;
           const colTotalAcertos = chunk.length > 28 ? 8 : 11;
-          const colProficiencia = chunk.length > 28 ? 9 : 14;
+          const colNota = chunk.length > 28 ? 8 : 11;
+          const colProficiencia = chunk.length > 28 ? 9 : 12;
           const colNivel = Math.max(MIN_NIVEL_WIDTH_MM, chunk.length > 28 ? 17 : 21);
-          const finalColsWidth = isLastChunk ? (colTotalAcertos + colProficiencia + colNivel) : 0;
+          const finalColsWidth = isLastChunk ? (colTotalAcertos + colNota + colProficiencia + colNivel) : 0;
 
           const numCols = Math.max(1, chunk.length);
 
@@ -3388,8 +3392,9 @@ export default function AcertoNiveis({
 
           if (isLastChunk) {
             columnStyles[String(chunk.length + 1)] = { cellWidth: colTotalAcertos, halign: 'center' };
-            columnStyles[String(chunk.length + 2)] = { cellWidth: colProficiencia, halign: 'center' };
-            columnStyles[String(chunk.length + 3)] = {
+            columnStyles[String(chunk.length + 2)] = { cellWidth: colNota, halign: 'center' };
+            columnStyles[String(chunk.length + 3)] = { cellWidth: colProficiencia, halign: 'center' };
+            columnStyles[String(chunk.length + 4)] = {
               cellWidth: colNivel,
               halign: 'center',
               overflow: 'ellipsize',
@@ -3437,7 +3442,7 @@ export default function AcertoNiveis({
                   data.cell.styles.fontSize = nameBodyFont;
                   data.cell.styles.cellPadding = { vertical: namePadV, horizontal: bulkPadH };
                 } else if (data.column.index > numQuestoesThisChunk) {
-                  // Colunas de resumo (Total de acertos, Proficiência, Nível)
+                  // Colunas de resumo (Total de acertos, Nota, Proficiência, Nível)
                   data.cell.styles.fontSize = scalePdfTable(6);
                   data.cell.styles.fontStyle = 'bold';
                 }
@@ -3551,7 +3556,7 @@ export default function AcertoNiveis({
                 d.rect(cell.x, cell.y, cell.width, cell.height);
               }
               // Nível: fundo colorido + texto preto dimensionado para caber na célula
-              if (isLastChunk && section === 'body' && column.index === chunk.length + 3) {
+              if (isLastChunk && section === 'body' && column.index === chunk.length + 4) {
                 const cellRawNivel = Array.isArray(cell.text) ? cell.text[0] : cell.text;
                 const raw = String(cellRawNivel ?? '').trim();
                 const nivelLabel = normalizeProficiencyLevelLabel(raw || '');
