@@ -7,12 +7,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Send, School, GraduationCap, BookOpen, X, Check, ChevronsUpDown, MapPin, Building2 } from 'lucide-react';
+import { Loader2, Send, School, GraduationCap, BookOpen, X, Check, ChevronsUpDown, MapPin, Building2, Link2, Paperclip, Plus, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import {
+  extractCreatedPlayTvVideoId,
+  getPlayTvApiErrorMessage,
+  PLAY_TV_MAX_UPLOAD_BYTES,
+  uploadPlayTvFileResource,
+  validatePlayTvVideoUrl,
+} from '@/lib/playtv';
 import { CreatePlayTvVideoDTO, PlayTvSchool, PlayTvGrade, PlayTvSubject } from '@/types/playtv';
-import { useAuth } from '@/context/authContext';
 
 interface CreatePlayTvVideoFormProps {
   onSuccess: () => void;
@@ -32,7 +38,6 @@ export function CreatePlayTvVideoForm({
   userTurmas,
 }: CreatePlayTvVideoFormProps) {
   const { toast } = useToast();
-  const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingStates, setIsLoadingStates] = useState(false);
   const [isLoadingMunicipalities, setIsLoadingMunicipalities] = useState(false);
@@ -48,6 +53,11 @@ export function CreatePlayTvVideoForm({
   const [selectedSchools, setSelectedSchools] = useState<PlayTvSchool[]>([]);
   const [selectedGrade, setSelectedGrade] = useState<string>('');
   const [selectedSubject, setSelectedSubject] = useState<string>('');
+
+  type LocalLinkRow = { key: string; title: string; url: string };
+  type LocalFileRow = { key: string; title: string; file: File | null };
+  const [linkRows, setLinkRows] = useState<LocalLinkRow[]>([]);
+  const [fileRows, setFileRows] = useState<LocalFileRow[]>([]);
 
   // Estados dos popovers
   const [openStateCombo, setOpenStateCombo] = useState(false);
@@ -341,18 +351,6 @@ export function CreatePlayTvVideoForm({
     }
   };
 
-  const validateUrl = (videoUrl: string): boolean => {
-    if (!videoUrl.trim()) return false;
-    
-    try {
-      const url = new URL(videoUrl);
-      return url.protocol === 'http:' || url.protocol === 'https:';
-    } catch {
-      // Pode ser um iframe HTML ou URL incompleta
-      return videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be') || videoUrl.includes('<iframe');
-    }
-  };
-
   const validateForm = (): boolean => {
     if (!url.trim()) {
       toast({
@@ -363,7 +361,7 @@ export function CreatePlayTvVideoForm({
       return false;
     }
 
-    if (!validateUrl(url)) {
+    if (!validatePlayTvVideoUrl(url)) {
       toast({
         title: 'Erro de validação',
         description: 'Por favor, insira uma URL válida',
@@ -417,7 +415,94 @@ export function CreatePlayTvVideoForm({
       return false;
     }
 
+    return validateComplementaryResources();
+  };
+
+  const validateComplementaryResources = (): boolean => {
+    for (const row of linkRows) {
+      const t = row.title.trim();
+      const u = row.url.trim();
+      if (!t && !u) continue;
+      if (!t || !u) {
+        toast({
+          title: 'Material complementar',
+          description: 'Cada link precisa de nome e URL.',
+          variant: 'destructive',
+        });
+        return false;
+      }
+      if (t.length > 200) {
+        toast({
+          title: 'Material complementar',
+          description: 'Título do link: no máximo 200 caracteres.',
+          variant: 'destructive',
+        });
+        return false;
+      }
+      if (!validatePlayTvVideoUrl(u)) {
+        toast({
+          title: 'Material complementar',
+          description: 'Informe uma URL válida (http/https) para o link.',
+          variant: 'destructive',
+        });
+        return false;
+      }
+    }
+
+    for (const row of fileRows) {
+      if (!row.file) continue;
+      const t = row.title.trim();
+      if (!t) {
+        toast({
+          title: 'Material complementar',
+          description: 'Cada arquivo precisa de um nome (título) para exibição.',
+          variant: 'destructive',
+        });
+        return false;
+      }
+      if (t.length > 200) {
+        toast({
+          title: 'Material complementar',
+          description: 'Título do arquivo: no máximo 200 caracteres.',
+          variant: 'destructive',
+        });
+        return false;
+      }
+      if (row.file.size > PLAY_TV_MAX_UPLOAD_BYTES) {
+        toast({
+          title: 'Material complementar',
+          description: `Arquivo "${row.file.name}" excede o limite de 50 MB.`,
+          variant: 'destructive',
+        });
+        return false;
+      }
+    }
+
     return true;
+  };
+
+  const addLinkRow = () => {
+    setLinkRows((prev) => [...prev, { key: crypto.randomUUID(), title: '', url: '' }]);
+  };
+
+  const removeLinkRow = (key: string) => {
+    setLinkRows((prev) => prev.filter((r) => r.key !== key));
+  };
+
+  const updateLinkRow = (key: string, patch: Partial<Pick<LocalLinkRow, 'title' | 'url'>>) => {
+    setLinkRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  };
+
+  const addFileRow = () => {
+    setFileRows((prev) => [...prev, { key: crypto.randomUUID(), title: '', file: null }]);
+  };
+
+  const removeFileRow = (key: string) => {
+    setFileRows((prev) => prev.filter((r) => r.key !== key));
+  };
+
+  const updateFileRow = (key: string, patch: Partial<Pick<LocalFileRow, 'title' | 'file'>>) => {
+    setFileRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   };
 
   const handleToggleSchool = (school: PlayTvSchool) => {
@@ -441,20 +526,70 @@ export function CreatePlayTvVideoForm({
     setIsSubmitting(true);
 
     try {
+      const linkResources = linkRows
+        .filter((r) => r.title.trim() && r.url.trim())
+        .map((r, i) => ({
+          type: 'link' as const,
+          title: r.title.trim(),
+          url: r.url.trim(),
+          sort_order: i,
+        }));
+
       const videoData: CreatePlayTvVideoDTO = {
         url: url.trim(),
         title: title.trim() || undefined,
         schools: selectedSchools.map(s => s.id),
         grade: selectedGrade,
         subject: selectedSubject,
+        ...(linkResources.length > 0 ? { resources: linkResources } : {}),
       };
 
-      await api.post('/play-tv/videos', videoData);
+      const createRes = await api.post('/play-tv/videos', videoData);
+      const videoId = extractCreatedPlayTvVideoId(createRes.data);
 
-      toast({
-        title: 'Vídeo cadastrado com sucesso!',
-        description: 'O vídeo foi publicado e está disponível para os alunos.',
-      });
+      const filesToUpload = fileRows.filter((r): r is LocalFileRow & { file: File } => r.file !== null);
+      const uploadErrors: string[] = [];
+      let missingVideoIdForFiles = false;
+
+      if (filesToUpload.length > 0) {
+        if (!videoId) {
+          missingVideoIdForFiles = true;
+        } else {
+          const linkCount = linkResources.length;
+          for (let i = 0; i < filesToUpload.length; i++) {
+            const row = filesToUpload[i];
+            try {
+              await uploadPlayTvFileResource(api, videoId, row.file, row.title, linkCount + i);
+            } catch (uploadErr) {
+              console.error('Erro ao enviar anexo Play TV:', uploadErr);
+              uploadErrors.push(getPlayTvApiErrorMessage(uploadErr, row.file.name));
+            }
+          }
+        }
+      }
+
+      if (missingVideoIdForFiles) {
+        toast({
+          title: 'Vídeo cadastrado',
+          description:
+            'O vídeo foi salvo, mas não foi possível obter o ID da resposta para enviar os anexos. Verifique na listagem ou tente cadastrar os anexos novamente quando a API retornar o objeto do vídeo.',
+          variant: 'destructive',
+        });
+      } else if (uploadErrors.length > 0) {
+        toast({
+          title: 'Vídeo cadastrado com avisos',
+          description: `O vídeo foi salvo, mas parte dos anexos falhou: ${uploadErrors.slice(0, 2).join(' · ')}`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Vídeo cadastrado com sucesso!',
+          description:
+            filesToUpload.length > 0
+              ? 'O vídeo e os materiais complementares foram enviados.'
+              : 'O vídeo foi publicado e está disponível para os alunos.',
+        });
+      }
 
       // Limpar formulário
       setUrl('');
@@ -462,23 +597,22 @@ export function CreatePlayTvVideoForm({
       setSelectedSchools([]);
       setSelectedGrade('');
       setSelectedSubject('');
+      setLinkRows([]);
+      setFileRows([]);
 
       onSuccess();
-    } catch (error: any) {
-      // Mensagem específica para quando o endpoint não existe
+    } catch (error: unknown) {
       let errorMessage = 'Não foi possível cadastrar o vídeo. Tente novamente.';
-      const is404 = error.response?.status === 404 || error.status === 404;
-      
+      const err = error as { response?: { status?: number }; status?: number };
+      const is404 = err.response?.status === 404 || err.status === 404;
+
       if (is404) {
         errorMessage = 'Endpoint ainda não implementado no sistema. Aguarde a implementação da API.';
-        // Não logar erro para endpoints que ainda não existem
       } else {
         console.error('Erro ao cadastrar vídeo:', error);
-        if (error.response?.data?.message) {
-          errorMessage = error.response.data.message;
-        }
+        errorMessage = getPlayTvApiErrorMessage(error, errorMessage);
       }
-      
+
       toast({
         title: 'Erro',
         description: errorMessage,
@@ -535,6 +669,131 @@ export function CreatePlayTvVideoForm({
             <p className="text-xs text-muted-foreground">
               {title.length}/100 caracteres
             </p>
+          </div>
+
+          {/* Materiais complementares (links + arquivos) */}
+          <div className="space-y-4 rounded-lg border border-dashed border-primary/25 bg-muted/30 p-4">
+            <div>
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Paperclip className="h-4 w-4 text-primary" />
+                Material complementar (opcional)
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Links são enviados com o vídeo. Arquivos (até 50 MB cada) são enviados em seguida automaticamente.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                  <Link2 className="h-3.5 w-3.5" />
+                  Links
+                </Label>
+                <Button type="button" variant="outline" size="sm" onClick={addLinkRow}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Adicionar link
+                </Button>
+              </div>
+              {linkRows.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Nenhum link extra. Use o botão acima para incluir.</p>
+              ) : (
+                <div className="space-y-3">
+                  {linkRows.map((row) => (
+                    <div key={row.key} className="flex flex-col sm:flex-row gap-2 sm:items-end border rounded-md p-3 bg-background">
+                      <div className="flex-1 space-y-2">
+                        <Label className="text-xs">Nome do link</Label>
+                        <Input
+                          placeholder="Ex.: Leitura complementar"
+                          value={row.title}
+                          maxLength={200}
+                          onChange={(e) => updateLinkRow(row.key, { title: e.target.value })}
+                        />
+                      </div>
+                      <div className="flex-[2] space-y-2">
+                        <Label className="text-xs">URL</Label>
+                        <Input
+                          type="url"
+                          placeholder="https://..."
+                          value={row.url}
+                          onChange={(e) => updateLinkRow(row.key, { url: e.target.value })}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive shrink-0"
+                        onClick={() => removeLinkRow(row.key)}
+                        aria-label="Remover link"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3 pt-2 border-t border-border/60">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                  <Paperclip className="h-3.5 w-3.5" />
+                  Arquivos
+                </Label>
+                <Button type="button" variant="outline" size="sm" onClick={addFileRow}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Adicionar arquivo
+                </Button>
+              </div>
+              {fileRows.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Nenhum arquivo. PDFs e outros anexos podem ser incluídos aqui.</p>
+              ) : (
+                <div className="space-y-3">
+                  {fileRows.map((row) => (
+                    <div key={row.key} className="flex flex-col gap-2 border rounded-md p-3 bg-background">
+                      <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+                        <div className="flex-1 space-y-2">
+                          <Label className="text-xs">Nome exibido</Label>
+                          <Input
+                            placeholder="Ex.: Roteiro da aula (PDF)"
+                            value={row.title}
+                            maxLength={200}
+                            onChange={(e) => updateFileRow(row.key, { title: e.target.value })}
+                          />
+                        </div>
+                        <div className="flex-1 space-y-2">
+                          <Label className="text-xs">Arquivo</Label>
+                          <Input
+                            type="file"
+                            className="cursor-pointer"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0] ?? null;
+                              updateFileRow(row.key, { file: f });
+                            }}
+                          />
+                          {row.file && (
+                            <p className="text-xs text-muted-foreground">
+                              {(row.file.size / (1024 * 1024)).toFixed(2)} MB
+                              {row.file.size > PLAY_TV_MAX_UPLOAD_BYTES ? ' — excede 50 MB' : ''}
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive shrink-0 self-end"
+                          onClick={() => removeFileRow(row.key)}
+                          aria-label="Remover arquivo"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Seleção de Estado */}
@@ -899,6 +1158,8 @@ export function CreatePlayTvVideoForm({
                 setSelectedSchools([]);
                 setSelectedGrade('');
                 setSelectedSubject('');
+                setLinkRows([]);
+                setFileRows([]);
               }}
               disabled={isSubmitting}
             >

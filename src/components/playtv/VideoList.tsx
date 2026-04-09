@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Play, Calendar, School, BookOpen, GraduationCap, Trash2 } from 'lucide-react';
-import { PlayTvVideo } from '@/types/playtv';
+import { Play, Calendar, School, BookOpen, GraduationCap, Trash2, Link2, Paperclip } from 'lucide-react';
+import { PlayTvVideo, isPlayTvFileResource, isPlayTvLinkResource } from '@/types/playtv';
 import { useNavigate } from 'react-router-dom';
 import { getVideoThumbnailAttempts } from '@/lib/utils';
 
@@ -276,6 +276,30 @@ export const VideoList = ({
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Calendar className="w-4 h-4" />
                         <span>{new Date(video.created_at).toLocaleDateString('pt-BR')}</span>
+                      </div>
+                    )}
+
+                    {video.resources && video.resources.length > 0 && (
+                      <div className="pt-2 border-t border-border/60">
+                        <p className="text-xs font-medium text-muted-foreground mb-2">Materiais</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {[...video.resources]
+                            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                            .map((r, idx) => (
+                              <Badge
+                                key={r.id ?? `${r.type}-${r.title}-${idx}`}
+                                variant="outline"
+                                className="text-xs font-normal gap-1 max-w-full"
+                              >
+                                {isPlayTvLinkResource(r) ? (
+                                  <Link2 className="w-3 h-3 shrink-0 text-blue-600" />
+                                ) : isPlayTvFileResource(r) ? (
+                                  <Paperclip className="w-3 h-3 shrink-0 text-amber-700" />
+                                ) : null}
+                                <span className="truncate">{r.title}</span>
+                              </Badge>
+                            ))}
+                        </div>
                       </div>
                     )}
                   </div>

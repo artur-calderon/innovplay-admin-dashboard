@@ -11,7 +11,7 @@ import ptBrLocale from '@fullcalendar/core/locales/pt-br';
 import '@/styles/fullcalendar.css';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CalendarDays } from 'lucide-react';
+import { CalendarDays, Download } from 'lucide-react';
 import { CalendarApi as CalendarService } from "@/services/calendarApi";
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
@@ -98,6 +98,26 @@ export default function StudentAgendaOptimized() {
       }
     }
   };
+
+  const getSelectedResources = () => {
+    const resources = Array.isArray(selected?.extendedProps?.resources)
+      ? selected?.extendedProps?.resources
+      : [];
+    return resources;
+  };
+
+  const handleDownloadFileResource = async (eventId: string, resourceId: string) => {
+    try {
+      const data = await CalendarService.getEventResourceDownloadUrl(eventId, resourceId);
+      window.open(data.download_url, '_blank', 'noopener,noreferrer');
+    } catch {
+      toast.error('Não foi possível gerar o link de download');
+    }
+  };
+
+  const selectedResources = getSelectedResources();
+  const selectedLinks = selectedResources.filter((item: any) => item?.type === 'link');
+  const selectedFiles = selectedResources.filter((item: any) => item?.type === 'file');
 
   return (
     <div className="p-4">
@@ -204,6 +224,38 @@ export default function StudentAgendaOptimized() {
               <div>
                 <strong>Até:</strong>{' '}
                 {format(new Date(selected.end as string), "dd/MM/yyyy", { locale: ptBR })}
+              </div>
+            )}
+            {selectedLinks.length > 0 && (
+              <div className="space-y-1 pt-2">
+                <strong>Links:</strong>
+                {selectedLinks.map((resource: any) => (
+                  <a
+                    key={resource.id || resource.url}
+                    href={resource.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline block"
+                  >
+                    {resource.title || resource.url}
+                  </a>
+                ))}
+              </div>
+            )}
+            {selectedFiles.length > 0 && (
+              <div className="space-y-1 pt-2">
+                <strong>Arquivos:</strong>
+                {selectedFiles.map((resource: any) => (
+                  <button
+                    key={resource.id}
+                    type="button"
+                    className="flex items-center gap-2 text-primary underline"
+                    onClick={() => selected?.id && handleDownloadFileResource(String(selected.id), String(resource.id))}
+                  >
+                    <Download className="h-4 w-4" />
+                    {resource.title || resource.file_name || 'Arquivo'}
+                  </button>
+                ))}
               </div>
             )}
           </div>
