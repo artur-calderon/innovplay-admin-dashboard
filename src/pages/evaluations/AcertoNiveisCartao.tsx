@@ -100,9 +100,11 @@ type TabelaDetalhadaPorDisciplina = {
     nome: string;
     questoes: Array<{
       numero: number;
-      habilidade: string;
-      codigo_habilidade: string;
-      question_id: string;
+      habilidade?: string;
+      codigo_habilidade?: string;
+      question_id?: string;
+      /** Cartão-resposta (API agregada): habilidades vêm em `skills` quando não há campos planos. */
+      skills?: Array<{ id?: string; code?: string }>;
     }>;
     alunos: Array<{
       id?: string;
@@ -309,6 +311,43 @@ function drawProficiencyNivelInPdfCell(
 }
 
 type AnswerSheetSkillRow = { id?: string; code?: string; description?: string };
+
+/** API de tabela detalhada do cartão pode enviar só `{ numero, skills: [{ id, code }] }` (sem codigo_habilidade plano). */
+function resolveTabelaQuestaoHabilidade(q: {
+  numero?: number;
+  habilidade?: string;
+  codigo_habilidade?: string;
+  question_id?: string;
+  skills?: Array<{ id?: string; code?: string }>;
+}): { codigo_habilidade: string; habilidade: string; question_id: string } {
+  const clean = (s?: string) => {
+    const t = (s || '').trim();
+    if (!t || /^n\/a$/i.test(t)) return '';
+    return t;
+  };
+  let codigo_habilidade = clean(q.codigo_habilidade);
+  let habilidade = clean(q.habilidade);
+  let question_id = clean(q.question_id);
+  const skills = Array.isArray(q.skills) ? q.skills : [];
+  for (const s of skills) {
+    const c = clean(s?.code);
+    if (c) {
+      if (!codigo_habilidade) codigo_habilidade = c;
+      if (!habilidade) habilidade = c;
+      break;
+    }
+  }
+  if (!question_id) {
+    for (const s of skills) {
+      const id = clean(s?.id);
+      if (id && !/^n\/a$/i.test(id)) {
+        question_id = id;
+        break;
+      }
+    }
+  }
+  return { codigo_habilidade, habilidade, question_id };
+}
 
 /** Preenche `questoes` vazias com a lista de habilidades da avaliação (cartão-resposta). */
 function enrichTabelaDetalhadaAnswerSheetSkills(
@@ -2874,11 +2913,16 @@ export default function AcertoNiveis({
           const sorted = [...(disc.questoes || [])].sort((a, b) => (a?.numero ?? 0) - (b?.numero ?? 0));
           sorted.forEach((q) => {
             globalNumero += 1;
+            const rh = resolveTabelaQuestaoHabilidade(q);
+            const stableId =
+              rh.question_id ||
+              (typeof q.numero === 'number' ? `${disc.id}-q${q.numero}` : '') ||
+              String(globalNumero);
             list.push({
-              id: q.question_id || String(globalNumero),
+              id: stableId,
               numero: globalNumero,
-              habilidade: q.habilidade || '',
-              codigo_habilidade: q.codigo_habilidade || '',
+              habilidade: rh.habilidade || rh.codigo_habilidade,
+              codigo_habilidade: rh.codigo_habilidade,
               tipo: 'multipleChoice',
               dificuldade: 'Médio',
               porcentagem_acertos: 0,
@@ -2902,20 +2946,28 @@ export default function AcertoNiveis({
       const tabelaParaEnrich = allTabelaDetalhada ?? tabelaDetalhada;
       if (tabelaParaEnrich?.disciplinas?.length) {
         const discQByQuestionId = new Map<string, { codigo_habilidade: string; habilidade: string }>();
+        const discQByQuestionNum = new Map<number, { codigo_habilidade: string; habilidade: string }>();
         tabelaParaEnrich.disciplinas.forEach((disc) => {
           disc.questoes?.forEach((q) => {
-            if (q.question_id) {
-              discQByQuestionId.set(q.question_id, {
-                codigo_habilidade: q.codigo_habilidade || '',
-                habilidade: q.habilidade || '',
-              });
+            const rh = resolveTabelaQuestaoHabilidade(q);
+            const payload = {
+              codigo_habilidade: rh.codigo_habilidade,
+              habilidade: rh.habilidade || rh.codigo_habilidade,
+            };
+            if (q.question_id) discQByQuestionId.set(q.question_id, payload);
+            if (rh.question_id) discQByQuestionId.set(rh.question_id, payload);
+            if (typeof q.numero === 'number') {
+              discQByQuestionId.set(`${disc.id}-q${q.numero}`, payload);
+              discQByQuestionNum.set(q.numero, payload);
             }
           });
         });
-        if (discQByQuestionId.size > 0) {
+        if (discQByQuestionId.size > 0 || discQByQuestionNum.size > 0) {
           questoesParaUsar = questoesParaUsar.map((q) => {
             if (looksLikeRealSkillCode(q.codigo_habilidade)) return q;
-            const discQ = discQByQuestionId.get(q.id);
+            const discQ =
+              discQByQuestionId.get(q.id) ??
+              (typeof q.numero === 'number' ? discQByQuestionNum.get(q.numero) : undefined);
             if (discQ) {
               return {
                 ...q,
@@ -3614,8 +3666,17 @@ export default function AcertoNiveis({
           const alunosTurmaDisciplina = (disc.alunos || []).filter(al => al.turma === turmaName);
           if (alunosTurmaDisciplina.length === 0) return; // Pular se não houver alunos desta turma nesta disciplina
 
-          // Ordenar questões por número
-          const qs = [...disc.questoes].sort((a, b) => (a?.numero || 0) - (b?.numero || 0));
+          // Ordenar questões por número; API nova traz habilidades em `skills`
+          const qs = [...disc.questoes]
+            .sort((a, b) => (a?.numero || 0) - (b?.numero || 0))
+            .map((q) => {
+              const rh = resolveTabelaQuestaoHabilidade(q);
+              return {
+                ...q,
+                codigo_habilidade: rh.codigo_habilidade || q.codigo_habilidade,
+                habilidade: rh.habilidade || q.habilidade,
+              };
+            });
           const totalQuestoesDisc = qs.length;
 
           const landscapeWidth = 297;
