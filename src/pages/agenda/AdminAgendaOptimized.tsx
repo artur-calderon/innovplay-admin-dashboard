@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FormMultiSelect, FormOption } from "@/components/ui/form-multi-select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Edit, Trash2, AlertCircle, Calendar } from 'lucide-react';
+import { Edit, Trash2, AlertCircle, Calendar, Link2, Plus, Paperclip, Download, X } from 'lucide-react';
 import { CalendarApi as CalendarService, type CalendarTargetsResponse, type CalendarTarget } from "@/services/calendarApi";
 import { toLocalOffsetISO } from "@/utils/date";
 import { toast } from 'react-toastify';
@@ -30,6 +30,24 @@ interface CustomEventInput extends EventInput {
     location?: string;
     [key: string]: any;
   };
+}
+
+interface EventLinkResource {
+  id?: string;
+  type: 'link';
+  title: string;
+  url: string;
+  sort_order?: number;
+}
+
+interface EventFileResource {
+  id: string;
+  type: 'file';
+  title: string;
+  file_name?: string;
+  mime_type?: string;
+  size_bytes?: number;
+  sort_order?: number;
 }
 
 function getEventClassNames(eventInfo: { event: EventApi }) {
@@ -69,9 +87,13 @@ export default function AdminAgendaOptimized() {
     startTime: '',
     endTime: '',
     allDay: false,
-    scope: 'SCHOOL' as 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS',
+    scope: 'SCHOOL' as 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS' | 'USER',
     scopeId: '',
   });
+  const [createLinkResources, setCreateLinkResources] = useState<EventLinkResource[]>([]);
+  const [editLinkResources, setEditLinkResources] = useState<EventLinkResource[]>([]);
+  const [pendingCreateFiles, setPendingCreateFiles] = useState<File[]>([]);
+  const [pendingEditFiles, setPendingEditFiles] = useState<File[]>([]);
 
   const fetchEvents = useCallback(async (startISO: string, endISO: string) => {
     try {
@@ -85,7 +107,7 @@ export default function AdminAgendaOptimized() {
   // Carregar targets quando abrir o modal
   useEffect(() => {
     const loadTargets = async () => {
-      if (!isCreateOpen) {
+      if (!isCreateOpen && !isEditOpen) {
         resetTargetsForm();
         return;
       }
@@ -103,7 +125,7 @@ export default function AdminAgendaOptimized() {
     };
 
     loadTargets();
-  }, [isCreateOpen]);
+  }, [isCreateOpen, isEditOpen]);
 
   // Resetar formulário de targets
   const resetTargetsForm = () => {
@@ -160,9 +182,16 @@ export default function AdminAgendaOptimized() {
 
   // Construir targets para a API baseado nos targets selecionados (múltiplos)
   const buildEventTargets = (): {
-    visibility_scope: 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS';
-    targets: Array<{ target_type: 'MUNICIPALITY' | 'SCHOOL' | 'GRADE' | 'CLASS'; target_id: string }>;
+    visibility_scope: 'MUNICIPALITY' | 'SCHOOL' | 'GRADE' | 'CLASS' | 'USER';
+    targets: Array<{ target_type: 'ALL' | 'MUNICIPALITY' | 'SCHOOL' | 'GRADE' | 'CLASS' | 'USER'; target_id?: string }>;
   } => {
+    if (user?.role === 'aluno' && user?.id) {
+      return {
+        visibility_scope: 'USER',
+        targets: [{ target_type: 'USER', target_id: user.id }],
+      };
+    }
+
     // Prioridade: Turmas > Escolas > Municípios
 
     // Se há turmas selecionadas, usar apenas turmas
@@ -234,13 +263,20 @@ export default function AdminAgendaOptimized() {
 
       if (municipiosSelecionados.length > 0) {
         return {
-          visibility_scope: 'CITY',
+          visibility_scope: 'MUNICIPALITY',
           targets: municipiosSelecionados.map(municipio => ({
             target_type: 'MUNICIPALITY' as const,
             target_id: municipio.id
           }))
         };
       }
+    }
+
+    if (user?.role === 'admin' || user?.role === 'tecadm') {
+      return {
+        visibility_scope: 'MUNICIPALITY',
+        targets: [{ target_type: 'ALL' }],
+      };
     }
 
     throw new Error('Nenhum target selecionado');
@@ -272,7 +308,7 @@ export default function AdminAgendaOptimized() {
       // Se há turmas selecionadas, enviará apenas para essas turmas
     }
     // Para outros roles (Admin, Tecadm), deve ter pelo menos um target selecionado
-    else {
+    else if (user?.role !== 'admin' && user?.role !== 'tecadm') {
       if (selectedTurmaIds.length === 0 && selectedEscolaIds.length === 0 && selectedMunicipioIds.length === 0) {
         toast.error('Selecione pelo menos um destinatário');
         return false;
@@ -391,11 +427,34 @@ export default function AdminAgendaOptimized() {
         timezone: 'America/Sao_Paulo',
         visibility_scope,
         targets,
+        resources: createLinkResources
+          .filter((item) => item.title.trim() && item.url.trim())
+          .map((item, index) => ({
+            id: item.id,
+            type: 'link',
+            title: item.title.trim(),
+            url: item.url.trim(),
+            sort_order: index,
+          })),
         is_published: true,
         recurrence_rule: null,
       });
+
+      if (pendingCreateFiles.length > 0 && created.id) {
+        for (let i = 0; i < pendingCreateFiles.length; i += 1) {
+          const file = pendingCreateFiles[i];
+          await CalendarService.uploadEventFileResource(String(created.id), {
+            file,
+            title: file.name,
+            sort_order: i,
+          });
+        }
+      }
+
       setIsCreateOpen(false);
       resetTargetsForm();
+      setCreateLinkResources([]);
+      setPendingCreateFiles([]);
       setFormData({
         title: '',
         description: '',
@@ -418,6 +477,28 @@ export default function AdminAgendaOptimized() {
 
   const openEditFromSelected = () => {
     if (!selected) return;
+    const eventTargets = Array.isArray(selected.extendedProps?.targets)
+      ? selected.extendedProps.targets
+      : [];
+    const eventResources = Array.isArray(selected.extendedProps?.resources)
+      ? selected.extendedProps.resources
+      : [];
+    const linkResources = eventResources.filter((r: any) => r?.type === 'link');
+    setSelectedMunicipioIds(
+      eventTargets
+        .filter((t: any) => t?.target_type === 'MUNICIPALITY' && t?.target_id)
+        .map((t: any) => String(t.target_id))
+    );
+    setSelectedEscolaIds(
+      eventTargets
+        .filter((t: any) => t?.target_type === 'SCHOOL' && t?.target_id)
+        .map((t: any) => String(t.target_id))
+    );
+    setSelectedTurmaIds(
+      eventTargets
+        .filter((t: any) => t?.target_type === 'CLASS' && t?.target_id)
+        .map((t: any) => String(t.target_id))
+    );
     setFormData({
       title: String(selected.title || ''),
       description: selected.extendedProps?.description || '',
@@ -428,6 +509,16 @@ export default function AdminAgendaOptimized() {
       scope: 'SCHOOL',
       scopeId: '',
     });
+    setEditLinkResources(
+      linkResources.map((link: any, index: number) => ({
+        id: link.id,
+        type: 'link',
+        title: String(link.title || ''),
+        url: String(link.url || ''),
+        sort_order: typeof link.sort_order === 'number' ? link.sort_order : index,
+      }))
+    );
+    setPendingEditFiles([]);
     setIsEditOpen(true);
   };
 
@@ -444,6 +535,7 @@ export default function AdminAgendaOptimized() {
 
       // Se houver hora, forçar all_day: false
       const allDayValue = hasTime ? false : !!formData.allDay;
+      const { visibility_scope, targets } = buildEventTargets();
 
       await CalendarService.updateEvent(String(selected.id), {
         title: formData.title,
@@ -453,14 +545,90 @@ export default function AdminAgendaOptimized() {
         end_at: endISO,
         all_day: allDayValue,
         timezone: 'America/Sao_Paulo',
-        visibility_scope: formData.scope,
-        targets: formData.scopeId ? [{ target_type: formData.scope, target_id: formData.scopeId }] : [],
+        visibility_scope,
+        targets,
+        resources: editLinkResources
+          .filter((item) => item.title.trim() && item.url.trim())
+          .map((item, index) => ({
+            id: item.id,
+            type: 'link',
+            title: item.title.trim(),
+            url: item.url.trim(),
+            sort_order: index,
+          })),
       });
+
+      if (pendingEditFiles.length > 0) {
+        for (let i = 0; i < pendingEditFiles.length; i += 1) {
+          const file = pendingEditFiles[i];
+          await CalendarService.uploadEventFileResource(String(selected.id), {
+            file,
+            title: file.name,
+            sort_order: i,
+          });
+        }
+      }
       setIsEditOpen(false);
       setIsViewOpen(false);
+      setPendingEditFiles([]);
       await refetchCurrentRange();
       toast.success('Evento atualizado');
     } catch (_) { toast.error('Erro ao atualizar evento'); }
+  };
+
+  const getSelectedResources = () => {
+    const resources = Array.isArray(selected?.extendedProps?.resources)
+      ? selected?.extendedProps?.resources
+      : [];
+    return resources;
+  };
+
+  const selectedResources = getSelectedResources();
+  const selectedLinkResources = selectedResources.filter((item: any) => item?.type === 'link');
+  const selectedFileResources = selectedResources.filter((item: any) => item?.type === 'file') as EventFileResource[];
+
+  const addLinkResource = (isEdit = false) => {
+    const newItem: EventLinkResource = { type: 'link', title: '', url: '' };
+    if (isEdit) {
+      setEditLinkResources((prev) => [...prev, newItem]);
+      return;
+    }
+    setCreateLinkResources((prev) => [...prev, newItem]);
+  };
+
+  const updateLinkResource = (index: number, field: 'title' | 'url', value: string, isEdit = false) => {
+    const setter = isEdit ? setEditLinkResources : setCreateLinkResources;
+    setter((prev) =>
+      prev.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item
+      )
+    );
+  };
+
+  const removeLinkResource = (index: number, isEdit = false) => {
+    const setter = isEdit ? setEditLinkResources : setCreateLinkResources;
+    setter((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const handleDownloadFileResource = async (eventId: string, resourceId: string) => {
+    try {
+      const data = await CalendarService.getEventResourceDownloadUrl(eventId, resourceId);
+      window.open(data.download_url, '_blank', 'noopener,noreferrer');
+    } catch {
+      toast.error('Não foi possível gerar o link de download');
+    }
+  };
+
+  const handleDeleteResource = async (eventId: string, resourceId: string) => {
+    try {
+      await CalendarService.deleteEventResource(eventId, resourceId);
+      toast.success('Recurso removido');
+      await refetchCurrentRange();
+      const refreshed = await CalendarService.getEvent(eventId);
+      setSelected(refreshed);
+    } catch {
+      toast.error('Não foi possível remover o recurso');
+    }
   };
 
   const publishEvent = async () => {
@@ -543,6 +711,8 @@ export default function AdminAgendaOptimized() {
 
         if (!open) {
           resetTargetsForm();
+          setCreateLinkResources([]);
+          setPendingCreateFiles([]);
           setFormData({
             title: '',
             description: '',
@@ -607,6 +777,54 @@ export default function AdminAgendaOptimized() {
             <div className="space-y-2">
               <Label htmlFor="location">Local</Label>
               <Input id="location" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} placeholder="Local do evento" />
+            </div>
+            <div className="space-y-3 p-4 border rounded-lg">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-semibold flex items-center gap-2">
+                  <Link2 className="h-4 w-4" />
+                  Links do evento
+                </Label>
+                <Button type="button" variant="outline" size="sm" onClick={() => addLinkResource(false)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Adicionar link
+                </Button>
+              </div>
+              {createLinkResources.length === 0 && (
+                <p className="text-sm text-muted-foreground">Nenhum link adicionado.</p>
+              )}
+              {createLinkResources.map((resource, index) => (
+                <div key={`create-link-${index}`} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2">
+                  <Input
+                    placeholder="Título do link"
+                    value={resource.title}
+                    onChange={(e) => updateLinkResource(index, 'title', e.target.value, false)}
+                  />
+                  <Input
+                    placeholder="https://..."
+                    value={resource.url}
+                    onChange={(e) => updateLinkResource(index, 'url', e.target.value, false)}
+                  />
+                  <Button type="button" variant="ghost" size="icon" onClick={() => removeLinkResource(index, false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2 p-4 border rounded-lg">
+              <Label className="text-base font-semibold flex items-center gap-2">
+                <Paperclip className="h-4 w-4" />
+                Arquivos
+              </Label>
+              <Input
+                type="file"
+                multiple
+                onChange={(e) => setPendingCreateFiles(Array.from(e.target.files || []))}
+              />
+              {pendingCreateFiles.length > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {pendingCreateFiles.length} arquivo(s) serão enviados após criar o evento.
+                </p>
+              )}
             </div>
 
             {/* Seção de Destinatários */}
@@ -880,6 +1098,54 @@ export default function AdminAgendaOptimized() {
                 {format(new Date(selected.end as string), "dd/MM/yyyy", { locale: ptBR })}
               </div>
             )}
+            {selectedLinkResources.length > 0 && (
+              <div className="space-y-2 pt-2">
+                <strong>Links:</strong>
+                <div className="space-y-1">
+                  {selectedLinkResources.map((resource: any) => (
+                    <a
+                      key={resource.id || resource.url}
+                      href={resource.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline block"
+                    >
+                      {resource.title || resource.url}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+            {selectedFileResources.length > 0 && (
+              <div className="space-y-2 pt-2">
+                <strong>Arquivos:</strong>
+                <div className="space-y-2">
+                  {selectedFileResources.map((resource) => (
+                    <div key={resource.id} className="flex items-center justify-between gap-2">
+                      <span className="truncate">{resource.title || resource.file_name || 'Arquivo'}</span>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => selected?.id && handleDownloadFileResource(String(selected.id), resource.id)}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => selected?.id && handleDeleteResource(String(selected.id), resource.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter className="flex gap-2">
             <Button variant="outline" onClick={() => setIsViewOpen(false)}>Fechar</Button>
@@ -903,18 +1169,6 @@ export default function AdminAgendaOptimized() {
                 <Label htmlFor="edit-title">Título</Label>
                 <Input id="edit-title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-scope">Alvo</Label>
-                <Select value={formData.scope} onValueChange={(v: 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS') => setFormData({ ...formData, scope: v, scopeId: '' })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CITY">Município</SelectItem>
-                    <SelectItem value="SCHOOL">Escola</SelectItem>
-                    <SelectItem value="GRADE">Série</SelectItem>
-                    <SelectItem value="CLASS">Turma</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-description">Descrição</Label>
@@ -930,15 +1184,166 @@ export default function AdminAgendaOptimized() {
                 <Input id="edit-end" type="datetime-local" value={formData.endTime} onChange={(e) => setFormData({ ...formData, endTime: e.target.value })} />
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-location">Local</Label>
-                <Input id="edit-location" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} />
+            <div className="space-y-2">
+              <Label htmlFor="edit-location">Local</Label>
+              <Input id="edit-location" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} />
+            </div>
+
+            {/* Seção de Destinatários (edição) */}
+            <div className="space-y-4 p-4 border rounded-lg bg-muted">
+              <Label className="text-base font-semibold">Destinatário</Label>
+
+              {isLoadingTargets ? (
+                <div className="text-sm text-muted-foreground flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 animate-spin" />
+                  Carregando opções...
+                </div>
+              ) : (
+                <>
+                  {(!targetsData.municipios && !targetsData.escolas && !targetsData.turmas) ? (
+                    <Alert>
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        Nenhuma opção de destinatário disponível. Verifique suas permissões.
+                      </AlertDescription>
+                    </Alert>
+                  ) : (
+                    <div className="space-y-4">
+                      {targetsData.municipios && targetsData.municipios.length > 0 && user?.role === 'admin' && (
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Município(s)</label>
+                          <FormMultiSelect
+                            options={targetsData.municipios.map(m => ({ id: m.id, name: m.nome }))}
+                            selected={selectedMunicipioIds}
+                            onChange={(values) => {
+                              setSelectedMunicipioIds(values);
+                              setSelectedEscolaIds([]);
+                              setSelectedTurmaIds([]);
+                            }}
+                            placeholder={selectedMunicipioIds.length === 0 ? "Selecione município(s)" : `${selectedMunicipioIds.length} selecionado(s)`}
+                          />
+                        </div>
+                      )}
+
+                      {targetsData.escolas && targetsData.escolas.length > 0 && (user?.role === 'admin' || user?.role === 'tecadm') && (
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Escola(s)</label>
+                          <FormMultiSelect
+                            options={filteredEscolas.map(e => ({
+                              id: e.id,
+                              name: e.municipio_nome ? `${e.nome} (${e.municipio_nome})` : e.nome
+                            }))}
+                            selected={selectedEscolaIds}
+                            onChange={(values) => {
+                              setSelectedEscolaIds(values);
+                              setSelectedTurmaIds([]);
+                            }}
+                            placeholder={selectedEscolaIds.length === 0 ? "Selecione escola(s)" : `${selectedEscolaIds.length} selecionada(s)`}
+                            className={filteredEscolas.length === 0 ? "opacity-50" : ""}
+                          />
+                        </div>
+                      )}
+
+                      {targetsData.escolas && targetsData.escolas.length > 0 && user?.role === 'professor' && (
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Escola</label>
+                          <Select
+                            value={selectedEscolaIds[0] || ''}
+                            onValueChange={(value) => {
+                              setSelectedEscolaIds(value ? [value] : []);
+                              setSelectedTurmaIds([]);
+                            }}
+                            disabled={isLoadingTargets || filteredEscolas.length === 0}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione uma escola para filtrar turmas" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {filteredEscolas.map(escola => (
+                                <SelectItem key={escola.id} value={escola.id}>
+                                  {escola.nome}
+                                  {escola.municipio_nome && ` (${escola.municipio_nome})`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      {targetsData.turmas && targetsData.turmas.length > 0 && (
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">
+                            Turma(s)
+                            {(user?.role === 'diretor' || user?.role === 'coordenador') && (
+                              <span className="text-muted-foreground text-xs ml-2">
+                                (deixe vazio para enviar para toda a escola)
+                              </span>
+                            )}
+                          </label>
+                          <FormMultiSelect
+                            options={filteredTurmas.map(t => ({
+                              id: t.id,
+                              name: `${t.nome}${t.serie_nome ? ` - ${t.serie_nome}` : ''}${t.escola_nome ? ` (${t.escola_nome})` : ''}`
+                            }))}
+                            selected={selectedTurmaIds}
+                            onChange={setSelectedTurmaIds}
+                            placeholder={selectedTurmaIds.length === 0 ? "Selecione turma(s)" : `${selectedTurmaIds.length} selecionada(s)`}
+                            className={filteredTurmas.length === 0 ? "opacity-50" : ""}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="space-y-3 p-4 border rounded-lg">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-semibold flex items-center gap-2">
+                  <Link2 className="h-4 w-4" />
+                  Links do evento
+                </Label>
+                <Button type="button" variant="outline" size="sm" onClick={() => addLinkResource(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Adicionar link
+                </Button>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-scopeId">ID do alvo</Label>
-                <Input id="edit-scopeId" value={formData.scopeId} onChange={(e) => setFormData({ ...formData, scopeId: e.target.value })} />
-              </div>
+              {editLinkResources.length === 0 && (
+                <p className="text-sm text-muted-foreground">Nenhum link adicionado.</p>
+              )}
+              {editLinkResources.map((resource, index) => (
+                <div key={`edit-link-${resource.id || index}`} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2">
+                  <Input
+                    placeholder="Título do link"
+                    value={resource.title}
+                    onChange={(e) => updateLinkResource(index, 'title', e.target.value, true)}
+                  />
+                  <Input
+                    placeholder="https://..."
+                    value={resource.url}
+                    onChange={(e) => updateLinkResource(index, 'url', e.target.value, true)}
+                  />
+                  <Button type="button" variant="ghost" size="icon" onClick={() => removeLinkResource(index, true)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2 p-4 border rounded-lg">
+              <Label className="text-base font-semibold flex items-center gap-2">
+                <Paperclip className="h-4 w-4" />
+                Anexar novos arquivos
+              </Label>
+              <Input
+                type="file"
+                multiple
+                onChange={(e) => setPendingEditFiles(Array.from(e.target.files || []))}
+              />
+              {pendingEditFiles.length > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {pendingEditFiles.length} arquivo(s) serão enviados ao salvar.
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
