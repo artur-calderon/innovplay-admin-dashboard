@@ -5,6 +5,7 @@ import type {
   SkillsMapHabilidade,
   SkillsMapResponse,
 } from '@/services/evaluation/skillsMapApi';
+import { urlToPngAsset } from '@/utils/pdfCityBranding';
 
 // ---------------------------------------------------------------------------
 // Tipos públicos
@@ -52,9 +53,24 @@ const FAIXA_LABELS: Record<Faixa, string> = {
 
 const FAIXA_COLORS: Record<Faixa, [number, number, number]> = {
   abaixo_do_basico: [220, 38, 38],
-  basico:           [217, 119, 6],
-  adequado:         [101, 163, 13],
+  basico:           [251, 191, 36],
+  adequado:         [163, 230, 53],
   avancado:         [4, 120, 87],
+};
+
+// Cores dos cards das habilidades (espelha visual do heatmap no front-end).
+const FAIXA_CARD_BG: Record<Faixa, [number, number, number]> = {
+  abaixo_do_basico: [220, 38, 38],   // red-600
+  basico:           [251, 191, 36],  // amber-400
+  adequado:         [163, 230, 53],  // lime-400
+  avancado:         [4, 120, 87],    // emerald-700
+};
+
+const FAIXA_CARD_TEXT: Record<Faixa, [number, number, number]> = {
+  abaixo_do_basico: [255, 255, 255],
+  basico:           [69, 26, 3],     // amber-950
+  adequado:         [2, 44, 34],     // emerald-950
+  avancado:         [255, 255, 255],
 };
 
 const LEGEND_STOPS: Array<[number, number, number]> = [
@@ -134,34 +150,9 @@ function wrappedText(
   return y + (lines as string[]).length * lineH;
 }
 
-async function loadLogo(): Promise<string | null> {
-  try {
-    const res = await fetch('/LOGO-1-menor.png');
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
-}
-
-async function logoSize(
-  dataUrl: string,
-  desiredW: number,
-): Promise<{ w: number; h: number }> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      resolve({ w: desiredW, h: (img.height * desiredW) / img.width });
-    };
-    img.onerror = () => resolve({ w: desiredW, h: desiredW * 0.3 });
-    img.src = dataUrl;
-  });
+function scaledSize(iw: number, ih: number, desiredW: number): { w: number; h: number } {
+  if (iw <= 0 || ih <= 0) return { w: desiredW, h: desiredW * 0.3 };
+  return { w: desiredW, h: (ih * desiredW) / iw };
 }
 
 // ---------------------------------------------------------------------------
@@ -196,27 +187,47 @@ function addPageHeader(
   doc: jsPDF,
   sectionTitle: string,
   municipio?: string,
+  ico?: { dataUrl: string; iw: number; ih: number } | null,
 ): number {
   const pageW = doc.internal.pageSize.getWidth();
   const margin = 15;
-  let y = 12;
+  const centerX = pageW / 2;
+  const BAND_H = 20;
 
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(...C.primary);
-  doc.text('MAPA DE HABILIDADES', margin, y);
+  // Faixa compacta
+  doc.setFillColor(...C.primary);
+  doc.rect(0, 0, pageW, BAND_H, 'F');
 
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...C.textGray);
-  if (municipio) {
-    doc.text(municipio.toUpperCase(), pageW - margin, y, { align: 'right' });
+  // Ícone
+  if (ico?.dataUrl && ico.iw > 0 && ico.ih > 0) {
+    const icoH = 14;
+    const icoW = (ico.iw * icoH) / ico.ih;
+    doc.addImage(ico.dataUrl, 'PNG', margin, (BAND_H - icoH) / 2, icoW, icoH);
+  } else {
+    doc.setFontSize(8);
+    doc.setTextColor(...C.white);
+    doc.setFont('helvetica', 'bold');
+    doc.text('AFIRME PLAY', margin, BAND_H / 2 + 2);
   }
-  y += 3;
 
-  doc.setDrawColor(...C.primary);
-  doc.setLineWidth(0.6);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...C.white);
+  doc.text('MAPA DE HABILIDADES', pageW - margin, BAND_H / 2 + 2, { align: 'right' });
+
+  let y = BAND_H + 8;
+  if (municipio?.trim()) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...C.textGray);
+    doc.text(municipio.toUpperCase(), centerX, y, { align: 'center', maxWidth: pageW - 2 * margin });
+    y += 6;
+  }
+
+  doc.setDrawColor(...C.borderLight);
+  doc.setLineWidth(0.3);
   doc.line(margin, y, pageW - margin, y);
-  y += 5;
+  y += 6;
 
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
@@ -249,29 +260,43 @@ async function addCoverPage(
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const centerX = pageW / 2;
-  let y = 20;
+  const BAND_H = 58;
 
   // Fundo branco
   doc.setFillColor(...C.white);
   doc.rect(0, 0, pageW, pageH, 'F');
 
-  // ---- Logo ----
-  const logoData = await loadLogo();
-  if (logoData) {
-    const { w, h } = await logoSize(logoData, 50);
-    doc.addImage(logoData, 'PNG', centerX - w / 2, y, w, h);
-    y += h + 8;
+  // Faixa superior roxa
+  doc.setFillColor(...C.primary);
+  doc.rect(0, 0, pageW, BAND_H, 'F');
+
+  // Logo na faixa
+  let logoBottomInBand = 0;
+  const logoAsset = await urlToPngAsset('/LOGO-1.png');
+  if (logoAsset?.dataUrl && logoAsset.iw > 0 && logoAsset.ih > 0) {
+    const { w, h } = scaledSize(logoAsset.iw, logoAsset.ih, 38);
+    doc.addImage(logoAsset.dataUrl, 'PNG', centerX - w / 2, 7, w, h);
+    logoBottomInBand = 7 + h;
   } else {
-    doc.setFontSize(20);
+    doc.setFontSize(18);
+    doc.setTextColor(...C.white);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...C.primary);
-    doc.text('AFIRME PLAY', centerX, y, { align: 'center' });
-    y += 14;
+    doc.text('AFIRME PLAY', centerX, 22, { align: 'center' });
+    logoBottomInBand = 28;
   }
 
-  y += 6;
+  // Título na faixa
+  const titleY = Math.max(logoBottomInBand + 5, BAND_H - 17);
+  doc.setTextColor(...C.white);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(17);
+  doc.text(title, centerX, titleY, { align: 'center' });
+  doc.setFontSize(11);
+  const subLinesBand = doc.splitTextToSize(subtitle, pageW - 60) as string[];
+  doc.text(subLinesBand, centerX, titleY + 8, { align: 'center' });
 
   // ---- Localidade ----
+  let y = BAND_H + 13;
   const municipio = meta.municipio ?? '';
   const estado = meta.estado ?? '';
   if (municipio || estado) {
@@ -316,15 +341,10 @@ async function addCoverPage(
     if (municipio) {
       cardLines.push({ label: 'MUNICÍPIO', value: municipio });
     }
-    if (meta.escola?.trim()) {
-      cardLines.push({ label: 'ESCOLA', value: meta.escola.trim() });
-    }
-    if (meta.serie?.trim()) {
-      cardLines.push({ label: 'SÉRIE', value: meta.serie.trim() });
-    }
-    if (meta.turma?.trim()) {
-      cardLines.push({ label: 'TURMA', value: meta.turma.trim() });
-    }
+    // Escopo: mostrar o que estiver selecionado (pode ser cumulativo)
+    if (meta.escola?.trim()) cardLines.push({ label: 'ESCOLA', value: meta.escola.trim() });
+    if (meta.serie?.trim()) cardLines.push({ label: 'SÉRIE', value: meta.serie.trim() });
+    if (meta.turma?.trim()) cardLines.push({ label: 'TURMA', value: meta.turma.trim() });
     const disc =
       meta.disciplina?.trim() || coverOptions.skillDisciplinaFallback?.trim();
     if (disc) {
@@ -353,8 +373,12 @@ async function addCoverPage(
 
   doc.setFillColor(...C.bgLight);
   doc.rect(cardX, y, cardW, cardH, 'F');
+  // Acento lateral
+  const ACCENT_W = 4;
+  doc.setFillColor(...C.primary);
+  doc.rect(cardX, y, ACCENT_W, cardH, 'F');
   doc.setDrawColor(...C.borderLight);
-  doc.setLineWidth(0.5);
+  doc.setLineWidth(0.4);
   doc.rect(cardX, y, cardW, cardH, 'S');
 
   let cy = y + 12;
@@ -363,10 +387,15 @@ async function addCoverPage(
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...C.primary);
-  doc.text('INFORMAÇÕES DO RELATÓRIO', centerX, cy, { align: 'center' });
-  cy += 11;
+  const cardContentCenterX = cardX + ACCENT_W + (cardW - ACCENT_W) / 2;
+  doc.text('INFORMAÇÕES DO RELATÓRIO', cardContentCenterX, cy, { align: 'center' });
+  cy += 6;
+  doc.setDrawColor(...C.borderLight);
+  doc.setLineWidth(0.3);
+  doc.line(cardX + ACCENT_W + 4, cy, cardX + cardW - 4, cy);
+  cy += 9;
 
-  const labelX = cardX + 12;
+  const labelX = cardX + ACCENT_W + 12;
   const valueX = cardX + 68;
   const maxValueW = cardW - 70;
 
@@ -388,16 +417,126 @@ async function addCoverPage(
 // ---------------------------------------------------------------------------
 
 function drawLegendBar(doc: jsPDF, x: number, y: number, w: number, h: number): void {
-  const seg = w / LEGEND_STOPS.length;
-  let cx = x;
-  for (const [r, g, b] of LEGEND_STOPS) {
-    doc.setFillColor(r, g, b);
-    doc.rect(cx, y, seg + 0.4, h, 'F');
-    cx += seg;
+  // Gradiente contínuo por interpolação entre as faixas.
+  const steps = 120;
+  const stepW = w / steps;
+  for (let i = 0; i < steps; i++) {
+    const t = i / Math.max(steps - 1, 1);
+    const pos = t * (LEGEND_STOPS.length - 1);
+    const idx = Math.min(Math.floor(pos), LEGEND_STOPS.length - 2);
+    const localT = pos - idx;
+    const a = LEGEND_STOPS[idx];
+    const b = LEGEND_STOPS[idx + 1];
+    const r = Math.round(a[0] + (b[0] - a[0]) * localT);
+    const g = Math.round(a[1] + (b[1] - a[1]) * localT);
+    const bl = Math.round(a[2] + (b[2] - a[2]) * localT);
+    doc.setFillColor(r, g, bl);
+    doc.rect(x + i * stepW, y, stepW + 0.2, h, 'F');
   }
   doc.setDrawColor(...C.borderLight);
   doc.setLineWidth(0.3);
   doc.rect(x, y, w, h, 'S');
+}
+
+function _skillCardTitle(text: string, max = 12): string {
+  const t = (text || '').trim();
+  if (!t) return '—';
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+}
+
+function drawSkillCardsByLevel(
+  doc: jsPDF,
+  map: SkillsMapResponse,
+  x: number,
+  y: number,
+  totalW: number,
+): number {
+  const gap = 2;
+  const colW = (totalW - gap * 3) / 4;
+  const cardH = 6.8;
+  const cardGapY = 1.2;
+  const cardGapX = 1.2;
+  const maxCardsVisible = 12;
+  const cardsPerRow = 2;
+  const colHeadH = 9;
+  const emptyH = 14;
+
+  let maxColH = 0;
+  FAIXA_ORDER.forEach((faixa, idx) => {
+    const cx = x + idx * (colW + gap);
+    const fullList = map.por_faixa?.[faixa] ?? [];
+    const list = fullList.slice(0, maxCardsVisible);
+    const remaining = Math.max(0, fullList.length - list.length);
+    const rows = Math.ceil(list.length / cardsPerRow);
+    const cardW = (colW - 4 - cardGapX) / cardsPerRow;
+    const listH =
+      list.length > 0
+        ? rows * cardH + Math.max(0, rows - 1) * cardGapY
+        : emptyH;
+    const overflowH = remaining > 0 ? 4.5 : 0;
+    const innerH = listH + overflowH;
+    const colH = colHeadH + innerH + 6;
+    maxColH = Math.max(maxColH, colH);
+
+    // Container da coluna
+    doc.setFillColor(...C.bgLight);
+    doc.rect(cx, y, colW, colH, 'F');
+    doc.setDrawColor(...C.borderLight);
+    doc.setLineWidth(0.25);
+    doc.rect(cx, y, colW, colH, 'S');
+
+    // Cabeçalho da coluna
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'bold');
+    const [hr, hg, hb] = FAIXA_COLORS[faixa];
+    doc.setTextColor(hr, hg, hb);
+    doc.text(FAIXA_SHORT[faixa].toUpperCase(), cx + 2, y + 5);
+
+    const pctLabel =
+      faixa === 'abaixo_do_basico' ? '0-29%' :
+      faixa === 'basico' ? '30-59%' :
+      faixa === 'adequado' ? '60-79%' : '80-100%';
+    doc.setFontSize(6.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...C.textGray);
+    doc.text(pctLabel, cx + 2, y + 8.5);
+
+    const listY = y + colHeadH;
+    if (list.length === 0) {
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(...C.textGray);
+      doc.text('Nenhuma habilidade', cx + 2, listY + 6);
+      return;
+    }
+
+    list.forEach((h, i) => {
+      const row = Math.floor(i / cardsPerRow);
+      const col = i % cardsPerRow;
+      const cardX = cx + 2 + col * (cardW + cardGapX);
+      const cardY = listY + row * (cardH + cardGapY);
+      const [r, g, b] = FAIXA_CARD_BG[faixa];
+      doc.setFillColor(r, g, b);
+      doc.roundedRect(cardX, cardY, cardW, cardH, 1.2, 1.2, 'F');
+
+      doc.setTextColor(...FAIXA_CARD_TEXT[faixa]);
+      doc.setFontSize(5.6);
+      doc.setFont('helvetica', 'bold');
+      doc.text(_skillCardTitle(h.codigo || h.descricao || '—', 9), cardX + 1.2, cardY + 2.6);
+      doc.setFontSize(5.3);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${h.percentual_acertos.toFixed(1)}%`, cardX + 1.2, cardY + 5.4);
+    });
+
+    if (remaining > 0) {
+      doc.setFontSize(5.8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...C.textGray);
+      doc.text(`+${remaining} habilidades`, cx + colW - 2, y + colH - 2, { align: 'right' });
+    }
+  });
+
+  return y + maxColH;
 }
 
 // ---------------------------------------------------------------------------
@@ -414,6 +553,7 @@ export async function downloadSkillsHeatMapGeneralPdf(opts: {
   const { modo, map, periodoLabel, meta = {} } = opts;
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const icoAsset = await urlToPngAsset('/AFIRME-PLAY-ico.png');
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 15;
@@ -435,7 +575,7 @@ export async function downloadSkillsHeatMapGeneralPdf(opts: {
 
   // --- Página 2: guia de faixas + resumo ---
   doc.addPage();
-  let y = addPageHeader(doc, 'Guia de Faixas e Resumo', meta.municipio);
+  let y = addPageHeader(doc, 'Guia de Faixas e Resumo', meta.municipio, icoAsset);
 
   // Barra de legenda
   doc.setFontSize(9);
@@ -483,6 +623,15 @@ export async function downloadSkillsHeatMapGeneralPdf(opts: {
   });
   y += 30;
 
+  // Cards das habilidades por nível (estilo visual do mapa)
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...C.textDark);
+  doc.text('Habilidades por nível de acerto', margin, y);
+  y += 4;
+  y = drawSkillCardsByLevel(doc, map, margin, y, maxW);
+  y += 8;
+
   // Tabela de resumo por faixa
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
@@ -501,19 +650,32 @@ export async function downloadSkillsHeatMapGeneralPdf(opts: {
 
   autoTable(doc, {
     startY: y,
+    theme: 'grid',
     head: [['Faixa', 'Qtd. habilidades', '% do total']],
     body: resumoRows,
     margin: { left: margin, right: margin },
+    tableLineColor: C.borderLight,
+    tableLineWidth: 0.2,
     headStyles: {
       fillColor: C.primary,
       textColor: C.white,
       fontStyle: 'bold',
       fontSize: 9,
+      halign: 'center',
+      valign: 'middle',
+      cellPadding: { top: 2, right: 2, bottom: 2, left: 2 },
     },
-    bodyStyles: { fontSize: 9, textColor: C.textDark },
-    alternateRowStyles: { fillColor: C.bgLight },
+    bodyStyles: {
+      fontSize: 8.5,
+      textColor: C.textDark,
+      valign: 'middle',
+      lineColor: C.borderLight,
+      lineWidth: 0.1,
+      cellPadding: { top: 1.8, right: 2, bottom: 1.8, left: 2 },
+    },
+    alternateRowStyles: { fillColor: [248, 250, 252] as [number, number, number] },
     columnStyles: {
-      0: { cellWidth: 90 },
+      0: { cellWidth: 90, halign: 'left' },
       1: { cellWidth: 40, halign: 'center' },
       2: { cellWidth: 40, halign: 'center' },
     },
@@ -550,19 +712,32 @@ export async function downloadSkillsHeatMapGeneralPdf(opts: {
 
   autoTable(doc, {
     startY: afterFaixaY,
+    theme: 'grid',
     head: [['Disciplina', 'Qtd. habilidades', '% do total']],
     body: resumoDiscRows.length > 0 ? resumoDiscRows : [['—', '0', '0%']],
     margin: { left: margin, right: margin },
+    tableLineColor: C.borderLight,
+    tableLineWidth: 0.2,
     headStyles: {
       fillColor: C.primary,
       textColor: C.white,
       fontStyle: 'bold',
       fontSize: 9,
+      halign: 'center',
+      valign: 'middle',
+      cellPadding: { top: 2, right: 2, bottom: 2, left: 2 },
     },
-    bodyStyles: { fontSize: 9, textColor: C.textDark },
-    alternateRowStyles: { fillColor: C.bgLight },
+    bodyStyles: {
+      fontSize: 8.5,
+      textColor: C.textDark,
+      valign: 'middle',
+      lineColor: C.borderLight,
+      lineWidth: 0.1,
+      cellPadding: { top: 1.8, right: 2, bottom: 1.8, left: 2 },
+    },
+    alternateRowStyles: { fillColor: [248, 250, 252] as [number, number, number] },
     columnStyles: {
-      0: { cellWidth: 90 },
+      0: { cellWidth: 90, halign: 'left' },
       1: { cellWidth: 40, halign: 'center' },
       2: { cellWidth: 40, halign: 'center' },
     },
@@ -574,7 +749,7 @@ export async function downloadSkillsHeatMapGeneralPdf(opts: {
     if (list.length === 0) continue;
 
     doc.addPage();
-    let fy = addPageHeader(doc, `Habilidades — ${discName}`, meta.municipio);
+    let fy = addPageHeader(doc, `Habilidades — ${discName}`, meta.municipio, icoAsset);
 
     doc.setFillColor(...C.primary);
     doc.rect(margin, fy - 1, maxW, 7, 'F');
@@ -595,21 +770,35 @@ export async function downloadSkillsHeatMapGeneralPdf(opts: {
 
     autoTable(doc, {
       startY: fy,
+      theme: 'grid',
       head: [['Código', 'Descrição', 'Faixa de acerto', '% Acertos']],
       body: rows,
       margin: { left: margin, right: margin },
+      tableLineColor: C.borderLight,
+      tableLineWidth: 0.2,
       headStyles: {
         fillColor: C.primary,
         textColor: C.white,
         fontStyle: 'bold',
         fontSize: 8.5,
+        halign: 'center',
+        valign: 'middle',
+        cellPadding: { top: 2, right: 2, bottom: 2, left: 2 },
       },
-      bodyStyles: { fontSize: 8, textColor: C.textDark },
-      alternateRowStyles: { fillColor: C.bgLight },
+      bodyStyles: {
+        fontSize: 7.8,
+        textColor: C.textDark,
+        valign: 'middle',
+        overflow: 'linebreak',
+        lineColor: C.borderLight,
+        lineWidth: 0.1,
+        cellPadding: { top: 1.6, right: 2, bottom: 1.6, left: 2 },
+      },
+      alternateRowStyles: { fillColor: [248, 250, 252] as [number, number, number] },
       columnStyles: {
-        0: { cellWidth: 28 },
-        1: { cellWidth: 82 },
-        2: { cellWidth: 38 },
+        0: { cellWidth: 30, halign: 'left' },
+        1: { cellWidth: 80, halign: 'left' },
+        2: { cellWidth: 38, halign: 'center' },
         3: { cellWidth: 22, halign: 'center' },
       },
       pageBreak: 'auto',
@@ -652,6 +841,7 @@ export async function downloadSkillsHeatMapSkillPdf(opts: {
   const { modo, skill, erros, meta = {} } = opts;
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const icoAsset = await urlToPngAsset('/AFIRME-PLAY-ico.png');
   const pageW = doc.internal.pageSize.getWidth();
   const margin = 15;
   const maxW = pageW - margin * 2;
@@ -680,7 +870,7 @@ export async function downloadSkillsHeatMapSkillPdf(opts: {
 
   // --- Página 2: métricas + tabelas ---
   doc.addPage();
-  let y = addPageHeader(doc, `Habilidade ${codigoDisplay}`, meta.municipio);
+  let y = addPageHeader(doc, `Habilidade ${codigoDisplay}`, meta.municipio, icoAsset);
 
   // Bloco de descrição da habilidade
   if (skill.descricao?.trim()) {
@@ -776,17 +966,36 @@ export async function downloadSkillsHeatMapSkillPdf(opts: {
 
   autoTable(doc, {
     startY: y,
+    theme: 'grid',
     head: [['Nome', 'Escola', 'Série', 'Turma']],
     body: okList.length > 0 ? buildStudentRows(okList) : [['Nenhum participante nesta situação', '', '', '']],
     margin: { left: margin, right: margin },
-    headStyles: { fillColor: C.green, textColor: C.white, fontStyle: 'bold', fontSize: 8.5 },
-    bodyStyles: { fontSize: 8, textColor: C.textDark },
+    tableLineColor: C.borderLight,
+    tableLineWidth: 0.2,
+    headStyles: {
+      fillColor: C.green,
+      textColor: C.white,
+      fontStyle: 'bold',
+      fontSize: 8.5,
+      halign: 'center',
+      valign: 'middle',
+      cellPadding: { top: 2, right: 2, bottom: 2, left: 2 },
+    },
+    bodyStyles: {
+      fontSize: 8,
+      textColor: C.textDark,
+      valign: 'middle',
+      overflow: 'linebreak',
+      lineColor: C.borderLight,
+      lineWidth: 0.1,
+      cellPadding: { top: 1.8, right: 2, bottom: 1.8, left: 2 },
+    },
     alternateRowStyles: { fillColor: [236, 253, 245] as [number, number, number] },
     columnStyles: {
-      0: { cellWidth: 65 },
-      1: { cellWidth: 55 },
-      2: { cellWidth: 28 },
-      3: { cellWidth: 27 },
+      0: { cellWidth: 63, halign: 'left' },
+      1: { cellWidth: 57, halign: 'left' },
+      2: { cellWidth: 27, halign: 'center' },
+      3: { cellWidth: 28, halign: 'center' },
     },
     pageBreak: 'auto',
   });
@@ -797,7 +1006,7 @@ export async function downloadSkillsHeatMapSkillPdf(opts: {
 
   if (ye > doc.internal.pageSize.getHeight() - 40) {
     doc.addPage();
-    ye = addPageHeader(doc, `Habilidade ${codigoDisplay} (cont.)`, meta.municipio);
+    ye = addPageHeader(doc, `Habilidade ${codigoDisplay} (cont.)`, meta.municipio, icoAsset);
   }
 
   doc.setFontSize(9);
@@ -808,17 +1017,36 @@ export async function downloadSkillsHeatMapSkillPdf(opts: {
 
   autoTable(doc, {
     startY: ye,
+    theme: 'grid',
     head: [['Nome', 'Escola', 'Série', 'Turma']],
     body: errList.length > 0 ? buildStudentRows(errList) : [['Nenhum participante nesta situação', '', '', '']],
     margin: { left: margin, right: margin },
-    headStyles: { fillColor: C.red, textColor: C.white, fontStyle: 'bold', fontSize: 8.5 },
-    bodyStyles: { fontSize: 8, textColor: C.textDark },
+    tableLineColor: C.borderLight,
+    tableLineWidth: 0.2,
+    headStyles: {
+      fillColor: C.red,
+      textColor: C.white,
+      fontStyle: 'bold',
+      fontSize: 8.5,
+      halign: 'center',
+      valign: 'middle',
+      cellPadding: { top: 2, right: 2, bottom: 2, left: 2 },
+    },
+    bodyStyles: {
+      fontSize: 8,
+      textColor: C.textDark,
+      valign: 'middle',
+      overflow: 'linebreak',
+      lineColor: C.borderLight,
+      lineWidth: 0.1,
+      cellPadding: { top: 1.8, right: 2, bottom: 1.8, left: 2 },
+    },
     alternateRowStyles: { fillColor: [254, 242, 242] as [number, number, number] },
     columnStyles: {
-      0: { cellWidth: 65 },
-      1: { cellWidth: 55 },
-      2: { cellWidth: 28 },
-      3: { cellWidth: 27 },
+      0: { cellWidth: 63, halign: 'left' },
+      1: { cellWidth: 57, halign: 'left' },
+      2: { cellWidth: 27, halign: 'center' },
+      3: { cellWidth: 28, halign: 'center' },
     },
     pageBreak: 'auto',
   });

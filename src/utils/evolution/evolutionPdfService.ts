@@ -3,6 +3,7 @@ import type { ComparisonResponse } from '@/services/evaluation/evaluationCompari
 import { EvolutionPDFLayout } from '@/components/evolution/EvolutionPDFLayout';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { urlToPngAsset } from '@/utils/pdfCityBranding';
 
 interface FilterInfo {
   state?: { id: string; name: string };
@@ -138,49 +139,97 @@ function addFiltersInfoPage(
   pageHeight: number,
   filterInfo: FilterInfo | null,
   evaluationNames: string[],
-  processedData: ProcessedEvolutionData | null
+  processedData: ProcessedEvolutionData | null,
+  ico?: { dataUrl: string; iw: number; ih: number } | null
 ): void {
-  // Garantir fundo branco
   pdf.setFillColor(...COLORS.white);
   pdf.rect(0, 0, pageWidth, pageHeight, 'F');
-  
-  const margin = 20;
+
+  const margin = 15;
   const centerX = pageWidth / 2;
-  let currentY = margin + 5;
+  const BAND_H = 20;
 
-  // Título da página
-  pdf.setFontSize(18);
-  pdf.setTextColor(...COLORS.primary);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('INFORMAÇÕES DO RELATÓRIO', centerX, currentY, { align: 'center' });
-
-  currentY += 15;
-
-  // Seção de Avaliações Comparadas
-  pdf.setFontSize(14);
-  pdf.setTextColor(...COLORS.primary);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('AVALIAÇÕES COMPARADAS', margin, currentY);
-
-  currentY += 10;
-
-  pdf.setFontSize(10);
-  pdf.setTextColor(...COLORS.textDark);
-  pdf.setFont('helvetica', 'normal');
-  
-  if (evaluationNames && evaluationNames.length > 0) {
-    // Listar avaliações sem números, uma por linha
-    evaluationNames.forEach((name, index) => {
-      pdf.text(name, margin, currentY);
-      currentY += 7; // Espaçamento entre avaliações
-    });
+  // Cabeçalho compacto
+  pdf.setFillColor(...COLORS.primary);
+  pdf.rect(0, 0, pageWidth, BAND_H, 'F');
+  if (ico?.dataUrl && ico.iw > 0 && ico.ih > 0) {
+    const icoH = 14;
+    const icoW = (ico.iw * icoH) / ico.ih;
+    pdf.addImage(ico.dataUrl, 'PNG', margin, (BAND_H - icoH) / 2, icoW, icoH);
   } else {
-    pdf.setTextColor(...COLORS.textGray);
-    pdf.text('Nenhuma avaliação selecionada', margin, currentY);
-    currentY += 8;
+    pdf.setFontSize(8);
+    pdf.setTextColor(...COLORS.white);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('AFIRME PLAY', margin, BAND_H / 2 + 2);
+  }
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(11);
+  pdf.setTextColor(...COLORS.white);
+  pdf.text('INFORMAÇÕES DO RELATÓRIO', pageWidth - margin, BAND_H / 2 + 2, { align: 'right' });
+
+  let currentY = BAND_H + 10;
+
+  // Card de filtros
+  const cardW = pageWidth - margin * 2;
+  const cardX = margin;
+  const ACCENT_W = 4;
+  const rowH = 6;
+  const filterLines: Array<{ label: string; value: string }> = [];
+
+  if (filterInfo?.state?.name) filterLines.push({ label: 'ESTADO', value: filterInfo.state.name });
+  if (filterInfo?.municipality?.name) filterLines.push({ label: 'MUNICÍPIO', value: filterInfo.municipality.name });
+  const schoolsToDisplay = filterInfo?.schools && filterInfo.schools.length > 0
+    ? filterInfo.schools
+    : filterInfo?.school
+      ? [filterInfo.school]
+      : [];
+  if (schoolsToDisplay.length === 1) filterLines.push({ label: 'ESCOLA', value: schoolsToDisplay[0].name });
+  if (schoolsToDisplay.length > 1) filterLines.push({ label: 'ESCOLAS', value: `${schoolsToDisplay.length} escolas selecionadas` });
+  if (filterInfo?.grade?.name) filterLines.push({ label: 'SÉRIE', value: filterInfo.grade.name });
+  if (filterInfo?.class?.name) filterLines.push({ label: 'TURMA', value: filterInfo.class.name });
+  if (filterInfo?.periodStart || filterInfo?.periodEnd) {
+    filterLines.push({ label: 'PERÍODO', value: `${filterInfo.periodStart || '—'} → ${filterInfo.periodEnd || '—'}` });
   }
 
-  currentY += 15;
+  const evalLabel = evaluationNames?.length ? `${evaluationNames.length} avaliação(ões)` : 'Nenhuma avaliação selecionada';
+  filterLines.push({ label: 'AVALIAÇÕES', value: evalLabel });
+
+  const cardH = Math.max(64, 24 + filterLines.length * rowH + 16);
+  pdf.setFillColor(...COLORS.bgLight);
+  pdf.rect(cardX, currentY, cardW, cardH, 'F');
+  pdf.setFillColor(...COLORS.primary);
+  pdf.rect(cardX, currentY, ACCENT_W, cardH, 'F');
+  pdf.setDrawColor(...COLORS.borderLight);
+  pdf.setLineWidth(0.4);
+  pdf.rect(cardX, currentY, cardW, cardH, 'S');
+
+  let cy = currentY + 12;
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(10);
+  pdf.setTextColor(...COLORS.primary);
+  pdf.text('FILTROS APLICADOS', cardX + ACCENT_W + (cardW - ACCENT_W) / 2, cy, { align: 'center' });
+  cy += 6;
+  pdf.setDrawColor(...COLORS.borderLight);
+  pdf.setLineWidth(0.3);
+  pdf.line(cardX + ACCENT_W + 4, cy, cardX + cardW - 4, cy);
+  cy += 10;
+
+  const labelX = cardX + ACCENT_W + 10;
+  const valueX = cardX + ACCENT_W + 48;
+  const maxValueW = cardW - (valueX - cardX) - 10;
+  pdf.setFontSize(9);
+  for (const { label, value } of filterLines) {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(...COLORS.primary);
+    pdf.text(`${label}:`, labelX, cy);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(...COLORS.textDark);
+    const vLines = pdf.splitTextToSize(String(value || '—'), maxValueW);
+    pdf.text(vLines, valueX, cy);
+    cy += Math.max(rowH, vLines.length * 5);
+  }
+
+  currentY += cardH + 12
 
   // Seção de Análise Estatística / Análise de Evolução
   if (processedData) {
@@ -350,58 +399,38 @@ async function addCoverPage(
   pdf.rect(0, 0, pageWidth, pageHeight, 'F');
   
   const centerX = pageWidth / 2;
-  let y = 20;
+  const BAND_H = 58;
 
-  // Carregar logo AFIRME PLAY
-  let logoLoaded = false;
-  try {
-    const logoResponse = await fetch('/LOGO-1-menor.png');
-    if (logoResponse.ok) {
-      const logoBlob = await logoResponse.blob();
-      const logoDataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(logoBlob);
-      });
-      
-      // Obter dimensões da imagem
-      const img = new Image();
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = reject;
-        img.src = logoDataUrl;
-      });
-      
-      const logoWidth = img.width;
-      const logoHeight = img.height;
-      
-      if (logoWidth > 0 && logoHeight > 0) {
-        // Largura desejada em mm
-        const desiredLogoWidth = 50;
-        // Calcular altura proporcional
-        const desiredLogoHeight = (logoHeight * desiredLogoWidth) / logoWidth;
-        const logoX = centerX - desiredLogoWidth / 2;
-        pdf.addImage(logoDataUrl, 'PNG', logoX, y, desiredLogoWidth, desiredLogoHeight);
-        y += desiredLogoHeight + 8;
-        logoLoaded = true;
-      }
-    }
-  } catch (error) {
-    // Silenciosamente falhar e usar fallback
-    console.warn('Erro ao carregar logo:', error);
-  }
-  
-  if (!logoLoaded) {
-    // Fallback: texto "AFIRME PLAY"
-    pdf.setFontSize(20);
-    pdf.setTextColor(...COLORS.primary);
+  // Faixa superior roxa
+  pdf.setFillColor(...COLORS.primary);
+  pdf.rect(0, 0, pageWidth, BAND_H, 'F');
+
+  // Logo na faixa
+  let logoBottomInBand = 0;
+  const logoAsset = await urlToPngAsset('/LOGO-1.png');
+  if (logoAsset?.dataUrl && logoAsset.iw > 0 && logoAsset.ih > 0) {
+    const desiredLogoWidth = 38;
+    const desiredLogoHeight = (logoAsset.ih * desiredLogoWidth) / logoAsset.iw;
+    pdf.addImage(logoAsset.dataUrl, 'PNG', centerX - desiredLogoWidth / 2, 7, desiredLogoWidth, desiredLogoHeight);
+    logoBottomInBand = 7 + desiredLogoHeight;
+  } else {
+    pdf.setFontSize(18);
+    pdf.setTextColor(...COLORS.white);
     pdf.setFont('helvetica', 'bold');
-    pdf.text('AFIRME PLAY', centerX, y, { align: 'center' });
-    y += 15;
+    pdf.text('AFIRME PLAY', centerX, 22, { align: 'center' });
+    logoBottomInBand = 28;
   }
 
-  y += 8;
+  // Título na faixa
+  const titleY = Math.max(logoBottomInBand + 5, BAND_H - 17);
+  pdf.setTextColor(...COLORS.white);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(17);
+  pdf.text('ANÁLISE DE EVOLUÇÃO', centerX, titleY, { align: 'center' });
+  pdf.setFontSize(11);
+  pdf.text('RELATÓRIO DE COMPARAÇÃO DE AVALIAÇÕES', centerX, titleY + 8, { align: 'center' });
+
+  let y = BAND_H + 13;
 
   // Município - Estado (extrair de filterInfo)
   const municipio = filterInfo?.municipality?.name || 'MUNICÍPIO';
@@ -421,23 +450,7 @@ async function addCoverPage(
   pdf.setFont('helvetica', 'normal');
   pdf.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, y, { align: 'center' });
 
-  y += 18;
-
-  // Título principal: ANÁLISE DE EVOLUÇÃO
-  pdf.setFontSize(24);
-  pdf.setTextColor(...COLORS.textDark);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('ANÁLISE DE EVOLUÇÃO', centerX, y, { align: 'center' });
-
-  y += 12;
-
-  // Subtítulo: RELATÓRIO DE COMPARAÇÃO DE AVALIAÇÕES
-  pdf.setFontSize(18);
-  pdf.setTextColor(...COLORS.textDark);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('RELATÓRIO DE COMPARAÇÃO DE AVALIAÇÕES', centerX, y, { align: 'center' });
-
-  y += 40; // Espaçamento para mover o card mais para baixo
+  y += 20;
 
   // Card de informações - aumentado para acomodar melhor o conteúdo
   const cardWidth = pageWidth - 80; // Reduzir margens laterais (era 120)
@@ -455,31 +468,40 @@ async function addCoverPage(
   estimatedCardHeight += 8; // Espaço para data
   const cardHeight = Math.max(estimatedCardHeight, 100); // Altura mínima aumentada
 
-  // Fundo do card
+  const ACCENT_W = 4;
+
+  // Fundo do card + acento lateral
   pdf.setFillColor(...COLORS.bgLight);
   pdf.rect(cardX, y, cardWidth, cardHeight, 'F');
+  pdf.setFillColor(...COLORS.primary);
+  pdf.rect(cardX, y, ACCENT_W, cardHeight, 'F');
   
   // Borda do card
   pdf.setDrawColor(...COLORS.borderLight);
-  pdf.setLineWidth(0.5);
+  pdf.setLineWidth(0.4);
   pdf.rect(cardX, y, cardWidth, cardHeight, 'S');
 
   // Conteúdo do card
   let cardY = y + 12;
+  const cardContentCenterX = cardX + ACCENT_W + (cardWidth - ACCENT_W) / 2;
 
   // Título do card - tamanho aumentado
   pdf.setFontSize(13);
   pdf.setTextColor(...COLORS.primary);
   pdf.setFont('helvetica', 'bold');
-  pdf.text('INFORMAÇÕES DA COMPARAÇÃO', centerX, cardY, { align: 'center' });
+  pdf.text('INFORMAÇÕES DA COMPARAÇÃO', cardContentCenterX, cardY, { align: 'center' });
 
-  cardY += 12;
+  cardY += 6;
+  pdf.setDrawColor(...COLORS.borderLight);
+  pdf.setLineWidth(0.3);
+  pdf.line(cardX + ACCENT_W + 4, cardY, cardX + cardWidth - 4, cardY);
+  cardY += 8;
 
   // Informações em formato tabular (label: valor) - tamanhos aumentados
   pdf.setFontSize(9); // Aumentado de 8 para 9
   pdf.setFont('helvetica', 'normal');
 
-  const leftColX = cardX + 15; // Margem interna aumentada
+  const leftColX = cardX + ACCENT_W + 15; // Margem interna aumentada
   const labelWidth = 50; // Largura do label aumentada para acomodar textos maiores
 
   // Removido: AVALIAÇÕES COMPARADAS (já aparece na página de informações do relatório)
@@ -573,17 +595,7 @@ async function addCoverPage(
     cardY += 7;
   }
 
-  // Data de geração no rodapé do card
-  cardY += 8;
-  pdf.setFontSize(8); // Aumentado de 7 para 8
-  pdf.setTextColor(...COLORS.textGray);
-  pdf.setFont('helvetica', 'italic');
-  const currentDate = new Date().toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  });
-  pdf.text(`Gerado em ${currentDate}`, centerX, cardY, { align: 'center' });
+  // (removido) Data de geração no rodapé do card
 }
 
 /**
@@ -594,7 +606,10 @@ async function addCategoryDivider(
   pageWidth: number,
   pageHeight: number,
   categoryTitle: string,
-  categoryDescription: string
+  categoryDescription: string,
+  filterInfo?: FilterInfo | null,
+  evaluationNames?: string[],
+  ico?: { dataUrl: string; iw: number; ih: number } | null
 ): Promise<void> {
   // Garantir fundo branco
   pdf.setFillColor(...COLORS.white);
@@ -602,84 +617,79 @@ async function addCategoryDivider(
   
   const centerX = pageWidth / 2;
   const margin = 20;
-  let y = 50;
+  const BAND_H = 30;
 
-  // Carregar logo AFIRME PLAY
-  let logoLoaded = false;
-  try {
-    const logoResponse = await fetch('/LOGO-1-menor.png');
-    if (logoResponse.ok) {
-      const logoBlob = await logoResponse.blob();
-      const logoDataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(logoBlob);
-      });
-      
-      // Obter dimensões da imagem
-      const img = new Image();
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = reject;
-        img.src = logoDataUrl;
-      });
-      
-      const logoWidth = img.width;
-      const logoHeight = img.height;
-      
-      if (logoWidth > 0 && logoHeight > 0) {
-        // Largura desejada em mm
-        const desiredLogoWidth = 35;
-        // Calcular altura proporcional
-        const desiredLogoHeight = (logoHeight * desiredLogoWidth) / logoWidth;
-        const logoX = centerX - desiredLogoWidth / 2;
-        pdf.addImage(logoDataUrl, 'PNG', logoX, y, desiredLogoWidth, desiredLogoHeight);
-        y += desiredLogoHeight + 20;
-        logoLoaded = true;
-      }
+  // Faixa superior roxa
+  pdf.setFillColor(...COLORS.primary);
+  pdf.rect(0, 0, pageWidth, BAND_H, 'F');
+
+  // Ícone na faixa (preferir ico)
+  if (ico?.dataUrl && ico.iw > 0 && ico.ih > 0) {
+    const icoH = 14;
+    const icoW = (ico.iw * icoH) / ico.ih;
+    pdf.addImage(ico.dataUrl, 'PNG', margin, (BAND_H - icoH) / 2, icoW, icoH);
+  } else {
+    const logoAsset = await urlToPngAsset('/LOGO-1.png');
+    if (logoAsset?.dataUrl && logoAsset.iw > 0 && logoAsset.ih > 0) {
+      const desiredLogoWidth = 22;
+      const desiredLogoHeight = (logoAsset.ih * desiredLogoWidth) / logoAsset.iw;
+      pdf.addImage(logoAsset.dataUrl, 'PNG', margin, (BAND_H - desiredLogoHeight) / 2, desiredLogoWidth, desiredLogoHeight);
     }
-  } catch (error) {
-    // Silenciosamente falhar e usar fallback
-    console.warn('Erro ao carregar logo na subcapa:', error);
-  }
-  
-  if (!logoLoaded) {
-    // Fallback: texto "AFIRME PLAY"
-    pdf.setFontSize(14);
-    pdf.setTextColor(...COLORS.primary);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('AFIRME PLAY', centerX, y, { align: 'center' });
-    y += 20;
   }
 
-  // Linha decorativa superior com cor primária
-  pdf.setDrawColor(...COLORS.primary);
-  pdf.setLineWidth(1.5);
-  pdf.line(margin, y, pageWidth - margin, y);
-  
-  y += 18;
+  // Título na faixa
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(12);
+  pdf.setTextColor(...COLORS.white);
+  pdf.text(categoryTitle.toUpperCase(), pageWidth / 2, BAND_H / 2 + 2, { align: 'center' });
 
-  // Título da categoria (maiúsculas)
-  pdf.setFontSize(22);
+  let y = BAND_H + 18;
+
+  // Descrição
+  pdf.setFontSize(12);
   pdf.setTextColor(...COLORS.textDark);
   pdf.setFont('helvetica', 'bold');
-  pdf.text(categoryTitle.toUpperCase(), centerX, y, { align: 'center' });
+  const lines = pdf.splitTextToSize(categoryDescription, pageWidth - 2 * margin);
+  pdf.text(lines, centerX, y, { align: 'center' });
 
-  y += 12;
+  y += lines.length * 6 + 10;
 
-  // Descrição (maiúsculas)
-  pdf.setFontSize(11);
-  pdf.setTextColor(...COLORS.textGray);
+  // Card com resumo do escopo (para não ficar “layout sem info”)
+  const cardW = pageWidth - margin * 2;
+  const cardX = margin;
+  const cardH = 44;
+  const ACCENT_W = 4;
+  pdf.setFillColor(...COLORS.bgLight);
+  pdf.rect(cardX, y, cardW, cardH, 'F');
+  pdf.setFillColor(...COLORS.primary);
+  pdf.rect(cardX, y, ACCENT_W, cardH, 'F');
+  pdf.setDrawColor(...COLORS.borderLight);
+  pdf.setLineWidth(0.4);
+  pdf.rect(cardX, y, cardW, cardH, 'S');
+
+  let cy = y + 12;
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(10);
+  pdf.setTextColor(...COLORS.primary);
+  pdf.text('RESUMO DO ESCOPO', cardX + ACCENT_W + (cardW - ACCENT_W) / 2, cy, { align: 'center' });
+  cy += 6;
+  pdf.setDrawColor(...COLORS.borderLight);
+  pdf.setLineWidth(0.3);
+  pdf.line(cardX + ACCENT_W + 4, cy, cardX + cardW - 4, cy);
+  cy += 10;
+
   pdf.setFont('helvetica', 'normal');
-  pdf.text(categoryDescription.toUpperCase(), centerX, y, { align: 'center' });
-
-  y += 18;
-
-  // Linha decorativa inferior com cor primária
-  pdf.setDrawColor(...COLORS.primary);
-  pdf.setLineWidth(1.5);
-  pdf.line(margin, y, pageWidth - margin, y);
+  pdf.setFontSize(9);
+  pdf.setTextColor(...COLORS.textDark);
+  const muni = filterInfo?.municipality?.name || '—';
+  const grade = filterInfo?.grade?.name || '—';
+  const turma = filterInfo?.class?.name || '—';
+  const evalCount = evaluationNames?.length ? `${evaluationNames.length}` : '0';
+  pdf.text(`Município: ${muni}`, cardX + ACCENT_W + 10, cy);
+  cy += 7;
+  pdf.text(`Série: ${grade}  •  Turma: ${turma}`, cardX + ACCENT_W + 10, cy);
+  cy += 7;
+  pdf.text(`Avaliações: ${evalCount}`, cardX + ACCENT_W + 10, cy);
 }
 
 /**
@@ -725,40 +735,55 @@ function addHeader(
   pdf: any,
   pageWidth: number,
   filterInfo: FilterInfo | null,
-  sectionTitle: string
-): void {
+  sectionTitle: string,
+  ico?: { dataUrl: string; iw: number; ih: number } | null
+): number {
   const margin = 15;
-  let y = margin;
-  
-  // Linha superior decorativa
-  pdf.setDrawColor(...COLORS.borderLight);
-  pdf.setLineWidth(0.5);
-  pdf.line(margin, y, pageWidth - margin, y);
-  
-  y += 5;
-  
-  // Prefeitura de [Município]
-  if (filterInfo?.municipality) {
-    pdf.setFontSize(9);
-    pdf.setTextColor(...COLORS.primary);
+  const centerX = pageWidth / 2;
+  const BAND_H = 20;
+
+  pdf.setFillColor(...COLORS.primary);
+  pdf.rect(0, 0, pageWidth, BAND_H, 'F');
+
+  if (ico?.dataUrl && ico.iw > 0 && ico.ih > 0) {
+    const icoH = 14;
+    const icoW = (ico.iw * icoH) / ico.ih;
+    pdf.addImage(ico.dataUrl, 'PNG', margin, (BAND_H - icoH) / 2, icoW, icoH);
+  } else {
+    pdf.setFontSize(8);
+    pdf.setTextColor(...COLORS.white);
     pdf.setFont('helvetica', 'bold');
-    pdf.text(`Prefeitura de ${filterInfo.municipality.name.toUpperCase()}`, margin, y);
-    y += 5;
+    pdf.text('AFIRME PLAY', margin, BAND_H / 2 + 2);
   }
-  
-  // Escola, Série, Turma (se disponível)
-  pdf.setFontSize(8);
+
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(11);
+  pdf.setTextColor(...COLORS.white);
+  pdf.text(sectionTitle, pageWidth - margin, BAND_H / 2 + 2, { align: 'right' });
+
+  let y = BAND_H + 8;
+
+  const municipio = filterInfo?.municipality?.name;
+  if (municipio) {
+    pdf.setFontSize(10);
+    pdf.setTextColor(...COLORS.textDark);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`PREFEITURA DE ${municipio.toUpperCase()}`, centerX, y, { align: 'center' });
+    y += 6;
+  }
+
+  pdf.setFontSize(8.5);
   pdf.setTextColor(...COLORS.textGray);
   pdf.setFont('helvetica', 'normal');
-  
+
   const headerParts: string[] = [];
-  
-  const schoolsToDisplay = filterInfo?.schools && filterInfo.schools.length > 0 
-    ? filterInfo.schools 
-    : filterInfo?.school 
+
+  const schoolsToDisplay = filterInfo?.schools && filterInfo.schools.length > 0
+    ? filterInfo.schools
+    : filterInfo?.school
       ? [filterInfo.school]
       : [];
-  
+
   if (schoolsToDisplay.length > 0) {
     if (schoolsToDisplay.length === 1) {
       headerParts.push(`Escola: ${schoolsToDisplay[0].name}`);
@@ -766,32 +791,26 @@ function addHeader(
       headerParts.push(`${schoolsToDisplay.length} Escolas`);
     }
   }
-  
+
   if (filterInfo?.grade) {
     headerParts.push(`Série: ${filterInfo.grade.name}`);
   }
-  
+
   if (filterInfo?.class) {
     headerParts.push(`Turma: ${filterInfo.class.name}`);
   }
-  
+
   if (headerParts.length > 0) {
-    pdf.text(headerParts.join(' | '), margin, y, { maxWidth: pageWidth - 2 * margin });
-    y += 5;
+    pdf.text(headerParts.join('  •  '), centerX, y, { align: 'center', maxWidth: pageWidth - 2 * margin });
+    y += 6;
   }
-  
-  // Título da seção
-  pdf.setFontSize(10);
-  pdf.setTextColor(...COLORS.textDark);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text(sectionTitle, margin, y);
-  
-  y += 8;
-  
-  // Linha inferior decorativa
+
   pdf.setDrawColor(...COLORS.borderLight);
-  pdf.setLineWidth(0.5);
+  pdf.setLineWidth(0.3);
   pdf.line(margin, y, pageWidth - margin, y);
+  y += 5;
+
+  return y;
 }
 
 /**
@@ -870,12 +889,15 @@ export async function generateEvolutionPDFFromHTML(
     const marginLeft = 15; // Margem esquerda
     const marginRight = 15; // Margem direita
 
+    // Ícone para cabeçalhos internos
+    const icoAsset = await urlToPngAsset('/AFIRME-PLAY-ico.png');
+
     // Adicionar capa como primeira página
     await addCoverPage(pdf, imgWidth, pageHeight, evaluationNames, comparisonData, filterInfo || null);
     
     // Adicionar página de informações sobre filtros e avaliações
     pdf.addPage();
-    addFiltersInfoPage(pdf, imgWidth, pageHeight, filterInfo || null, evaluationNames, processedData);
+    addFiltersInfoPage(pdf, imgWidth, pageHeight, filterInfo || null, evaluationNames, processedData, icoAsset);
     
     // Não criar página vazia - a primeira página divisória ou gráfico criará quando necessário
     let currentY = marginTop;
@@ -950,11 +972,14 @@ export async function generateEvolutionPDFFromHTML(
         imgWidth,
         pageHeight,
         'Gráficos Gerais',
-        'Análise de Nota e Proficiência Geral'
+        'Análise de Nota e Proficiência Geral',
+        filterInfo || null,
+        evaluationNames,
+        icoAsset
       );
       // Criar página para os gráficos
       pdf.addPage();
-      currentY = marginTop;
+      currentY = addHeader(pdf, imgWidth, filterInfo || null, 'GRÁFICOS GERAIS', icoAsset) || marginTop;
       await addSectionsToPDF(generalSections);
     }
 
@@ -966,10 +991,13 @@ export async function generateEvolutionPDFFromHTML(
         imgWidth,
         pageHeight,
         'Gráficos por Disciplina',
-        'Análise Detalhada por Disciplina (Nota e Proficiência)'
+        'Análise Detalhada por Disciplina (Nota e Proficiência)',
+        filterInfo || null,
+        evaluationNames,
+        icoAsset
       );
       pdf.addPage();
-      currentY = marginTop;
+      currentY = addHeader(pdf, imgWidth, filterInfo || null, 'GRÁFICOS POR DISCIPLINA', icoAsset) || marginTop;
       await addSectionsToPDF(subjectSections);
     }
 
@@ -981,10 +1009,13 @@ export async function generateEvolutionPDFFromHTML(
         imgWidth,
         pageHeight,
         'Gráficos por Nível',
-        'Análise de Proficiência por Níveis de Desempenho'
+        'Análise de Proficiência por Níveis de Desempenho',
+        filterInfo || null,
+        evaluationNames,
+        icoAsset
       );
       pdf.addPage();
-      currentY = marginTop;
+      currentY = addHeader(pdf, imgWidth, filterInfo || null, 'GRÁFICOS POR NÍVEL', icoAsset) || marginTop;
       await addSectionsToPDF(levelSections);
     }
 

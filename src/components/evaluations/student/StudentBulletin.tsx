@@ -17,6 +17,7 @@ import {
   loadCityBrandingPdfAssets,
   paintLetterheadBackground,
   drawMunicipalLogoTopCenter,
+  urlToPngAsset,
 } from "@/utils/pdfCityBranding";
 
 // Helper robusto para extrair série e turma de uma string de turma
@@ -574,29 +575,123 @@ export default function StudentBulletin({ testId, studentId, initialDisciplineSt
       if (bulletinBranding.letterhead) {
         paintLetterheadBackground(pdf, bulletinBranding.letterhead, pageWidth, pageHeight);
       }
+
+      const icoAsset = await urlToPngAsset('/AFIRME-PLAY-ico.png');
+
+      const COLORS = {
+        primary: [124, 62, 237] as [number, number, number],
+        textDark: [31, 41, 55] as [number, number, number],
+        textGray: [107, 114, 128] as [number, number, number],
+        borderLight: [229, 231, 235] as [number, number, number],
+        bgLight: [250, 250, 250] as [number, number, number],
+        white: [255, 255, 255] as [number, number, number],
+      };
+
+      const drawCompactHeader = (title: string): number => {
+        const BAND_H = 20;
+        pdf.setFillColor(...COLORS.primary);
+        pdf.rect(0, 0, pageWidth, BAND_H, 'F');
+        if (icoAsset?.dataUrl && icoAsset.iw > 0 && icoAsset.ih > 0) {
+          const icoH = 14;
+          const icoW = (icoAsset.iw * icoH) / icoAsset.ih;
+          pdf.addImage(icoAsset.dataUrl, 'PNG', margin, (BAND_H - icoH) / 2, icoW, icoH);
+        } else {
+          pdf.setFontSize(8);
+          pdf.setTextColor(...COLORS.white);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text('AFIRME PLAY', margin, BAND_H / 2 + 2);
+        }
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(11);
+        pdf.setTextColor(...COLORS.white);
+        pdf.text(title, pageWidth - margin, BAND_H / 2 + 2, { align: 'right' });
+        return BAND_H + 10;
+      };
+
       if (bulletinBranding.logo) {
         drawMunicipalLogoTopCenter(pdf, pageWidth, margin, bulletinBranding.logo);
       }
 
       // Capa
-      const coverTitle = 'Boletim do Aluno';
+      const coverTitle = 'BOLETIM DO ALUNO';
       const nameLine = `Aluno: ${studentNameRef.current || studentName || 'Não informado'}`;
       const gradeLine = `Série: ${studentGrade || 'Não informada'}`;
       const classLine = `Turma: ${studentClass || 'Não informada'}`;
 
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(24);
       const centerX = pageWidth / 2;
-      const centerY = pageHeight / 2;
-      pdf.text(coverTitle, centerX, centerY, { align: 'center' });
+      const BAND_H = 58;
+      const hasLetterhead = Boolean(bulletinBranding.letterhead);
+
+      if (!hasLetterhead) {
+        pdf.setFillColor(...COLORS.white);
+        pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+        pdf.setFillColor(...COLORS.primary);
+        pdf.rect(0, 0, pageWidth, BAND_H, 'F');
+      }
+
+      // Logo municipal (se houver) no topo da faixa
+      if (bulletinBranding.logo) {
+        const desiredLogoWidth = 38;
+        const desiredLogoHeight = (bulletinBranding.logo.ih * desiredLogoWidth) / bulletinBranding.logo.iw;
+        pdf.addImage(
+          bulletinBranding.logo.dataUrl,
+          'PNG',
+          centerX - desiredLogoWidth / 2,
+          hasLetterhead ? 18 : 7,
+          desiredLogoWidth,
+          desiredLogoHeight
+        );
+      }
+
+      pdf.setTextColor(...(hasLetterhead ? COLORS.primary : COLORS.white));
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(17);
+      pdf.text(coverTitle, centerX, hasLetterhead ? 66 : BAND_H - 17, { align: 'center' });
+
+      let coverY = hasLetterhead ? 80 : BAND_H + 18;
+      const cardWidth = pageWidth - 40;
+      const cardX = (pageWidth - cardWidth) / 2;
+      const ACCENT_W = 4;
+      const inset = 10;
+      const labelWidth = 18;
+      const ROW_H = 6;
+
+      const fieldRows: Array<{ label: string; lines: string[] }> = [
+        { label: '', lines: [nameLine] },
+        { label: '', lines: [gradeLine] },
+        { label: '', lines: [classLine] },
+      ];
+      const cardHeight = 14 + fieldRows.length * ROW_H + 12;
+      const maxCardY = pageHeight - cardHeight - 12;
+      if (coverY > maxCardY) coverY = maxCardY;
+
+      pdf.setFillColor(...COLORS.bgLight);
+      pdf.rect(cardX, coverY, cardWidth, cardHeight, 'F');
+      pdf.setFillColor(...COLORS.primary);
+      pdf.rect(cardX, coverY, ACCENT_W, cardHeight, 'F');
+      pdf.setDrawColor(...COLORS.borderLight);
+      pdf.setLineWidth(0.4);
+      pdf.rect(cardX, coverY, cardWidth, cardHeight, 'S');
+
+      let cardY = coverY + 10;
+      const lx = cardX + ACCENT_W + inset;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(10);
+      pdf.setTextColor(...COLORS.primary);
+      pdf.text('INFORMAÇÕES DO ALUNO', cardX + ACCENT_W + (cardWidth - ACCENT_W) / 2, cardY, { align: 'center' });
+      cardY += 8;
+      pdf.setDrawColor(...COLORS.borderLight);
+      pdf.setLineWidth(0.3);
+      pdf.line(cardX + ACCENT_W + 4, cardY, cardX + cardWidth - 4, cardY);
+      cardY += 7;
 
       pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(14);
-      const footerStartY = pageHeight - margin - 20;
-      const lineHeight = 6;
-      pdf.text(nameLine, margin, footerStartY);
-      pdf.text(gradeLine, margin, footerStartY + lineHeight);
-      pdf.text(classLine, margin, footerStartY + lineHeight * 2);
+      pdf.setFontSize(11);
+      pdf.setTextColor(...COLORS.textDark);
+      fieldRows.forEach((f) => {
+        pdf.text(f.lines, lx + labelWidth, cardY);
+        cardY += ROW_H;
+      });
 
       // Conteúdo
       pdf.addPage();
@@ -615,6 +710,15 @@ export default function StudentBulletin({ testId, studentId, initialDisciplineSt
             headerImgHeight = (headerCanvas.height * usableWidth) / headerCanvas.width;
           }
 
+          const tableHeadEl = sectionElement.querySelector('thead') as HTMLElement | null;
+          let tableHeadImgData: string | null = null;
+          let tableHeadImgHeight = 0;
+          if (tableHeadEl) {
+            const tableHeadCanvas = await html2canvas(tableHeadEl, canvasOptions);
+            tableHeadImgData = tableHeadCanvas.toDataURL('image/png');
+            tableHeadImgHeight = (tableHeadCanvas.height * usableWidth) / tableHeadCanvas.width;
+          }
+
           // Função para desenhar header (se existir)
           function drawHeaderIfAny(currentY: number): number {
             if (!headerImgData) return currentY;
@@ -622,8 +726,15 @@ export default function StudentBulletin({ testId, studentId, initialDisciplineSt
             return currentY + headerImgHeight + 2; // pequeno espaçamento
           }
 
-          let currentY = margin;
+          function drawTableHeadIfAny(currentY: number): number {
+            if (!tableHeadImgData) return currentY;
+            pdf.addImage(tableHeadImgData, 'PNG', margin, currentY, usableWidth, tableHeadImgHeight);
+            return currentY + tableHeadImgHeight + 1;
+          }
+
+          let currentY = drawCompactHeader('BOLETIM DO ALUNO');
           currentY = drawHeaderIfAny(currentY);
+          currentY = drawTableHeadIfAny(currentY);
 
           // Pegar linhas da tabela
           const rowNodes = Array.from(
@@ -638,7 +749,7 @@ export default function StudentBulletin({ testId, studentId, initialDisciplineSt
 
             if (currentY + sectionImgHeight > pageHeight - margin) {
               pdf.addPage();
-              currentY = margin;
+              currentY = drawCompactHeader('BOLETIM DO ALUNO');
               currentY = drawHeaderIfAny(currentY);
             }
 
@@ -658,8 +769,9 @@ export default function StudentBulletin({ testId, studentId, initialDisciplineSt
 
             if (currentY + rowImgHeight > pageHeight - margin) {
               pdf.addPage();
-              currentY = margin;
+              currentY = drawCompactHeader('BOLETIM DO ALUNO');
               currentY = drawHeaderIfAny(currentY);
+              currentY = drawTableHeadIfAny(currentY);
             }
 
             pdf.addImage(rowImgData, 'PNG', margin, currentY, usableWidth, rowImgHeight);
@@ -898,9 +1010,9 @@ export default function StudentBulletin({ testId, studentId, initialDisciplineSt
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse">
                     <thead>
-                      <tr className="border-b border-border bg-muted">
-                        <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground w-20">Questão</th>
-                        <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Alternativas</th>
+                      <tr className="border-b border-border bg-primary">
+                        <th className="text-left py-2 px-3 text-xs font-medium text-primary-foreground w-20">Questão</th>
+                        <th className="text-left py-2 px-3 text-xs font-medium text-primary-foreground">Alternativas</th>
                       </tr>
                     </thead>
                     <tbody>

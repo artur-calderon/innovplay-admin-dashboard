@@ -43,6 +43,7 @@ import html2canvas from 'html2canvas';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "../results/constants";
+import { urlToPngAsset } from "@/utils/pdfCityBranding";
 
 interface EvaluationReportProps {
   onBack?: () => void;
@@ -108,52 +109,129 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
       let heightLeft = imgHeight;
       
       let position = 0;
-      
-      // Carregar a logo
-      const logoImg = new Image();
-      logoImg.crossOrigin = 'anonymous';
-      
-      const logoPromise = new Promise<void>((resolve, reject) => {
-        logoImg.onload = () => resolve();
-        logoImg.onerror = () => reject(new Error('Erro ao carregar logo'));
-        logoImg.src = '/logo-header.png';
-      });
 
-      try {
-        await logoPromise;
-        
-        // Configurações da logo
-        const logoWidth = 40; // largura da logo em mm
-        const logoHeight = (logoImg.height * logoWidth) / logoImg.width; // manter proporção
-        const logoX = imgWidth - logoWidth - 10; // posição X (10mm da margem direita)
-        const logoY = 10; // posição Y (10mm do topo)
-        
-        // Adicionar primeira página com logo
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        pdf.addImage(logoImg.src, 'PNG', logoX, logoY, logoWidth, logoHeight);
-        heightLeft -= pageHeight;
-        
-        // Adicionar páginas adicionais se necessário
-        while (heightLeft >= 0) {
-          position = heightLeft - imgHeight;
-          pdf.addPage();
-          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-          // Adicionar logo também nas páginas seguintes
-          pdf.addImage(logoImg.src, 'PNG', logoX, logoY, logoWidth, logoHeight);
-          heightLeft -= pageHeight;
+
+      // Assets: logo de capa + ícone do cabeçalho
+      const logoAsset = await urlToPngAsset('/LOGO-1.png');
+      const icoAsset = await urlToPngAsset('/AFIRME-PLAY-ico.png');
+
+      const COLORS = {
+        primary: [124, 62, 237] as [number, number, number],
+        textDark: [31, 41, 55] as [number, number, number],
+        textGray: [107, 114, 128] as [number, number, number],
+        borderLight: [229, 231, 235] as [number, number, number],
+        bgLight: [250, 250, 250] as [number, number, number],
+        white: [255, 255, 255] as [number, number, number],
+      };
+
+      const drawCover = () => {
+        const pageW = pdf.internal.pageSize.getWidth();
+        const pageH = pdf.internal.pageSize.getHeight();
+        const centerX = pageW / 2;
+        const margin = 15;
+        const BAND_H = 58;
+
+        pdf.setFillColor(...COLORS.white);
+        pdf.rect(0, 0, pageW, pageH, 'F');
+        pdf.setFillColor(...COLORS.primary);
+        pdf.rect(0, 0, pageW, BAND_H, 'F');
+
+        let logoBottom = 0;
+        if (logoAsset?.dataUrl && logoAsset.iw > 0 && logoAsset.ih > 0) {
+          const desiredW = 38;
+          const desiredH = (logoAsset.ih * desiredW) / logoAsset.iw;
+          pdf.addImage(logoAsset.dataUrl, 'PNG', centerX - desiredW / 2, 7, desiredW, desiredH);
+          logoBottom = 7 + desiredH;
+        } else {
+          pdf.setFontSize(18);
+          pdf.setTextColor(...COLORS.white);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text('AFIRME PLAY', centerX, 22, { align: 'center' });
+          logoBottom = 28;
         }
-      } catch (logoError) {
-        console.warn('Erro ao carregar logo, gerando PDF sem logo:', logoError);
-        // Gerar PDF sem logo em caso de erro
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-        
-        while (heightLeft >= 0) {
-          position = heightLeft - imgHeight;
-          pdf.addPage();
-          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-          heightLeft -= pageHeight;
+
+        const titleY = Math.max(logoBottom + 5, BAND_H - 17);
+        pdf.setTextColor(...COLORS.white);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(17);
+        pdf.text('RELATÓRIO DE AVALIAÇÕES', centerX, titleY, { align: 'center' });
+        pdf.setFontSize(11);
+        pdf.text('EXPORTAÇÃO DO PAINEL', centerX, titleY + 8, { align: 'center' });
+
+        let y = BAND_H + 18;
+
+        const cardW = pageW - 40;
+        const cardX = (pageW - cardW) / 2;
+        const cardH = 56;
+        const ACCENT_W = 4;
+        pdf.setFillColor(...COLORS.bgLight);
+        pdf.rect(cardX, y, cardW, cardH, 'F');
+        pdf.setFillColor(...COLORS.primary);
+        pdf.rect(cardX, y, ACCENT_W, cardH, 'F');
+        pdf.setDrawColor(...COLORS.borderLight);
+        pdf.setLineWidth(0.4);
+        pdf.rect(cardX, y, cardW, cardH, 'S');
+
+        let cy = y + 12;
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(10);
+        pdf.setTextColor(...COLORS.primary);
+        pdf.text('INFORMAÇÕES', cardX + ACCENT_W + (cardW - ACCENT_W) / 2, cy, { align: 'center' });
+        cy += 6;
+        pdf.setDrawColor(...COLORS.borderLight);
+        pdf.setLineWidth(0.3);
+        pdf.line(cardX + ACCENT_W + 4, cy, cardX + cardW - 4, cy);
+        cy += 10;
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9);
+        pdf.setTextColor(...COLORS.textDark);
+        pdf.text(`Páginas: ${Math.max(1, Math.ceil(imgHeight / pageHeight))}`, cardX + ACCENT_W + 10, cy);
+        cy += 7;
+        pdf.text(`Fonte: Relatório de Avaliações (tela)`, cardX + ACCENT_W + 10, cy);
+      };
+
+      const drawInternalHeader = (title: string) => {
+        const pageW = pdf.internal.pageSize.getWidth();
+        const margin = 15;
+        const BAND_H = 20;
+        pdf.setFillColor(...COLORS.primary);
+        pdf.rect(0, 0, pageW, BAND_H, 'F');
+        if (icoAsset?.dataUrl && icoAsset.iw > 0 && icoAsset.ih > 0) {
+          const icoH = 14;
+          const icoW = (icoAsset.iw * icoH) / icoAsset.ih;
+          pdf.addImage(icoAsset.dataUrl, 'PNG', margin, (BAND_H - icoH) / 2, icoW, icoH);
+        } else {
+          pdf.setFontSize(8);
+          pdf.setTextColor(...COLORS.white);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text('AFIRME PLAY', margin, BAND_H / 2 + 2);
         }
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(11);
+        pdf.setTextColor(...COLORS.white);
+        pdf.text(title, pageW - margin, BAND_H / 2 + 2, { align: 'right' });
+      };
+
+      // Capa
+      drawCover();
+
+      // Conteúdo capturado começa na página seguinte
+      pdf.addPage();
+
+      // Primeira página do conteúdo
+      drawInternalHeader('RELATÓRIO DE AVALIAÇÕES');
+      const headerOffset = 20;
+      pdf.addImage(imgData, 'PNG', 0, position + headerOffset, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      // Páginas adicionais recortando a mesma imagem
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        drawInternalHeader('RELATÓRIO DE AVALIAÇÕES');
+        pdf.addImage(imgData, 'PNG', 0, position + headerOffset, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
       }
       
       return pdf;

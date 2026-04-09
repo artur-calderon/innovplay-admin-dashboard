@@ -1069,11 +1069,25 @@ export default function AcertoNiveis({
     periodoYmRelatorio,
   ]);
 
+  /** UUID em `codigo_habilidade` não é habilidade — antes era aceito pelo padrão [A-Z]{2,}\\d+… e estourava o PDF. */
+  const looksLikeUUID = (value?: string) => {
+    if (!value) return false;
+    const v = value.trim();
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)) return true;
+    if (/^[0-9a-f]{32}$/i.test(v)) return true;
+    return false;
+  };
+
   const looksLikeRealSkillCode = (value?: string) => {
     if (!value) return false;
+    if (looksLikeUUID(value)) return false;
     const v = value.trim().toUpperCase();
     // BNCC EFxxXXnn (ex.: EF02MA14, EF12LP01)
     if (/^EF\d+[A-Z]{2,}\d+[A-Z0-9]*$/.test(v)) return true;
+    // Formatos frequentes do dashboard: EF15_D13, D9, D13, LP5A2.1, 5N2.6, SA1.4
+    if (/^EF\d+_[A-Z0-9]+$/.test(v)) return true;
+    if (/^[A-Z]\d+[A-Z0-9._-]*$/.test(v)) return true;
+    if (/^[A-Z]{2,}\d+[A-Z0-9._-]*$/.test(v)) return true;
     // Exemplos aceitos: LP9L1.2, 9N1.2, CN9L1.3, GE9L1.4, 9L1.1, 9S1.2, 9M1.1, 9 L 1.1, 9 N 1.2
     return /^(LP\d+L\d+\.\d+|\d+N\d\.\d+|[A-Z]{2}\d+L\d+\.\d+|\d+[LMSN]\d+\.\d+|\d+\s+[LMSN]\s+\d+\.\d+)$/.test(v);
   };
@@ -2083,17 +2097,18 @@ export default function AcertoNiveis({
     },
     mapping: Record<string, string>
   ): string => {
-    const raw = (questao.codigo_habilidade || '').trim();
-    // 1) Se já parece um código real, retornar
+    let raw = (questao.codigo_habilidade || '').trim();
+    if (/^n\/a$/i.test(raw) || raw === '—' || raw === '-') raw = '';
+    // 1) Se já parece um código real, retornar (UUID nunca — cai no mapeamento/Qn)
     if (looksLikeRealSkillCode(raw)) return raw.toUpperCase();
 
     // 2) Tentar via mapeamento por UUID normalizado
     const idNorm = normalizeUUID(raw);
     if (idNorm && mapping[idNorm]) return mapping[idNorm].toUpperCase();
 
-    // 3) Tentar extrair do texto da habilidade com regex (incluindo novos padrões)
+    // 3) Tentar extrair do texto da habilidade com regex (incluindo BNCC e formatos internos)
     const fromText = (questao.habilidade || '').toUpperCase();
-    const match = fromText.match(/(LP\d+L\d+\.\d+|\d+N\d\.\d+|[A-Z]{2}\d+L\d+\.\d+|\d+[LMSN]\d+\.\d+|\d+\s+[LMSN]\s+\d+\.\d+)/);
+    const match = fromText.match(/(EF\d+[A-Z]{2,}\d+[A-Z0-9]*|EF\d+_[A-Z0-9]+|[A-Z]\d+[A-Z0-9._-]*|[A-Z]{2,}\d+[A-Z0-9._-]*|LP\d+L\d+\.\d+|\d+N\d\.\d+|[A-Z]{2}\d+L\d+\.\d+|\d+[LMSN]\d+\.\d+|\d+\s+[LMSN]\s+\d+\.\d+)/);
     if (match && match[1]) return match[1].toUpperCase();
 
     // 4) Fallback neutro (sem inferir disciplina)
@@ -2203,6 +2218,8 @@ export default function AcertoNiveis({
       }
     }
     try {
+      setIsLoading(true);
+
       // Garantir que a tabela detalhada foi carregada quando possível (evitar requisição extra se já temos allTabelaDetalhada ou tabelaDetalhada)
       const jaTemTabela = tabelaDetalhada ?? allTabelaDetalhada;
       if (
@@ -2213,7 +2230,6 @@ export default function AcertoNiveis({
         selectedEvaluationId
       ) {
         try {
-          setIsLoading(true);
           const resp = await EvaluationResultsApiService.getEvaluationsList(1, 10, {
             estado: selectedState,
             municipio: selectedMunicipality,
@@ -2227,10 +2243,8 @@ export default function AcertoNiveis({
             ? tdResp.tabela_detalhada
             : null;
           setTabelaDetalhada(td);
-        } catch (_) {
-          // silencioso
-        } finally {
-          setIsLoading(false);
+        } catch (e) {
+          console.warn('[AcertoNiveisCartao] Falha ao carregar tabela_detalhada para o PDF', e);
         }
       }
 
@@ -2850,14 +2864,15 @@ export default function AcertoNiveis({
       const sortQuestoes = (qs: QuestaoMinima[]) =>
         [...(qs || [])].sort((a, b) => (a?.numero || 0) - (b?.numero || 0));
 
-      const buildQuestoesFallback = (): QuestaoMinima[] => {
+      const buildQuestoesFromTabelaDetalhada = (
+        tabelaFonte: typeof tabelaDetalhada
+      ): QuestaoMinima[] => {
         // Unificar questões de todas as disciplinas com numero global (1..N), evitando colisão quando LP e MAT têm 1-20 cada
         const list: QuestaoMinima[] = [];
         let globalNumero = 0;
-        const tabelaQuestoesFonte = allTabelaDetalhada ?? tabelaDetalhada;
-        tabelaQuestoesFonte?.disciplinas?.forEach(disc => {
+        tabelaFonte?.disciplinas?.forEach((disc) => {
           const sorted = [...(disc.questoes || [])].sort((a, b) => (a?.numero ?? 0) - (b?.numero ?? 0));
-          sorted.forEach(q => {
+          sorted.forEach((q) => {
             globalNumero += 1;
             list.push({
               id: q.question_id || String(globalNumero),
@@ -2867,17 +2882,95 @@ export default function AcertoNiveis({
               tipo: 'multipleChoice',
               dificuldade: 'Médio',
               porcentagem_acertos: 0,
-              porcentagem_erros: 0
+              porcentagem_erros: 0,
             });
           });
         });
         return list;
       };
 
-      const questoesParaUsar: QuestaoMinima[] =
+      const buildQuestoesFallback = (): QuestaoMinima[] =>
+        buildQuestoesFromTabelaDetalhada(allTabelaDetalhada ?? tabelaDetalhada);
+
+      let questoesParaUsar: QuestaoMinima[] =
         reportParaPdf?.questoes?.length
           ? reportParaPdf.questoes.map(mapToMinimal)
           : buildQuestoesFallback();
+
+      // Enriquecer questões da tabela geral com códigos de habilidade vindos das disciplinas
+      // (quando reportParaPdf.questoes vier com UUID/código vazio).
+      const tabelaParaEnrich = allTabelaDetalhada ?? tabelaDetalhada;
+      if (tabelaParaEnrich?.disciplinas?.length) {
+        const discQByQuestionId = new Map<string, { codigo_habilidade: string; habilidade: string }>();
+        tabelaParaEnrich.disciplinas.forEach((disc) => {
+          disc.questoes?.forEach((q) => {
+            if (q.question_id) {
+              discQByQuestionId.set(q.question_id, {
+                codigo_habilidade: q.codigo_habilidade || '',
+                habilidade: q.habilidade || '',
+              });
+            }
+          });
+        });
+        if (discQByQuestionId.size > 0) {
+          questoesParaUsar = questoesParaUsar.map((q) => {
+            if (looksLikeRealSkillCode(q.codigo_habilidade)) return q;
+            const discQ = discQByQuestionId.get(q.id);
+            if (discQ) {
+              return {
+                ...q,
+                codigo_habilidade: discQ.codigo_habilidade || q.codigo_habilidade,
+                habilidade: discQ.habilidade || q.habilidade,
+              };
+            }
+            return q;
+          });
+        }
+      }
+
+      // `reportParaPdf.questoes` pode vir com menos itens que `tabela_detalhada.disciplinas` (visão por disciplina fica completa).
+      // Cartão-resposta: relatório detalhado usa id sintético `{gabaritoId}-q{n}`; a tabela usa `question_id` UUID — casar também por número.
+      const questoesCanonical = buildQuestoesFromTabelaDetalhada(tabelaParaEnrich);
+      if (questoesCanonical.length > 0 && reportParaPdf?.questoes?.length) {
+        const byId = new Map(questoesParaUsar.map((q) => [q.id, q]));
+        const byNumero = new Map<number, (typeof questoesParaUsar)[number]>();
+        questoesParaUsar.forEach((q) => {
+          const n = q.numero;
+          if (typeof n === 'number' && !Number.isNaN(n) && !byNumero.has(n)) byNumero.set(n, q);
+        });
+        const cleanCod = (s?: string) => {
+          const t = (s || '').trim();
+          if (/^n\/a$/i.test(t)) return '';
+          return t;
+        };
+        const merged = questoesCanonical.map((c) => {
+          const r = byId.get(c.id) ?? byNumero.get(c.numero);
+          if (!r) return c;
+          const rc = cleanCod(r.codigo_habilidade);
+          const cc = cleanCod(c.codigo_habilidade);
+          const bestCod =
+            looksLikeRealSkillCode(rc)
+              ? (r.codigo_habilidade || '').trim()
+              : looksLikeRealSkillCode(cc)
+                ? (c.codigo_habilidade || '').trim()
+                : rc || cc || (r.codigo_habilidade || '').trim() || (c.codigo_habilidade || '').trim();
+          return {
+            ...c,
+            dificuldade: r.dificuldade,
+            habilidade: r.habilidade || c.habilidade,
+            codigo_habilidade: bestCod,
+            tipo: r.tipo,
+            porcentagem_acertos: r.porcentagem_acertos,
+            porcentagem_erros: r.porcentagem_erros,
+          };
+        });
+        const canonIds = new Set(questoesCanonical.map((c) => c.id));
+        const canonNumeros = new Set(questoesCanonical.map((c) => c.numero));
+        const extras = questoesParaUsar.filter(
+          (q) => !canonNumeros.has(q.numero) && !canonIds.has(q.id)
+        );
+        questoesParaUsar = extras.length ? [...merged, ...sortQuestoes(extras)] : merged;
+      }
 
       // Total de questões para fallback determinístico
       const totalQuestionsAll = questoesParaUsar.length;
@@ -3141,9 +3234,8 @@ export default function AcertoNiveis({
           didDrawCell: (data: CellHookData) => {
             if (data.section !== 'body' || data.column.index !== 3) return;
 
-            const textValue = (Array.isArray(data.cell.text) ? data.cell.text[0] : data.cell.text || '')
-              .toString()
-              .trim();
+            const cellRaw = Array.isArray(data.cell.text) ? data.cell.text[0] : data.cell.text;
+            const textValue = String(cellRaw ?? '').trim();
             drawProficiencyNivelInPdfCell(
               data.doc as jsPDF,
               data.cell,
@@ -3372,9 +3464,14 @@ export default function AcertoNiveis({
                   d.setFont('helvetica', 'bold');
                   d.setTextColor(0, 0, 0);
                   const cx = cell.x + cell.width / 2;
-                  const textWidthMm = d.getStringUnitWidth(skillCode) * skillCodeFontSize / d.internal.scaleFactor;
+                  const sf =
+                    d.internal && typeof (d.internal as { scaleFactor?: number }).scaleFactor === 'number'
+                      ? (d.internal as { scaleFactor: number }).scaleFactor
+                      : 1;
+                  const textWidthMm = (d.getStringUnitWidth(skillCode) * skillCodeFontSize) / sf;
                   const cy = cell.y + (cell.height + textWidthMm) / 2;
-                  d.text(skillCode, cx, cy, { angle: 90, maxWidth: cell.height - 2 });
+                  // Sem maxWidth: com angle 90 o jsPDF quebra em uma “linha” por caractere e o texto vaza da célula.
+                  d.text(skillCode, cx, cy, { angle: 90 });
                   d.setDrawColor(0, 0, 0);
                   d.setLineWidth(0.4);
                   d.rect(cell.x, cell.y, cell.width, cell.height);
@@ -3403,7 +3500,8 @@ export default function AcertoNiveis({
               }
               // Nível: fundo colorido + texto preto dimensionado para caber na célula
               if (isLastChunk && section === 'body' && column.index === chunk.length + 3) {
-                const raw = (Array.isArray(cell.text) ? cell.text[0] : cell.text ?? '').toString().trim();
+                const cellRawNivel = Array.isArray(cell.text) ? cell.text[0] : cell.text;
+                const raw = String(cellRawNivel ?? '').trim();
                 const nivelLabel = normalizeProficiencyLevelLabel(raw || '');
                 const [nr, ng, nb] = getProficiencyLevelRgb(nivelLabel);
                 d.setFillColor(nr, ng, nb);
@@ -3778,7 +3876,8 @@ export default function AcertoNiveis({
                 }
                 // Nível: fundo colorido + texto preto dimensionado para caber na célula
                 if (isLastChunk && section === 'body' && column.index === chunk.length + 4) {
-                  const raw = (Array.isArray(cell.text) ? cell.text[0] : cell.text ?? '').toString().trim();
+                  const cellRawNivelDisc = Array.isArray(cell.text) ? cell.text[0] : cell.text;
+                  const raw = String(cellRawNivelDisc ?? '').trim();
                   const nivelLabel = normalizeProficiencyLevelLabel(raw || '');
                   const [nr, ng, nb] = getProficiencyLevelRgb(nivelLabel);
                   d.setFillColor(nr, ng, nb);
@@ -3804,9 +3903,13 @@ export default function AcertoNiveis({
                     d.setFont('helvetica', 'bold');
                     d.setTextColor(0, 0, 0);
                     const cx = cell.x + cell.width / 2;
-                    const textWidthMm = d.getStringUnitWidth(skillCode) * skillCodeFontSize / d.internal.scaleFactor;
+                    const sfDisc =
+                      d.internal && typeof (d.internal as { scaleFactor?: number }).scaleFactor === 'number'
+                        ? (d.internal as { scaleFactor: number }).scaleFactor
+                        : 1;
+                    const textWidthMm = (d.getStringUnitWidth(skillCode) * skillCodeFontSize) / sfDisc;
                     const cy = cell.y + (cell.height + textWidthMm) / 2;
-                    d.text(skillCode, cx, cy, { angle: 90, maxWidth: cell.height - 2 });
+                    d.text(skillCode, cx, cy, { angle: 90 });
                     d.setDrawColor(0, 0, 0);
                     d.setLineWidth(0.4);
                     d.rect(cell.x, cell.y, cell.width, cell.height);
@@ -4361,13 +4464,39 @@ export default function AcertoNiveis({
       });
 
 
-      // Salvar PDF
+      // Salvar PDF (fallback em blob: alguns navegadores bloqueiam doc.save() após vários await)
       const fileName = `relatorio-${evaluationInfo.titulo?.replace(/[^a-zA-Z0-9]/g, '-') || 'cartao-resposta'}-${new Date().toISOString().split('T')[0]}.pdf`;
-      doc.save(fileName);
+      try {
+        doc.save(fileName);
+      } catch (saveErr) {
+        console.warn('[AcertoNiveisCartao] doc.save falhou, usando download via blob', saveErr);
+        const blob = doc.output('blob');
+        const url = URL.createObjectURL(blob);
+        try {
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          a.rel = 'noopener';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      }
       toast({ title: 'PDF gerado com sucesso!', description: `Relatório salvo como ${fileName}` });
 
     } catch (error) {
-      toast({ title: 'Erro ao gerar PDF', description: 'Não foi possível gerar o relatório', variant: 'destructive' });
+      const message =
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Erro desconhecido';
+      console.error('[AcertoNiveisCartao] Erro ao gerar PDF', error);
+      toast({
+        title: 'Erro ao gerar PDF',
+        description: message || 'Não foi possível gerar o relatório. Veja o console (F12) para detalhes.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -4837,7 +4966,11 @@ export default function AcertoNiveis({
               </p>
             )}
             <Button
-              onClick={handleGeneratePDF}
+              onClick={() => {
+                void handleGeneratePDF().catch((err) => {
+                  console.error('[AcertoNiveisCartao] PDF (promise não tratada)', err);
+                });
+              }}
               disabled={
                 isAnswerSheetAgregados
                   ? !allRequiredAgregadosFilters ||

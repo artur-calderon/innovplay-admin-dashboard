@@ -124,18 +124,18 @@ function SkillCard({
       type="button"
       onClick={onClick}
       className={cn(
-        'w-full rounded-xl p-3 text-left shadow-sm transition hover:opacity-95 hover:ring-2 hover:ring-primary/40',
+        'w-full rounded-lg p-2.5 text-left shadow-sm transition hover:opacity-95 hover:ring-2 hover:ring-primary/40',
         CARD_BG[h.faixa] || CARD_BG.basico
       )}
     >
-      <div className="font-semibold text-sm leading-tight">{skillDisplayTitle(h)}</div>
+      <div className="font-semibold text-xs leading-tight">{skillDisplayTitle(h)}</div>
       {disciplina && (
-        <div className="mt-1.5 text-[11px] font-medium opacity-90 line-clamp-2 leading-snug">
+        <div className="mt-1 text-[10px] font-medium opacity-90 line-clamp-1 leading-snug">
           {disciplina}
         </div>
       )}
-      <div className="mt-2 text-lg font-bold">{h.percentual_acertos.toFixed(1)}%</div>
-      <div className="text-xs opacity-90">Acertaram</div>
+      <div className="mt-1.5 text-2xl font-bold leading-none">{h.percentual_acertos.toFixed(1)}%</div>
+      <div className="mt-1 text-[11px] opacity-90">Acertaram</div>
     </button>
   );
 }
@@ -183,6 +183,47 @@ function HeatMapLegendInside() {
   );
 }
 
+function MapSummaryCards({
+  avaliacaoLabel,
+  alunosEscopo,
+  alunosParticipantes,
+}: {
+  avaliacaoLabel: string;
+  alunosEscopo: number | string;
+  alunosParticipantes: number | string;
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      <div className="rounded-xl border border-border/80 bg-muted/30 px-4 py-3 shadow-sm">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          Avaliação
+        </p>
+        <p className="mt-2 line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-snug text-foreground">
+          {avaliacaoLabel || '—'}
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-border/80 bg-muted/30 px-4 py-3 shadow-sm">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          Quantidade de alunos
+        </p>
+        <p className="mt-2 text-2xl font-bold tabular-nums text-foreground">
+          {alunosEscopo ?? '—'}
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-border/80 bg-muted/30 px-4 py-3 shadow-sm">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          Alunos que participaram
+        </p>
+        <p className="mt-2 text-2xl font-bold tabular-nums text-primary">
+          {alunosParticipantes ?? '—'}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function HeatColumns({
   porFaixa,
   onSkillClick,
@@ -198,13 +239,13 @@ function HeatColumns({
         const list = porFaixa?.[faixa] ?? [];
         return (
           <div key={faixa} className="flex flex-col rounded-lg border bg-muted/30 p-3 min-h-[200px]">
-            <h3 className="mb-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            <h3 className="mb-2 text-center text-xs font-medium text-muted-foreground uppercase tracking-wide">
               {FAIXA_LABELS[faixa]}
             </h3>
             {list.length === 0 ? (
               <p className="mt-4 text-center text-sm text-muted-foreground">Nenhuma habilidade</p>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {list.map((h) => (
                   <SkillCard
                     key={`${h.skill_id}-${h.subject_id ?? 's'}`}
@@ -1026,6 +1067,18 @@ export default function SkillsHeatMapPage() {
           {mapOnline && (
             <Card className="overflow-hidden">
               <CardContent className="space-y-4 pt-6">
+                <MapSummaryCards
+                  avaliacaoLabel={oAvaliacoes.find((x) => x.id === oAvaliacao)?.nome || '—'}
+                  alunosEscopo={
+                    mapOnline.total_alunos_escopo_turma ??
+                    mapOnline.total_alunos_participantes ??
+                    mapOnline.total_alunos_escopo ??
+                    '—'
+                  }
+                  alunosParticipantes={
+                    mapOnline.total_alunos_participantes ?? mapOnline.total_alunos_escopo ?? '—'
+                  }
+                />
                 <HeatMapLegendInside />
                 <HeatColumns
                   porFaixa={mapOnline.por_faixa}
@@ -1144,6 +1197,18 @@ export default function SkillsHeatMapPage() {
           {mapCartao && (
             <Card className="overflow-hidden">
               <CardContent className="space-y-4 pt-6">
+                <MapSummaryCards
+                  avaliacaoLabel={cGabaritos.find((x) => x.id === cGabarito)?.nome || '—'}
+                  alunosEscopo={
+                    mapCartao.total_alunos_escopo_turma ??
+                    mapCartao.total_alunos_participantes ??
+                    mapCartao.total_alunos_escopo ??
+                    '—'
+                  }
+                  alunosParticipantes={
+                    mapCartao.total_alunos_participantes ?? mapCartao.total_alunos_escopo ?? '—'
+                  }
+                />
                 <HeatMapLegendInside />
                 <HeatColumns
                   porFaixa={mapCartao.por_faixa}
@@ -1303,7 +1368,9 @@ export default function SkillsHeatMapPage() {
                               key={a.id}
                               className="border-b border-border/50 px-2 py-2 last:border-0"
                             >
-                              <div className="font-medium">{a.nome}</div>
+                              <div className="font-medium text-emerald-600 dark:text-emerald-400">
+                                {a.nome}
+                              </div>
                               <div className="text-xs text-muted-foreground">
                                 {[a.escola, a.serie, a.turma].filter(Boolean).join(' · ')}
                               </div>
@@ -1326,7 +1393,7 @@ export default function SkillsHeatMapPage() {
                               key={a.id}
                               className="border-b border-border/50 px-2 py-2 last:border-0"
                             >
-                              <div className="font-medium">{a.nome}</div>
+                              <div className="font-medium text-red-600 dark:text-red-400">{a.nome}</div>
                               <div className="text-xs text-muted-foreground">
                                 {[a.escola, a.serie, a.turma].filter(Boolean).join(' · ')}
                               </div>

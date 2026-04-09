@@ -666,11 +666,25 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
 
   // Utilitários para tratar habilidades
   const normalizeUUID = (value?: string) => (value || '').replace(/[{}]/g, '').trim().toLowerCase();
+  /** UUID em `codigo_habilidade` não é habilidade — era aceito pelo padrão [A-Z]{2,}\\d+… e quebrava o PDF. */
+  const looksLikeUUID = (value?: string) => {
+    if (!value) return false;
+    const v = value.trim();
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)) return true;
+    if (/^[0-9a-f]{32}$/i.test(v)) return true;
+    return false;
+  };
+
   const looksLikeRealSkillCode = (value?: string) => {
     if (!value) return false;
+    if (looksLikeUUID(value)) return false;
     const v = value.trim().toUpperCase();
     // BNCC EFxxXXnn (ex.: EF02MA14, EF12LP01)
     if (/^EF\d+[A-Z]{2,}\d+[A-Z0-9]*$/.test(v)) return true;
+    // Formatos frequentes do dashboard: EF15_D13, D9, D13, LP5A2.1, 5N2.6, SA1.4
+    if (/^EF\d+_[A-Z0-9]+$/.test(v)) return true;
+    if (/^[A-Z]\d+[A-Z0-9._-]*$/.test(v)) return true;
+    if (/^[A-Z]{2,}\d+[A-Z0-9._-]*$/.test(v)) return true;
     // Exemplos aceitos: LP9L1.2, 9N1.2, CN9L1.3, GE9L1.4, 9L1.1, 9S1.2, 9M1.1, 9 L 1.1, 9 N 1.2
     return /^(LP\d+L\d+\.\d+|\d+N\d\.\d+|[A-Z]{2}\d+L\d+\.\d+|\d+[LMSN]\d+\.\d+|\d+\s+[LMSN]\s+\d+\.\d+)$/.test(v);
   };
@@ -1623,7 +1637,8 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
     },
     mapping: Record<string, string>
   ): string => {
-    const raw = (questao.codigo_habilidade || '').trim();
+    let raw = (questao.codigo_habilidade || '').trim();
+    if (/^n\/a$/i.test(raw) || raw === '—' || raw === '-') raw = '';
     // 1) Se já parece um código real, retornar
     if (looksLikeRealSkillCode(raw)) return raw.toUpperCase();
 
@@ -1631,9 +1646,9 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
     const idNorm = normalizeUUID(raw);
     if (idNorm && mapping[idNorm]) return mapping[idNorm].toUpperCase();
 
-    // 3) Tentar extrair do texto da habilidade com regex (inclui padrão BNCC EF05LP01 e outros)
+    // 3) Tentar extrair do texto da habilidade com regex (inclui BNCC e formatos internos)
     const fromText = (questao.habilidade || '').toUpperCase();
-    const match = fromText.match(/(EF\d+[A-Z]{2,}\d+[A-Z0-9]*|LP\d+L\d+\.\d+|\d+N\d\.\d+|[A-Z]{2}\d+L\d+\.\d+|\d+[LMSN]\d+\.\d+|\d+\s+[LMSN]\s+\d+\.\d+)/);
+    const match = fromText.match(/(EF\d+[A-Z]{2,}\d+[A-Z0-9]*|EF\d+_[A-Z0-9]+|[A-Z]\d+[A-Z0-9._-]*|[A-Z]{2,}\d+[A-Z0-9._-]*|LP\d+L\d+\.\d+|\d+N\d\.\d+|[A-Z]{2}\d+L\d+\.\d+|\d+[LMSN]\d+\.\d+|\d+\s+[LMSN]\s+\d+\.\d+)/);
     if (match && match[1]) return match[1].toUpperCase();
 
     // 4) Fallback neutro (sem inferir disciplina)
@@ -2355,13 +2370,15 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
       const sortQuestoes = (qs: QuestaoMinima[]) =>
         [...(qs || [])].sort((a, b) => (a?.numero || 0) - (b?.numero || 0));
 
-      const buildQuestoesFallback = (): QuestaoMinima[] => {
+      const buildQuestoesFromTabelaDetalhada = (
+        tabelaFonte: typeof tabelaDetalhada
+      ): QuestaoMinima[] => {
         // Unificar questões de todas as disciplinas com numero global (1..N), evitando colisão quando LP e MAT têm 1-20 cada
         const list: QuestaoMinima[] = [];
         let globalNumero = 0;
-        tabelaDetalhada?.disciplinas?.forEach(disc => {
+        tabelaFonte?.disciplinas?.forEach((disc) => {
           const sorted = [...(disc.questoes || [])].sort((a, b) => (a?.numero ?? 0) - (b?.numero ?? 0));
-          sorted.forEach(q => {
+          sorted.forEach((q) => {
             globalNumero += 1;
             list.push({
               id: q.question_id || String(globalNumero),
@@ -2371,12 +2388,15 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
               tipo: 'multipleChoice',
               dificuldade: 'Médio',
               porcentagem_acertos: 0,
-              porcentagem_erros: 0
+              porcentagem_erros: 0,
             });
           });
         });
         return list;
       };
+
+      const buildQuestoesFallback = (): QuestaoMinima[] =>
+        buildQuestoesFromTabelaDetalhada(allTabelaDetalhada || tabelaDetalhada);
 
       let questoesParaUsar: QuestaoMinima[] =
         reportParaPdf?.questoes?.length
@@ -2388,24 +2408,72 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
       const activeTabParaEnrich = allTabelaDetalhada || tabelaDetalhada;
       if (activeTabParaEnrich?.disciplinas?.length) {
         const discQByQuestionId = new Map<string, { codigo_habilidade: string; habilidade: string }>();
-        activeTabParaEnrich.disciplinas.forEach(disc => {
-          disc.questoes?.forEach(q => {
+        activeTabParaEnrich.disciplinas.forEach((disc) => {
+          disc.questoes?.forEach((q) => {
             if (q.question_id) {
               discQByQuestionId.set(q.question_id, {
                 codigo_habilidade: q.codigo_habilidade || '',
-                habilidade: q.habilidade || ''
+                habilidade: q.habilidade || '',
               });
             }
           });
         });
         if (discQByQuestionId.size > 0) {
-          questoesParaUsar = questoesParaUsar.map(q => {
+          questoesParaUsar = questoesParaUsar.map((q) => {
             if (looksLikeRealSkillCode(q.codigo_habilidade)) return q;
             const discQ = discQByQuestionId.get(q.id);
-            if (discQ) return { ...q, codigo_habilidade: discQ.codigo_habilidade || q.codigo_habilidade, habilidade: discQ.habilidade || q.habilidade };
+            if (discQ)
+              return {
+                ...q,
+                codigo_habilidade: discQ.codigo_habilidade || q.codigo_habilidade,
+                habilidade: discQ.habilidade || q.habilidade,
+              };
             return q;
           });
         }
+      }
+
+      // `reportParaPdf.questoes` pode vir incompleto frente a `tabela_detalhada.disciplinas` (tabelas por disciplina ficam corretas).
+      const questoesCanonical = buildQuestoesFromTabelaDetalhada(activeTabParaEnrich);
+      if (questoesCanonical.length > 0 && reportParaPdf?.questoes?.length) {
+        const byId = new Map(questoesParaUsar.map((q) => [q.id, q]));
+        const byNumero = new Map<number, (typeof questoesParaUsar)[number]>();
+        questoesParaUsar.forEach((q) => {
+          const n = q.numero;
+          if (typeof n === 'number' && !Number.isNaN(n) && !byNumero.has(n)) byNumero.set(n, q);
+        });
+        const cleanCod = (s?: string) => {
+          const t = (s || '').trim();
+          if (/^n\/a$/i.test(t)) return '';
+          return t;
+        };
+        const merged = questoesCanonical.map((c) => {
+          const r = byId.get(c.id) ?? byNumero.get(c.numero);
+          if (!r) return c;
+          const rc = cleanCod(r.codigo_habilidade);
+          const cc = cleanCod(c.codigo_habilidade);
+          const bestCod =
+            looksLikeRealSkillCode(rc)
+              ? (r.codigo_habilidade || '').trim()
+              : looksLikeRealSkillCode(cc)
+                ? (c.codigo_habilidade || '').trim()
+                : rc || cc || (r.codigo_habilidade || '').trim() || (c.codigo_habilidade || '').trim();
+          return {
+            ...c,
+            dificuldade: r.dificuldade,
+            habilidade: r.habilidade || c.habilidade,
+            codigo_habilidade: bestCod,
+            tipo: r.tipo,
+            porcentagem_acertos: r.porcentagem_acertos,
+            porcentagem_erros: r.porcentagem_erros,
+          };
+        });
+        const canonIds = new Set(questoesCanonical.map((c) => c.id));
+        const canonNumeros = new Set(questoesCanonical.map((c) => c.numero));
+        const extras = questoesParaUsar.filter(
+          (q) => !canonNumeros.has(q.numero) && !canonIds.has(q.id)
+        );
+        questoesParaUsar = extras.length ? [...merged, ...sortQuestoes(extras)] : merged;
       }
 
       // Total de questões para fallback determinístico
@@ -2635,9 +2703,8 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
           didDrawCell: (data: CellHookData) => {
             if (data.section !== 'body' || data.column.index !== 3) return;
 
-            const textValue = (Array.isArray(data.cell.text) ? data.cell.text[0] : data.cell.text || '')
-              .toString()
-              .trim();
+            const cellRaw = Array.isArray(data.cell.text) ? data.cell.text[0] : data.cell.text;
+            const textValue = String(cellRaw ?? '').trim();
             drawProficiencyNivelInPdfCell(
               data.doc as jsPDF,
               data.cell,
@@ -2677,8 +2744,7 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
             headerRow1.push(`${q.numero}`);
             // Usar generateHabilidadeCode com regex melhorado (extrai código BNCC do texto de habilidade)
             const code = generateHabilidadeCode(q, skillsMapping);
-            // Se caiu no fallback Q${n}, não exibir nada na linha de habilidade
-            headerRow2.push(code.startsWith('Q') && /^Q\d+$/.test(code) ? '' : code);
+            headerRow2.push(code);
             let correct = 0;
             completedStudentsLocal.forEach(s => { if (getAnswer(s, q.numero)) correct++; });
             headerRow3.push(`${Math.round((correct / denomLocal) * 100)}%`);
@@ -2873,7 +2939,7 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
                   const cx = cell.x + cell.width / 2;
                     const textWidthMm = d.getStringUnitWidth(skillCode) * skillCodeFontSize / d.internal.scaleFactor;
                   const cy = cell.y + (cell.height + textWidthMm) / 2;
-                  d.text(skillCode, cx, cy, { angle: 90, maxWidth: cell.height - 2 });
+                  d.text(skillCode, cx, cy, { angle: 90 });
                   d.setDrawColor(0, 0, 0);
                   d.setLineWidth(0.4);
                   d.rect(cell.x, cell.y, cell.width, cell.height);
@@ -2902,7 +2968,8 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
               }
               // Nível: fundo colorido + texto preto dimensionado para caber na célula
               if (isLastChunk && section === 'body' && column.index === chunk.length + 3) {
-                const raw = (Array.isArray(cell.text) ? cell.text[0] : cell.text ?? '').toString().trim();
+                const cellRawNivel = Array.isArray(cell.text) ? cell.text[0] : cell.text;
+                const raw = String(cellRawNivel ?? '').trim();
                 const nivelLabel = normalizeProficiencyLevelLabel(raw || '');
                 const [nr, ng, nb] = getProficiencyLevelRgb(nivelLabel);
                 d.setFillColor(nr, ng, nb);
@@ -3078,7 +3145,7 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
                 { codigo_habilidade: q.codigo_habilidade, habilidade: q.habilidade, numero: q.numero },
                 skillsMapping
               );
-              headerRow2.push(codeDisc.startsWith('Q') && /^Q\d+$/.test(codeDisc) ? '' : codeDisc);
+              headerRow2.push(codeDisc);
               let correct = 0;
               alunosParticipantes.forEach(s => {
                 const r = (s.respostas_por_questao || []).find(rr => rr.questao === q.numero);
@@ -3271,13 +3338,14 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
                 }
                 // Nível: fundo colorido + texto preto dimensionado para caber na célula
                 if (isLastChunk && section === 'body' && column.index === chunk.length + 4) {
-                  const raw = (Array.isArray(cell.text) ? cell.text[0] : cell.text ?? '').toString().trim();
+                  const cellRawNivelDisc = Array.isArray(cell.text) ? cell.text[0] : cell.text;
+                  const raw = String(cellRawNivelDisc ?? '').trim();
                   const nivelLabel = normalizeProficiencyLevelLabel(raw || '');
                   const [nr, ng, nb] = getProficiencyLevelRgb(nivelLabel);
                   d.setFillColor(nr, ng, nb);
                   d.rect(cell.x, cell.y, cell.width, cell.height, 'F');
                   if (nivelLabel) {
-                  const fs = Math.max(scalePdfTable(3.5), Math.min(scalePdfTable(5), cell.height / 0.3528 * 0.65));
+                    const fs = Math.max(scalePdfTable(3.5), Math.min(scalePdfTable(5), cell.height / 0.3528 * 0.65));
                     d.setFontSize(fs);
                     d.setFont('helvetica', 'bold');
                     d.setTextColor(0, 0, 0);
@@ -3299,7 +3367,7 @@ export default function AcertoNiveis({ hidePageHeading = false }: { hidePageHead
                     const cx = cell.x + cell.width / 2;
                     const textWidthMm = d.getStringUnitWidth(skillCode) * skillCodeFontSize / d.internal.scaleFactor;
                     const cy = cell.y + (cell.height + textWidthMm) / 2;
-                    d.text(skillCode, cx, cy, { angle: 90, maxWidth: cell.height - 2 });
+                    d.text(skillCode, cx, cy, { angle: 90 });
                     d.setDrawColor(0, 0, 0);
                     d.setLineWidth(0.4);
                     d.rect(cell.x, cell.y, cell.width, cell.height);

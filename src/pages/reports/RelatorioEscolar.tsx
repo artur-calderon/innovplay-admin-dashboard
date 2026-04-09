@@ -37,6 +37,7 @@ import {
 import {
   loadCityBrandingPdfAssets,
   paintLetterheadBackground,
+  urlToPngAsset,
 } from "@/utils/pdfCityBranding";
 
 const normalizeText = (value: string) =>
@@ -2498,7 +2499,7 @@ export default function RelatorioEscolar({
         logoHeight = cityBranding.logo.ih;
       } else {
         try {
-          const logoPath = '/LOGO-1-menor.png';
+          const logoPath = '/LOGO-1.png';
           const logoImg = new Image();
           const logoPromise = new Promise<void>((resolve, reject) => {
             logoImg.onload = () => resolve();
@@ -2521,6 +2522,17 @@ export default function RelatorioEscolar({
         } catch {
           // Continuar sem logo
         }
+      }
+
+      // Ícone usado nos cabeçalhos internos (faixa compacta)
+      let icoDataUrl = '';
+      let icoWidth = 0;
+      let icoHeight = 0;
+      const icoAsset = await urlToPngAsset('/AFIRME-PLAY-ico.png');
+      if (icoAsset) {
+        icoDataUrl = icoAsset.dataUrl;
+        icoWidth = icoAsset.iw;
+        icoHeight = icoAsset.ih;
       }
 
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -2565,64 +2577,44 @@ export default function RelatorioEscolar({
 
       // Função para adicionar capa inicial
       const addInitialCover = () => {
-        if (cityBranding.letterhead) {
-          paintLetterheadBackground(doc, cityBranding.letterhead, pageWidth, pageHeight);
-        } else {
-          doc.setFillColor(...COLORS.white);
-          doc.rect(0, 0, pageWidth, pageHeight, 'F');
-        }
+        // Fundo branco limpo (independente do letterhead)
+        doc.setFillColor(...COLORS.white);
+        doc.rect(0, 0, pageWidth, pageHeight, 'F');
 
         const centerX = pageWidth / 2;
-        let y = 20;
+        const BAND_H = 58;
 
-        // Logo AFIRME PLAY (imagem) - mantendo proporção real
+        // Faixa superior roxa
+        doc.setFillColor(...COLORS.primary);
+        doc.rect(0, 0, pageWidth, BAND_H, 'F');
+
+        // Logo na faixa (LOGO-1.png) - centralizada
+        let logoBottomInBand = 0;
         if (logoDataUrl && logoWidth > 0 && logoHeight > 0) {
-          // Largura desejada em mm
-          const desiredLogoWidth = 50;
-          // Calcular altura proporcional baseada nas dimensões reais
+          const desiredLogoWidth = 38;
           const desiredLogoHeight = (logoHeight * desiredLogoWidth) / logoWidth;
-          const logoX = centerX - desiredLogoWidth / 2;
-          doc.addImage(logoDataUrl, 'PNG', logoX, y, desiredLogoWidth, desiredLogoHeight);
-          y += desiredLogoHeight + 8;
+          doc.addImage(
+            logoDataUrl,
+            'PNG',
+            centerX - desiredLogoWidth / 2,
+            7,
+            desiredLogoWidth,
+            desiredLogoHeight
+          );
+          logoBottomInBand = 7 + desiredLogoHeight;
         } else {
-          // Fallback: texto "AFIRME PLAY"
-          doc.setFontSize(20);
-          doc.setTextColor(...COLORS.primary);
+          doc.setFontSize(18);
+          doc.setTextColor(...COLORS.white);
           doc.setFont('helvetica', 'bold');
-          doc.text('AFIRME PLAY', centerX, y, { align: 'center' });
-          y += 15;
+          doc.text('AFIRME PLAY', centerX, 22, { align: 'center' });
+          logoBottomInBand = 28;
         }
-
-        y += 8;
-
-        // Município - Estado
-        doc.setFontSize(14);
-        doc.setTextColor(...COLORS.primary); // Roxo institucional
-        doc.setFont('helvetica', 'bold');
-        const municipalityName = apiData.estatisticas_gerais?.municipio || repMunicipality;
-        const stateName = apiData.estatisticas_gerais?.estado || (repState !== 'all' ? repState : 'AL');
-        const locationText = `${municipalityName?.toUpperCase() || 'MUNICÍPIO'} - ${stateName}`;
-        doc.text(locationText, centerX, y, { align: 'center' });
-
-        y += 8;
-
-        // Secretaria
-        doc.setFontSize(11);
-        doc.setTextColor(...COLORS.textGray); // Cinza
-        doc.setFont('helvetica', 'normal');
-        doc.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, y, { align: 'center' });
-
-        y += 18;
 
         // Determinar o tipo de relatório baseado nos dados da API
         const reportType = apiData.estatisticas_gerais?.tipo || (isMunicipalView ? 'municipio' : 'escola');
         const serieFromApi = apiData.estatisticas_gerais?.serie;
         const escolaFromApi = apiData.estatisticas_gerais?.escola;
 
-        // Título principal - ajustar de acordo com o tipo de dados
-        doc.setFontSize(24);
-        doc.setTextColor(...COLORS.textDark); // Preto
-        doc.setFont('helvetica', 'bold');
         let mainTitle = 'RELATÓRIO ESCOLAR';
         if (reportType === 'municipio' || isMunicipalView) {
           mainTitle = 'RELATÓRIO MUNICIPAL';
@@ -2633,74 +2625,88 @@ export default function RelatorioEscolar({
         } else if (reportType === 'escola') {
           mainTitle = 'RELATÓRIO POR ESCOLA';
         }
-        doc.text(mainTitle, centerX, y, { align: 'center' });
+
+        // Título + subtítulo na faixa
+        const titleY = Math.max(logoBottomInBand + 5, BAND_H - 17);
+        doc.setTextColor(...COLORS.white);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(17);
+        doc.text(mainTitle, centerX, titleY, { align: 'center' });
+        doc.setFontSize(11);
+        doc.text('RESULTADOS E INDICADORES', centerX, titleY + 8, { align: 'center' });
+
+        let y = BAND_H + 13;
+
+        // Município - Estado
+        const municipalityName = apiData.estatisticas_gerais?.municipio || repMunicipality;
+        const stateName = apiData.estatisticas_gerais?.estado || (repState !== 'all' ? repState : 'AL');
+        doc.setFontSize(14);
+        doc.setTextColor(...COLORS.primary);
+        doc.setFont('helvetica', 'bold');
+        const locationText = `${municipalityName?.toUpperCase() || 'MUNICÍPIO'} - ${String(stateName).toUpperCase()}`;
+        doc.text(locationText, centerX, y, { align: 'center' });
+
+        y += 8;
+
+        // Secretaria
+        doc.setFontSize(11);
+        doc.setTextColor(...COLORS.textGray);
+        doc.setFont('helvetica', 'normal');
+        doc.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, y, { align: 'center' });
 
         y += 20;
 
-        // Card de informações - tamanho dinâmico baseado nos campos a exibir
-        const cardWidth = pageWidth - 120; // Reduzido: mais estreito
-        // Calcular altura do card baseado nos campos que serão exibidos
-        let fieldsCount = 2; // Avaliação e Município são sempre exibidos
-        if (!isMunicipalView || escolaFromApi) fieldsCount++; // Escola
-        if (serieFromApi) fieldsCount++; // Série
-        const dataAplicacaoHeader = (apiData as any)?.estatisticas_gerais?.data_aplicacao as string | undefined;
-        if (dataAplicacaoHeader) fieldsCount++; // Data
-        const cardHeight = 30 + (fieldsCount * 8); // Altura base + espaço por campo
+        // Card de informações (padrão Evoluções)
+        const cardWidth = pageWidth - 80;
         const cardX = (pageWidth - cardWidth) / 2;
-        
-        // Centralizar verticalmente melhor na página
-        const availableHeight = pageHeight - y - 20;
-        if (cardHeight < availableHeight) {
-          y = (pageHeight - cardHeight) / 2;
-        }
+        const ACCENT_W = 4;
 
-        // Fundo do card
+        let estimatedCardHeight = 60;
+        estimatedCardHeight += 7; // avaliação
+        estimatedCardHeight += 7; // município
+        estimatedCardHeight += (!isMunicipalView || escolaFromApi) ? 12 : 0;
+        estimatedCardHeight += serieFromApi ? 7 : 0;
+        const dataAplicacao = (apiData as any)?.estatisticas_gerais?.data_aplicacao as string | undefined;
+        estimatedCardHeight += dataAplicacao ? 7 : 0;
+        const cardHeight = Math.max(estimatedCardHeight, 100);
+
         doc.setFillColor(...COLORS.bgLight);
         doc.rect(cardX, y, cardWidth, cardHeight, 'F');
-        
-        // Borda do card
+        doc.setFillColor(...COLORS.primary);
+        doc.rect(cardX, y, ACCENT_W, cardHeight, 'F');
         doc.setDrawColor(...COLORS.borderLight);
-        doc.setLineWidth(0.5);
+        doc.setLineWidth(0.4);
         doc.rect(cardX, y, cardWidth, cardHeight, 'S');
 
-        // Conteúdo do card
-        let cardY = y + 9;
-
-        // Título do card - ajustar de acordo com tipo de relatório
-        doc.setFontSize(11);
-        doc.setTextColor(...COLORS.primary); // Roxo
+        let cardY = y + 12;
+        const cardContentCenterX = cardX + ACCENT_W + (cardWidth - ACCENT_W) / 2;
+        doc.setFontSize(13);
+        doc.setTextColor(...COLORS.primary);
         doc.setFont('helvetica', 'bold');
-        let cardTitle = 'INFORMAÇÕES DA AVALIAÇÃO';
-        if (reportType === 'municipio' || isMunicipalView) {
-          cardTitle = 'INFORMAÇÕES DO MUNICÍPIO';
-        } else if (reportType === 'turma') {
-          cardTitle = 'INFORMAÇÕES DA TURMA';
-        } else if (reportType === 'serie') {
-          cardTitle = 'INFORMAÇÕES DA SÉRIE';
-        } else if (reportType === 'escola') {
-          cardTitle = 'INFORMAÇÕES DA ESCOLA';
-        }
-        doc.text(cardTitle, centerX, cardY, { align: 'center' });
+        doc.text('INFORMAÇÕES DO RELATÓRIO', cardContentCenterX, cardY, { align: 'center' });
 
-        cardY += 9;
+        cardY += 6;
+        doc.setDrawColor(...COLORS.borderLight);
+        doc.setLineWidth(0.3);
+        doc.line(cardX + ACCENT_W + 4, cardY, cardX + cardWidth - 4, cardY);
+        cardY += 8;
 
-        // Informações em formato tabular (label: valor)
-        doc.setFontSize(8);
+        doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
-
-        const leftColX = cardX + 12;
-        const labelWidth = 32; // Espaçamento adequado para evitar sobreposição
+        const leftColX = cardX + ACCENT_W + 15;
+        const labelWidth = 50;
+        const valueMaxWidth = cardWidth - labelWidth - 30;
 
         // AVALIAÇÃO
         doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary); // Labels em roxo
+        doc.setTextColor(...COLORS.primary);
         doc.text(reportAnswerSheet ? 'CARTÃO RESPOSTA:' : 'AVALIAÇÃO:', leftColX, cardY);
         doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark); // Valores em preto
+        doc.setTextColor(...COLORS.textDark);
         const avaliacaoText = evaluationTitle || 'N/A';
-        const avaliacaoLines = doc.splitTextToSize(avaliacaoText, cardWidth - labelWidth - 24);
+        const avaliacaoLines = doc.splitTextToSize(avaliacaoText, valueMaxWidth);
         doc.text(avaliacaoLines, leftColX + labelWidth, cardY);
-        cardY += Math.max(5, avaliacaoLines.length * 4);
+        cardY += Math.max(7, avaliacaoLines.length * 5);
 
         // MUNICÍPIO
         doc.setFont('helvetica', 'bold');
@@ -2709,9 +2715,9 @@ export default function RelatorioEscolar({
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...COLORS.textDark);
         doc.text(municipalityName || 'N/A', leftColX + labelWidth, cardY);
-        cardY += 5;
+        cardY += 7;
 
-        // ESCOLA (exibir se escola selecionada ou se API retorna escola)
+        // ESCOLA
         if (!isMunicipalView || escolaFromApi) {
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(...COLORS.primary);
@@ -2723,24 +2729,23 @@ export default function RelatorioEscolar({
             selectedSchoolInfo?.name ||
             apiData.estatisticas_gerais?.escola ||
             'Escola Selecionada';
-          const escolaLines = doc.splitTextToSize(escolaText.toUpperCase(), cardWidth - labelWidth - 24);
+          const escolaLines = doc.splitTextToSize(String(escolaText).toUpperCase(), valueMaxWidth);
           doc.text(escolaLines, leftColX + labelWidth, cardY);
-          cardY += Math.max(5, escolaLines.length * 4);
+          cardY += Math.max(7, escolaLines.length * 5);
         }
 
-        // SÉRIE (exibir se a API retorna série)
+        // SÉRIE
         if (serieFromApi) {
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(...COLORS.primary);
           doc.text('SÉRIE:', leftColX, cardY);
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(...COLORS.textDark);
-          doc.text(serieFromApi.toUpperCase(), leftColX + labelWidth, cardY);
-          cardY += 5;
+          doc.text(String(serieFromApi).toUpperCase(), leftColX + labelWidth, cardY);
+          cardY += 7;
         }
 
-        // DATA (se disponível)
-        const dataAplicacao = (apiData as any)?.estatisticas_gerais?.data_aplicacao as string | undefined;
+        // DATA
         if (dataAplicacao) {
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(...COLORS.primary);
@@ -2748,48 +2753,66 @@ export default function RelatorioEscolar({
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(...COLORS.textDark);
           doc.text(new Date(dataAplicacao).toLocaleDateString('pt-BR'), leftColX + labelWidth, cardY);
-          cardY += 5;
+          cardY += 7;
         }
       };
 
       // Função auxiliar: Adicionar cabeçalho institucional
       const addHeader = (): number => {
-        let y = 20;
         const centerX = pageWidth / 2;
+        const BAND_H = 20;
 
-        // Município + UF
+        // Faixa compacta
+        doc.setFillColor(...COLORS.primary);
+        doc.rect(0, 0, pageWidth, BAND_H, 'F');
+
+        // Ícone na faixa
+        if (icoDataUrl && icoWidth > 0 && icoHeight > 0) {
+          const icoH = 14;
+          const icoW = (icoWidth * icoH) / icoHeight;
+          doc.addImage(icoDataUrl, 'PNG', margin, (BAND_H - icoH) / 2, icoW, icoH);
+        } else {
+          doc.setFontSize(8);
+          doc.setTextColor(...COLORS.white);
+          doc.setFont('helvetica', 'bold');
+          doc.text('AFIRME PLAY', margin, BAND_H / 2 + 2);
+        }
+
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(11);
-        doc.setTextColor(55, 65, 81);
+        doc.setTextColor(...COLORS.white);
+        doc.text('RELATÓRIO ESCOLAR', pageWidth - margin, BAND_H / 2 + 2, { align: 'right' });
+
+        let y = BAND_H + 8;
+
+        // Prefeitura
         const municipalityName = apiData.estatisticas_gerais?.municipio || repMunicipality;
         const stateName = apiData.estatisticas_gerais?.estado || (repState !== 'all' ? repState : 'AL');
-        const municipalityText = `${municipalityName?.toUpperCase() || 'MUNICÍPIO'} - ${stateName}`;
-        doc.text(municipalityText, centerX, y, { align: 'center', maxWidth: pageWidth - 2 * margin });
-        y += 5;
-
-        // Secretaria
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
-        doc.setTextColor(107, 114, 128);
-        doc.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, y, { align: 'center' });
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(`PREFEITURA DE ${municipalityName?.toUpperCase() || 'MUNICÍPIO'} - ${stateName}`, centerX, y, {
+          align: 'center',
+          maxWidth: pageWidth - 2 * margin,
+        });
         y += 6;
 
-        // Nome da escola ou "RELATÓRIO MUNICIPAL"
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(11);
-        doc.setTextColor(55, 65, 81);
-        const schoolLabel = isMunicipalView 
-          ? 'RELATÓRIO MUNICIPAL' 
+        // Metadados
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(...COLORS.textGray);
+        const schoolLabel = isMunicipalView
+          ? 'RELATÓRIO MUNICIPAL'
           : (selectedSchoolInfo?.name || apiData.estatisticas_gerais?.escola || 'ESCOLA SELECIONADA').toUpperCase();
-        doc.text(schoolLabel, centerX, y, { align: 'center', maxWidth: pageWidth - 2 * margin });
-        y += 5;
+        const metaParts = [schoolLabel];
+        if (evaluationTitle) metaParts.push(evaluationTitle.toUpperCase());
+        doc.text(metaParts.join('  •  '), centerX, y, { align: 'center', maxWidth: pageWidth - 2 * margin });
+        y += 6;
 
-        // Nome da avaliação
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.setTextColor(107, 114, 128);
-        doc.text(evaluationTitle.toUpperCase(), centerX, y, { align: 'center', maxWidth: pageWidth - 2 * margin });
-        y += 10;
+        doc.setDrawColor(...COLORS.borderLight);
+        doc.setLineWidth(0.3);
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 5;
 
         return y;
       };
