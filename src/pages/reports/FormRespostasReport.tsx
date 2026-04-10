@@ -30,7 +30,7 @@ import { FormMultiSelect } from '@/components/ui/form-multi-select';
 import {
   loadCityBrandingPdfAssets,
   paintLetterheadBackground,
-  drawReportHeaderLogoWithFallback,
+  urlToPngAsset,
 } from '@/utils/pdfCityBranding';
 
 interface State {
@@ -589,10 +589,10 @@ const FormRespostasReport = () => {
         if (branding.letterhead) {
           paintLetterheadBackground(doc, branding.letterhead, pageWidth, pageHeight);
         }
-        let y = margin;
-        y = await drawReportHeaderLogoWithFallback(doc, pageWidth, y, branding.logo);
-
-        // Cores do sistema (primary: 267 84% 65% ≈ #7c3aed)
+        const hasLetterhead = Boolean(branding.letterhead);
+        const icoAsset = await urlToPngAsset('/AFIRME-PLAY-ico.png');
+        const logoAsset = await urlToPngAsset('/LOGO-1.png');
+        const centerX = pageWidth / 2;
         const primaryRgb: [number, number, number] = [124, 58, 237];
         const textDark: [number, number, number] = [31, 41, 55];
         const textMuted: [number, number, number] = [107, 114, 128];
@@ -607,41 +607,138 @@ const FormRespostasReport = () => {
         const formTitle = data.formTitle || reportData?.formTitle || '';
         const alunoName = data.userName || student.alunoNome;
 
-        const centerX = pageWidth / 2;
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.setTextColor(...textDark);
+        const drawCover = () => {
+          const BAND_H = 58;
+          if (!hasLetterhead) {
+            doc.setFillColor(255, 255, 255);
+            doc.rect(0, 0, pageWidth, pageHeight, 'F');
+            doc.setFillColor(...primaryRgb);
+            doc.rect(0, 0, pageWidth, BAND_H, 'F');
+          }
 
-        if (municipioName) {
-          doc.text(`Município: ${municipioName}`, centerX, y, { align: 'center' });
-          y += 6;
-        }
-        doc.text(`Escola: ${escolaName}`, centerX, y, { align: 'center' });
-        y += 5;
-        doc.text(`Série: ${serieName}`, centerX, y, { align: 'center' });
-        y += 5;
-        if (formTitle) {
-          doc.text(`Formulário: ${formTitle}`, centerX, y, { align: 'center' });
-          y += 5;
-        }
-        if (turmaName) {
-          doc.text(`Turma: ${turmaName}`, centerX, y, { align: 'center' });
-          y += 5;
-        }
-        doc.text(`Aluno: ${alunoName}`, centerX, y, { align: 'center' });
-        y += 10;
+          let logoBottom = 0;
+          if (logoAsset?.dataUrl && logoAsset.iw > 0 && logoAsset.ih > 0) {
+            const desiredLogoWidth = 38;
+            const desiredLogoHeight = (logoAsset.ih * desiredLogoWidth) / logoAsset.iw;
+            const logoY = hasLetterhead ? 18 : 7;
+            doc.addImage(
+              logoAsset.dataUrl,
+              'PNG',
+              centerX - desiredLogoWidth / 2,
+              logoY,
+              desiredLogoWidth,
+              desiredLogoHeight
+            );
+            logoBottom = logoY + desiredLogoHeight;
+          } else {
+            doc.setFontSize(18);
+            doc.setTextColor(...(hasLetterhead ? primaryRgb : ([255, 255, 255] as [number, number, number])));
+            doc.setFont('helvetica', 'bold');
+            doc.text('AFIRME PLAY', centerX, hasLetterhead ? 30 : 22, { align: 'center' });
+            logoBottom = hasLetterhead ? 36 : 28;
+          }
 
-        doc.setFontSize(12);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...primaryRgb);
-        doc.text('Respostas do Questionário Socioeconômico', centerX, y, { align: 'center' });
-        doc.setTextColor(...textDark);
-        y += 8;
+          const titleY = hasLetterhead ? logoBottom + 10 : Math.max(logoBottom + 5, BAND_H - 17);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(17);
+          doc.setTextColor(...(hasLetterhead ? primaryRgb : ([255, 255, 255] as [number, number, number])));
+          doc.text('FORMULÁRIO — RESPOSTAS (ALUNO)', centerX, titleY, { align: 'center' });
+          doc.setFontSize(11);
+          doc.setTextColor(...(hasLetterhead ? textDark : ([255, 255, 255] as [number, number, number])));
+          doc.text('QUESTIONÁRIO SOCIOECONÔMICO', centerX, titleY + 8, { align: 'center' });
+
+          let coverY = hasLetterhead ? titleY + 14 : BAND_H + 13;
+          if (municipioName) {
+            doc.setFontSize(14);
+            doc.setTextColor(...primaryRgb);
+            doc.setFont('helvetica', 'bold');
+            doc.text(municipioName.toUpperCase(), centerX, coverY, { align: 'center' });
+            coverY += 8;
+          }
+          doc.setFontSize(11);
+          doc.setTextColor(...textMuted);
+          doc.setFont('helvetica', 'normal');
+          doc.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, coverY, { align: 'center' });
+          coverY += 14;
+
+          const cardWidth = pageWidth - 80;
+          const cardX = (pageWidth - cardWidth) / 2;
+          const cardHeight = 96;
+          const ACCENT_W = 4;
+          doc.setFillColor(250, 250, 250);
+          doc.rect(cardX, coverY, cardWidth, cardHeight, 'F');
+          doc.setFillColor(...primaryRgb);
+          doc.rect(cardX, coverY, ACCENT_W, cardHeight, 'F');
+          doc.setDrawColor(229, 231, 235);
+          doc.setLineWidth(0.4);
+          doc.rect(cardX, coverY, cardWidth, cardHeight, 'S');
+
+          let cardY = coverY + 12;
+          const cardContentCenterX = cardX + ACCENT_W + (cardWidth - ACCENT_W) / 2;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(13);
+          doc.setTextColor(...primaryRgb);
+          doc.text('INFORMAÇÕES DO RELATÓRIO', cardContentCenterX, cardY, { align: 'center' });
+          cardY += 6;
+          doc.setDrawColor(229, 231, 235);
+          doc.setLineWidth(0.3);
+          doc.line(cardX + ACCENT_W + 4, cardY, cardX + cardWidth - 4, cardY);
+          cardY += 8;
+
+          const rows: Array<{ label: string; value: string }> = [
+            { label: 'MUNICÍPIO:', value: municipioName || 'N/A' },
+            { label: 'ESCOLA:', value: escolaName || 'N/A' },
+            { label: 'SÉRIE:', value: serieName || 'N/A' },
+            { label: 'FORMULÁRIO:', value: formTitle || 'N/A' },
+            { label: 'ALUNO:', value: alunoName || 'N/A' },
+          ];
+          if (turmaName) rows.splice(3, 0, { label: 'TURMA:', value: turmaName });
+
+          const leftColX = cardX + ACCENT_W + 15;
+          const labelWidth = 50;
+          const valueMaxWidth = cardWidth - labelWidth - 30;
+          doc.setFontSize(9);
+          for (const row of rows) {
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(...primaryRgb);
+            doc.text(row.label, leftColX, cardY);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(...textDark);
+            const lines = doc.splitTextToSize(row.value, valueMaxWidth);
+            doc.text(lines, leftColX + labelWidth, cardY);
+            cardY += Math.max(7, lines.length * 5);
+          }
+        };
+
+        const drawInternalHeader = (title: string): number => {
+          const BAND_H = 20;
+          doc.setFillColor(...primaryRgb);
+          doc.rect(0, 0, pageWidth, BAND_H, 'F');
+          if (icoAsset?.dataUrl && icoAsset.iw > 0 && icoAsset.ih > 0) {
+            const icoH = 14;
+            const icoW = (icoAsset.iw * icoH) / icoAsset.ih;
+            doc.addImage(icoAsset.dataUrl, 'PNG', margin, (BAND_H - icoH) / 2, icoW, icoH);
+          } else {
+            doc.setFontSize(8);
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'bold');
+            doc.text('AFIRME PLAY', margin, BAND_H / 2 + 2);
+          }
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11);
+          doc.setTextColor(255, 255, 255);
+          doc.text(title, pageWidth - margin, BAND_H / 2 + 2, { align: 'right' });
+          return BAND_H + 10;
+        };
+
+        drawCover();
+        doc.addPage();
+        let y = drawInternalHeader('FORMULÁRIO — RESPOSTAS (ALUNO)');
 
         const ensureSpace = (heightNeeded: number) => {
           if (y + heightNeeded > pageHeight - margin) {
             doc.addPage();
-            y = margin;
+            y = drawInternalHeader('FORMULÁRIO — RESPOSTAS (ALUNO)');
           }
         };
 
@@ -792,11 +889,12 @@ const FormRespostasReport = () => {
       if (branding.letterhead) {
         paintLetterheadBackground(doc, branding.letterhead, pageWidth, pageHeight);
       }
-      let y = margin;
-      y = await drawReportHeaderLogoWithFallback(doc, pageWidth, y, branding.logo);
-
+      const hasLetterhead = Boolean(branding.letterhead);
+      const icoAsset = await urlToPngAsset('/AFIRME-PLAY-ico.png');
+      const logoAsset = await urlToPngAsset('/LOGO-1.png');
       const primaryRgb: [number, number, number] = [124, 58, 237];
       const textDark: [number, number, number] = [31, 41, 55];
+      const textMuted: [number, number, number] = [107, 114, 128];
 
       const municipioName =
         municipalities.find((m) => m.id === selectedMunicipality)?.name || selectedMunicipality || '';
@@ -823,45 +921,138 @@ const FormRespostasReport = () => {
               .filter(Boolean)
               .join(', ') || '—';
 
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.setTextColor(...textDark);
-      if (municipioName) {
-        doc.text(`Município: ${municipioName}`, centerX, y, { align: 'center' });
-        y += 6;
-      }
-      doc.text(`Escola(s): ${escolaNames}`, centerX, y, { align: 'center' });
-      y += 5;
-      doc.text(`Formulário: ${formTitle}`, centerX, y, { align: 'center' });
-      y += 5;
-      doc.text(`Série(s): ${serieNames}`, centerX, y, { align: 'center' });
-      y += 5;
-      doc.text(`Turma(s): ${turmaNames}`, centerX, y, { align: 'center' });
-      y += 10;
+      const drawCover = () => {
+        const BAND_H = 58;
+        if (!hasLetterhead) {
+          doc.setFillColor(255, 255, 255);
+          doc.rect(0, 0, pageWidth, pageHeight, 'F');
+          doc.setFillColor(...primaryRgb);
+          doc.rect(0, 0, pageWidth, BAND_H, 'F');
+        }
 
-      doc.setFontSize(12);
-      doc.setTextColor(...primaryRgb);
-      doc.text('Resultados do Questionário Socioeconômico', centerX, y, { align: 'center' });
-      doc.setTextColor(...textDark);
-      y += 8;
+        let logoBottom = 0;
+        if (logoAsset?.dataUrl && logoAsset.iw > 0 && logoAsset.ih > 0) {
+          const desiredLogoWidth = 38;
+          const desiredLogoHeight = (logoAsset.ih * desiredLogoWidth) / logoAsset.iw;
+          const logoY = hasLetterhead ? 18 : 7;
+          doc.addImage(
+            logoAsset.dataUrl,
+            'PNG',
+            centerX - desiredLogoWidth / 2,
+            logoY,
+            desiredLogoWidth,
+            desiredLogoHeight
+          );
+          logoBottom = logoY + desiredLogoHeight;
+        } else {
+          doc.setFontSize(18);
+          doc.setTextColor(...(hasLetterhead ? primaryRgb : ([255, 255, 255] as [number, number, number])));
+          doc.setFont('helvetica', 'bold');
+          doc.text('AFIRME PLAY', centerX, hasLetterhead ? 30 : 22, { align: 'center' });
+          logoBottom = hasLetterhead ? 36 : 28;
+        }
 
-      if (reportData.totalRespostas != null) {
+        const titleY = hasLetterhead ? logoBottom + 10 : Math.max(logoBottom + 5, BAND_H - 17);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(17);
+        doc.setTextColor(...(hasLetterhead ? primaryRgb : ([255, 255, 255] as [number, number, number])));
+        doc.text('FORMULÁRIO — RESULTADOS', centerX, titleY, { align: 'center' });
+        doc.setFontSize(11);
+        doc.setTextColor(...(hasLetterhead ? textDark : ([255, 255, 255] as [number, number, number])));
+        doc.text('QUESTIONÁRIO SOCIOECONÔMICO', centerX, titleY + 8, { align: 'center' });
+
+        let coverY = hasLetterhead ? titleY + 14 : BAND_H + 13;
+        if (municipioName) {
+          doc.setFontSize(14);
+          doc.setTextColor(...primaryRgb);
+          doc.setFont('helvetica', 'bold');
+          doc.text(municipioName.toUpperCase(), centerX, coverY, { align: 'center' });
+          coverY += 8;
+        }
+        doc.setFontSize(11);
+        doc.setTextColor(...textMuted);
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
-        doc.text(
-          `Total de respostas: ${reportData.totalRespostas}`,
-          centerX,
-          y,
-          { align: 'center' }
-        );
-        y += 6;
-      }
+        doc.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, coverY, { align: 'center' });
+        coverY += 14;
+
+        const cardWidth = pageWidth - 80;
+        const cardX = (pageWidth - cardWidth) / 2;
+        const cardHeight = 98;
+        const ACCENT_W = 4;
+        doc.setFillColor(250, 250, 250);
+        doc.rect(cardX, coverY, cardWidth, cardHeight, 'F');
+        doc.setFillColor(...primaryRgb);
+        doc.rect(cardX, coverY, ACCENT_W, cardHeight, 'F');
+        doc.setDrawColor(229, 231, 235);
+        doc.setLineWidth(0.4);
+        doc.rect(cardX, coverY, cardWidth, cardHeight, 'S');
+
+        let cardY = coverY + 12;
+        const cardContentCenterX = cardX + ACCENT_W + (cardWidth - ACCENT_W) / 2;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(13);
+        doc.setTextColor(...primaryRgb);
+        doc.text('INFORMAÇÕES DO RELATÓRIO', cardContentCenterX, cardY, { align: 'center' });
+        cardY += 6;
+        doc.setDrawColor(229, 231, 235);
+        doc.setLineWidth(0.3);
+        doc.line(cardX + ACCENT_W + 4, cardY, cardX + cardWidth - 4, cardY);
+        cardY += 8;
+
+        const rows: Array<{ label: string; value: string }> = [
+          { label: 'MUNICÍPIO:', value: municipioName || 'N/A' },
+          { label: 'ESCOLA(S):', value: escolaNames || '—' },
+          { label: 'FORMULÁRIO:', value: formTitle || 'N/A' },
+          { label: 'SÉRIE(S):', value: serieNames || '—' },
+          { label: 'TURMA(S):', value: turmaNames || '—' },
+          { label: 'TOTAL RESPOSTAS:', value: String(reportData.totalRespostas ?? 0) },
+        ];
+        const leftColX = cardX + ACCENT_W + 15;
+        const labelWidth = 54;
+        const valueMaxWidth = cardWidth - labelWidth - 30;
+        doc.setFontSize(9);
+        for (const row of rows) {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...primaryRgb);
+          doc.text(row.label, leftColX, cardY);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...textDark);
+          const lines = doc.splitTextToSize(row.value, valueMaxWidth);
+          doc.text(lines, leftColX + labelWidth, cardY);
+          cardY += Math.max(7, lines.length * 5);
+        }
+      };
+
+      const drawInternalHeader = (title: string): number => {
+        const BAND_H = 20;
+        doc.setFillColor(...primaryRgb);
+        doc.rect(0, 0, pageWidth, BAND_H, 'F');
+        if (icoAsset?.dataUrl && icoAsset.iw > 0 && icoAsset.ih > 0) {
+          const icoH = 14;
+          const icoW = (icoAsset.iw * icoH) / icoAsset.ih;
+          doc.addImage(icoAsset.dataUrl, 'PNG', margin, (BAND_H - icoH) / 2, icoW, icoH);
+        } else {
+          doc.setFontSize(8);
+          doc.setTextColor(255, 255, 255);
+          doc.setFont('helvetica', 'bold');
+          doc.text('AFIRME PLAY', margin, BAND_H / 2 + 2);
+        }
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(255, 255, 255);
+        doc.text(title, pageWidth - margin, BAND_H / 2 + 2, { align: 'right' });
+        return BAND_H + 10;
+      };
+
+      drawCover();
+      doc.addPage();
+      let y = drawInternalHeader('FORMULÁRIO — RESULTADOS');
 
       // Páginas seguintes: uma seção por questão (mesmo estilo da tela)
       const ensureSpace = (heightNeeded: number) => {
         if (y + heightNeeded > pageHeight - margin) {
           doc.addPage();
-          y = margin;
+          y = drawInternalHeader('FORMULÁRIO — RESULTADOS');
         }
       };
 

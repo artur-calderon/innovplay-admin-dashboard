@@ -42,6 +42,7 @@ import type { Question, TestData } from '@/types/evaluation-types';
 import {
   loadCityBrandingPdfAssets,
   paintLetterheadBackground,
+  urlToPngAsset,
 } from '@/utils/pdfCityBranding';
 
 // --- Tipos da API de resultados ---
@@ -755,7 +756,7 @@ const InseSaebReport = () => {
             return;
           }
           try {
-            const logoPath = '/LOGO-1-menor.png';
+            const logoPath = '/LOGO-1.png';
             const logoResponse = await fetch(logoPath);
             const logoBlob = await logoResponse.blob();
             const logoDataUrl = await new Promise<string>((resolve, reject) => {
@@ -1128,13 +1129,147 @@ const InseSaebReport = () => {
       const textDark: [number, number, number] = [31, 41, 55];
       const textMuted: [number, number, number] = [107, 114, 128];
       const centerX = pageWidth / 2;
-      const logoH = 22;
-      const lineHeight = 9;
-      const titleFontSize = 20;
-      const bodyFontSize = 12;
-      const totalBlockH =
-        logoH + 32 + (titleFontSize * 0.35) + 14 + 3 * lineHeight;
-      let y = (pageHeight - totalBlockH) / 2;
+
+      const icoAsset = await urlToPngAsset('/AFIRME-PLAY-ico.png');
+      const drawCompactHeader = (title: string): number => {
+        const BAND_H = 20;
+        doc.setFillColor(...primaryRgb);
+        doc.rect(0, 0, pageWidth, BAND_H, 'F');
+        if (icoAsset?.dataUrl && icoAsset.iw > 0 && icoAsset.ih > 0) {
+          const icoH = 14;
+          const icoW = (icoAsset.iw * icoH) / icoAsset.ih;
+          doc.addImage(icoAsset.dataUrl, 'PNG', margin, (BAND_H - icoH) / 2, icoW, icoH);
+        } else {
+          doc.setFontSize(8);
+          doc.setTextColor(255, 255, 255);
+          doc.setFont('helvetica', 'bold');
+          doc.text('AFIRME PLAY', margin, BAND_H / 2 + 2);
+        }
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(255, 255, 255);
+        doc.text(title, pageWidth - margin, BAND_H / 2 + 2, { align: 'right' });
+        return BAND_H + 10;
+      };
+      // ===== CAPA (padrão Evoluções) =====
+      const drawCover = async () => {
+        const hasLetterhead = Boolean(inseBrandingFull.letterhead);
+        const BAND_H = 58;
+        if (!hasLetterhead) {
+          doc.setFillColor(255, 255, 255);
+          doc.rect(0, 0, pageWidth, pageHeight, 'F');
+          doc.setFillColor(...primaryRgb);
+          doc.rect(0, 0, pageWidth, BAND_H, 'F');
+        }
+
+        // LOGO-1.png centralizada
+        let logoBottomInBand = 0;
+        const logoAsset = await urlToPngAsset('/LOGO-1.png');
+        if (logoAsset?.dataUrl && logoAsset.iw > 0 && logoAsset.ih > 0) {
+          const desiredLogoWidth = 38;
+          const desiredLogoHeight = (logoAsset.ih * desiredLogoWidth) / logoAsset.iw;
+          doc.addImage(
+            logoAsset.dataUrl,
+            'PNG',
+            centerX - desiredLogoWidth / 2,
+            hasLetterhead ? 18 : 7,
+            desiredLogoWidth,
+            desiredLogoHeight
+          );
+          logoBottomInBand = (hasLetterhead ? 18 : 7) + desiredLogoHeight;
+        } else {
+          doc.setFontSize(18);
+          doc.setTextColor(...(hasLetterhead ? primaryRgb : ([255, 255, 255] as [number, number, number])));
+          doc.setFont('helvetica', 'bold');
+          doc.text('AFIRME PLAY', centerX, hasLetterhead ? 30 : 22, { align: 'center' });
+          logoBottomInBand = hasLetterhead ? 36 : 28;
+        }
+
+        // Título + subtítulo
+        const titleY = hasLetterhead
+          ? logoBottomInBand + 10
+          : Math.max(logoBottomInBand + 5, BAND_H - 17);
+        doc.setTextColor(...(hasLetterhead ? primaryRgb : ([255, 255, 255] as [number, number, number])));
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(17);
+        doc.text('RELATÓRIO INSE x SAEB', centerX, titleY, { align: 'center' });
+        doc.setFontSize(11);
+        doc.setTextColor(...(hasLetterhead ? textDark : ([255, 255, 255] as [number, number, number])));
+        doc.text('ANÁLISE COMPARATIVA DE INDICADORES', centerX, titleY + 8, { align: 'center' });
+
+        // Município / secretaria
+        let y = hasLetterhead ? titleY + 14 : BAND_H + 13;
+        const municipioName = municipalities.find((m) => m.id === selectedMunicipality)?.name ?? 'MUNICÍPIO';
+        const stateLabel = selectedState !== 'all' ? selectedState : '';
+        const locationText = stateLabel
+          ? `${municipioName.toUpperCase()} - ${stateLabel.toUpperCase()}`
+          : municipioName.toUpperCase();
+
+        doc.setFontSize(14);
+        doc.setTextColor(...primaryRgb);
+        doc.setFont('helvetica', 'bold');
+        doc.text(locationText, centerX, y, { align: 'center' });
+
+        y += 8;
+        doc.setFontSize(11);
+        doc.setTextColor(...textMuted);
+        doc.setFont('helvetica', 'normal');
+        doc.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, y, { align: 'center' });
+
+        y += 20;
+
+        // Card com infos (accent bar 4mm)
+        const cardWidth = pageWidth - 80;
+        const cardX = (pageWidth - cardWidth) / 2;
+        const ACCENT_W = 4;
+
+        const cardHeight = 100;
+        doc.setFillColor(250, 250, 250);
+        doc.rect(cardX, y, cardWidth, cardHeight, 'F');
+        doc.setFillColor(...primaryRgb);
+        doc.rect(cardX, y, ACCENT_W, cardHeight, 'F');
+        doc.setDrawColor(229, 231, 235);
+        doc.setLineWidth(0.4);
+        doc.rect(cardX, y, cardWidth, cardHeight, 'S');
+
+        let cardY = y + 12;
+        const cardContentCenterX = cardX + ACCENT_W + (cardWidth - ACCENT_W) / 2;
+        doc.setFontSize(13);
+        doc.setTextColor(...primaryRgb);
+        doc.setFont('helvetica', 'bold');
+        doc.text('INFORMAÇÕES DO RELATÓRIO', cardContentCenterX, cardY, { align: 'center' });
+
+        cardY += 6;
+        doc.setDrawColor(229, 231, 235);
+        doc.setLineWidth(0.3);
+        doc.line(cardX + ACCENT_W + 4, cardY, cardX + cardWidth - 4, cardY);
+        cardY += 8;
+
+        doc.setFontSize(9);
+        const leftColX = cardX + ACCENT_W + 15;
+        const labelWidth = 48;
+        const valueMaxWidth = cardWidth - labelWidth - 30;
+
+        const rows: Array<{ label: string; value: string | undefined }> = [
+          { label: 'MUNICÍPIO:', value: municipioName || undefined },
+          { label: 'FORMULÁRIO:', value: reportData.formTitle || undefined },
+          { label: 'AVALIAÇÃO:', value: reportData.avaliacaoTitulo || undefined },
+          { label: 'ESCOLAS:', value: selectedSchools?.length ? `${selectedSchools.length} escolas` : undefined },
+        ];
+
+        for (const row of rows) {
+          if (!row.value) continue;
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...primaryRgb);
+          doc.text(row.label, leftColX, cardY);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...textDark);
+          const lines = doc.splitTextToSize(String(row.value), valueMaxWidth);
+          doc.text(lines, leftColX + labelWidth, cardY);
+          cardY += Math.max(7, lines.length * 5);
+        }
+      };
+      await drawCover();
 
       const resumo = reportData.resumo;
       const distInse = reportData.distribuicao_inse ?? {};
@@ -1143,75 +1278,14 @@ const InseSaebReport = () => {
       const alunosData = reportData.alunos?.data ?? [];
       const pagination = reportData.alunos?.pagination;
 
+      doc.addPage();
+      let y = drawCompactHeader('RELATÓRIO INSE x SAEB');
       const ensureSpace = (heightNeeded: number) => {
         if (y + heightNeeded > pageHeight - margin) {
           doc.addPage();
-          y = margin;
+          y = drawCompactHeader('RELATÓRIO INSE x SAEB');
         }
       };
-
-      if (inseBrandingFull.logo) {
-        const lw = 50;
-        const lhRaw = (inseBrandingFull.logo.ih / inseBrandingFull.logo.iw) * lw;
-        const lh = Math.min(lhRaw, logoH);
-        const lw2 = lhRaw > logoH ? (inseBrandingFull.logo.iw / inseBrandingFull.logo.ih) * lh : lw;
-        doc.addImage(
-          inseBrandingFull.logo.dataUrl,
-          'PNG',
-          (pageWidth - lw2) / 2,
-          y,
-          lw2,
-          lh
-        );
-        y += lh + 28;
-      } else {
-        try {
-          const logoPath = '/LOGO-1-menor.png';
-          const logoResponse = await fetch(logoPath);
-          const logoBlob = await logoResponse.blob();
-          const logoDataUrl = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(logoBlob);
-          });
-          doc.addImage(logoDataUrl, 'PNG', (pageWidth - 50) / 2, y, 50, logoH);
-          y += logoH + 28;
-        } catch {
-          y += logoH + 28;
-        }
-      }
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(titleFontSize);
-      doc.setTextColor(...primaryRgb);
-      doc.text('Relatório INSE x SAEB', centerX, y, { align: 'center' });
-      y += 14;
-      doc.setFontSize(bodyFontSize);
-      doc.setTextColor(...textDark);
-      const municipioName =
-        municipalities.find((m) => m.id === selectedMunicipality)?.name ?? '';
-      const lines: { label: string; value: string } = [
-        { label: 'Município: ', value: municipioName },
-        { label: 'Formulário: ', value: reportData.formTitle },
-        { label: 'Avaliação: ', value: reportData.avaliacaoTitulo },
-      ];
-      lines.forEach(({ label, value }) => {
-        if (!value) return;
-        doc.setFont('helvetica', 'bold');
-        const labelW = doc.getTextWidth(label);
-        doc.setFont('helvetica', 'normal');
-        const valueW = doc.getTextWidth(value);
-        const totalW = labelW + valueW;
-        const startX = centerX - totalW / 2;
-        doc.setFont('helvetica', 'bold');
-        doc.text(label, startX, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(value, startX + labelW, y);
-        y += lineHeight;
-      });
-
-      doc.addPage();
-      y = margin;
 
       // --- Sessão geral ---
       doc.setFont('helvetica', 'bold');
@@ -1465,7 +1539,7 @@ const InseSaebReport = () => {
 
       // --- Tabela INSE x SAEB ---
       doc.addPage();
-      y = margin;
+      y = drawCompactHeader('RELATÓRIO INSE x SAEB');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(18);
       doc.setTextColor(...primaryRgb);

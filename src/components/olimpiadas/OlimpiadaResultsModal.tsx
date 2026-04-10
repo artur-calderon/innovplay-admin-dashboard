@@ -14,7 +14,7 @@ import { DisciplineTables } from '@/components/evaluations/results/DisciplineTab
 import { ClassStatistics } from '@/components/evaluations/results/ClassStatistics';
 import { StudentRanking } from '@/components/evaluations/student/StudentRanking';
 import type { NovaRespostaAPI } from '@/services/evaluation/evaluationResultsApi';
-import { loadLogoAssetForLandscapePdf } from '@/utils/pdfCityBranding';
+import { loadLogoAssetForLandscapePdf, urlToPngAsset } from '@/utils/pdfCityBranding';
 
 interface OlimpiadaResultsModalProps {
   isOpen: boolean;
@@ -628,6 +628,17 @@ export function OlimpiadaResultsModal({
         logoHeight = logoLand.ih;
       }
 
+      // Ícone usado nos cabeçalhos internos (faixa compacta)
+      let icoDataUrl = '';
+      let icoWidth = 0;
+      let icoHeight = 0;
+      const icoAsset = await urlToPngAsset('/AFIRME-PLAY-ico.png');
+      if (icoAsset) {
+        icoDataUrl = icoAsset.dataUrl;
+        icoWidth = icoAsset.iw;
+        icoHeight = icoAsset.ih;
+      }
+
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
       let pageWidth = doc.internal.pageSize.getWidth();
       let pageHeight = doc.internal.pageSize.getHeight();
@@ -650,125 +661,113 @@ export function OlimpiadaResultsModal({
         doc.setFillColor(...COLORS.white);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
         const centerX = pageWidth / 2;
-        let y = 20;
+        const BAND_H = 58;
 
+        // Faixa superior roxa
+        doc.setFillColor(...COLORS.primary);
+        doc.rect(0, 0, pageWidth, BAND_H, 'F');
+
+        // Logo na faixa
+        let logoBottomInBand = 0;
         if (logoDataUrl && logoWidth > 0 && logoHeight > 0) {
-          const desiredLogoWidth = 50;
+          const desiredLogoWidth = 38;
           const desiredLogoHeight = (logoHeight * desiredLogoWidth) / logoWidth;
-          doc.addImage(logoDataUrl, 'PNG', centerX - desiredLogoWidth / 2, y, desiredLogoWidth, desiredLogoHeight);
-          y += desiredLogoHeight + 8;
+          doc.addImage(logoDataUrl, 'PNG', centerX - desiredLogoWidth / 2, 7, desiredLogoWidth, desiredLogoHeight);
+          logoBottomInBand = 7 + desiredLogoHeight;
         } else {
-          doc.setFontSize(20);
-          doc.setTextColor(...COLORS.primary);
+          doc.setFontSize(18);
+          doc.setTextColor(...COLORS.white);
           doc.setFont('helvetica', 'bold');
-          doc.text('AFIRME PLAY', centerX, y, { align: 'center' });
-          y += 15;
+          doc.text('AFIRME PLAY', centerX, 22, { align: 'center' });
+          logoBottomInBand = 28;
         }
-        y += 8;
 
-        doc.setFontSize(14);
+        // Títulos na faixa
+        const titleY = Math.max(logoBottomInBand + 5, BAND_H - 17);
+        doc.setTextColor(...COLORS.white);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(17);
+        doc.text('RELATÓRIO DE RESULTADOS', centerX, titleY, { align: 'center' });
+        doc.setFontSize(11);
+        doc.text('OLIMPÍADA', centerX, titleY + 8, { align: 'center' });
+
+        let y = BAND_H + 13;
+
+        // Município e secretaria
+        doc.setFontSize(13);
         doc.setTextColor(...COLORS.primary);
         doc.setFont('helvetica', 'bold');
         doc.text(`${(evaluationInfo.municipio || 'MUNICÍPIO').toUpperCase()} - ALAGOAS`, centerX, y, { align: 'center' });
-        y += 8;
-        doc.setFontSize(11);
+        y += 7;
+        doc.setFontSize(10);
         doc.setTextColor(...COLORS.textGray);
         doc.setFont('helvetica', 'normal');
         doc.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, y, { align: 'center' });
-        y += 18;
+        y += 13;
 
-        doc.setFontSize(24);
-        doc.setTextColor(...COLORS.textDark);
-        doc.setFont('helvetica', 'bold');
-        doc.text('RELATÓRIO DE RESULTADOS', centerX, y, { align: 'center' });
-        y += 12;
-        doc.setFontSize(18);
-        doc.text('OLIMPÍADA', centerX, y, { align: 'center' });
-        y += 20;
-
+        // Card com acento lateral
         const cardWidth = pageWidth - 120;
-        const cardHeight = 72;
+        const ACCENT_W = 4;
+        const inset = 10;
+        const labelWidth = 38;
+        const vMaxW = cardWidth - ACCENT_W - inset * 2 - labelWidth;
+        const ROW_H = 5.5;
+        doc.setFontSize(8);
+
+        const avLines = doc.splitTextToSize(evaluationInfo.titulo || 'N/A', vMaxW);
+        const discLines = doc.splitTextToSize(evaluationInfo.disciplinas?.join(', ') || 'N/A', vMaxW);
+        const escolaLines = evaluationInfo.escola ? doc.splitTextToSize(trunc(evaluationInfo.escola, 80), vMaxW) : ['N/A'];
+
+        const fieldRows: Array<{ label: string; lines: string[] }> = [
+          { label: 'AVALIAÇÃO:', lines: avLines },
+          { label: 'DISCIPLINAS:', lines: discLines },
+        ];
+        if (evaluationInfo.serie) fieldRows.push({ label: 'SÉRIE:', lines: [evaluationInfo.serie] });
+        fieldRows.push({ label: 'MUNICÍPIO:', lines: [evaluationInfo.municipio || 'N/A'] });
+        if (evaluationInfo.escola) fieldRows.push({ label: 'ESCOLA:', lines: escolaLines });
+        fieldRows.push({ label: 'DATA:', lines: [new Date().toLocaleDateString('pt-BR')] });
+        fieldRows.push({ label: 'TOTAL DE ALUNOS:', lines: [String(evaluationInfo.total_alunos ?? 0)] });
+        fieldRows.push({ label: 'PARTICIPANTES:', lines: [String(evaluationInfo.alunos_participantes ?? 0)] });
+
+        const CARD_TITLE_H = 14;
+        const cardContentH = fieldRows.reduce((sum, f) => sum + Math.max(ROW_H, f.lines.length * (ROW_H - 0.5)), 0);
+        const cardHeight = CARD_TITLE_H + cardContentH + 10;
         const cardX = (pageWidth - cardWidth) / 2;
-        if (y + cardHeight > pageHeight - 20) y = pageHeight - cardHeight - 20;
+        const maxCardY = pageHeight - cardHeight - 12;
+        if (y > maxCardY) y = maxCardY;
 
         doc.setFillColor(...COLORS.bgLight);
         doc.rect(cardX, y, cardWidth, cardHeight, 'F');
+        doc.setFillColor(...COLORS.primary);
+        doc.rect(cardX, y, ACCENT_W, cardHeight, 'F');
         doc.setDrawColor(...COLORS.borderLight);
-        doc.setLineWidth(0.5);
+        doc.setLineWidth(0.4);
         doc.rect(cardX, y, cardWidth, cardHeight, 'S');
 
-        let cardY = y + 9;
-        doc.setFontSize(11);
+        let cardY = y + 8;
+        const cardContentCenterX = cardX + ACCENT_W + (cardWidth - ACCENT_W) / 2;
+        doc.setFontSize(10);
         doc.setTextColor(...COLORS.primary);
         doc.setFont('helvetica', 'bold');
-        doc.text('INFORMAÇÕES DA OLIMPÍADA', centerX, cardY, { align: 'center' });
-        cardY += 9;
+        doc.text('INFORMAÇÕES DA OLIMPÍADA', cardContentCenterX, cardY, { align: 'center' });
+        cardY += 6;
+        doc.setDrawColor(...COLORS.borderLight);
+        doc.setLineWidth(0.3);
+        doc.line(cardX + ACCENT_W + 4, cardY, cardX + cardWidth - 4, cardY);
+        cardY += 4;
 
-        const leftColX = cardX + 12;
-        const labelWidth = 38;
         doc.setFontSize(8);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary);
-        doc.text('AVALIAÇÃO:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        const avLines = doc.splitTextToSize(evaluationInfo.titulo || 'N/A', cardWidth - labelWidth - 24);
-        doc.text(avLines, leftColX + labelWidth, cardY);
-        cardY += Math.max(5, avLines.length * 4);
-
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary);
-        doc.text('DISCIPLINAS:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        doc.text(evaluationInfo.disciplinas?.join(', ') || 'N/A', leftColX + labelWidth, cardY);
-        cardY += 5;
-
-        if (evaluationInfo.serie) {
+        const lx = cardX + ACCENT_W + inset;
+        const vx = lx + labelWidth;
+        for (const field of fieldRows) {
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(...COLORS.primary);
-          doc.text('SÉRIE:', leftColX, cardY);
+          doc.text(field.label, lx, cardY);
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(...COLORS.textDark);
-          doc.text(evaluationInfo.serie, leftColX + labelWidth, cardY);
-          cardY += 5;
+          doc.text(field.lines, vx, cardY);
+          cardY += Math.max(ROW_H, field.lines.length * (ROW_H - 0.5));
         }
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary);
-        doc.text('MUNICÍPIO:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        doc.text(evaluationInfo.municipio || 'N/A', leftColX + labelWidth, cardY);
-        cardY += 5;
-        if (evaluationInfo.escola) {
-          doc.setFont('helvetica', 'bold');
-          doc.setTextColor(...COLORS.primary);
-          doc.text('ESCOLA:', leftColX, cardY);
-          doc.setFont('helvetica', 'normal');
-          doc.setTextColor(...COLORS.textDark);
-          doc.text(trunc(evaluationInfo.escola, 50), leftColX + labelWidth, cardY);
-          cardY += 5;
-        }
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary);
-        doc.text('DATA:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        doc.text(new Date().toLocaleDateString('pt-BR'), leftColX + labelWidth, cardY);
-        cardY += 5;
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary);
-        doc.text('TOTAL DE ALUNOS:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        doc.text(String(evaluationInfo.total_alunos ?? 0), leftColX + labelWidth, cardY);
-        cardY += 5;
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary);
-        doc.text('PARTICIPANTES:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        doc.text(String(evaluationInfo.alunos_participantes ?? 0), leftColX + labelWidth, cardY);
       };
 
       addInitialCover();
@@ -795,20 +794,38 @@ export function OlimpiadaResultsModal({
         doc.text(dateTimeStr, pageWidth - margin, footerY, { align: 'right' });
       };
 
-      // Cabeçalho da página de conteúdo
-      const contentTop = 35;
+      // Cabeçalho da página de conteúdo (faixa compacta + ícone)
+      const BAND_H = 20;
+      doc.setFillColor(...COLORS.primary);
+      doc.rect(0, 0, pageWidth, BAND_H, 'F');
+      if (icoDataUrl && icoWidth > 0 && icoHeight > 0) {
+        const icoH = 14;
+        const icoW = (icoWidth * icoH) / icoHeight;
+        doc.addImage(icoDataUrl, 'PNG', margin, (BAND_H - icoH) / 2, icoW, icoH);
+      } else {
+        doc.setFontSize(8);
+        doc.setTextColor(...COLORS.white);
+        doc.setFont('helvetica', 'bold');
+        doc.text('AFIRME PLAY', margin, BAND_H / 2 + 2);
+      }
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(...COLORS.white);
+      doc.text('RESULTADOS DA OLIMPÍADA', pageWidth - margin, BAND_H / 2 + 2, { align: 'right' });
+
+      const contentTop = BAND_H + 15;
       let y = contentTop;
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(13);
-      doc.setTextColor(...COLORS.textDark);
-      doc.text(`PREFEITURA DE ${(evaluationInfo.municipio || 'MUNICÍPIO').toUpperCase()}`, pageWidth / 2, 18, { align: 'center' });
-      doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
+      doc.setTextColor(...COLORS.textDark);
+      doc.text(`PREFEITURA DE ${(evaluationInfo.municipio || 'MUNICÍPIO').toUpperCase()}`, pageWidth / 2, BAND_H + 8, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
       doc.setTextColor(...COLORS.textGray);
-      doc.text(`Resultados da Olimpíada — ${trunc(evaluationInfo.titulo || 'Relatório', 60)}`, pageWidth / 2, 26, { align: 'center' });
+      doc.text(`Resultados da Olimpíada — ${trunc(evaluationInfo.titulo || 'Relatório', 60)}`, pageWidth / 2, BAND_H + 14, { align: 'center' });
       doc.setDrawColor(...COLORS.borderLight);
       doc.setLineWidth(0.3);
-      doc.line(margin, 30, pageWidth - margin, 30);
+      doc.line(margin, BAND_H + 17, pageWidth - margin, BAND_H + 17);
 
       const dist = apiData.estatisticas_gerais?.distribuicao_classificacao_geral ?? apiData.estatisticas_gerais?.distribuicao_classificacao ?? {};
       const totalPart = evaluationInfo.alunos_participantes || 1;
@@ -843,7 +860,26 @@ export function OlimpiadaResultsModal({
         doc.addPage('landscape');
         pageWidth = doc.internal.pageSize.getWidth();
         pageHeight = doc.internal.pageSize.getHeight();
-        y = margin + 10;
+        // Repetir cabeçalho compacto na nova página
+        const BAND_H2 = 20;
+        doc.setFillColor(...COLORS.primary);
+        doc.rect(0, 0, pageWidth, BAND_H2, 'F');
+        if (icoDataUrl && icoWidth > 0 && icoHeight > 0) {
+          const icoH = 14;
+          const icoW = (icoWidth * icoH) / icoHeight;
+          doc.addImage(icoDataUrl, 'PNG', margin, (BAND_H2 - icoH) / 2, icoW, icoH);
+        } else {
+          doc.setFontSize(8);
+          doc.setTextColor(...COLORS.white);
+          doc.setFont('helvetica', 'bold');
+          doc.text('AFIRME PLAY', margin, BAND_H2 / 2 + 2);
+        }
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(...COLORS.white);
+        doc.text('RESULTADOS DA OLIMPÍADA', pageWidth - margin, BAND_H2 / 2 + 2, { align: 'right' });
+
+        y = BAND_H2 + 15;
       }
 
       doc.setFontSize(12);

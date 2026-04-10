@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { loadLogoAssetForLandscapePdf, urlToPngAsset } from "@/utils/pdfCityBranding";
 import { 
   ArrowLeft, 
   Download, 
@@ -215,48 +216,203 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
       const { default: autoTable } = await import('jspdf-autotable');
       
       if (!evaluationResult) return;
-      
-      const pdf = new jsPDF();
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageWidth = pdf.internal.pageSize.getWidth();
-      let y = 20;
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 15;
 
-      // Título
-      pdf.setFontSize(22);
-      pdf.setTextColor(40, 60, 120);
-      pdf.text('Relatório da Avaliação', pageWidth / 2, y, { align: 'center' });
-      y += 12;
-      pdf.setDrawColor(40, 60, 120);
-      pdf.setLineWidth(1);
-      pdf.line(20, y, pageWidth - 20, y);
-      y += 8;
+      const COLORS = {
+        primary: [124, 62, 237] as [number, number, number],
+        textDark: [31, 41, 55] as [number, number, number],
+        textGray: [107, 114, 128] as [number, number, number],
+        borderLight: [229, 231, 235] as [number, number, number],
+        bgLight: [250, 250, 250] as [number, number, number],
+        white: [255, 255, 255] as [number, number, number],
+      };
 
-      // Dados da avaliação
-      pdf.setFontSize(14);
-      pdf.setTextColor(0, 0, 0);
-      pdf.text(`Avaliação: ${evaluationResult.name}`, 20, y);
-      y += 8;
-      pdf.setFontSize(12);
-      pdf.text(`Município: ${evaluationResult.municipality}`, 20, y);
-      pdf.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, pageWidth - 20, y, { align: 'right' });
-      y += 8;
-      pdf.text(`Total de Alunos: ${evaluationResult.totalStudents}`, 20, y);
-      pdf.text(`Participantes: ${evaluationResult.completedStudents}`, pageWidth - 20, y, { align: 'right' });
-      y += 8;
-      pdf.text(`Média Geral: ${evaluationResult.averageScore.toFixed(1)}`, 20, y);
-      pdf.text(`Proficiência Média: ${evaluationResult.averageProficiency}`, pageWidth - 20, y, { align: 'right' });
-      y += 8;
-      pdf.setDrawColor(200, 200, 200);
-      pdf.setLineWidth(0.5);
-      pdf.line(20, y, pageWidth - 20, y);
-      y += 8;
+      const brandingCityId = evaluationResult.municipality || null;
+
+      let logoDataUrl = '';
+      let logoWidth = 0;
+      let logoHeight = 0;
+      const logoAsset = await loadLogoAssetForLandscapePdf(brandingCityId);
+      if (logoAsset) {
+        logoDataUrl = logoAsset.dataUrl;
+        logoWidth = logoAsset.iw;
+        logoHeight = logoAsset.ih;
+      }
+
+      let icoDataUrl = '';
+      let icoWidth = 0;
+      let icoHeight = 0;
+      const icoAsset = await urlToPngAsset('/AFIRME-PLAY-ico.png');
+      if (icoAsset) {
+        icoDataUrl = icoAsset.dataUrl;
+        icoWidth = icoAsset.iw;
+        icoHeight = icoAsset.ih;
+      }
+
+      const addCover = () => {
+        pdf.setFillColor(...COLORS.white);
+        pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+
+        const centerX = pageWidth / 2;
+        const BAND_H = 58;
+        pdf.setFillColor(...COLORS.primary);
+        pdf.rect(0, 0, pageWidth, BAND_H, 'F');
+
+        let logoBottomInBand = 0;
+        if (logoDataUrl && logoWidth > 0 && logoHeight > 0) {
+          const desiredLogoWidth = 38;
+          const desiredLogoHeight = (logoHeight * desiredLogoWidth) / logoWidth;
+          pdf.addImage(logoDataUrl, 'PNG', centerX - desiredLogoWidth / 2, 7, desiredLogoWidth, desiredLogoHeight);
+          logoBottomInBand = 7 + desiredLogoHeight;
+        } else {
+          pdf.setFontSize(18);
+          pdf.setTextColor(...COLORS.white);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text('AFIRME PLAY', centerX, 22, { align: 'center' });
+          logoBottomInBand = 28;
+        }
+
+        const titleY = Math.max(logoBottomInBand + 5, BAND_H - 17);
+        pdf.setTextColor(...COLORS.white);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(17);
+        pdf.text('RELATÓRIO DE AVALIAÇÃO', centerX, titleY, { align: 'center' });
+        pdf.setFontSize(11);
+        pdf.text(String(evaluationResult.name || '').toUpperCase(), centerX, titleY + 8, { align: 'center' });
+
+        let y = BAND_H + 13;
+        pdf.setFontSize(13);
+        pdf.setTextColor(...COLORS.primary);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(`${String(evaluationResult.municipality || 'MUNICÍPIO').toUpperCase()} - ALAGOAS`, centerX, y, { align: 'center' });
+        y += 7;
+        pdf.setFontSize(10);
+        pdf.setTextColor(...COLORS.textGray);
+        pdf.setFont('helvetica', 'normal');
+        pdf.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, y, { align: 'center' });
+        y += 13;
+
+        const cardWidth = pageWidth - 40;
+        const cardX = (pageWidth - cardWidth) / 2;
+        const ACCENT_W = 4;
+        const inset = 10;
+        const labelWidth = 42;
+        const vMaxW = cardWidth - ACCENT_W - inset * 2 - labelWidth;
+        const ROW_H = 5.5;
+
+        pdf.setFontSize(8);
+        const fieldRows: Array<{ label: string; lines: string[] }> = [
+          { label: 'AVALIAÇÃO:', lines: pdf.splitTextToSize(String(evaluationResult.name || 'N/A'), vMaxW) },
+          { label: 'MUNICÍPIO:', lines: [String(evaluationResult.municipality || 'N/A')] },
+          { label: 'DATA:', lines: [new Date().toLocaleDateString('pt-BR')] },
+          { label: 'TOTAL DE ALUNOS:', lines: [String(evaluationResult.totalStudents ?? 0)] },
+          { label: 'PARTICIPANTES:', lines: [String(evaluationResult.completedStudents ?? 0)] },
+        ];
+
+        const CARD_TITLE_H = 14;
+        const cardContentH = fieldRows.reduce((sum, f) => sum + Math.max(ROW_H, f.lines.length * (ROW_H - 0.5)), 0);
+        const cardHeight = CARD_TITLE_H + cardContentH + 10;
+        const maxCardY = pageHeight - cardHeight - 12;
+        if (y > maxCardY) y = maxCardY;
+
+        pdf.setFillColor(...COLORS.bgLight);
+        pdf.rect(cardX, y, cardWidth, cardHeight, 'F');
+        pdf.setFillColor(...COLORS.primary);
+        pdf.rect(cardX, y, ACCENT_W, cardHeight, 'F');
+        pdf.setDrawColor(...COLORS.borderLight);
+        pdf.setLineWidth(0.4);
+        pdf.rect(cardX, y, cardWidth, cardHeight, 'S');
+
+        let cardY = y + 8;
+        const cardContentCenterX = cardX + ACCENT_W + (cardWidth - ACCENT_W) / 2;
+        pdf.setFontSize(10);
+        pdf.setTextColor(...COLORS.primary);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('INFORMAÇÕES DO RELATÓRIO', cardContentCenterX, cardY, { align: 'center' });
+        cardY += 6;
+        pdf.setDrawColor(...COLORS.borderLight);
+        pdf.setLineWidth(0.3);
+        pdf.line(cardX + ACCENT_W + 4, cardY, cardX + cardWidth - 4, cardY);
+        cardY += 4;
+
+        const lx = cardX + ACCENT_W + inset;
+        const vx = lx + labelWidth;
+        for (const field of fieldRows) {
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(...COLORS.primary);
+          pdf.text(field.label, lx, cardY);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setTextColor(...COLORS.textDark);
+          pdf.text(field.lines, vx, cardY);
+          cardY += Math.max(ROW_H, field.lines.length * (ROW_H - 0.5));
+        }
+      };
+
+      const addHeader = (title: string): number => {
+        const BAND_H = 20;
+        pdf.setFillColor(...COLORS.primary);
+        pdf.rect(0, 0, pageWidth, BAND_H, 'F');
+        if (icoDataUrl && icoWidth > 0 && icoHeight > 0) {
+          const icoH = 14;
+          const icoW = (icoWidth * icoH) / icoHeight;
+          pdf.addImage(icoDataUrl, 'PNG', margin, (BAND_H - icoH) / 2, icoW, icoH);
+        } else {
+          pdf.setFontSize(8);
+          pdf.setTextColor(...COLORS.white);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text('AFIRME PLAY', margin, BAND_H / 2 + 2);
+        }
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(11);
+        pdf.setTextColor(...COLORS.white);
+        pdf.text(title, pageWidth - margin, BAND_H / 2 + 2, { align: 'right' });
+
+        let y = BAND_H + 8;
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8.5);
+        pdf.setTextColor(...COLORS.textGray);
+        const meta = `Município: ${evaluationResult.municipality || 'N/A'}  •  Avaliação: ${evaluationResult.name || 'N/A'}`;
+        const metaLines = pdf.splitTextToSize(meta, pageWidth - 2 * margin);
+        metaLines.forEach((ln: string, i: number) => {
+          pdf.text(ln, pageWidth / 2, y + i * 4, { align: 'center' });
+        });
+        y += metaLines.length * 4 + 2;
+        pdf.setDrawColor(...COLORS.borderLight);
+        pdf.setLineWidth(0.3);
+        pdf.line(margin, y, pageWidth - margin, y);
+        y += 5;
+        pdf.setTextColor(...COLORS.textDark);
+        return y;
+      };
+
+      const addFooter = () => {
+        const footerY = pageHeight - 10;
+        pdf.setDrawColor(220, 220, 220);
+        pdf.setLineWidth(0.3);
+        pdf.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
+        pdf.setFontSize(8);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(100, 100, 100);
+        pdf.text('Afirme Play Soluções Educativas', margin, footerY);
+        pdf.text(`Página 2`, pageWidth / 2, footerY, { align: 'center' });
+        pdf.text(new Date().toLocaleString('pt-BR'), pageWidth - margin, footerY, { align: 'right' });
+      };
+
+      addCover();
+      pdf.addPage();
+      let y = addHeader('RELATÓRIO DA AVALIAÇÃO');
 
       // Resumo por nível de proficiência
       pdf.setFontSize(13);
-      pdf.setTextColor(40, 60, 120);
-      pdf.text('Distribuição por Nível de Proficiência', 20, y);
+      pdf.setTextColor(...COLORS.primary);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Distribuição por Nível de Proficiência', margin, y);
       y += 8;
       pdf.setFontSize(11);
-      pdf.setTextColor(0, 0, 0);
+      pdf.setTextColor(...COLORS.textDark);
       
       const distributionData = Object.entries(evaluationResult.distributionByLevel).map(([level, count]) => {
         const percentage = evaluationResult.completedStudents > 0 ? (count / evaluationResult.completedStudents) * 100 : 0;
@@ -275,7 +431,7 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
         startY: y,
         theme: 'grid',
         headStyles: { 
-          fillColor: [40, 60, 120], 
+          fillColor: COLORS.primary, 
           textColor: 255, 
           fontStyle: 'bold', 
           halign: 'center',
@@ -290,15 +446,16 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
           font: 'helvetica', 
           fontSize: 10
         },
-        margin: { left: 20, right: 20 }
+        margin: { left: margin, right: margin }
       });
 
       y = ((pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 15);
 
       // Tabela de alunos
       pdf.setFontSize(13);
-      pdf.setTextColor(40, 60, 120);
-      pdf.text('Desempenho Individual dos Alunos', 20, y);
+      pdf.setTextColor(...COLORS.primary);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Desempenho Individual dos Alunos', margin, y);
       y += 8;
 
       const studentsData = evaluationResult.students.map(student => [
@@ -318,7 +475,7 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
         startY: y,
         theme: 'grid',
         headStyles: { 
-          fillColor: [40, 60, 120], 
+          fillColor: COLORS.primary, 
           textColor: 255, 
           fontStyle: 'bold', 
           halign: 'center',
@@ -343,15 +500,12 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
           6: { halign: 'center', cellWidth: 15 },
           7: { halign: 'center', cellWidth: 20 }
         },
-        margin: { left: 20, right: 20 },
+        margin: { left: margin, right: margin },
         alternateRowStyles: { fillColor: [245, 245, 245] }
       });
 
-      // Rodapé
-      pdf.setFontSize(9);
-      pdf.setTextColor(120, 120, 120);
-      const footerText = `Relatório gerado em ${new Date().toLocaleString('pt-BR')} - ${evaluationResult.name}`;
-      pdf.text(footerText, pageWidth / 2, pdf.internal.pageSize.getHeight() - 10, { align: 'center' });
+      // Rodapé (padrão)
+      addFooter();
 
       const fileName = `relatorio-avaliacao-${evaluationResult.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`;
       pdf.save(fileName);

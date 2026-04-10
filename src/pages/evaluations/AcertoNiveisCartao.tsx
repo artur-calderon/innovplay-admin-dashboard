@@ -20,7 +20,7 @@ import {
   filtrarGabaritosOpcoesSomenteComHabilidadesVinculadas,
   type GabaritoOpcaoFiltrosResults,
 } from "@/utils/answer-sheet/answerSheetRelatorioGabaritoComHabilidades";
-import { loadLogoAssetForLandscapePdf } from "@/utils/pdfCityBranding";
+import { loadLogoAssetForLandscapePdf, urlToPngAsset } from "@/utils/pdfCityBranding";
 import { ResultsPeriodMonthYearPicker } from "@/components/filters";
 import { normalizeResultsPeriodYm } from "@/utils/resultsPeriod";
 
@@ -100,9 +100,11 @@ type TabelaDetalhadaPorDisciplina = {
     nome: string;
     questoes: Array<{
       numero: number;
-      habilidade: string;
-      codigo_habilidade: string;
-      question_id: string;
+      habilidade?: string;
+      codigo_habilidade?: string;
+      question_id?: string;
+      /** Cartão-resposta (API agregada): habilidades vêm em `skills` quando não há campos planos. */
+      skills?: Array<{ id?: string; code?: string }>;
     }>;
     alunos: Array<{
       id?: string;
@@ -309,6 +311,43 @@ function drawProficiencyNivelInPdfCell(
 }
 
 type AnswerSheetSkillRow = { id?: string; code?: string; description?: string };
+
+/** API de tabela detalhada do cartão pode enviar só `{ numero, skills: [{ id, code }] }` (sem codigo_habilidade plano). */
+function resolveTabelaQuestaoHabilidade(q: {
+  numero?: number;
+  habilidade?: string;
+  codigo_habilidade?: string;
+  question_id?: string;
+  skills?: Array<{ id?: string; code?: string }>;
+}): { codigo_habilidade: string; habilidade: string; question_id: string } {
+  const clean = (s?: string) => {
+    const t = (s || '').trim();
+    if (!t || /^n\/a$/i.test(t)) return '';
+    return t;
+  };
+  let codigo_habilidade = clean(q.codigo_habilidade);
+  let habilidade = clean(q.habilidade);
+  let question_id = clean(q.question_id);
+  const skills = Array.isArray(q.skills) ? q.skills : [];
+  for (const s of skills) {
+    const c = clean(s?.code);
+    if (c) {
+      if (!codigo_habilidade) codigo_habilidade = c;
+      if (!habilidade) habilidade = c;
+      break;
+    }
+  }
+  if (!question_id) {
+    for (const s of skills) {
+      const id = clean(s?.id);
+      if (id && !/^n\/a$/i.test(id)) {
+        question_id = id;
+        break;
+      }
+    }
+  }
+  return { codigo_habilidade, habilidade, question_id };
+}
 
 /** Preenche `questoes` vazias com a lista de habilidades da avaliação (cartão-resposta). */
 function enrichTabelaDetalhadaAnswerSheetSkills(
@@ -1069,11 +1108,25 @@ export default function AcertoNiveis({
     periodoYmRelatorio,
   ]);
 
+  /** UUID em `codigo_habilidade` não é habilidade — antes era aceito pelo padrão [A-Z]{2,}\\d+… e estourava o PDF. */
+  const looksLikeUUID = (value?: string) => {
+    if (!value) return false;
+    const v = value.trim();
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)) return true;
+    if (/^[0-9a-f]{32}$/i.test(v)) return true;
+    return false;
+  };
+
   const looksLikeRealSkillCode = (value?: string) => {
     if (!value) return false;
+    if (looksLikeUUID(value)) return false;
     const v = value.trim().toUpperCase();
     // BNCC EFxxXXnn (ex.: EF02MA14, EF12LP01)
     if (/^EF\d+[A-Z]{2,}\d+[A-Z0-9]*$/.test(v)) return true;
+    // Formatos frequentes do dashboard: EF15_D13, D9, D13, LP5A2.1, 5N2.6, SA1.4
+    if (/^EF\d+_[A-Z0-9]+$/.test(v)) return true;
+    if (/^[A-Z]\d+[A-Z0-9._-]*$/.test(v)) return true;
+    if (/^[A-Z]{2,}\d+[A-Z0-9._-]*$/.test(v)) return true;
     // Exemplos aceitos: LP9L1.2, 9N1.2, CN9L1.3, GE9L1.4, 9L1.1, 9S1.2, 9M1.1, 9 L 1.1, 9 N 1.2
     return /^(LP\d+L\d+\.\d+|\d+N\d\.\d+|[A-Z]{2}\d+L\d+\.\d+|\d+[LMSN]\d+\.\d+|\d+\s+[LMSN]\s+\d+\.\d+)$/.test(v);
   };
@@ -2083,17 +2136,18 @@ export default function AcertoNiveis({
     },
     mapping: Record<string, string>
   ): string => {
-    const raw = (questao.codigo_habilidade || '').trim();
-    // 1) Se já parece um código real, retornar
+    let raw = (questao.codigo_habilidade || '').trim();
+    if (/^n\/a$/i.test(raw) || raw === '—' || raw === '-') raw = '';
+    // 1) Se já parece um código real, retornar (UUID nunca — cai no mapeamento/Qn)
     if (looksLikeRealSkillCode(raw)) return raw.toUpperCase();
 
     // 2) Tentar via mapeamento por UUID normalizado
     const idNorm = normalizeUUID(raw);
     if (idNorm && mapping[idNorm]) return mapping[idNorm].toUpperCase();
 
-    // 3) Tentar extrair do texto da habilidade com regex (incluindo novos padrões)
+    // 3) Tentar extrair do texto da habilidade com regex (incluindo BNCC e formatos internos)
     const fromText = (questao.habilidade || '').toUpperCase();
-    const match = fromText.match(/(LP\d+L\d+\.\d+|\d+N\d\.\d+|[A-Z]{2}\d+L\d+\.\d+|\d+[LMSN]\d+\.\d+|\d+\s+[LMSN]\s+\d+\.\d+)/);
+    const match = fromText.match(/(EF\d+[A-Z]{2,}\d+[A-Z0-9]*|EF\d+_[A-Z0-9]+|[A-Z]\d+[A-Z0-9._-]*|[A-Z]{2,}\d+[A-Z0-9._-]*|LP\d+L\d+\.\d+|\d+N\d\.\d+|[A-Z]{2}\d+L\d+\.\d+|\d+[LMSN]\d+\.\d+|\d+\s+[LMSN]\s+\d+\.\d+)/);
     if (match && match[1]) return match[1].toUpperCase();
 
     // 4) Fallback neutro (sem inferir disciplina)
@@ -2203,6 +2257,8 @@ export default function AcertoNiveis({
       }
     }
     try {
+      setIsLoading(true);
+
       // Garantir que a tabela detalhada foi carregada quando possível (evitar requisição extra se já temos allTabelaDetalhada ou tabelaDetalhada)
       const jaTemTabela = tabelaDetalhada ?? allTabelaDetalhada;
       if (
@@ -2213,7 +2269,6 @@ export default function AcertoNiveis({
         selectedEvaluationId
       ) {
         try {
-          setIsLoading(true);
           const resp = await EvaluationResultsApiService.getEvaluationsList(1, 10, {
             estado: selectedState,
             municipio: selectedMunicipality,
@@ -2227,10 +2282,8 @@ export default function AcertoNiveis({
             ? tdResp.tabela_detalhada
             : null;
           setTabelaDetalhada(td);
-        } catch (_) {
-          // silencioso
-        } finally {
-          setIsLoading(false);
+        } catch (e) {
+          console.warn('[AcertoNiveisCartao] Falha ao carregar tabela_detalhada para o PDF', e);
         }
       }
 
@@ -2255,6 +2308,17 @@ export default function AcertoNiveis({
         logoDataUrl = logoLand.dataUrl;
         logoWidth = logoLand.iw;
         logoHeight = logoLand.ih;
+      }
+
+      // Ícone usado nos cabeçalhos internos (addHeader e páginas landscape)
+      let icoDataUrl = '';
+      let icoWidth = 0;
+      let icoHeight = 0;
+      const icoAsset = await urlToPngAsset('/AFIRME-PLAY-ico.png');
+      if (icoAsset) {
+        icoDataUrl = icoAsset.dataUrl;
+        icoWidth = icoAsset.iw;
+        icoHeight = icoAsset.ih;
       }
 
       // Documento começa em landscape para a capa inicial
@@ -2322,285 +2386,237 @@ export default function AcertoNiveis({
 
       // Função para adicionar capa inicial
       const addInitialCover = () => {
-        // Garantir fundo branco limpo - desenhar primeiro e cobrir toda a página
         doc.setFillColor(...COLORS.white);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
-
         const centerX = pageWidth / 2;
-        let y = 20;
+        const BAND_H = 58;
 
-        // Logo AFIRME PLAY (imagem) - mantendo proporção real
+        // Faixa superior roxa
+        doc.setFillColor(...COLORS.primary);
+        doc.rect(0, 0, pageWidth, BAND_H, 'F');
+
+        // Logo na faixa
+        let logoBottomInBand = 0;
         if (logoDataUrl && logoWidth > 0 && logoHeight > 0) {
-          // Largura desejada em mm
-          const desiredLogoWidth = 50;
-          // Calcular altura proporcional baseada nas dimensões reais
+          const desiredLogoWidth = 38;
           const desiredLogoHeight = (logoHeight * desiredLogoWidth) / logoWidth;
-          const logoX = centerX - desiredLogoWidth / 2;
-          doc.addImage(logoDataUrl, 'PNG', logoX, y, desiredLogoWidth, desiredLogoHeight);
-          y += desiredLogoHeight + 8;
+          doc.addImage(logoDataUrl, 'PNG', centerX - desiredLogoWidth / 2, 7, desiredLogoWidth, desiredLogoHeight);
+          logoBottomInBand = 7 + desiredLogoHeight;
         } else {
-          // Fallback: texto "AFIRME PLAY"
-          doc.setFontSize(20);
-          doc.setTextColor(...COLORS.primary);
+          doc.setFontSize(18);
+          doc.setTextColor(...COLORS.white);
           doc.setFont('helvetica', 'bold');
-          doc.text('AFIRME PLAY', centerX, y, { align: 'center' });
-          y += 15;
+          doc.text('AFIRME PLAY', centerX, 22, { align: 'center' });
+          logoBottomInBand = 28;
         }
 
-        y += 8;
-
-        // Município - Estado
-        doc.setFontSize(14);
-        doc.setTextColor(...COLORS.primary); // Roxo institucional
+        // Títulos na faixa
+        const titleY = Math.max(logoBottomInBand + 5, BAND_H - 17);
+        doc.setTextColor(...COLORS.white);
         doc.setFont('helvetica', 'bold');
-        const locationText = `${evaluationInfo.municipio?.toUpperCase() || 'MUNICÍPIO'} - ALAGOAS`;
-        doc.text(locationText, centerX, y, { align: 'center' });
+        doc.setFontSize(17);
+        doc.text('RELATÓRIO DE DESEMPENHO', centerX, titleY, { align: 'center' });
+        doc.setFontSize(11);
+        doc.text('ACERTO E NÍVEIS DE PROFICIÊNCIA', centerX, titleY + 8, { align: 'center' });
 
-        y += 8;
+        let y = BAND_H + 13;
+
+        // Município
+        doc.setFontSize(13);
+        doc.setTextColor(...COLORS.primary);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${evaluationInfo.municipio?.toUpperCase() || 'MUNICÍPIO'} - ALAGOAS`, centerX, y, { align: 'center' });
+        y += 7;
 
         // Secretaria
-        doc.setFontSize(11);
-        doc.setTextColor(...COLORS.textGray); // Cinza
+        doc.setFontSize(10);
+        doc.setTextColor(...COLORS.textGray);
         doc.setFont('helvetica', 'normal');
         doc.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, y, { align: 'center' });
+        y += 13;
 
-        y += 18;
-
-        // Título principal 1
-        doc.setFontSize(24);
-        doc.setTextColor(...COLORS.textDark); // Preto
-        doc.setFont('helvetica', 'bold');
-        doc.text('RELATÓRIO DE DESEMPENHO', centerX, y, { align: 'center' });
-
-        y += 12;
-
-        // Título principal 2
-        doc.setFontSize(18);
-        doc.setTextColor(...COLORS.textDark); // Preto
-        doc.setFont('helvetica', 'bold');
-        doc.text('ACERTO E NÍVEIS DE PROFICIÊNCIA', centerX, y, { align: 'center' });
-
-        y += 20;
-
-        // Card de informações - tamanho reduzido
-        const cardWidth = pageWidth - 120; // Reduzido: mais estreito
-        const cardHeight = 68;
+        // Calcular campos para determinar altura do card
+        const cardWidth = pageWidth - 120;
         const cardX = (pageWidth - cardWidth) / 2;
-
-        // Centralizar verticalmente melhor na página
-        const availableHeight = pageHeight - y - 20;
-        if (cardHeight < availableHeight) {
-          y = (pageHeight - cardHeight) / 2;
-        }
-
-        // Fundo do card
-        doc.setFillColor(...COLORS.bgLight);
-        doc.rect(cardX, y, cardWidth, cardHeight, 'F');
-
-        // Borda do card
-        doc.setDrawColor(...COLORS.borderLight);
-        doc.setLineWidth(0.5);
-        doc.rect(cardX, y, cardWidth, cardHeight, 'S');
-
-        // Conteúdo do card
-        let cardY = y + 9;
-
-        // Título do card
-        doc.setFontSize(11);
-        doc.setTextColor(...COLORS.primary); // Roxo
-        doc.setFont('helvetica', 'bold');
-        doc.text('INFORMAÇÕES DO CARTÃO RESPOSTA', centerX, cardY, { align: 'center' });
-
-        cardY += 9;
-
-        // Informações em formato tabular (label: valor)
+        const ACCENT_W = 4;
+        const inset = 10;
+        const labelWidth = 38;
+        const vMaxW = cardWidth - ACCENT_W - inset * 2 - labelWidth;
+        const ROW_H = 5.5;
         doc.setFontSize(8);
-        doc.setFont('helvetica', 'normal');
+        const avaliacaoLines = doc.splitTextToSize(evaluationInfo.titulo || 'N/A', vMaxW);
+        const escolaLines = doc.splitTextToSize(getPdfEscolaDisplayText().toUpperCase(), vMaxW);
 
-        const leftColX = cardX + 12;
-        const labelWidth = 32; // Espaçamento adequado para evitar sobreposição
-
-        // CARTÃO RESPOSTA
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary); // Labels em roxo
-        doc.text('CARTÃO:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark); // Valores em preto
-        const avaliacaoText = evaluationInfo.titulo || 'N/A';
-        const avaliacaoLines = doc.splitTextToSize(avaliacaoText, cardWidth - labelWidth - 24);
-        doc.text(avaliacaoLines, leftColX + labelWidth, cardY);
-        cardY += Math.max(5, avaliacaoLines.length * 4);
-
-        // MUNICÍPIO
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary);
-        doc.text('MUNICÍPIO:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        doc.text(evaluationInfo.municipio || 'N/A', leftColX + labelWidth, cardY);
-        cardY += 5;
-
-        // ESCOLA
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary);
-        doc.text('ESCOLA:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        const escolaText = getPdfEscolaDisplayText();
-        const escolaLines = doc.splitTextToSize(escolaText.toUpperCase(), cardWidth - labelWidth - 24);
-        doc.text(escolaLines, leftColX + labelWidth, cardY);
-        cardY += Math.max(5, escolaLines.length * 4);
-
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary);
-        doc.text('SÉRIE:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        doc.text(resolveSerieDisplayForPdf(studentsToUse), leftColX + labelWidth, cardY);
-        cardY += 5;
-
-        // DATA
-        if (evaluationInfo.data_aplicacao) {
-          doc.setFont('helvetica', 'bold');
-          doc.setTextColor(...COLORS.primary);
-          doc.text('DATA:', leftColX, cardY);
-          doc.setFont('helvetica', 'normal');
-          doc.setTextColor(...COLORS.textDark);
-          doc.text(new Date(evaluationInfo.data_aplicacao).toLocaleDateString('pt-BR'), leftColX + labelWidth, cardY);
-          cardY += 5;
+        const fieldRows: Array<{ label: string; lines: string[] }> = [
+          { label: 'CARTÃO:', lines: avaliacaoLines },
+          { label: 'MUNICÍPIO:', lines: [evaluationInfo.municipio || 'N/A'] },
+          { label: 'ESCOLA:', lines: escolaLines },
+          { label: 'SÉRIE:', lines: [resolveSerieDisplayForPdf(studentsToUse)] },
+        ];
+        if (selectedClassId) {
+          const turmaNome = classes.find(c => c.id === selectedClassId)?.nome || selectedClassId;
+          fieldRows.push({ label: 'TURMA:', lines: [turmaNome] });
         }
-
-        // TOTAL DE TURMAS
+        if (evaluationInfo.data_aplicacao) {
+          fieldRows.push({ label: 'DATA:', lines: [new Date(evaluationInfo.data_aplicacao).toLocaleDateString('pt-BR')] });
+        }
+        if (selectedPeriod && selectedPeriod !== 'all') {
+          fieldRows.push({ label: 'PERÍODO:', lines: [selectedPeriod] });
+        }
         const turmasMapInitial = new Map<string, StudentResult[]>();
         studentsToUse.forEach(s => {
           const turma = s.turma || 'Sem Turma';
-          if (!turmasMapInitial.has(turma)) {
-            turmasMapInitial.set(turma, []);
-          }
+          if (!turmasMapInitial.has(turma)) turmasMapInitial.set(turma, []);
           turmasMapInitial.get(turma)!.push(s);
         });
-        const totalTurmas = turmasMapInitial.size;
+        fieldRows.push({ label: 'TOTAL DE TURMAS:', lines: [`${turmasMapInitial.size}`] });
 
-        doc.setFont('helvetica', 'bold');
+        const CARD_TITLE_H = 14;
+        const cardContentH = fieldRows.reduce((sum, f) => sum + Math.max(ROW_H, f.lines.length * (ROW_H - 0.5)), 0);
+        const cardHeight = CARD_TITLE_H + cardContentH + 10;
+        const maxCardY = pageHeight - cardHeight - 12;
+        if (y > maxCardY) y = maxCardY;
+
+        // Card background + acento lateral roxo + borda
+        doc.setFillColor(...COLORS.bgLight);
+        doc.rect(cardX, y, cardWidth, cardHeight, 'F');
+        doc.setFillColor(...COLORS.primary);
+        doc.rect(cardX, y, ACCENT_W, cardHeight, 'F');
+        doc.setDrawColor(...COLORS.borderLight);
+        doc.setLineWidth(0.4);
+        doc.rect(cardX, y, cardWidth, cardHeight, 'S');
+
+        // Título do card
+        let cardY = y + 8;
+        const cardContentCenterX = cardX + ACCENT_W + (cardWidth - ACCENT_W) / 2;
+        doc.setFontSize(10);
         doc.setTextColor(...COLORS.primary);
-        doc.text('TOTAL DE TURMAS:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        doc.text(`${totalTurmas}`, leftColX + labelWidth, cardY);
+        doc.setFont('helvetica', 'bold');
+        doc.text('INFORMAÇÕES DO CARTÃO RESPOSTA', cardContentCenterX, cardY, { align: 'center' });
+        cardY += 6;
+        doc.setDrawColor(...COLORS.borderLight);
+        doc.setLineWidth(0.3);
+        doc.line(cardX + ACCENT_W + 4, cardY, cardX + cardWidth - 4, cardY);
+        cardY += 4;
+
+        // Campos
+        doc.setFontSize(8);
+        const lx = cardX + ACCENT_W + inset;
+        const vx = lx + labelWidth;
+        for (const field of fieldRows) {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...COLORS.primary);
+          doc.text(field.label, lx, cardY);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...COLORS.textDark);
+          doc.text(field.lines, vx, cardY);
+          cardY += Math.max(ROW_H, field.lines.length * (ROW_H - 0.5));
+        }
       };
 
       // Função para adicionar capa de faltosos
       const addFaltososCover = (turmaName: string | null, totalFaltosos: number, alunosParaSerie: StudentResult[]) => {
-        // Garantir fundo branco limpo - desenhar primeiro e cobrir toda a página
         doc.setFillColor(...COLORS.white);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
-
         const centerX = pageWidth / 2;
-        let y = 20;
+        const BAND_H = 58;
 
-        // Logo AFIRME PLAY (imagem) - mantendo proporção real
+        // Faixa superior roxa
+        doc.setFillColor(...COLORS.primary);
+        doc.rect(0, 0, pageWidth, BAND_H, 'F');
+
+        // Logo na faixa
+        let logoBottomInBand = 0;
         if (logoDataUrl && logoWidth > 0 && logoHeight > 0) {
-          // Largura desejada em mm
-          const desiredLogoWidth = 50;
-          // Calcular altura proporcional baseada nas dimensões reais
+          const desiredLogoWidth = 38;
           const desiredLogoHeight = (logoHeight * desiredLogoWidth) / logoWidth;
-          const logoX = centerX - desiredLogoWidth / 2;
-          doc.addImage(logoDataUrl, 'PNG', logoX, y, desiredLogoWidth, desiredLogoHeight);
-          y += desiredLogoHeight + 8;
+          doc.addImage(logoDataUrl, 'PNG', centerX - desiredLogoWidth / 2, 7, desiredLogoWidth, desiredLogoHeight);
+          logoBottomInBand = 7 + desiredLogoHeight;
         } else {
-          // Fallback: texto "AFIRME PLAY"
-          doc.setFontSize(20);
-          doc.setTextColor(...COLORS.primary);
+          doc.setFontSize(18);
+          doc.setTextColor(...COLORS.white);
           doc.setFont('helvetica', 'bold');
-          doc.text('AFIRME PLAY', centerX, y, { align: 'center' });
-          y += 15;
+          doc.text('AFIRME PLAY', centerX, 22, { align: 'center' });
+          logoBottomInBand = 28;
         }
 
-        y += 8;
-
-        // Município - Estado
-        doc.setFontSize(14);
-        doc.setTextColor(...COLORS.primary); // Roxo institucional
+        // Título da seção na faixa
+        const sectionTitleY = Math.max(logoBottomInBand + 5, BAND_H - 14);
+        doc.setTextColor(...COLORS.white);
         doc.setFont('helvetica', 'bold');
-        const locationText = `${evaluationInfo.municipio?.toUpperCase() || 'MUNICÍPIO'} - ALAGOAS`;
-        doc.text(locationText, centerX, y, { align: 'center' });
+        doc.setFontSize(20);
+        doc.text('FALTOSOS / PENDENTES', centerX, sectionTitleY, { align: 'center' });
 
-        y += 8;
+        let y = BAND_H + 13;
+
+        // Município
+        doc.setFontSize(13);
+        doc.setTextColor(...COLORS.primary);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${evaluationInfo.municipio?.toUpperCase() || 'MUNICÍPIO'} - ALAGOAS`, centerX, y, { align: 'center' });
+        y += 7;
 
         // Secretaria
-        doc.setFontSize(11);
-        doc.setTextColor(...COLORS.textGray); // Cinza
+        doc.setFontSize(10);
+        doc.setTextColor(...COLORS.textGray);
         doc.setFont('helvetica', 'normal');
         doc.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, y, { align: 'center' });
+        y += 14;
 
-        y += 20;
-
-        // Título (mesmo título do modal em AnswerSheetResults)
-        doc.setFontSize(24);
-        doc.setTextColor(...COLORS.textDark); // Preto
-        doc.setFont('helvetica', 'bold');
-        doc.text('FALTOSOS / PENDENTES', centerX, y, { align: 'center' });
-
-        y += 20;
-
-        // Nome da turma (se especificada) ou texto geral
+        // Nome da turma em destaque
         if (turmaName) {
-          doc.setFontSize(48);
-          doc.setTextColor(...COLORS.primary); // Roxo para destaque
+          const len = (turmaName || '').length;
+          const subtitleSize = len > 28 ? 14 : len > 20 ? 18 : 22;
+          doc.setFontSize(subtitleSize);
+          doc.setTextColor(...COLORS.primary);
           doc.setFont('helvetica', 'bold');
-          doc.text(turmaName.toUpperCase(), centerX, y, { align: 'center' });
-          y += 25;
+          const maxWidth = pageWidth - 40;
+          const lines = doc.splitTextToSize(turmaName.toUpperCase(), maxWidth);
+          lines.forEach((line: string, i: number) => {
+            doc.text(line, centerX, y + i * subtitleSize * 0.5, { align: 'center' });
+          });
+          y += Math.max(16, lines.length * subtitleSize * 0.5) + 8;
         } else {
           y += 5;
         }
 
-        // Card de estatísticas - tamanho reduzido
-        const cardWidth = pageWidth - 120; // Reduzido: mais estreito
-        const cardHeight = 48;
+        // Card de estatísticas
+        const cardWidth = pageWidth - 120;
+        const cardHeight = 52;
         const cardX = (pageWidth - cardWidth) / 2;
-
-        // Garantir que o card não fique muito próximo do final da página
+        const ACCENT_W = 4;
         const minSpaceAtBottom = 20;
         const maxCardY = pageHeight - cardHeight - minSpaceAtBottom;
+        if (y + cardHeight > maxCardY) y = maxCardY;
 
-        // Apenas ajustar se realmente necessário (card muito próximo do final)
-        if (y + cardHeight > maxCardY) {
-          y = maxCardY;
-        }
-
-        // Fundo do card
         doc.setFillColor(...COLORS.bgLight);
         doc.rect(cardX, y, cardWidth, cardHeight, 'F');
-
-        // Borda do card
+        doc.setFillColor(...COLORS.primary);
+        doc.rect(cardX, y, ACCENT_W, cardHeight, 'F');
         doc.setDrawColor(...COLORS.borderLight);
-        doc.setLineWidth(0.5);
+        doc.setLineWidth(0.4);
         doc.rect(cardX, y, cardWidth, cardHeight, 'S');
 
-        // Conteúdo do card
-        let cardY = y + 9;
-
-        // Título do card
-        doc.setFontSize(11);
-        doc.setTextColor(...COLORS.primary); // Roxo
+        let cardY = y + 8;
+        const cardContentCenterX = cardX + ACCENT_W + (cardWidth - ACCENT_W) / 2;
+        doc.setFontSize(10);
+        doc.setTextColor(...COLORS.primary);
         doc.setFont('helvetica', 'bold');
-        doc.text('ESTATÍSTICAS', centerX, cardY, { align: 'center' });
+        doc.text('ESTATÍSTICAS', cardContentCenterX, cardY, { align: 'center' });
+        cardY += 6;
+        doc.setDrawColor(...COLORS.borderLight);
+        doc.setLineWidth(0.3);
+        doc.line(cardX + ACCENT_W + 4, cardY, cardX + cardWidth - 4, cardY);
+        cardY += 5;
 
-        cardY += 9;
-
-        // Estatísticas em formato tabular (label: valor)
+        const leftColX = cardX + ACCENT_W + 12;
+        const labelWidth = 48;
         doc.setFontSize(8);
-        doc.setFont('helvetica', 'normal');
-
-        const leftColX = cardX + 12;
-        const labelWidth = 48; // Padronizado: mesmo espaçamento
-
-        // TOTAL DE FALTOSOS
         doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary); // Labels em roxo
+        doc.setTextColor(...COLORS.primary);
         doc.text('TOTAL DE FALTOSOS:', leftColX, cardY);
         doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark); // Valores em preto
+        doc.setTextColor(...COLORS.textDark);
         doc.text(`${totalFaltosos}`, leftColX + labelWidth, cardY);
         cardY += 5;
 
@@ -2612,58 +2628,55 @@ export default function AcertoNiveis({
         doc.text(resolveSerieDisplayForPdf(alunosParaSerie), leftColX + labelWidth, cardY);
 
         const cardBottom = y + cardHeight;
-        let noteY = cardBottom + 8;
+        const noteY = cardBottom + 8;
         doc.setFontSize(8);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...COLORS.textGray);
-        const avisoFaltosos =
-          'Estes alunos ainda não entregaram ou não tiveram o cartão resposta corrigido.';
+        const avisoFaltosos = 'Estes alunos ainda não entregaram ou não tiveram o cartão resposta corrigido.';
         const splitAviso = doc.splitTextToSize(avisoFaltosos, cardWidth - 24);
         doc.text(splitAviso, centerX, noteY, { align: 'center', maxWidth: cardWidth - 24 });
       };
 
       // Função para adicionar capa de turma
       const addTurmaCover = (turmaName: string, alunosTurma: StudentResult[], totalQuestoes?: number) => {
-        // Garantir fundo branco limpo - desenhar primeiro e cobrir toda a página
         doc.setFillColor(...COLORS.white);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
-
         const centerX = pageWidth / 2;
-        let y = 25;
+        const BAND_H = 45;
 
-        // Logo AFIRME PLAY (imagem) - mantendo proporção real
+        // Faixa superior roxa (menor para deixar espaço ao nome da turma)
+        doc.setFillColor(...COLORS.primary);
+        doc.rect(0, 0, pageWidth, BAND_H, 'F');
+
+        // Logo na faixa
+        let logoBottomInBand = 0;
         if (logoDataUrl && logoWidth > 0 && logoHeight > 0) {
-          // Largura desejada em mm
-          const desiredLogoWidth = 50;
-          // Calcular altura proporcional baseada nas dimensões reais
+          const desiredLogoWidth = 30;
           const desiredLogoHeight = (logoHeight * desiredLogoWidth) / logoWidth;
-          const logoX = centerX - desiredLogoWidth / 2;
-          doc.addImage(logoDataUrl, 'PNG', logoX, y, desiredLogoWidth, desiredLogoHeight);
-          y += desiredLogoHeight + 8;
+          doc.addImage(logoDataUrl, 'PNG', centerX - desiredLogoWidth / 2, 5, desiredLogoWidth, desiredLogoHeight);
+          logoBottomInBand = 5 + desiredLogoHeight;
         } else {
-          // Fallback: texto "AFIRME PLAY"
-          doc.setFontSize(20);
-          doc.setTextColor(...COLORS.primary);
+          doc.setFontSize(16);
+          doc.setTextColor(...COLORS.white);
           doc.setFont('helvetica', 'bold');
-          doc.text('AFIRME PLAY', centerX, y, { align: 'center' });
-          y += 15;
+          doc.text('AFIRME PLAY', centerX, 18, { align: 'center' });
+          logoBottomInBand = 24;
         }
 
-        y += 20;
-
-        // Título "ANÁLISE POR TURMA"
-        doc.setFontSize(24);
-        doc.setTextColor(...COLORS.textDark); // Preto
+        // Título da seção na faixa
+        const sectionTitleY = Math.max(logoBottomInBand + 4, BAND_H - 10);
+        doc.setTextColor(...COLORS.white);
         doc.setFont('helvetica', 'bold');
-        doc.text('ANÁLISE POR TURMA', centerX, y, { align: 'center' });
+        doc.setFontSize(14);
+        doc.text('ANÁLISE POR TURMA', centerX, sectionTitleY, { align: 'center' });
 
-        y += 20;
+        let y = BAND_H + 14;
 
-        // Nome da turma (fonte menor para textos longos como "VISÃO GERAL (TODAS AS TURMAS)")
+        // Nome da turma em destaque
         const len = (turmaName || '').length;
         const subtitleSize = len > 28 ? 14 : len > 20 ? 18 : len > 12 ? 22 : 26;
         doc.setFontSize(subtitleSize);
-        doc.setTextColor(...COLORS.primary); // Roxo para destaque
+        doc.setTextColor(...COLORS.primary);
         doc.setFont('helvetica', 'bold');
         const maxWidth = pageWidth - 40;
         const lines = doc.splitTextToSize(turmaName.toUpperCase(), maxWidth);
@@ -2672,13 +2685,14 @@ export default function AcertoNiveis({
         });
         y += Math.max(18, lines.length * subtitleSize * 0.5) + 8;
 
-        // Card compacto: largura fixa, altura pelo conteúdo, coluna de valores alinhada
+        // Card compacto com estatísticas e acento lateral
         const cardWidth = 148;
         const cardX = (pageWidth - cardWidth) / 2;
+        const ACCENT_W = 4;
         const inset = 7;
         const labelW = 46;
-        const valueX = cardX + inset + labelW;
-        const valueMaxW = cardWidth - inset * 2 - labelW;
+        const valueX = cardX + ACCENT_W + inset + labelW;
+        const valueMaxW = cardWidth - ACCENT_W - inset * 2 - labelW;
         const rowStep = 3.35;
         const padTop = 4.5;
         const padBottom = 5;
@@ -2688,49 +2702,36 @@ export default function AcertoNiveis({
 
         const concluidos = alunosTurma.filter((s) => s.status === 'concluida');
         const totalAlunos = alunosTurma.length;
-        const mediaNota =
-          concluidos.length > 0
-            ? (concluidos.reduce((sum, s) => sum + s.nota, 0) / concluidos.length).toFixed(1)
-            : '0.0';
-        const mediaProficiencia =
-          concluidos.length > 0
-            ? (concluidos.reduce((sum, s) => sum + s.proficiencia, 0) / concluidos.length).toFixed(1)
-            : '0.0';
-        const taxaParticipacao =
-          totalAlunos > 0 ? ((concluidos.length / totalAlunos) * 100).toFixed(1) : '0.0';
+        const mediaNota = concluidos.length > 0
+          ? (concluidos.reduce((sum, s) => sum + s.nota, 0) / concluidos.length).toFixed(1) : '0.0';
+        const mediaProficiencia = concluidos.length > 0
+          ? (concluidos.reduce((sum, s) => sum + s.proficiencia, 0) / concluidos.length).toFixed(1) : '0.0';
+        const taxaParticipacao = totalAlunos > 0
+          ? ((concluidos.length / totalAlunos) * 100).toFixed(1) : '0.0';
 
-        const bodyH =
-          padTop +
-          5.5 +
-          2 +
-          escolaCapLines.length * rowStep +
-          rowStep +
-          turmaCapLines.length * rowStep +
-          1.5 +
-          6 * rowStep +
-          padBottom;
+        const bodyH = padTop + 5.5 + 2 + escolaCapLines.length * rowStep + rowStep + turmaCapLines.length * rowStep + 1.5 + 6 * rowStep + padBottom;
         const cardHeight = bodyH;
 
         const minSpaceAtBottom = 20;
         let cardTopY = y;
         const maxCardY = pageHeight - cardHeight - minSpaceAtBottom;
-        if (cardTopY + cardHeight > maxCardY) {
-          cardTopY = maxCardY;
-        }
+        if (cardTopY + cardHeight > maxCardY) cardTopY = maxCardY;
 
         doc.setFillColor(...COLORS.bgLight);
         doc.rect(cardX, cardTopY, cardWidth, cardHeight, 'F');
+        doc.setFillColor(...COLORS.primary);
+        doc.rect(cardX, cardTopY, ACCENT_W, cardHeight, 'F');
         doc.setDrawColor(...COLORS.borderLight);
         doc.setLineWidth(0.35);
         doc.rect(cardX, cardTopY, cardWidth, cardHeight, 'S');
 
-        const lx = cardX + inset;
+        const lx = cardX + ACCENT_W + inset;
         let cardY = cardTopY + padTop;
 
         doc.setFontSize(9);
         doc.setTextColor(...COLORS.primary);
         doc.setFont('helvetica', 'bold');
-        doc.text('ESTATÍSTICAS DA TURMA', centerX, cardY, { align: 'center' });
+        doc.text('ESTATÍSTICAS DA TURMA', cardX + ACCENT_W + (cardWidth - ACCENT_W) / 2, cardY, { align: 'center' });
         cardY += 5.5 + 2;
 
         doc.setFontSize(7);
@@ -2807,27 +2808,46 @@ export default function AcertoNiveis({
       // Função para adicionar cabeçalho
       const addHeader = (title: string, turmaOverride?: string, alunosParaSerie?: StudentResult[]): number => {
         const centerX = pageWidth / 2;
-        let y = 20;
+        const BAND_H = 20;
 
-        // Título da prefeitura
+        // Faixa compacta de cabeçalho
+        doc.setFillColor(...COLORS.primary);
+        doc.rect(0, 0, pageWidth, BAND_H, 'F');
+
+        // Ícone pequeno à esquerda na faixa
+        if (icoDataUrl && icoWidth > 0 && icoHeight > 0) {
+          const icoH_desired = 14;
+          const icoW_desired = (icoWidth * icoH_desired) / icoHeight;
+          doc.addImage(icoDataUrl, 'PNG', margin, (BAND_H - icoH_desired) / 2, icoW_desired, icoH_desired);
+        } else {
+          doc.setFontSize(8);
+          doc.setTextColor(...COLORS.white);
+          doc.setFont('helvetica', 'bold');
+          doc.text('AFIRME PLAY', margin, BAND_H / 2 + 2);
+        }
+
+        // Título da seção na faixa (alinhado à direita)
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(13);
-        doc.setTextColor(...COLORS.textDark); // Preto institucional
-        doc.text(`PREFEITURA DE ${evaluationInfo.municipio?.toUpperCase() || 'MUNICÍPIO'}`, centerX, y, { align: 'center' });
-        y += 10;
+        doc.setFontSize(11);
+        doc.setTextColor(...COLORS.white);
+        doc.text(title, pageWidth - margin, BAND_H / 2 + 2, { align: 'right' });
 
-        // Informações da escola, série e turma em linhas separadas
-        doc.setFont('helvetica', 'normal');
+        let y = BAND_H + 8;
+
+        // Município
+        doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
-        doc.setTextColor(...COLORS.textGray); // Cinza institucional
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(`PREFEITURA DE ${evaluationInfo.municipio?.toUpperCase() || 'MUNICÍPIO'}`, centerX, y, { align: 'center' });
+        y += 6;
 
-        doc.text(`Escola: ${getPdfEscolaDisplayText()}`, centerX, y, { align: 'center' });
-        y += 5;
-
+        // Metadados: escola, série, turma
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(...COLORS.textGray);
         const alunosSerieRef = alunosParaSerie ?? studentsToUse;
-        doc.text(`Série: ${resolveSerieDisplayForPdf(alunosSerieRef)}`, centerX, y, { align: 'center' });
-        y += 5;
-
+        const escolaTextH = getPdfEscolaDisplayText();
+        const serieTextH = resolveSerieDisplayForPdf(alunosSerieRef);
         const turmaText =
           turmaOverride !== undefined
             ? turmaOverride
@@ -2836,16 +2856,17 @@ export default function AcertoNiveis({
               : selectedClassId
                 ? classes.find((c) => c.id === selectedClassId)?.nome || "Selecionada"
                 : studentsToUse[0]?.turma || "Todas";
-        doc.text(`Turma: ${turmaText}`, centerX, y, { align: 'center' });
-        y += 10;
+        const metaLineParts = [`Escola: ${escolaTextH}`, `Série: ${serieTextH}`, `Turma: ${turmaText}`];
+        doc.text(metaLineParts.join('  •  '), centerX, y, { align: 'center', maxWidth: pageWidth - 2 * margin });
+        y += 6;
 
-        // Título da seção
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(14);
-        doc.setTextColor(...COLORS.textDark); // Preto institucional
-        doc.text(title, centerX, y, { align: 'center' });
+        // Linha separadora
+        doc.setDrawColor(...COLORS.borderLight);
+        doc.setLineWidth(0.3);
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 5;
 
-        return y + 10;
+        return y;
       };
 
       // Tipo mínimo de questão para o PDF (id, dificuldade, habilidade, tipo, % acertos/erros) — reduz memória e processamento
@@ -2882,34 +2903,126 @@ export default function AcertoNiveis({
       const sortQuestoes = (qs: QuestaoMinima[]) =>
         [...(qs || [])].sort((a, b) => (a?.numero || 0) - (b?.numero || 0));
 
-      const buildQuestoesFallback = (): QuestaoMinima[] => {
+      const buildQuestoesFromTabelaDetalhada = (
+        tabelaFonte: typeof tabelaDetalhada
+      ): QuestaoMinima[] => {
         // Unificar questões de todas as disciplinas com numero global (1..N), evitando colisão quando LP e MAT têm 1-20 cada
         const list: QuestaoMinima[] = [];
         let globalNumero = 0;
-        const tabelaQuestoesFonte = allTabelaDetalhada ?? tabelaDetalhada;
-        tabelaQuestoesFonte?.disciplinas?.forEach(disc => {
+        tabelaFonte?.disciplinas?.forEach((disc) => {
           const sorted = [...(disc.questoes || [])].sort((a, b) => (a?.numero ?? 0) - (b?.numero ?? 0));
-          sorted.forEach(q => {
+          sorted.forEach((q) => {
             globalNumero += 1;
+            const rh = resolveTabelaQuestaoHabilidade(q);
+            const stableId =
+              rh.question_id ||
+              (typeof q.numero === 'number' ? `${disc.id}-q${q.numero}` : '') ||
+              String(globalNumero);
             list.push({
-              id: q.question_id || String(globalNumero),
+              id: stableId,
               numero: globalNumero,
-              habilidade: q.habilidade || '',
-              codigo_habilidade: q.codigo_habilidade || '',
+              habilidade: rh.habilidade || rh.codigo_habilidade,
+              codigo_habilidade: rh.codigo_habilidade,
               tipo: 'multipleChoice',
               dificuldade: 'Médio',
               porcentagem_acertos: 0,
-              porcentagem_erros: 0
+              porcentagem_erros: 0,
             });
           });
         });
         return list;
       };
 
-      const questoesParaUsar: QuestaoMinima[] =
+      const buildQuestoesFallback = (): QuestaoMinima[] =>
+        buildQuestoesFromTabelaDetalhada(allTabelaDetalhada ?? tabelaDetalhada);
+
+      let questoesParaUsar: QuestaoMinima[] =
         reportParaPdf?.questoes?.length
           ? reportParaPdf.questoes.map(mapToMinimal)
           : buildQuestoesFallback();
+
+      // Enriquecer questões da tabela geral com códigos de habilidade vindos das disciplinas
+      // (quando reportParaPdf.questoes vier com UUID/código vazio).
+      const tabelaParaEnrich = allTabelaDetalhada ?? tabelaDetalhada;
+      if (tabelaParaEnrich?.disciplinas?.length) {
+        const discQByQuestionId = new Map<string, { codigo_habilidade: string; habilidade: string }>();
+        const discQByQuestionNum = new Map<number, { codigo_habilidade: string; habilidade: string }>();
+        tabelaParaEnrich.disciplinas.forEach((disc) => {
+          disc.questoes?.forEach((q) => {
+            const rh = resolveTabelaQuestaoHabilidade(q);
+            const payload = {
+              codigo_habilidade: rh.codigo_habilidade,
+              habilidade: rh.habilidade || rh.codigo_habilidade,
+            };
+            if (q.question_id) discQByQuestionId.set(q.question_id, payload);
+            if (rh.question_id) discQByQuestionId.set(rh.question_id, payload);
+            if (typeof q.numero === 'number') {
+              discQByQuestionId.set(`${disc.id}-q${q.numero}`, payload);
+              discQByQuestionNum.set(q.numero, payload);
+            }
+          });
+        });
+        if (discQByQuestionId.size > 0 || discQByQuestionNum.size > 0) {
+          questoesParaUsar = questoesParaUsar.map((q) => {
+            if (looksLikeRealSkillCode(q.codigo_habilidade)) return q;
+            const discQ =
+              discQByQuestionId.get(q.id) ??
+              (typeof q.numero === 'number' ? discQByQuestionNum.get(q.numero) : undefined);
+            if (discQ) {
+              return {
+                ...q,
+                codigo_habilidade: discQ.codigo_habilidade || q.codigo_habilidade,
+                habilidade: discQ.habilidade || q.habilidade,
+              };
+            }
+            return q;
+          });
+        }
+      }
+
+      // `reportParaPdf.questoes` pode vir com menos itens que `tabela_detalhada.disciplinas` (visão por disciplina fica completa).
+      // Cartão-resposta: relatório detalhado usa id sintético `{gabaritoId}-q{n}`; a tabela usa `question_id` UUID — casar também por número.
+      const questoesCanonical = buildQuestoesFromTabelaDetalhada(tabelaParaEnrich);
+      if (questoesCanonical.length > 0 && reportParaPdf?.questoes?.length) {
+        const byId = new Map(questoesParaUsar.map((q) => [q.id, q]));
+        const byNumero = new Map<number, (typeof questoesParaUsar)[number]>();
+        questoesParaUsar.forEach((q) => {
+          const n = q.numero;
+          if (typeof n === 'number' && !Number.isNaN(n) && !byNumero.has(n)) byNumero.set(n, q);
+        });
+        const cleanCod = (s?: string) => {
+          const t = (s || '').trim();
+          if (/^n\/a$/i.test(t)) return '';
+          return t;
+        };
+        const merged = questoesCanonical.map((c) => {
+          const r = byId.get(c.id) ?? byNumero.get(c.numero);
+          if (!r) return c;
+          const rc = cleanCod(r.codigo_habilidade);
+          const cc = cleanCod(c.codigo_habilidade);
+          const bestCod =
+            looksLikeRealSkillCode(rc)
+              ? (r.codigo_habilidade || '').trim()
+              : looksLikeRealSkillCode(cc)
+                ? (c.codigo_habilidade || '').trim()
+                : rc || cc || (r.codigo_habilidade || '').trim() || (c.codigo_habilidade || '').trim();
+          return {
+            ...c,
+            dificuldade: r.dificuldade,
+            habilidade: r.habilidade || c.habilidade,
+            codigo_habilidade: bestCod,
+            tipo: r.tipo,
+            porcentagem_acertos: r.porcentagem_acertos,
+            porcentagem_erros: r.porcentagem_erros,
+          };
+        });
+        const canonIds = new Set(questoesCanonical.map((c) => c.id));
+        const canonNumeros = new Set(questoesCanonical.map((c) => c.numero));
+        const extras = questoesParaUsar.filter(
+          (q) => !canonNumeros.has(q.numero) && !canonIds.has(q.id)
+        );
+        questoesParaUsar = extras.length ? [...merged, ...sortQuestoes(extras)] : merged;
+      }
 
       // Total de questões para fallback determinístico
       const totalQuestionsAll = questoesParaUsar.length;
@@ -3115,7 +3228,7 @@ export default function AcertoNiveis({
         const MIN_NIVEL_MM = 40;
         const nameWidth = Math.min(140, availableWidth * 0.5);
         const restWidth = availableWidth - nameWidth - MIN_NIVEL_MM;
-        const otherWidth = Math.max(20, restWidth / 2);
+        const otherWidth = Math.max(16, restWidth / 3);
 
         // Preparar dados da tabela (usando sempre a mesma regra de acerto)
         const bodyRows: (string | number)[][] = [];
@@ -3129,6 +3242,7 @@ export default function AcertoNiveis({
           const row = [
             `${i + 1}. ${s.nome}`,
             `${acertos}/${total}`,
+            s.nota.toFixed(1),
             s.proficiencia.toFixed(1),
             normalizeProficiencyLevelLabel(s.classificacao),
           ];
@@ -3138,7 +3252,7 @@ export default function AcertoNiveis({
         // Gerar tabela
         autoTable(doc, {
           startY: startY,
-          head: [["Aluno", "Acertos", "Proficiência", "Nível"]],
+          head: [["Aluno", "Acertos", "Nota", "Proficiência", "Nível"]],
           body: bodyRows,
           theme: 'grid',
           margin: { left: margin, right: margin },
@@ -3150,8 +3264,8 @@ export default function AcertoNiveis({
             valign: 'middle'
           },
           headStyles: {
-            fillColor: [230, 230, 230],
-            textColor: [0, 0, 0],
+            fillColor: COLORS.primary,
+            textColor: [255, 255, 255],
             fontStyle: 'bold',
             halign: 'center',
             fontSize: scaleCompactTable(scalePdfTable(9)),
@@ -3163,19 +3277,19 @@ export default function AcertoNiveis({
             0: { cellWidth: nameWidth, halign: 'left' },
             1: { cellWidth: otherWidth, halign: 'center' },
             2: { cellWidth: otherWidth, halign: 'center' },
-            3: { cellWidth: MIN_NIVEL_MM, halign: 'center' }
+            3: { cellWidth: otherWidth, halign: 'center' },
+            4: { cellWidth: MIN_NIVEL_MM, halign: 'center' }
           },
           didParseCell: (data: CellHookData) => {
-            if (data.section === 'body' && data.column.index === 3) {
+            if (data.section === 'body' && data.column.index === 4) {
               data.cell.styles.minCellHeight = scaleCompactTable(scalePdfTable(16));
             }
           },
           didDrawCell: (data: CellHookData) => {
-            if (data.section !== 'body' || data.column.index !== 3) return;
+            if (data.section !== 'body' || data.column.index !== 4) return;
 
-            const textValue = (Array.isArray(data.cell.text) ? data.cell.text[0] : data.cell.text || '')
-              .toString()
-              .trim();
+            const cellRaw = Array.isArray(data.cell.text) ? data.cell.text[0] : data.cell.text;
+            const textValue = String(cellRaw ?? '').trim();
             drawProficiencyNivelInPdfCell(
               data.doc as jsPDF,
               data.cell,
@@ -3218,9 +3332,9 @@ export default function AcertoNiveis({
             headerRow3.push(`${Math.round((correct / denomLocal) * 100)}%`);
           });
           if (isLastChunk) {
-            headerRow1.push("Total de acertos", "Proficiência", "Nível");
-            headerRow2.push("", "", "");
-            headerRow3.push("", "", "");
+            headerRow1.push("Total de acertos", "Nota", "Proficiência", "Nível");
+            headerRow2.push("", "", "", "");
+            headerRow3.push("", "", "", "");
           }
 
           const bodyRows: (string | number)[][] = [];
@@ -3231,6 +3345,7 @@ export default function AcertoNiveis({
             });
             if (isLastChunk) {
               row.push(`${acertosPorAluno[idx]}/${totalQuestoes}`);
+              row.push(s.nota.toFixed(1));
               row.push(s.proficiencia.toFixed(1));
               row.push(normalizeProficiencyLevelLabel(s.classificacao));
             }
@@ -3240,9 +3355,10 @@ export default function AcertoNiveis({
           const availableWidth = landscapeWidth - (2 * landscapeMargin);
           const MIN_NIVEL_WIDTH_MM = 20;
           const colTotalAcertos = chunk.length > 28 ? 8 : 11;
-          const colProficiencia = chunk.length > 28 ? 9 : 14;
+          const colNota = chunk.length > 28 ? 8 : 11;
+          const colProficiencia = chunk.length > 28 ? 9 : 12;
           const colNivel = Math.max(MIN_NIVEL_WIDTH_MM, chunk.length > 28 ? 17 : 21);
-          const finalColsWidth = isLastChunk ? (colTotalAcertos + colProficiencia + colNivel) : 0;
+          const finalColsWidth = isLastChunk ? (colTotalAcertos + colNota + colProficiencia + colNivel) : 0;
 
           const numCols = Math.max(1, chunk.length);
 
@@ -3276,8 +3392,9 @@ export default function AcertoNiveis({
 
           if (isLastChunk) {
             columnStyles[String(chunk.length + 1)] = { cellWidth: colTotalAcertos, halign: 'center' };
-            columnStyles[String(chunk.length + 2)] = { cellWidth: colProficiencia, halign: 'center' };
-            columnStyles[String(chunk.length + 3)] = {
+            columnStyles[String(chunk.length + 2)] = { cellWidth: colNota, halign: 'center' };
+            columnStyles[String(chunk.length + 3)] = { cellWidth: colProficiencia, halign: 'center' };
+            columnStyles[String(chunk.length + 4)] = {
               cellWidth: colNivel,
               halign: 'center',
               overflow: 'ellipsize',
@@ -3325,7 +3442,7 @@ export default function AcertoNiveis({
                   data.cell.styles.fontSize = nameBodyFont;
                   data.cell.styles.cellPadding = { vertical: namePadV, horizontal: bulkPadH };
                 } else if (data.column.index > numQuestoesThisChunk) {
-                  // Colunas de resumo (Total de acertos, Proficiência, Nível)
+                  // Colunas de resumo (Total de acertos, Nota, Proficiência, Nível)
                   data.cell.styles.fontSize = scalePdfTable(6);
                   data.cell.styles.fontStyle = 'bold';
                 }
@@ -3404,9 +3521,14 @@ export default function AcertoNiveis({
                   d.setFont('helvetica', 'bold');
                   d.setTextColor(0, 0, 0);
                   const cx = cell.x + cell.width / 2;
-                  const textWidthMm = d.getStringUnitWidth(skillCode) * skillCodeFontSize / d.internal.scaleFactor;
+                  const sf =
+                    d.internal && typeof (d.internal as { scaleFactor?: number }).scaleFactor === 'number'
+                      ? (d.internal as { scaleFactor: number }).scaleFactor
+                      : 1;
+                  const textWidthMm = (d.getStringUnitWidth(skillCode) * skillCodeFontSize) / sf;
                   const cy = cell.y + (cell.height + textWidthMm) / 2;
-                  d.text(skillCode, cx, cy, { angle: 90, maxWidth: cell.height - 2 });
+                  // Sem maxWidth: com angle 90 o jsPDF quebra em uma “linha” por caractere e o texto vaza da célula.
+                  d.text(skillCode, cx, cy, { angle: 90 });
                   d.setDrawColor(0, 0, 0);
                   d.setLineWidth(0.4);
                   d.rect(cell.x, cell.y, cell.width, cell.height);
@@ -3434,8 +3556,9 @@ export default function AcertoNiveis({
                 d.rect(cell.x, cell.y, cell.width, cell.height);
               }
               // Nível: fundo colorido + texto preto dimensionado para caber na célula
-              if (isLastChunk && section === 'body' && column.index === chunk.length + 3) {
-                const raw = (Array.isArray(cell.text) ? cell.text[0] : cell.text ?? '').toString().trim();
+              if (isLastChunk && section === 'body' && column.index === chunk.length + 4) {
+                const cellRawNivel = Array.isArray(cell.text) ? cell.text[0] : cell.text;
+                const raw = String(cellRawNivel ?? '').trim();
                 const nivelLabel = normalizeProficiencyLevelLabel(raw || '');
                 const [nr, ng, nb] = getProficiencyLevelRgb(nivelLabel);
                 d.setFillColor(nr, ng, nb);
@@ -3458,20 +3581,31 @@ export default function AcertoNiveis({
         doc.addPage('landscape');
         pageCount++;
 
-        let y = 8;
+        // Faixa compacta de cabeçalho
+        const DETAIL_BAND_H = 14;
+        doc.setFillColor(...COLORS.primary);
+        doc.rect(0, 0, landscapeWidth, DETAIL_BAND_H, 'F');
+        if (icoDataUrl && icoWidth > 0 && icoHeight > 0) {
+          const lh = 10;
+          const lw = (icoWidth * lh) / icoHeight;
+          doc.addImage(icoDataUrl, 'PNG', landscapeMargin, (DETAIL_BAND_H - lh) / 2, lw, lh);
+        }
+        doc.setTextColor(...COLORS.white);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.text(`${evaluationInfo.titulo} - ${subtitle}`, landscapeWidth / 2, y, { align: 'center' });
-        y += 2.5;
+        doc.setFontSize(9);
+        doc.text(`${evaluationInfo.titulo} — ${subtitle}`, landscapeWidth / 2, DETAIL_BAND_H / 2 + 1.5, { align: 'center' });
+
+        let y = DETAIL_BAND_H + 4;
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7.5);
+        doc.setFontSize(7);
+        doc.setTextColor(...COLORS.textGray);
         const metaDetalheGeral = `Escola: ${getPdfEscolaDisplayText()}  •  Série: ${resolveSerieDisplayForPdf(alunosTurma)}  •  Turma: ${turmaName}`;
         const metaDetalheLines = doc.splitTextToSize(metaDetalheGeral, landscapeWidth - 2 * landscapeMargin);
         metaDetalheLines.forEach((ln: string, i: number) => {
           doc.text(ln, landscapeWidth / 2, y + i * 3.2, { align: 'center' });
         });
-        y += Math.max(3.2, metaDetalheLines.length * 3.2);
-        doc.setFont('helvetica', 'bold');
+        y += Math.max(3.2, metaDetalheLines.length * 3.2) + 1;
+        doc.setTextColor(...COLORS.textDark);
 
         drawTableChunk(questoes, true, y);
 
@@ -3537,8 +3671,17 @@ export default function AcertoNiveis({
           const alunosTurmaDisciplina = (disc.alunos || []).filter(al => al.turma === turmaName);
           if (alunosTurmaDisciplina.length === 0) return; // Pular se não houver alunos desta turma nesta disciplina
 
-          // Ordenar questões por número
-          const qs = [...disc.questoes].sort((a, b) => (a?.numero || 0) - (b?.numero || 0));
+          // Ordenar questões por número; API nova traz habilidades em `skills`
+          const qs = [...disc.questoes]
+            .sort((a, b) => (a?.numero || 0) - (b?.numero || 0))
+            .map((q) => {
+              const rh = resolveTabelaQuestaoHabilidade(q);
+              return {
+                ...q,
+                codigo_habilidade: rh.codigo_habilidade || q.codigo_habilidade,
+                habilidade: rh.habilidade || q.habilidade,
+              };
+            });
           const totalQuestoesDisc = qs.length;
 
           const landscapeWidth = 297;
@@ -3577,22 +3720,35 @@ export default function AcertoNiveis({
           doc.addPage('landscape');
           pageCount++;
 
-          let y = 8;
+          // Faixa compacta de cabeçalho
+          const DETAIL_BAND_H_DISC = 14;
+          doc.setFillColor(...COLORS.primary);
+          doc.rect(0, 0, landscapeWidth, DETAIL_BAND_H_DISC, 'F');
+          if (icoDataUrl && icoWidth > 0 && icoHeight > 0) {
+            const lh = 10;
+            const lw = (icoWidth * lh) / icoHeight;
+            doc.addImage(icoDataUrl, 'PNG', landscapeMargin, (DETAIL_BAND_H_DISC - lh) / 2, lw, lh);
+          }
+          doc.setTextColor(...COLORS.white);
           doc.setFont('helvetica', 'bold');
-          doc.setFontSize(10);
+          doc.setFontSize(9);
           const headerDisc = `DISCIPLINA: ${disc.nome || 'N/A'}`;
-          doc.text(`${evaluationInfo?.titulo || 'Cartão resposta'} - ${headerDisc}`, landscapeWidth / 2, y, { align: 'center' });
-          y += 2.5;
-          doc.setFontSize(8);
+          doc.text(`${evaluationInfo?.titulo || 'Cartão resposta'} — ${headerDisc}`, landscapeWidth / 2, DETAIL_BAND_H_DISC / 2 + 1.5, { align: 'center' });
+
+          let y = DETAIL_BAND_H_DISC + 4;
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7);
+          doc.setTextColor(...COLORS.textGray);
           doc.text(`Escola: ${escolaText}  •  Série: ${serieText || 'N/A'}  •  Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
-          y += 2;
+          y += 5;
+          doc.setTextColor(...COLORS.textDark);
 
             const headerRow1 = ['Aluno'];
             const headerRow2 = ['Habilidade'];
             const headerRow3 = ['% Turma'];
             chunk.forEach(q => {
               headerRow1.push(`Q\n${q.numero}`);
-              headerRow2.push((q.codigo_habilidade || q.habilidade || '').toString());
+              headerRow2.push(generateHabilidadeCode(q, skillsMapping));
               let correct = 0;
               alunosParticipantes.forEach(s => {
                 const r = (s.respostas_por_questao || []).find(rr => rr.questao === q.numero);
@@ -3786,7 +3942,8 @@ export default function AcertoNiveis({
                 }
                 // Nível: fundo colorido + texto preto dimensionado para caber na célula
                 if (isLastChunk && section === 'body' && column.index === chunk.length + 4) {
-                  const raw = (Array.isArray(cell.text) ? cell.text[0] : cell.text ?? '').toString().trim();
+                  const cellRawNivelDisc = Array.isArray(cell.text) ? cell.text[0] : cell.text;
+                  const raw = String(cellRawNivelDisc ?? '').trim();
                   const nivelLabel = normalizeProficiencyLevelLabel(raw || '');
                   const [nr, ng, nb] = getProficiencyLevelRgb(nivelLabel);
                   d.setFillColor(nr, ng, nb);
@@ -3812,9 +3969,13 @@ export default function AcertoNiveis({
                     d.setFont('helvetica', 'bold');
                     d.setTextColor(0, 0, 0);
                     const cx = cell.x + cell.width / 2;
-                    const textWidthMm = d.getStringUnitWidth(skillCode) * skillCodeFontSize / d.internal.scaleFactor;
+                    const sfDisc =
+                      d.internal && typeof (d.internal as { scaleFactor?: number }).scaleFactor === 'number'
+                        ? (d.internal as { scaleFactor: number }).scaleFactor
+                        : 1;
+                    const textWidthMm = (d.getStringUnitWidth(skillCode) * skillCodeFontSize) / sfDisc;
                     const cy = cell.y + (cell.height + textWidthMm) / 2;
-                    d.text(skillCode, cx, cy, { angle: 90, maxWidth: cell.height - 2 });
+                    d.text(skillCode, cx, cy, { angle: 90 });
                     d.setDrawColor(0, 0, 0);
                     d.setLineWidth(0.4);
                     d.rect(cell.x, cell.y, cell.width, cell.height);
@@ -4289,16 +4450,35 @@ export default function AcertoNiveis({
           pageWidth = doc.internal.pageSize.getWidth();
           pageHeight = doc.internal.pageSize.getHeight();
 
+          // Faixa compacta de cabeçalho portrait
+          const FALT_BAND_H = 18;
+          doc.setFillColor(...COLORS.primary);
+          doc.rect(0, 0, pageWidth, FALT_BAND_H, 'F');
+          if (icoDataUrl && icoWidth > 0 && icoHeight > 0) {
+            const lh = 12;
+            const lw = (icoWidth * lh) / icoHeight;
+            doc.addImage(icoDataUrl, 'PNG', margin, (FALT_BAND_H - lh) / 2, lw, lh);
+          } else {
+            doc.setFontSize(8);
+            doc.setTextColor(...COLORS.white);
+            doc.setFont('helvetica', 'bold');
+            doc.text('AFIRME PLAY', margin, FALT_BAND_H / 2 + 2);
+          }
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.setTextColor(...COLORS.white);
+          doc.text('FALTOSOS / PENDENTES', pageWidth - margin, FALT_BAND_H / 2 + 2, { align: 'right' });
+
+          let y = FALT_BAND_H + 6;
           doc.setFont('helvetica', 'normal');
           doc.setFontSize(8);
-          doc.setTextColor(60, 60, 60);
+          doc.setTextColor(...COLORS.textGray);
           const metaFaltososTbl = `Escola: ${getPdfEscolaDisplayText()}  •  Série: ${resolveSerieDisplayForPdf(alunosTurma)}  •  Turma: ${turmaName}`;
           const metaFaltososLines = doc.splitTextToSize(metaFaltososTbl, pageWidth - 2 * margin);
-          const metaTop = 14;
           metaFaltososLines.forEach((ln: string, i: number) => {
-            doc.text(ln, pageWidth / 2, metaTop + i * 3.8, { align: 'center' });
+            doc.text(ln, pageWidth / 2, y + i * 3.8, { align: 'center' });
           });
-          let y = metaTop + metaFaltososLines.length * 3.8 + 4;
+          y += metaFaltososLines.length * 3.8 + 3;
           doc.setTextColor(0, 0, 0);
 
           // Preparar dados da tabela
@@ -4325,8 +4505,8 @@ export default function AcertoNiveis({
               valign: 'middle',
             },
             headStyles: {
-              fillColor: [230, 230, 230],
-              textColor: [0, 0, 0],
+              fillColor: COLORS.primary,
+              textColor: [255, 255, 255],
               fontStyle: 'bold',
               halign: 'center',
               fontSize: scaleCompactTable(scalePdfTable(7)),
@@ -4350,13 +4530,39 @@ export default function AcertoNiveis({
       });
 
 
-      // Salvar PDF
+      // Salvar PDF (fallback em blob: alguns navegadores bloqueiam doc.save() após vários await)
       const fileName = `relatorio-${evaluationInfo.titulo?.replace(/[^a-zA-Z0-9]/g, '-') || 'cartao-resposta'}-${new Date().toISOString().split('T')[0]}.pdf`;
-      doc.save(fileName);
+      try {
+        doc.save(fileName);
+      } catch (saveErr) {
+        console.warn('[AcertoNiveisCartao] doc.save falhou, usando download via blob', saveErr);
+        const blob = doc.output('blob');
+        const url = URL.createObjectURL(blob);
+        try {
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          a.rel = 'noopener';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      }
       toast({ title: 'PDF gerado com sucesso!', description: `Relatório salvo como ${fileName}` });
 
     } catch (error) {
-      toast({ title: 'Erro ao gerar PDF', description: 'Não foi possível gerar o relatório', variant: 'destructive' });
+      const message =
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Erro desconhecido';
+      console.error('[AcertoNiveisCartao] Erro ao gerar PDF', error);
+      toast({
+        title: 'Erro ao gerar PDF',
+        description: message || 'Não foi possível gerar o relatório. Veja o console (F12) para detalhes.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -4826,7 +5032,11 @@ export default function AcertoNiveis({
               </p>
             )}
             <Button
-              onClick={handleGeneratePDF}
+              onClick={() => {
+                void handleGeneratePDF().catch((err) => {
+                  console.error('[AcertoNiveisCartao] PDF (promise não tratada)', err);
+                });
+              }}
               disabled={
                 isAnswerSheetAgregados
                   ? !allRequiredAgregadosFilters ||
