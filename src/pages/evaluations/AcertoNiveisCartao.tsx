@@ -230,15 +230,34 @@ function pdfBulkBodyRowHeightToMatchNameMm(fontSizePt: number, padVerticalMm: nu
 
 function pdfSkillResponsiveFontSize(questionsCount: number, dynamicFontSize: number): number {
   const q = Math.max(1, questionsCount);
-  if (q <= 10) return Math.max(scalePdfTable(7.2), dynamicFontSize * 1.9);
-  if (q <= 15) return Math.max(scalePdfTable(6.1), dynamicFontSize * 1.6);
-  if (q <= 22) return Math.max(scalePdfTable(5.1), dynamicFontSize * 1.35);
+  if (q <= 10) return Math.max(scalePdfTable(11.8), dynamicFontSize * 2.65);
+  if (q <= 15) return Math.max(scalePdfTable(10.0), dynamicFontSize * 2.35);
+  if (q <= 22) return Math.max(scalePdfTable(8.4), dynamicFontSize * 2.02);
 
   const infoFactor = Math.min(1.45, 24 / Math.max(1, questionsCount));
   return Math.max(
-    scalePdfTable(3.6),
-    Math.min(scalePdfTable(8.8), dynamicFontSize * (0.98 + infoFactor * 0.22))
+    scalePdfTable(6.7),
+    Math.min(scalePdfTable(14.2), dynamicFontSize * (1.5 + infoFactor * 0.34))
   );
+}
+
+function formatPeriodoPtBrExtenso(periodoRaw: string): string {
+  const periodoYm = normalizeResultsPeriodYm(periodoRaw);
+  if (!periodoYm) return periodoRaw;
+
+  const [yearStr, monthStr] = periodoYm.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return periodoRaw;
+
+  return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(
+    new Date(year, month - 1, 1)
+  );
+}
+
+function formatOneDecimalStable(value: number): string {
+  if (!Number.isFinite(value)) return "0.0";
+  return Number(value).toFixed(1);
 }
 
 
@@ -2453,15 +2472,19 @@ export default function AcertoNiveis({
           { label: 'ESCOLA:', lines: escolaLines },
           { label: 'SÉRIE:', lines: [resolveSerieDisplayForPdf(studentsToUse)] },
         ];
-        if (selectedClassId) {
-          const turmaNome = classes.find(c => c.id === selectedClassId)?.nome || selectedClassId;
-          fieldRows.push({ label: 'TURMA:', lines: [turmaNome] });
+        const turmaSelecionadaDisplay = isAnswerSheetAgregados
+          ? (asTurma !== "all"
+            ? asNorm((asOpcoes.turmas ?? []).find((t) => t.id === asTurma) ?? { id: asTurma })
+            : "")
+          : (selectedClassId ? (classes.find(c => c.id === selectedClassId)?.nome || selectedClassId) : "");
+        if (turmaSelecionadaDisplay) {
+          fieldRows.push({ label: 'TURMA:', lines: [turmaSelecionadaDisplay] });
         }
         if (evaluationInfo.data_aplicacao) {
           fieldRows.push({ label: 'DATA:', lines: [new Date(evaluationInfo.data_aplicacao).toLocaleDateString('pt-BR')] });
         }
         if (selectedPeriod && selectedPeriod !== 'all') {
-          fieldRows.push({ label: 'PERÍODO:', lines: [selectedPeriod] });
+          fieldRows.push({ label: 'PERÍODO:', lines: [formatPeriodoPtBrExtenso(selectedPeriod)] });
         }
         const turmasMapInitial = new Map<string, StudentResult[]>();
         studentsToUse.forEach(s => {
@@ -2702,8 +2725,12 @@ export default function AcertoNiveis({
 
         const concluidos = alunosTurma.filter((s) => s.status === 'concluida');
         const totalAlunos = alunosTurma.length;
-        const mediaNota = concluidos.length > 0
-          ? (concluidos.reduce((sum, s) => sum + s.nota, 0) / concluidos.length).toFixed(1) : '0.0';
+        const isVisaoGeral = turmaName.toUpperCase().includes("VISÃO GERAL");
+        const mediaNota = isVisaoGeral && typeof estatisticasGerais?.media_nota_geral === "number"
+          ? formatOneDecimalStable(Number(estatisticasGerais.media_nota_geral))
+          : concluidos.length > 0
+            ? formatOneDecimalStable(concluidos.reduce((sum, s) => sum + s.nota, 0) / concluidos.length)
+            : '0.0';
         const mediaProficiencia = concluidos.length > 0
           ? (concluidos.reduce((sum, s) => sum + s.proficiencia, 0) / concluidos.length).toFixed(1) : '0.0';
         const taxaParticipacao = totalAlunos > 0
@@ -3070,7 +3097,7 @@ export default function AcertoNiveis({
           const direct = map[key];
           if (direct === true) return "\u2713";
           if (direct === false) return "\u2717";
-          if (direct === null) return "";
+          if (direct === null) return "—";
         }
         return getAnswerSynthetic(student, questionNumber) ? "\u2713" : "\u2717";
       };
@@ -3136,6 +3163,9 @@ export default function AcertoNiveis({
         doc.setFontSize(10);
         doc.setTextColor(0);
         doc.text('Distribuição por Classificação', x, y - 3);
+        doc.setFontSize(8);
+        doc.setTextColor(70);
+        doc.text(`Participantes: ${concluidos.length}`, x + w, y - 3, { align: 'right' });
       };
 
       const drawQuestionAccuracyChart = (
@@ -3242,7 +3272,7 @@ export default function AcertoNiveis({
           const row = [
             `${i + 1}. ${s.nome}`,
             `${acertos}/${total}`,
-            s.nota.toFixed(1),
+            formatOneDecimalStable(s.nota),
             s.proficiencia.toFixed(1),
             normalizeProficiencyLevelLabel(s.classificacao),
           ];
@@ -3257,7 +3287,7 @@ export default function AcertoNiveis({
           theme: 'grid',
           margin: { left: margin, right: margin },
           styles: {
-            fontSize: scaleCompactTable(scalePdfTable(9)),
+            fontSize: scaleCompactTable(scalePdfTable(16)),
             cellPadding: scaleCompactTable(scalePdfTable(2.5)),
             lineColor: [200, 200, 200],
             lineWidth: 0.1,
@@ -3268,7 +3298,7 @@ export default function AcertoNiveis({
             textColor: [255, 255, 255],
             fontStyle: 'bold',
             halign: 'center',
-            fontSize: scaleCompactTable(scalePdfTable(9)),
+            fontSize: scaleCompactTable(scalePdfTable(16)),
             cellPadding: scaleCompactTable(scalePdfTable(2.5)),
           },
           bodyStyles: { textColor: [33, 33, 33] },
@@ -3294,7 +3324,7 @@ export default function AcertoNiveis({
               data.doc as jsPDF,
               data.cell,
               textValue,
-              scaleCompactTable(scalePdfTable(9))
+              scaleCompactTable(scalePdfTable(16))
             );
           }
         });
@@ -3345,7 +3375,7 @@ export default function AcertoNiveis({
             });
             if (isLastChunk) {
               row.push(`${acertosPorAluno[idx]}/${totalQuestoes}`);
-              row.push(s.nota.toFixed(1));
+              row.push(formatOneDecimalStable(s.nota));
               row.push(s.proficiencia.toFixed(1));
               row.push(normalizeProficiencyLevelLabel(s.classificacao));
             }
@@ -3404,7 +3434,7 @@ export default function AcertoNiveis({
           const numQuestoesThisChunk = chunk.length;
           const skillCodeFontSize = pdfSkillResponsiveFontSize(numQuestoesThisChunk, dynamicFontSize);
           // Altura da linha de habilidade — máx 12 chars por código
-          const SKILL_ROW_H = scaleDetailTableExtra(scalePdfTable(14));
+          const SKILL_ROW_H = scaleDetailTableExtra(scalePdfTable(26));
           const PCT_ROW_H = scaleDetailTableExtra(scalePdfTable(5.5));
 
           autoTable(doc, {
@@ -3520,7 +3550,8 @@ export default function AcertoNiveis({
                   d.setFontSize(skillCodeFontSize);
                   d.setFont('helvetica', 'bold');
                   d.setTextColor(0, 0, 0);
-                  const cx = cell.x + cell.width / 2;
+                  const SKILL_TEXT_SHIFT_MM = 0.53; // ~2px em 96dpi
+                  const cx = cell.x + cell.width / 2 + SKILL_TEXT_SHIFT_MM;
                   const sf =
                     d.internal && typeof (d.internal as { scaleFactor?: number }).scaleFactor === 'number'
                       ? (d.internal as { scaleFactor: number }).scaleFactor
@@ -3770,15 +3801,15 @@ export default function AcertoNiveis({
               let acertosChunk = 0;
               chunk.forEach(q => {
                 const resp = (al.respostas_por_questao || []).find(r => r.questao === q.numero);
-                if (!resp) { row.push(''); return; }
+                if (!resp) { row.push('—'); return; }
                 if (resp.respondeu) {
                   if (resp.acertou) { row.push('\u2713'); acertosChunk++; }
                   else row.push('\u2717');
-                } else row.push('');
+                } else row.push('—');
               });
               if (isLastChunk) {
                 row.push(`${al.total_acertos ?? 0}/${totalQuestoesDisc}`);
-                row.push(Number(al.nota ?? 0).toFixed(1));
+                row.push(formatOneDecimalStable(Number(al.nota ?? 0)));
                 row.push(Number(al.proficiencia ?? 0).toFixed(1));
                 row.push(normalizeProficiencyLevelLabel(al.nivel_proficiencia));
               }
@@ -3836,7 +3867,7 @@ export default function AcertoNiveis({
             const numQuestoesThisChunk = chunk.length;
             const skillCodeFontSize = pdfSkillResponsiveFontSize(numQuestoesThisChunk, dynamicFontSize);
             // Altura da linha de habilidade — máx 12 chars por código
-            const SKILL_ROW_H_DISC = scaleDetailTableExtra(scalePdfTable(14));
+            const SKILL_ROW_H_DISC = scaleDetailTableExtra(scalePdfTable(26));
             const PCT_ROW_H_DISC = scaleDetailTableExtra(scalePdfTable(5.5));
 
             autoTable(doc, {
@@ -3968,7 +3999,8 @@ export default function AcertoNiveis({
                     d.setFontSize(skillCodeFontSize);
                     d.setFont('helvetica', 'bold');
                     d.setTextColor(0, 0, 0);
-                    const cx = cell.x + cell.width / 2;
+                    const SKILL_TEXT_SHIFT_MM = 0.53; // ~2px em 96dpi
+                    const cx = cell.x + cell.width / 2 + SKILL_TEXT_SHIFT_MM;
                     const sfDisc =
                       d.internal && typeof (d.internal as { scaleFactor?: number }).scaleFactor === 'number'
                         ? (d.internal as { scaleFactor: number }).scaleFactor
@@ -4022,6 +4054,27 @@ export default function AcertoNiveis({
       // Se não temos alunos ou precisamos incluir faltosos, reconstruir a partir de allTabelaDetalhada
       if (studentsToUse.length === 0 && tabelaParaUsar) {
         studentsToUse = mapUnifiedStudents(tabelaParaUsar);
+      }
+
+      // Alinhar notas/proficiência com a fonte "geral" (mesma base exibida em Resultados)
+      if (tabelaParaUsar?.geral?.alunos?.length) {
+        const geralById = new Map(
+          tabelaParaUsar.geral.alunos
+            .map((aluno) => [alunoRowId(aluno), aluno] as const)
+            .filter(([rowId]) => Boolean(rowId))
+        );
+        studentsToUse = studentsToUse.map((student) => {
+          const geral = geralById.get(student.id);
+          if (!geral) return student;
+          return {
+            ...student,
+            nota: Number(geral.nota_geral ?? student.nota ?? 0),
+            proficiencia: Number(geral.proficiencia_geral ?? student.proficiencia ?? 0),
+            classificacao: normalizeProficiencyLevelLabel(
+              geral.nivel_proficiencia_geral || geral.classificacao || student.classificacao || ""
+            ),
+          };
+        });
       }
 
       const detailedStudentsForMerge =
@@ -4174,21 +4227,28 @@ export default function AcertoNiveis({
         }
       }
 
-      // Aplicar filtro de turma se uma turma foi selecionada
-      if (selectedClassId) {
-        const selectedClass = classes.find(c => c.id === selectedClassId);
-        if (selectedClass) {
-          const turmaSelecionadaNormalizada = normalizeTurmaName(selectedClass.nome);
+      const selectedClassNames = (() => {
+        if (isAnswerSheetAgregados) {
+          if (asTurma === "all") return [] as string[];
+          const turmaOption = (asOpcoes.turmas ?? []).find((t) => t.id === asTurma);
+          const turmaNome = asNorm(turmaOption ?? { id: asTurma });
+          return [turmaNome, asTurma].filter(Boolean);
+        }
+        if (!selectedClassId) return [] as string[];
+        const selectedClass = classes.find((c) => c.id === selectedClassId);
+        return [selectedClass?.nome || selectedClassId].filter(Boolean);
+      })();
+      const selectedClassNormSet = new Set(selectedClassNames.map((n) => normalizeTurmaName(n)));
 
-          // Filtrar com comparação normalizada (otimizado: normalizar uma vez e comparar)
-          studentsToUse = studentsToUse.filter(s => {
-            const turmaAlunoNormalizada = normalizeTurmaName(s.turma);
-            return turmaAlunoNormalizada === turmaSelecionadaNormalizada;
-          });
+      // Aplicar filtro de turma se uma turma foi selecionada (modo padrão e agregados)
+      if (selectedClassNormSet.size > 0) {
+        studentsToUse = studentsToUse.filter((s) => selectedClassNormSet.has(normalizeTurmaName(s.turma)));
 
-          // Se não encontrou alunos em studentsToUse, buscar TODOS os alunos da turma (incluindo faltosos)
-          if (studentsToUse.length === 0 && tabelaParaUsar) {
-            studentsToUse = obterTodosAlunosTurma(selectedClass.nome);
+        // Se não encontrou alunos em studentsToUse, buscar TODOS os alunos da turma (incluindo faltosos)
+        if (studentsToUse.length === 0 && tabelaParaUsar) {
+          const turmaFallback = selectedClassNames[0];
+          if (turmaFallback) {
+            studentsToUse = obterTodosAlunosTurma(turmaFallback);
           }
         }
       }
@@ -4208,13 +4268,13 @@ export default function AcertoNiveis({
 
       // Se uma turma específica foi selecionada e não encontramos alunos em studentsToUse,
       // mas a turma existe na lista de turmas, garantir que ela apareça no relatório
-      if (selectedClassId && studentsToUse.length === 0) {
-        const selectedClass = classes.find(c => c.id === selectedClassId);
-        if (selectedClass && tabelaParaUsar) {
-          const alunosTurma = obterTodosAlunosTurma(selectedClass.nome);
+      if (selectedClassNormSet.size > 0 && studentsToUse.length === 0) {
+        const turmaFallback = selectedClassNames[0];
+        if (turmaFallback && tabelaParaUsar) {
+          const alunosTurma = obterTodosAlunosTurma(turmaFallback);
           if (alunosTurma.length > 0) {
             studentsToUse = alunosTurma;
-            const turma = selectedClass.nome || 'Sem Turma';
+            const turma = turmaFallback || 'Sem Turma';
             turmasMap.set(turma, alunosTurma);
           }
         }
@@ -4222,7 +4282,7 @@ export default function AcertoNiveis({
 
       // IMPORTANTE: Quando filtro "todos" está ativo, garantir que TODAS as turmas sejam incluídas,
       // mesmo as que têm apenas faltosos (sem participantes)
-      if (!selectedClassId && tabelaParaUsar) {
+      if (selectedClassNormSet.size === 0 && tabelaParaUsar) {
         const todasTurmas = new Set<string>();
         const _school = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId) : null;
         const _grade = selectedGradeId ? grades.find(g => g.id === selectedGradeId) : null;
@@ -4272,8 +4332,9 @@ export default function AcertoNiveis({
       // Renderiza um consolidado geral se o usuário não filtrou por uma turma específica
       // e há alunos participantes no total.
       const todosAlunosParticipantes = studentsToUse.filter(s => s.status === 'concluida');
+      const hasClassScope = isAnswerSheetAgregados ? asTurma !== "all" : Boolean(selectedClassId);
 
-      if (!selectedClassId && todosAlunosParticipantes.length > 0 && questoesParaUsar.length > 0) {
+      if (!hasClassScope && todosAlunosParticipantes.length > 0 && questoesParaUsar.length > 0) {
         // Adicionar capa da seção Geral
         doc.addPage('landscape');
         pageWidth = doc.internal.pageSize.getWidth();
@@ -4451,34 +4512,34 @@ export default function AcertoNiveis({
           pageHeight = doc.internal.pageSize.getHeight();
 
           // Faixa compacta de cabeçalho portrait
-          const FALT_BAND_H = 18;
+          const FALT_BAND_H = 26;
           doc.setFillColor(...COLORS.primary);
           doc.rect(0, 0, pageWidth, FALT_BAND_H, 'F');
           if (icoDataUrl && icoWidth > 0 && icoHeight > 0) {
-            const lh = 12;
+            const lh = 15;
             const lw = (icoWidth * lh) / icoHeight;
             doc.addImage(icoDataUrl, 'PNG', margin, (FALT_BAND_H - lh) / 2, lw, lh);
           } else {
-            doc.setFontSize(8);
+            doc.setFontSize(10);
             doc.setTextColor(...COLORS.white);
             doc.setFont('helvetica', 'bold');
             doc.text('AFIRME PLAY', margin, FALT_BAND_H / 2 + 2);
           }
           doc.setFont('helvetica', 'bold');
-          doc.setFontSize(10);
+          doc.setFontSize(13);
           doc.setTextColor(...COLORS.white);
           doc.text('FALTOSOS / PENDENTES', pageWidth - margin, FALT_BAND_H / 2 + 2, { align: 'right' });
 
-          let y = FALT_BAND_H + 6;
+          let y = FALT_BAND_H + 9;
           doc.setFont('helvetica', 'normal');
-          doc.setFontSize(8);
+          doc.setFontSize(10);
           doc.setTextColor(...COLORS.textGray);
           const metaFaltososTbl = `Escola: ${getPdfEscolaDisplayText()}  •  Série: ${resolveSerieDisplayForPdf(alunosTurma)}  •  Turma: ${turmaName}`;
           const metaFaltososLines = doc.splitTextToSize(metaFaltososTbl, pageWidth - 2 * margin);
           metaFaltososLines.forEach((ln: string, i: number) => {
-            doc.text(ln, pageWidth / 2, y + i * 3.8, { align: 'center' });
+            doc.text(ln, pageWidth / 2, y + i * 4.6, { align: 'center' });
           });
-          y += metaFaltososLines.length * 3.8 + 3;
+          y += metaFaltososLines.length * 4.6 + 4;
           doc.setTextColor(0, 0, 0);
 
           // Preparar dados da tabela
@@ -4498,8 +4559,9 @@ export default function AcertoNiveis({
             theme: 'grid',
             margin: { left: margin, right: margin },
             styles: {
-              fontSize: scaleCompactTable(scalePdfTable(7)),
-              cellPadding: scaleCompactTable(scalePdfTable(1.15)),
+              fontSize: scaleCompactTable(scalePdfTable(17)),
+              cellPadding: scaleCompactTable(scalePdfTable(2.7)),
+              minCellHeight: scaleCompactTable(scalePdfTable(8.2)),
               lineColor: [200, 200, 200],
               lineWidth: 0.1,
               valign: 'middle',
@@ -4509,15 +4571,15 @@ export default function AcertoNiveis({
               textColor: [255, 255, 255],
               fontStyle: 'bold',
               halign: 'center',
-              fontSize: scaleCompactTable(scalePdfTable(7)),
-              cellPadding: scaleCompactTable(scalePdfTable(1.15)),
+              fontSize: scaleCompactTable(scalePdfTable(17)),
+              cellPadding: scaleCompactTable(scalePdfTable(2.7)),
             },
             bodyStyles: { textColor: [33, 33, 33] },
             alternateRowStyles: { fillColor: [250, 250, 250] },
             columnStyles: {
-              0: { halign: 'left', cellWidth: (pageWidth - 2 * margin) * 0.34 },
-              1: { halign: 'left', cellWidth: (pageWidth - 2 * margin) * 0.46 },
-              2: { halign: 'center', cellWidth: (pageWidth - 2 * margin) * 0.2 }
+              0: { halign: 'left', cellWidth: (pageWidth - 2 * margin) * 0.37 },
+              1: { halign: 'left', cellWidth: (pageWidth - 2 * margin) * 0.44 },
+              2: { halign: 'center', cellWidth: (pageWidth - 2 * margin) * 0.19 }
             }
           });
 
