@@ -16,6 +16,9 @@ export interface SkillsMapHabilidade {
   subject_id?: string | null;
   /** Cartão-resposta: bloco/disciplina da questão (evita misturar mesma habilidade entre disciplinas). */
   disciplina_nome?: string | null;
+  /** Referência única da questão no mapa (permite repetir a mesma habilidade em questões diferentes). */
+  question_ref?: string | null;
+  questao_numero?: number | null;
   percentual_acertos: number;
   faixa: SkillsMapFaixa;
   total_tentativas?: number;
@@ -135,7 +138,11 @@ export async function fetchSkillsMapOnline(
 }
 
 export async function fetchSkillsMapOnlineErros(
-  params: EvaluationFilterParams & { disciplina?: string; skill_id: string }
+  params: EvaluationFilterParams & {
+    disciplina?: string;
+    skill_id: string;
+    question_ref?: string | null;
+  }
 ): Promise<SkillsMapErrosResponse> {
   const q = new URLSearchParams();
   if (params.estado && params.estado !== 'all') q.set('estado', params.estado);
@@ -146,6 +153,9 @@ export async function fetchSkillsMapOnlineErros(
   if (params.turma && params.turma !== 'all') q.set('turma', params.turma);
   q.set('disciplina', params.disciplina && params.disciplina !== 'all' ? params.disciplina : 'all');
   q.set('skill_id', params.skill_id);
+  if (params.question_ref && String(params.question_ref).trim()) {
+    q.set('question_ref', String(params.question_ref).trim());
+  }
   appendPeriodo(q, params.periodo);
   const { data } = await api.get<SkillsMapErrosResponse>(
     `/evaluation-results/mapa-habilidades/erros?${q}`,
@@ -179,6 +189,7 @@ export async function fetchSkillsMapCartaoErros(
     skill_id: string;
     /** Disciplina/bloco da habilidade (igual subject_id do item do mapa). */
     bloco_disciplina?: string | null;
+    question_ref?: string | null;
   }
 ): Promise<SkillsMapErrosResponse> {
   const q = new URLSearchParams();
@@ -190,6 +201,9 @@ export async function fetchSkillsMapCartaoErros(
   if (params.turma && params.turma !== 'all') q.set('turma', params.turma);
   q.set('disciplina', params.disciplina && params.disciplina !== 'all' ? params.disciplina : 'all');
   q.set('skill_id', params.skill_id);
+  if (params.question_ref && String(params.question_ref).trim()) {
+    q.set('question_ref', String(params.question_ref).trim());
+  }
   if (params.bloco_disciplina && params.bloco_disciplina !== 'all') {
     q.set('bloco_disciplina', params.bloco_disciplina);
   }
