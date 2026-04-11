@@ -246,9 +246,9 @@ function HeatColumns({
               <p className="mt-4 text-center text-sm text-muted-foreground">Nenhuma habilidade</p>
             ) : (
               <div className="grid grid-cols-2 gap-2">
-                {list.map((h) => (
+                {list.map((h, idx) => (
                   <SkillCard
-                    key={`${h.skill_id}-${h.subject_id ?? 's'}`}
+                    key={`${h.skill_id}-${h.subject_id ?? 's'}-${h.question_ref ?? h.questao_numero ?? idx}`}
                     h={h}
                     onClick={() => onSkillClick(h)}
                   />
@@ -834,6 +834,7 @@ export default function SkillsHeatMapPage() {
         turma: oTurma,
         disciplina: oDisciplina,
         skill_id: h.skill_id,
+        question_ref: h.question_ref ?? null,
         ...(periodoYm ? { periodo: periodoYm } : {}),
       });
       setDialogErros(data);
@@ -861,6 +862,7 @@ export default function SkillsHeatMapPage() {
         disciplina: cDisciplina,
         skill_id: h.skill_id,
         bloco_disciplina: h.subject_id ?? null,
+        question_ref: h.question_ref ?? null,
         ...(periodoYm ? { periodo: periodoYm } : {}),
       });
       setDialogErros(data);

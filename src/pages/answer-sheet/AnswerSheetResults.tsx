@@ -33,6 +33,12 @@ import { ptBR } from 'date-fns/locale';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { api } from '@/lib/api';
+import { useAuth } from '@/context/authContext';
+import {
+  EvaluationResultsApiService,
+  REPORT_ENTITY_TYPE_ANSWER_SHEET,
+} from '@/services/evaluation/evaluationResultsApi';
+import { cityIdQueryParamForAdmin } from '@/utils/userHierarchy';
 import { useToast } from '@/hooks/use-toast';
 import { ResultsCharts } from '@/components/evaluations/results/ResultsCharts';
 import { StudentRanking } from '@/components/evaluations/student/StudentRanking';
@@ -151,7 +157,8 @@ interface DisciplinaTabela {
     habilidade?: string;
     codigo_habilidade?: string;
     question_id?: string;
-    skills?: Array<{ code?: string; id?: string }>;
+    /** Entradas da API podem usar várias chaves (name, descricao, etc.). */
+    skills?: Array<Record<string, unknown>>;
   }>;
   alunos: Array<{
     id: string;
@@ -171,6 +178,141 @@ interface DisciplinaTabela {
     status?: string;
     percentual_acertos?: number;
   }>;
+}
+
+function strUnknown(v: unknown): string {
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+/** API às vezes manda "?", "—" ou vazio como placeholder em habilidade/código. */
+function isPlaceholderHabilidadeText(t: string): boolean {
+  const s = t.trim();
+  if (!s) return true;
+  if (/^[\?\uFF1F]$/.test(s)) return true;
+  if (/^[—\u2013\u2014\-]$/.test(s)) return true;
+  if (/^n\/?a$/i.test(s)) return true;
+  return false;
+}
+
+/** Lê código e descrição de um item em skills[] (formatos variam na API). */
+function parseSkillEntry(raw: unknown): { description: string; code: string } {
+  if (!raw || typeof raw !== 'object') return { description: '', code: '' };
+  const o = raw as Record<string, unknown>;
+  const code =
+    strUnknown(o.code) ||
+    strUnknown(o.codigo) ||
+    strUnknown(o.codigo_habilidade) ||
+    '';
+  const id = strUnknown(o.id);
+  const description =
+    strUnknown(o.description) ||
+    strUnknown(o.descricao) ||
+    strUnknown(o.name) ||
+    strUnknown(o.nome) ||
+    strUnknown(o.title) ||
+    strUnknown(o.label) ||
+    strUnknown(o.text) ||
+    '';
+  let resolvedCode = code;
+  if (isPlaceholderHabilidadeText(resolvedCode)) {
+    resolvedCode = isPlaceholderHabilidadeText(id) ? '' : id;
+  }
+  return { description, code: resolvedCode };
+}
+
+/** Campos opcionais na questão (API agregada pode usar nomes diferentes de `habilidade`). */
+function descricaoHabilidadeFromQuestaoPlana(
+  q: DisciplinaTabela['questoes'][number]
+): string {
+  const rec = q as Record<string, unknown>;
+  const candidates = [
+    'descricao_habilidade',
+    'habilidade_descricao',
+    'skill_description',
+    'texto_habilidade',
+    'bncc_description',
+  ];
+  for (const k of candidates) {
+    const t = strUnknown(rec[k]);
+    if (t && !isPlaceholderHabilidadeText(t)) return t;
+  }
+  return '';
+}
+
+/** Descrição para tooltip: habilidade plana (se útil) ou textos em skills[]. */
+function habilidadeTooltipFromQuestao(
+  q: DisciplinaTabela['questoes'][number]
+): string {
+  const direct = (q.habilidade ?? '').trim();
+  if (!isPlaceholderHabilidadeText(direct)) return direct;
+  const fromPlano = descricaoHabilidadeFromQuestaoPlana(q);
+  if (fromPlano) return fromPlano;
+  const parts: string[] = [];
+  for (const s of q.skills ?? []) {
+    const { description } = parseSkillEntry(s);
+    if (description && !isPlaceholderHabilidadeText(description)) parts.push(description);
+  }
+  if (parts.length > 0) return parts.join(' · ');
+  return '';
+}
+
+function codigoHabilidadeResolvido(
+  q: DisciplinaTabela['questoes'][number]
+): string {
+  const flat = (q.codigo_habilidade ?? '').trim();
+  if (flat && !isPlaceholderHabilidadeText(flat)) return flat;
+  const codes: string[] = [];
+  for (const s of q.skills ?? []) {
+    const { code } = parseSkillEntry(s);
+    if (code && !isPlaceholderHabilidadeText(code)) codes.push(code);
+  }
+  if (codes.length > 0) return codes.join(', ');
+  return flat;
+}
+
+function normalizeSkillIdKey(u: string): string {
+  return u.replace(/[{}]/g, '').trim().toLowerCase();
+}
+
+/** Mapa código/id → descrição a partir de GET /skills/evaluation/:id (cartão resposta). */
+function buildSkillDescriptionLookup(
+  skills: Array<{ id?: string | null; code?: string; description?: string }> | null
+): Map<string, string> {
+  const m = new Map<string, string>();
+  if (!skills?.length) return m;
+  for (const s of skills) {
+    const desc = (s.description ?? '').trim();
+    if (!desc || isPlaceholderHabilidadeText(desc)) continue;
+    const code = (s.code ?? '').trim();
+    if (code) {
+      m.set(code, desc);
+      m.set(code.toUpperCase(), desc);
+    }
+    const id = s.id != null ? String(s.id).trim() : '';
+    if (id) {
+      m.set(id, desc);
+      m.set(normalizeSkillIdKey(id), desc);
+    }
+  }
+  return m;
+}
+
+/** Resolve descrições para um ou mais códigos (ex.: "EF05LP03, EF05LP04"). */
+function descriptionFromSkillLookup(codigoHabilidade: string, lookup: Map<string, string>): string {
+  if (!lookup.size || !codigoHabilidade.trim()) return '';
+  const segments = codigoHabilidade
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const out: string[] = [];
+  for (const seg of segments) {
+    const d =
+      lookup.get(seg) ||
+      lookup.get(seg.toUpperCase()) ||
+      lookup.get(normalizeSkillIdKey(seg));
+    if (d && !isPlaceholderHabilidadeText(d)) out.push(d);
+  }
+  return out.length > 0 ? out.join(' · ') : '';
 }
 
 interface RankingItem {
@@ -246,6 +388,21 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
   const [apiData, setApiData] = useState<ResultadosAgregadosResponse | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Habilidades do gabarito (GET /skills/evaluation/:id) — descrição por código quando o JSON agregado só manda code. */
+  const [gabaritoEvaluationSkills, setGabaritoEvaluationSkills] = useState<
+    Array<{ id?: string | null; code?: string; description?: string }> | null
+  >(null);
+
+  const user = useAuth((s) => s.user);
+  const adminCityIdQuery = useMemo(
+    () => cityIdQueryParamForAdmin(user?.role, municipio !== 'all' ? municipio : undefined),
+    [user?.role, municipio]
+  );
+
+  const skillDescriptionLookup = useMemo(
+    () => buildSkillDescriptionLookup(gabaritoEvaluationSkills),
+    [gabaritoEvaluationSkills]
+  );
 
   // UI: modo de visualização na aba Tabelas (tabela vs cards) e modal de faltosos
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
@@ -461,6 +618,7 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
   const loadResultadosAgregados = useCallback(async () => {
     if (!estado || estado === 'all' || !municipio || municipio === 'all' || !gabarito || gabarito === 'all') {
       setApiData(null);
+      setGabaritoEvaluationSkills(null);
       return;
     }
     const params = new URLSearchParams();
@@ -471,19 +629,27 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
     if (escola && escola !== 'all') params.set('escola', escola);
     if (serie && serie !== 'all') params.set('serie', serie);
     if (turma && turma !== 'all') params.set('turma', turma);
+    const skillsParams = {
+      report_entity_type: REPORT_ENTITY_TYPE_ANSWER_SHEET,
+      cityId: municipio,
+      ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+    } as const;
     try {
       setIsLoadingData(true);
       setError(null);
-      const res = await api.get<ResultadosAgregadosResponse>(
-        `/answer-sheets/resultados-agregados?${params.toString()}`
-      );
+      const [res, skillsRaw] = await Promise.all([
+        api.get<ResultadosAgregadosResponse>(`/answer-sheets/resultados-agregados?${params.toString()}`),
+        EvaluationResultsApiService.getSkillsByEvaluation(gabarito, skillsParams).catch(() => []),
+      ]);
       setApiData(res.data);
+      setGabaritoEvaluationSkills(Array.isArray(skillsRaw) ? skillsRaw : []);
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'response' in err && typeof (err as { response?: { data?: { message?: string } } }).response?.data?.message === 'string'
         ? (err as { response: { data: { message: string } } }).response.data.message
         : 'Não foi possível carregar os resultados.';
       setError(msg);
       setApiData(null);
+      setGabaritoEvaluationSkills(null);
       toast({
         title: 'Erro',
         description: msg,
@@ -492,7 +658,7 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
     } finally {
       setIsLoadingData(false);
     }
-  }, [estado, municipio, gabarito, periodoApi, escola, serie, turma, toast]);
+  }, [estado, municipio, gabarito, periodoApi, escola, serie, turma, toast, adminCityIdQuery]);
 
   useEffect(() => {
     loadResultadosAgregados();
@@ -724,22 +890,26 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
   // Mapear tabela_detalhada da API para o formato esperado por DisciplineTables (questões com numero + campos opcionais)
   const tabelaDetalhadaForDisciplineTables = useMemo(() => {
     if (!disciplinasTabela.length && !geralAlunos.length) return null;
-    const codigoHabilidadeFromQuestao = (q: DisciplinaTabela['questoes'][number]) => {
-      const fromSkills = (q.skills ?? [])
-        .map((s) => (typeof s?.code === 'string' ? s.code.trim() : ''))
-        .filter(Boolean);
-      if (fromSkills.length > 0) return fromSkills.join(', ');
-      return (q.codigo_habilidade ?? '').trim();
-    };
     const disciplinas = disciplinasTabela.map((d) => ({
       id: d.id,
       nome: d.nome,
-      questoes: (d.questoes || []).map((q) => ({
-        numero: q.numero,
-        habilidade: q.habilidade ?? '',
-        codigo_habilidade: codigoHabilidadeFromQuestao(q),
-        question_id: q.question_id ?? `q-${q.numero}`,
-      })),
+      questoes: (d.questoes || []).map((q) => {
+        const codigo = codigoHabilidadeResolvido(q);
+        const descTooltip = habilidadeTooltipFromQuestao(q);
+        const descPorCodigo = descriptionFromSkillLookup(codigo, skillDescriptionLookup);
+        const habilidadeParaHeader =
+          descTooltip ||
+          descPorCodigo ||
+          (codigo && !isPlaceholderHabilidadeText(codigo) ? codigo : '');
+        const rawQid = q.question_id != null ? String(q.question_id).trim() : '';
+        const question_id = rawQid || `${d.id}-q-${q.numero}`;
+        return {
+          numero: q.numero,
+          habilidade: habilidadeParaHeader,
+          codigo_habilidade: codigo,
+          question_id,
+        };
+      }),
       alunos: (d.alunos || []).map((a) => ({
         id: a.id,
         nome: a.nome,
@@ -775,7 +945,7 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
       })),
     } : undefined;
     return { disciplinas, geral };
-  }, [disciplinasTabela, geralAlunos]);
+  }, [disciplinasTabela, geralAlunos, skillDescriptionLookup]);
 
   return (
     <div className={cn('w-full min-w-0 space-y-6', !hidePageHeading && 'pb-8')}>
