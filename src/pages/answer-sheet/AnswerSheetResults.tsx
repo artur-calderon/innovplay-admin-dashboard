@@ -748,7 +748,7 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
     const e = apiData.estatisticas_gerais;
     const totalAlunos = e.total_alunos ?? 0;
     const participantes = e.alunos_participantes ?? 0;
-    const ausentes = (e.alunos_ausentes ?? 0) + (e.alunos_pendentes ?? 0);
+    const ausentes = e.alunos_pendentes ?? 0;
     return {
       totalAlunos,
       participantes,
