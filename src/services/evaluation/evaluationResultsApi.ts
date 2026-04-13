@@ -333,6 +333,11 @@ interface EvaluationResult {
     adequado: number;
     avancado: number;
   };
+  /**
+   * Cartão-resposta agregado (escopo município): classificação definida pelo backend por escola.
+   * `null` = sem classificação (ex.: sem correções).
+   */
+  nivel_escola?: string | null;
 }
 
 interface StudentResult {

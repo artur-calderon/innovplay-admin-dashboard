@@ -1388,29 +1388,64 @@ export default function RelatorioEscolar({
           if (lbl) labelsDaLinha.push(lbl);
         });
 
-        // 1) Média da coluna "Proficiência média" → mesma lógica de faixas do relatório digital (SAEB), coerente com o número exibido
-        const pNum = Number(proficienciaMedia);
-        const levelFromMedia =
-          proficienciaMedia !== undefined &&
-          proficienciaMedia !== null &&
-          !Number.isNaN(pNum)
-            ? getProficiencyLevelAggregadoCartaoOuRelatorio(
-                pNum,
-                apiData,
-                avaliacao.serie ?? serieVal
-              )
-            : null;
-        // 2) `resultados_detalhados.distribuicao_classificacao` (aba Estatísticas) quando não há média numérica
-        const levelFromDist = getBestProficiencyLevelFromBackendDistribution(
-          avaliacao.distribuicao_classificacao
-        );
-        const levelFromAlunos = getBestProficiencyLevelFromBackendLabels(labelsDaLinha);
-
-        const level = levelFromMedia ?? levelFromDist ?? levelFromAlunos;
-        if (level) {
-          row.proficiencyLevel = level;
-          row.proficiencyLabel = getProficiencyLevelLabel(level);
-          row.proficiencyColor = getProficiencyLevelColorRelatorio(level);
+        if (isAnswerSheetAgregados) {
+          const ne = (avaliacao as { nivel_escola?: string | null }).nivel_escola;
+          if (ne !== undefined) {
+            if (ne === null) {
+              row.proficiencyLabel = "Sem classificação";
+              row.proficiencyLevel = undefined;
+              row.proficiencyColor = "bg-muted text-muted-foreground border-border";
+            } else {
+              const text = String(ne).trim();
+              if (text) {
+                row.proficiencyLabel = text;
+                const mapped = backendNivelProficienciaToLevel(text);
+                if (mapped) {
+                  row.proficiencyLevel = mapped;
+                  row.proficiencyColor = getProficiencyLevelColorRelatorio(mapped);
+                } else {
+                  row.proficiencyColor =
+                    "bg-muted text-muted-foreground border-border";
+                }
+              } else {
+                row.proficiencyLabel = "Sem classificação";
+                row.proficiencyColor = "bg-muted text-muted-foreground border-border";
+              }
+            }
+          } else {
+            const levelFromDist = getBestProficiencyLevelFromBackendDistribution(
+              avaliacao.distribuicao_classificacao
+            );
+            const levelFromAlunos = getBestProficiencyLevelFromBackendLabels(labelsDaLinha);
+            const level = levelFromDist ?? levelFromAlunos;
+            if (level) {
+              row.proficiencyLevel = level;
+              row.proficiencyLabel = getProficiencyLevelLabel(level);
+              row.proficiencyColor = getProficiencyLevelColorRelatorio(level);
+            }
+          }
+        } else {
+          const pNum = Number(proficienciaMedia);
+          const levelFromMedia =
+            proficienciaMedia !== undefined &&
+            proficienciaMedia !== null &&
+            !Number.isNaN(pNum)
+              ? getProficiencyLevelAggregadoCartaoOuRelatorio(
+                  pNum,
+                  apiData,
+                  avaliacao.serie ?? serieVal
+                )
+              : null;
+          const levelFromDist = getBestProficiencyLevelFromBackendDistribution(
+            avaliacao.distribuicao_classificacao
+          );
+          const levelFromAlunos = getBestProficiencyLevelFromBackendLabels(labelsDaLinha);
+          const level = levelFromMedia ?? levelFromDist ?? levelFromAlunos;
+          if (level) {
+            row.proficiencyLevel = level;
+            row.proficiencyLabel = getProficiencyLevelLabel(level);
+            row.proficiencyColor = getProficiencyLevelColorRelatorio(level);
+          }
         }
 
         return row;
@@ -2120,7 +2155,7 @@ export default function RelatorioEscolar({
     }
 
     return sortedRows;
-  }, [apiData, isMunicipalView, relatorioCompleto, reportAnswerSheet]);
+  }, [apiData, isMunicipalView, relatorioCompleto, reportAnswerSheet, isAnswerSheetAgregados]);
 
   const distributionCharts = useMemo<DistributionChartData[]>(() => {
     if (!apiData || !apiData.resultados_por_disciplina) return [];
@@ -2275,50 +2310,23 @@ export default function RelatorioEscolar({
           : null;
 
       const eg = apiData.estatisticas_gerais;
-      let mediaGeral =
-        eg?.media_nota_geral != null && !Number.isNaN(Number(eg.media_nota_geral)) ? Number(eg.media_nota_geral) : null;
-      if (mediaGeral === null) {
-        const comNota = porDisciplinaFiltrado.filter(
-          (d) => d.media_nota !== undefined && d.media_nota !== null && !Number.isNaN(Number(d.media_nota))
-        );
-        mediaGeral =
-          comNota.length > 0
-            ? comNota.reduce((sum, d) => sum + Number(d.media_nota), 0) / comNota.length
-            : null;
-      }
+      const mediaGeral =
+        eg?.media_nota_geral != null && !Number.isNaN(Number(eg.media_nota_geral))
+          ? Number(eg.media_nota_geral)
+          : null;
 
-      let proficienciaMedia =
+      const proficienciaMedia =
         eg?.media_proficiencia_geral != null && !Number.isNaN(Number(eg.media_proficiencia_geral))
           ? Number(eg.media_proficiencia_geral)
           : null;
-      if (proficienciaMedia === null) {
-        const comProf = porDisciplinaFiltrado.filter(
-          (d) =>
-            d.media_proficiencia !== undefined &&
-            d.media_proficiencia !== null &&
-            !Number.isNaN(Number(d.media_proficiencia))
-        );
-        proficienciaMedia =
-          comProf.length > 0
-            ? comProf.reduce((sum, d) => sum + Number(d.media_proficiencia), 0) / comProf.length
-            : null;
-      }
 
       if (mediaLP === null && mediaMAT === null && mediaGeral === null && proficienciaMedia === null) {
         return null;
       }
 
-      const serieKpi =
-        apiData.estatisticas_gerais?.serie?.trim() ||
-        inferirSerieParaDescricao(apiData) ||
-        undefined;
-      const pKpi = proficienciaMedia != null ? Number(proficienciaMedia) : NaN;
-      const proficiencyLevel =
-        !Number.isNaN(pKpi)
-          ? getProficiencyLevelAggregadoCartaoOuRelatorio(pKpi, apiData, serieKpi)
-          : getBestProficiencyLevelFromBackendDistribution(
-              apiData.estatisticas_gerais?.distribuicao_classificacao_geral
-            );
+      const proficiencyLevel = getBestProficiencyLevelFromBackendDistribution(
+        apiData.estatisticas_gerais?.distribuicao_classificacao_geral
+      );
 
       const totalMatriculados = apiData.estatisticas_gerais?.total_alunos ?? null;
       const totalAvaliados = apiData.estatisticas_gerais?.alunos_participantes ?? null;

@@ -141,6 +141,25 @@ export interface AnswerSheetResultadosAgregadosRaw {
     series?: Array<{ id: string; nome?: string; name?: string }>;
     turmas?: Array<{ id: string; nome?: string; name?: string }>;
   };
+  /**
+   * Escopo município (estado + município + gabarito): uma linha por escola, com métricas e nível do backend.
+   */
+  escolas?: Array<{
+    id: string;
+    nome: string;
+    total_alunos?: number;
+    alunos_participantes?: number;
+    alunos_pendentes?: number;
+    media_nota?: number;
+    media_proficiencia?: number;
+    distribuicao_classificacao?: {
+      abaixo_do_basico?: number;
+      basico?: number;
+      adequado?: number;
+      avancado?: number;
+    };
+    nivel_escola?: string | null;
+  }>;
 }
 
 const emptyDist = () => ({
@@ -241,6 +260,29 @@ export function mapAnswerSheetResultadosAgregadosToNovaResposta(
   }));
 
   const gabaritos = raw.resultados_detalhados?.gabaritos ?? [];
+  const escolasPayload = raw.escolas ?? [];
+
+  const avaliacoesFromEscolas = escolasPayload.map((e) => ({
+    id: e.id,
+    titulo: e.nome,
+    disciplina: "",
+    serie: undefined as string | undefined,
+    turma: undefined as string | undefined,
+    escola: e.nome,
+    municipio: undefined as string | undefined,
+    estado: undefined as string | undefined,
+    data_aplicacao: "",
+    status: "finalized" as const,
+    total_alunos: e.total_alunos ?? 0,
+    alunos_participantes: e.alunos_participantes ?? 0,
+    alunos_pendentes: e.alunos_pendentes ?? 0,
+    alunos_ausentes: 0,
+    media_nota: e.media_nota ?? 0,
+    media_proficiencia: e.media_proficiencia ?? 0,
+    distribuicao_classificacao: { ...emptyDist(), ...e.distribuicao_classificacao },
+    nivel_escola: e.nivel_escola,
+  }));
+
   const avaliacoesFromGabaritos = gabaritos.map((g) => ({
     id: g.id,
     titulo: g.titulo,
@@ -260,6 +302,9 @@ export function mapAnswerSheetResultadosAgregadosToNovaResposta(
     media_proficiencia: g.media_proficiencia ?? 0,
     distribuicao_classificacao: { ...emptyDist(), ...g.distribuicao_classificacao },
   }));
+
+  const avaliacoesLinhas =
+    avaliacoesFromEscolas.length > 0 ? avaliacoesFromEscolas : avaliacoesFromGabaritos;
 
   const ranking: RankingItem[] = (raw.ranking ?? []).map((r) => ({
     posicao: r.posicao,
@@ -295,7 +340,7 @@ export function mapAnswerSheetResultadosAgregadosToNovaResposta(
       municipio: eg.municipio,
       escola: eg.escola,
       serie: eg.serie,
-      total_avaliacoes: eg.total_avaliacoes ?? Math.max(1, gabaritos.length),
+      total_avaliacoes: eg.total_avaliacoes ?? Math.max(1, avaliacoesLinhas.length),
       total_alunos: eg.total_alunos ?? 0,
       alunos_participantes: eg.alunos_participantes ?? 0,
       alunos_pendentes: eg.alunos_pendentes ?? 0,
@@ -306,11 +351,11 @@ export function mapAnswerSheetResultadosAgregadosToNovaResposta(
     },
     resultados_por_disciplina: resultadosPorDisciplina,
     resultados_detalhados: {
-      avaliacoes: avaliacoesFromGabaritos,
+      avaliacoes: avaliacoesLinhas,
       paginacao: raw.resultados_detalhados?.paginacao ?? {
         page: 1,
         per_page: 100,
-        total: avaliacoesFromGabaritos.length,
+        total: avaliacoesLinhas.length,
         total_pages: 1,
       },
     },
@@ -332,7 +377,11 @@ export function mapAnswerSheetResultadosAgregadosToNovaResposta(
         raw.opcoes_proximos_filtros?.escolas?.map((e) => ({
           id: e.id,
           name: e.name ?? e.nome ?? "",
-        })) ?? [],
+        })) ??
+        escolasPayload.map((e) => ({
+          id: e.id,
+          name: e.nome ?? "",
+        })),
       series:
         raw.opcoes_proximos_filtros?.series?.map((s) => ({
           id: s.id,
