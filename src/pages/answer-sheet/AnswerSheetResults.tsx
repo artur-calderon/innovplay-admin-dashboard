@@ -1632,7 +1632,8 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
                           proficiencia: s.proficiencia,
                           classificacao: s.classificacao,
                           status: s.status,
-                          posicao: s.posicao,
+                          // Não enviar posicao da API: o backend pode ranquear por outro critério;
+                          // StudentRanking ordena por proficiência e define 1..n coerente com a lista.
                         }))}
                         maxStudents={100}
                       />
