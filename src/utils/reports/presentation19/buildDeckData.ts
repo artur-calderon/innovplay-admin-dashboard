@@ -1363,6 +1363,16 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
   );
   const questoesPorTurma = buildQuestoesPorTurmaFromNova(novaRespostaAgregados, habilidadePorQuestaoTurma);
 
+  // Quando há turma selecionada, o deck deve comparar Turma vs Geral da série,
+  // e as seções de capa/questões devem ser restritas à turma selecionada.
+  const selectedTurmaEffective = selectedTurmaLabel?.trim() ? selectedTurmaLabel.trim() : undefined;
+  const serieForTurmaCompare =
+    (selectedSerieLabel?.trim() ? selectedSerieLabel.trim() : "") ||
+    (selectedTurmaEffective ? extractSerieFromTurma(selectedTurmaEffective) : "") ||
+    serieHintBase ||
+    "GERAL";
+  const TURMA_COMPARE_GERAL_LABEL = "Geral da série";
+
   let turmasParticipantesCapa = collectTurmasParticipantes(
     relatorioDetalhado,
     novaRespostaAgregados,
@@ -1379,8 +1389,13 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
     turmasParticipantesCapa = Array.from(s).sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
   }
 
-  const turmaCapa =
-    turmasParticipantesCapa.length > 0
+  if (selectedTurmaEffective) {
+    turmasParticipantesCapa = [selectedTurmaEffective];
+  }
+
+  const turmaCapa = selectedTurmaEffective
+    ? selectedTurmaEffective
+    : turmasParticipantesCapa.length > 0
       ? turmasParticipantesCapa.join(", ")
       : selectedTurmaLabel ||
         String(novaRespostaAgregados?.tabela_detalhada?.geral?.alunos?.[0]?.turma ?? "").trim() ||
@@ -1389,9 +1404,146 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
   const serieNomeCapas = serieFinal;
   const turmaNomeCapas = turmaCapa;
 
-  const alunosDetalhados: AlunoPresentationRow[] = alunosRanking ?? [];
+  const alunosDetalhados: AlunoPresentationRow[] = (() => {
+    // Quando vier explicitamente via ranking (escopo aluno antigo), prioriza.
+    if (alunosRanking && alunosRanking.length > 0) return alunosRanking;
+
+    const alunos = (novaRespostaAgregados?.tabela_detalhada?.geral?.alunos ?? []) as Array<{
+      nome?: string;
+      turma?: string;
+      serie?: string;
+      nota?: number;
+      proficiencia?: number;
+      classificacao?: string;
+    }>;
+    if (!alunos.length) return [];
+
+    // Filtros (série/turma) para ranking ao final do deck.
+    const serieKey = selectedSerieLabel?.trim()
+      ? selectedSerieLabel.trim()
+      : String(novaRespostaAgregados?.estatisticas_gerais?.serie ?? "").trim();
+    const turmaKey = selectedTurmaLabel?.trim() ? selectedTurmaLabel.trim() : "";
+
+    const filtered = alunos.filter((a) => {
+      const t = String(a.turma ?? "").trim();
+      const s = String(a.serie ?? "").trim() || extractSerieFromTurma(t);
+      if (turmaKey) return normKey(t) === normKey(turmaKey);
+      if (serieKey && serieKey !== "all") return normKey(s) === normKey(serieKey);
+      return true;
+    });
+
+    return filtered
+      .map((a) => ({
+        nome: String(a.nome ?? "—"),
+        turma: String(a.turma ?? "").trim() || undefined,
+        nota: clampToNumber(a.nota, 0),
+        proficiencia: clampToNumber(a.proficiencia, 0),
+        classificacao: String(a.classificacao ?? "—"),
+      }))
+      .sort((a, b) => (b.proficiencia || 0) - (a.proficiencia || 0));
+  })();
 
   warnIfProficiencyOutOfRange(serieFinal, proficienciaGeralPorTurma, proficienciaPorDisciplinaPorTurma);
+
+  // Pós-processamento do escopo TURMA selecionada:
+  // - métricas/tabelas/gráficos: somente 2 linhas (Geral da série vs Turma selecionada)
+  // - questões: somente a turma selecionada (sem bloco geral, sem outras turmas)
+  let presencaFinal = presencaPorSerie;
+  let niveisFinal = levelsPorSerie;
+  let profGeralFinal = proficienciaGeralPorTurma;
+  let profDiscFinal = proficienciaPorDisciplinaPorTurma;
+  let notasDiscFinal = notasPorDisciplina;
+  let mediaNotaFinal = mediaNotaGeral;
+  let notasCatFinal = notasPorCategoria;
+  let questoesTabelaGeralFinal = questoesTabelaGeral;
+  let questoesPorTurmaFinal = questoesPorTurma;
+
+  if (selectedTurmaEffective) {
+    // Presença: agrega a série a partir das turmas filtradas e pega a turma selecionada.
+    const turmaPresence = presencaFinal.find((r) => normKey(r.label) === normKey(selectedTurmaEffective));
+    const seriePresenceAgg = (() => {
+      // Preferência: se houver linha por série em groupPresenceFromRelatorio, usar.
+      const bySerie = groupPresenceFromRelatorio(relatorioDetalhado);
+      const serieRow = bySerie.find((r) => normKey(r.label) === normKey(serieForTurmaCompare));
+      if (serieRow) return { ...serieRow, label: TURMA_COMPARE_GERAL_LABEL };
+      // Fallback: soma as turmas atuais (já filtradas por série quando aplicável).
+      const totalAlunos = safeSum(presencaFinal.map((r) => clampToNumber(r.totalAlunos, 0)));
+      const totalPresentes = safeSum(presencaFinal.map((r) => clampToNumber(r.totalPresentes, 0)));
+      const alunosFaltosos = Math.max(0, totalAlunos - totalPresentes);
+      const presencaMediaPct = totalAlunos > 0 ? (totalPresentes / totalAlunos) * 100 : 0;
+      return { label: TURMA_COMPARE_GERAL_LABEL, totalAlunos, totalPresentes, presencaMediaPct, alunosFaltosos };
+    })();
+    presencaFinal = [seriePresenceAgg, turmaPresence].filter(Boolean) as PresenceBySeriesRow[];
+
+    // Níveis: série (agregado) vs turma selecionada.
+    const turmaLevelsRow = (() => {
+      const direct = groupNiveisPorTurmaDireto(relatorioDetalhado, serieForTurmaCompare).find(
+        (r) => normKey(r.label) === normKey(selectedTurmaEffective)
+      );
+      return direct ?? niveisFinal.find((r) => normKey(r.label) === normKey(selectedTurmaEffective));
+    })();
+    const serieLevelsAgg = (() => {
+      const fromSerie = groupNiveisFromRelatorio(relatorioDetalhado, [serieForTurmaCompare])[0];
+      if (fromSerie) return { ...fromSerie, label: TURMA_COMPARE_GERAL_LABEL };
+      const rows = groupNiveisPorTurmaDireto(relatorioDetalhado, serieForTurmaCompare);
+      const total = safeSum(rows.map((r) => clampToNumber(r.total, 0)));
+      const abaixo = safeSum(rows.map((r) => clampToNumber(r.abaixoDoBasico, 0)));
+      const basico = safeSum(rows.map((r) => clampToNumber(r.basico, 0)));
+      const adequado = safeSum(rows.map((r) => clampToNumber(r.adequado, 0)));
+      const avancado = safeSum(rows.map((r) => clampToNumber(r.avancado, 0)));
+      return { label: TURMA_COMPARE_GERAL_LABEL, abaixoDoBasico: abaixo, basico, adequado, avancado, total };
+    })();
+    niveisFinal = [serieLevelsAgg, turmaLevelsRow].filter(Boolean) as NiveisBySeriesRow[];
+
+    // Proficiência geral: série (média) vs turma selecionada.
+    const turmaProf = profGeralFinal.find((r) => normKey(r.label) === normKey(selectedTurmaEffective));
+    const serieProf = (() => {
+      const bySerie = buildProficiencyGeneralPorSerieFromRelatorio(relatorioDetalhado);
+      const row = bySerie.find((r) => normKey(r.label) === normKey(serieForTurmaCompare));
+      if (row) return row.proficiencia;
+      const vals = profGeralFinal.map((r) => clampToNumber(r.proficiencia, 0));
+      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    })();
+    profGeralFinal = [
+      { label: TURMA_COMPARE_GERAL_LABEL, proficiencia: serieProf },
+      turmaProf ? { label: selectedTurmaEffective, proficiencia: clampToNumber(turmaProf.proficiencia, 0) } : null,
+    ].filter(Boolean) as ProficiencyGeneralByTurmaRow[];
+
+    // Proficiência por disciplina: duas colunas por disciplina.
+    profDiscFinal = profDiscFinal
+      .map((row) => {
+        const turmaEntry = row.valuesByTurma.find((v) => normKey(v.turma) === normKey(selectedTurmaEffective));
+        const vals = row.valuesByTurma.map((v) => clampToNumber(v.proficiencia, 0));
+        const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+        if (!turmaEntry) return null;
+        return {
+          disciplina: row.disciplina,
+          valuesByTurma: [
+            { turma: TURMA_COMPARE_GERAL_LABEL, proficiencia: avg },
+            { turma: selectedTurmaEffective, proficiencia: clampToNumber(turmaEntry.proficiencia, 0) },
+          ],
+        };
+      })
+      .filter(Boolean) as ProficiencyByDisciplineByTurmaRow[];
+
+    // Notas: manter só o comparativo (Geral da série vs Turma) no gráfico/tabela de notas.
+    const notasTurmaRows = buildNotasPorCategoriaFromRelatorio(relatorioDetalhado, "turma", serieForTurmaCompare);
+    const turmaNota = notasTurmaRows.find((r) => normKey(r.label) === normKey(selectedTurmaEffective));
+    const serieNotaAvg = (() => {
+      const vals = notasTurmaRows.map((r) => clampToNumber(r.mediaNota, 0));
+      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    })();
+    notasDiscFinal = [];
+    mediaNotaFinal = null;
+    notasCatFinal = [
+      { label: TURMA_COMPARE_GERAL_LABEL, mediaNota: serieNotaAvg },
+      turmaNota ? { label: selectedTurmaEffective, mediaNota: clampToNumber(turmaNota.mediaNota, 0) } : null,
+    ].filter(Boolean) as NotaPorCategoriaDeck[];
+
+    // Questões: somente a turma selecionada.
+    questoesTabelaGeralFinal = [];
+    questoesPorTurmaFinal = questoesPorTurmaFinal.filter((b) => normKey(b.turma) === normKey(selectedTurmaEffective));
+  }
 
   return {
     mode,
@@ -1407,20 +1559,20 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
     turma: turmaCapa,
     turmasParticipantesCapa,
 
-    presencaPorSerie,
-    niveisPorSerie: levelsPorSerie,
+    presencaPorSerie: presencaFinal,
+    niveisPorSerie: niveisFinal,
 
-    proficienciaGeralPorTurma,
-    proficienciaPorDisciplinaPorTurma,
+    proficienciaGeralPorTurma: profGeralFinal,
+    proficienciaPorDisciplinaPorTurma: profDiscFinal,
 
-    mediaNotaGeral,
-    notasPorDisciplina,
-    notasPorCategoria,
+    mediaNotaGeral: mediaNotaFinal,
+    notasPorDisciplina: notasDiscFinal,
+    notasPorCategoria: notasCatFinal,
 
     alunosDetalhados,
 
-    questoesTabelaGeral,
-    questoesPorTurma,
+    questoesTabelaGeral: questoesTabelaGeralFinal,
+    questoesPorTurma: questoesPorTurmaFinal,
 
     levelGuide: buildLevelGuideDescriptions(serieFinal),
 

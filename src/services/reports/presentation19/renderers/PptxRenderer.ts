@@ -32,6 +32,8 @@ import {
   P19_COVER_MAIN_LABEL_PX,
   P19_COVER_MAIN_TITLE_PX,
   P19_COVER_MAIN_VALUE_PX,
+  P19_COVER_SCHOOL_LIST_LARGE_PX,
+  P19_COVER_SCHOOL_LIST_SMALL_PX,
   P19_COVER_SCHOOL_MULTI_HEADER_PX,
   P19_COVER_SCHOOL_SINGLE_PX,
   P19_DYNAMIC_COVER_PX,
@@ -422,6 +424,15 @@ function drawTable(
   const rowHeights = [rowHeadH, ...rows.map(() => rowBodyH)];
   const tableH = rowHeights.reduce((sum, h) => sum + h, 0);
   const cellFs = p19PxToPtForPptx(P19_TABLE_CELL_FONT_PX);
+  const classificationIdx = columns.findIndex((c) => String(c).toLowerCase().includes("classifica"));
+  const classificationColor = (raw: string): string | null => {
+    const n = String(raw ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    if (n.includes("abaixo")) return "EF4444";
+    if (n.includes("basico")) return "FACC15";
+    if (n.includes("adequado")) return "22C55E";
+    if (n.includes("avan")) return "166534";
+    return null;
+  };
   const tableRows: PptxGenJS.TableRow[] = [
     columns.map((c) => ({
       text: c,
@@ -434,15 +445,20 @@ function drawTable(
       },
     })),
     ...rows.map((r, ri) =>
-      r.map((c) => ({
-        text: String(c),
-        options: {
-          fontSize: cellFs,
-          color: "0F172A",
-          fill: { color: ri % 2 === 0 ? "FCFCFD" : "F1F5F9" },
-          margin: cellPad,
-        },
-      }))
+      r.map((c, ci) => {
+        const baseColor = "0F172A";
+        const maybe = classificationIdx === ci ? classificationColor(String(c)) : null;
+        return {
+          text: String(c),
+          options: {
+            fontSize: cellFs,
+            color: maybe ?? baseColor,
+            bold: Boolean(maybe),
+            fill: { color: ri % 2 === 0 ? "FCFCFD" : "F1F5F9" },
+            margin: cellPad,
+          },
+        };
+      })
     ),
   ];
   slide.addTable(tableRows, {
@@ -510,11 +526,11 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
           wrap: true,
         });
       } else {
-        const listFs = escolas.length > 14 ? 17 : 24;
+        const listFsPx = escolas.length > 14 ? P19_COVER_SCHOOL_LIST_SMALL_PX : P19_COVER_SCHOOL_LIST_LARGE_PX;
         slide.addText(
           [
             { text: "ESCOLAS PARTICIPANTES\n", options: { fontSize: p19PxToPtForPptx(P19_COVER_SCHOOL_MULTI_HEADER_PX), color: "52525B", bold: true } },
-            { text: escolas.map((s) => `• ${s}`).join("\n"), options: { fontSize: p19PxToPtForPptx(listFs), color: "18181B", bold: true } },
+            { text: escolas.map((s) => `• ${s}`).join("\n"), options: { fontSize: p19PxToPtForPptx(listFsPx), color: "18181B", bold: true } },
           ],
           {
             x: 0.65,

@@ -716,7 +716,9 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                             : slide.kind === "grades-table"
                               ? presentationTitleTableGrades(deckData.comparisonAxis)
                               : slide.kind === "students-table"
-                                ? presentationTitleTableStudents()
+                                ? slide.variant === "by-level"
+                                  ? "PROFICIÊNCIA — ALUNOS POR NÍVEL"
+                                  : presentationTitleTableStudents()
                                 : slide.kind === "questions-table"
                                   ? slide.questionsSubsection?.kind === "geral"
                                     ? "TABELA DE QUESTÕES — GERAL"
@@ -766,19 +768,40 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                     <tbody>
                       {slide.table.rows.map((r, idx) => (
                         <tr key={idx} style={{ background: idx % 2 === 0 ? "#FCFCFD" : "#F1F5F9" }}>
-                          {r.map((cell, cIdx) => (
+                          {r.map((cell, cIdx) => {
+                            const cellText = String(cell);
+                            const isClassificationCell =
+                              slide.kind === "students-table" && slide.table.columns[cIdx]?.toLowerCase().includes("classifica");
+                            const normalized = cellText
+                              .normalize("NFD")
+                              .replace(/[\u0300-\u036f]/g, "")
+                              .toLowerCase();
+                            const classificationColor = isClassificationCell
+                              ? normalized.includes("abaixo")
+                                ? "#EF4444"
+                                : normalized.includes("basico")
+                                  ? "#FACC15"
+                                  : normalized.includes("adequado")
+                                    ? "#22C55E"
+                                    : normalized.includes("avan")
+                                      ? "#166534"
+                                      : undefined
+                              : undefined;
+                            return (
                             <td
                               key={cIdx}
                               style={{
                                 border: "1px solid #CBD5E1",
                                 padding: P19_TABLE_CELL_PADDING_PX,
                                 fontSize: P19_TABLE_CELL_FONT_PX,
-                                color: "#0F172A",
+                                color: classificationColor ?? "#0F172A",
+                                fontWeight: classificationColor ? 800 : undefined,
                               }}
                             >
-                              {String(cell)}
+                              {cellText}
                             </td>
-                          ))}
+                          );
+                          })}
                         </tr>
                       ))}
                     </tbody>

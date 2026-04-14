@@ -120,6 +120,39 @@ function buildLevelsComparisonChartMultiSchool(deckData: Presentation19DeckData)
 }
 
 function buildLevelsChart(deckData: Presentation19DeckData): ExportChart {
+  // Comparativo (ex.: Turma selecionada vs Geral da série): barras empilhadas por nível por escopo.
+  if (deckData.comparisonAxis === "turma" && deckData.niveisPorSerie.length > 1) {
+    const sorted = [...deckData.niveisPorSerie].sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+    const rawMax = Math.max(
+      1,
+      ...sorted.flatMap((r) => [r.abaixoDoBasico, r.basico, r.adequado, r.avancado])
+    );
+    const maxRounded = rawMax <= 10 ? 10 : Math.ceil(rawMax / 5) * 5;
+    return {
+      type: "bar",
+      categoryKey: "label",
+      valueKeys: [
+        { key: "abaixo", label: "Abaixo do Básico", color: levelColors.abaixo_do_basico },
+        { key: "basico", label: "Básico", color: levelColors.basico },
+        { key: "adequado", label: "Adequado", color: levelColors.adequado },
+        { key: "avancado", label: "Avançado", color: levelColors.avancado },
+      ],
+      data: sorted.map((r) => ({
+        label: r.label,
+        abaixo: Number(clampToRange(r.abaixoDoBasico, 0, maxRounded)),
+        basico: Number(clampToRange(r.basico, 0, maxRounded)),
+        adequado: Number(clampToRange(r.adequado, 0, maxRounded)),
+        avancado: Number(clampToRange(r.avancado, 0, maxRounded)),
+      })),
+      yAxis: {
+        min: 0,
+        max: maxRounded,
+        ticks: buildLinearTicks(0, maxRounded, 4),
+        scaleLabel: "alunos",
+      },
+    };
+  }
+
   const totals = deckData.niveisPorSerie.reduce(
     (acc, r) => {
       acc.abaixo_do_basico += Number(r.abaixoDoBasico || 0);
@@ -588,26 +621,61 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
   }
 
   const studentChunks = chunkFlat(deckData.alunosDetalhados, 18);
-  const studentSlides: Presentation19SlideSpec[] =
-    deckData.comparisonAxis === "aluno" && studentChunks.length > 0
-      ? studentChunks.map((chunk, pageIdx) => ({
-          index: 0,
-          kind: "students-table" as const,
-          table: {
-            columns: ["Aluno", "Turma", "Nota", "Proficiência", "Classificação"],
-            rows: chunk.map((a) => [
-              a.nome,
-              a.turma ?? "—",
-              Number(a.nota.toFixed(2)),
-              Number(a.proficiencia.toFixed(1)),
-              a.classificacao,
-            ]),
-          },
-          ...(studentChunks.length > 1
-            ? { studentsPage: { current: pageIdx + 1, total: studentChunks.length } }
-            : {}),
-        }))
-      : [];
+  const levelRank = (s: string) => {
+    const n = String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    if (n.includes("abaixo")) return 0;
+    if (n.includes("basico")) return 1;
+    if (n.includes("adequado")) return 2;
+    if (n.includes("avan")) return 3;
+    return 99;
+  };
+  const shouldShowStudents =
+    (deckData.comparisonAxis === "aluno" || deckData.comparisonAxis === "serie" || deckData.comparisonAxis === "turma") &&
+    studentChunks.length > 0;
+  const studentSlidesRanking: Presentation19SlideSpec[] = shouldShowStudents
+    ? studentChunks.map((chunk, pageIdx) => ({
+        index: 0,
+        kind: "students-table" as const,
+        variant: "ranking" as const,
+        table: {
+          columns: ["Aluno", "Turma", "Nota", "Proficiência", "Classificação"],
+          rows: chunk.map((a) => [
+            a.nome,
+            a.turma ?? "—",
+            Number(a.nota.toFixed(2)),
+            Number(a.proficiencia.toFixed(1)),
+            a.classificacao,
+          ]),
+        },
+        ...(studentChunks.length > 1 ? { studentsPage: { current: pageIdx + 1, total: studentChunks.length } } : {}),
+      }))
+    : [];
+
+  const studentsByLevel = [...deckData.alunosDetalhados].sort((a, b) => {
+    const ra = levelRank(a.classificacao);
+    const rb = levelRank(b.classificacao);
+    if (ra !== rb) return ra - rb;
+    return (b.proficiencia || 0) - (a.proficiencia || 0);
+  });
+  const studentByLevelChunks = chunkFlat(studentsByLevel, 18);
+  const studentSlidesByLevel: Presentation19SlideSpec[] = shouldShowStudents
+    ? studentByLevelChunks.map((chunk, pageIdx) => ({
+        index: 0,
+        kind: "students-table" as const,
+        variant: "by-level" as const,
+        table: {
+          columns: ["Aluno", "Turma", "Nota", "Proficiência", "Classificação"],
+          rows: chunk.map((a) => [
+            a.nome,
+            a.turma ?? "—",
+            Number(a.nota.toFixed(2)),
+            Number(a.proficiencia.toFixed(1)),
+            a.classificacao,
+          ]),
+        },
+        ...(studentByLevelChunks.length > 1 ? { studentsPage: { current: pageIdx + 1, total: studentByLevelChunks.length } } : {}),
+      }))
+    : [];
 
   const slides: Presentation19SlideSpec[] = [];
   let idx = 1;
@@ -658,6 +726,16 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
     push({ kind: "grades-chart", chart: buildGradesChartMunicipalCompare(deckData) });
   } else {
     push({ kind: "grades-chart", chart: buildGradesChart(deckData) });
+  }
+
+  if (studentSlidesRanking.length > 0) {
+    push({ kind: "section-students" });
+    for (const s of studentSlidesRanking) {
+      if (s.kind === "students-table") push(s);
+    }
+    for (const s of studentSlidesByLevel) {
+      if (s.kind === "students-table") push(s);
+    }
   }
 
   if (studentSlides.length > 0) {

@@ -80,9 +80,13 @@ export function p19PdfLineHeightPx(fontSizePx: number): number {
   return fontSizePx * 1.2;
 }
 
-/** CSS px → pontos tipográficos (96 CSS px = 72 pt). */
+/** CSS px → pontos tipográficos (96 CSS px = 72 pt).
+ * Mantém decimais para aproximar melhor a pré-visualização (evita “pulos” por arredondamento).
+ */
 export function p19PxToPtForPptx(px: number): number {
-  return Math.max(6, Math.round((px * 72) / 96));
+  const pt = (px * 72) / 96;
+  // PPTX aceita decimais; preservamos 2 casas para estabilidade.
+  return Number(pt.toFixed(2));
 }
 
 /** Converte coordenada horizontal em px do canvas para polegadas no slide wide (13.333"). */

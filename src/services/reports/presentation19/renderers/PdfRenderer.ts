@@ -515,48 +515,49 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       drawWrappedSlideTitle(doc, "CAPA DE SEGMENTO", deckData.primaryColor, 100, content.w - P19_TITLE_TEXT_OFFSET_X_PX);
       doc.setFillColor(248, 250, 252);
       doc.roundedRect(content.x, 160, content.w, 440, 14, 14, "F");
-      const curLh = p19PdfLineHeightPx(P19_SEGMENT_FIELD_VALUE_PX);
-      let blockY = 210;
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(P19_SEGMENT_FIELD_LABEL_PX);
-      doc.setTextColor(82, 82, 91);
-      doc.text("CURSO", content.x + 24, blockY);
-      blockY += 22;
-      doc.setFontSize(P19_SEGMENT_FIELD_VALUE_PX);
-      doc.setTextColor(24, 24, 27);
-      doc.splitTextToSize(deckData.curso, content.w - 48).forEach((ln) => {
-        doc.text(ln, content.x + 24, blockY);
-        blockY += curLh;
-      });
-      blockY += 18;
-      doc.setFontSize(P19_SEGMENT_FIELD_LABEL_PX);
-      doc.setTextColor(82, 82, 91);
-      doc.text("SÉRIE", content.x + 24, blockY);
-      blockY += 22;
-      doc.setFontSize(P19_SEGMENT_FIELD_VALUE_PX);
-      doc.setTextColor(24, 24, 27);
-      doc.splitTextToSize(deckData.serie, content.w - 48).forEach((ln) => {
-        doc.text(ln, content.x + 24, blockY);
-        blockY += curLh;
-      });
-      blockY += 18;
-      doc.setFontSize(P19_SEGMENT_FIELD_LABEL_PX);
-      doc.setTextColor(82, 82, 91);
-      doc.text(deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA", content.x + 24, blockY);
-      blockY += 22;
-      doc.setTextColor(24, 24, 27);
+      const x = content.x + 24;
+      const maxW = content.w - 48;
+
+      // Em jsPDF o Y é baseline; controlamos tudo em "top" para evitar sobreposição.
+      const drawLabelValueBlock = (args: { yTop: number; label: string; value: string; valueFontSize: number; valueBold?: boolean }) => {
+        const labelFs = P19_SEGMENT_FIELD_LABEL_PX;
+        const labelGap = 8; // espaço real entre rótulo e valor
+        const blockGap = 18; // espaço real entre blocos
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(labelFs);
+        doc.setTextColor(82, 82, 91);
+        doc.text(args.label, x, args.yTop + labelFs);
+
+        doc.setFont("helvetica", args.valueBold === false ? "normal" : "bold");
+        doc.setFontSize(args.valueFontSize);
+        doc.setTextColor(24, 24, 27);
+        const valueLines = doc.splitTextToSize(args.value, maxW);
+        const valueLh = p19PdfLineHeightPx(args.valueFontSize);
+        let y = args.yTop + labelFs + labelGap + args.valueFontSize;
+        valueLines.forEach((ln) => {
+          doc.text(ln, x, y);
+          y += valueLh;
+        });
+        return { yTop: y + blockGap };
+      };
+
+      let yTop = 190;
+      ({ yTop } = drawLabelValueBlock({ yTop, label: "CURSO", value: deckData.curso, valueFontSize: P19_SEGMENT_FIELD_VALUE_PX }));
+      ({ yTop } = drawLabelValueBlock({ yTop, label: "SÉRIE", value: deckData.serie, valueFontSize: P19_SEGMENT_FIELD_VALUE_PX }));
+
       const turmaBody =
         deckData.turmasParticipantesCapa.length > 8
           ? deckData.turmasParticipantesCapa.map((t) => `• ${t}`).join("\n")
           : deckData.turma;
       const fsTurma = turmaBody.length > 200 ? 16 : turmaBody.length > 100 ? 20 : 28;
-      doc.setFontSize(fsTurma);
-      const turmaLines = doc.splitTextToSize(turmaBody, content.w - 48);
-      const turmaLh = p19PdfLineHeightPx(fsTurma);
-      turmaLines.forEach((line) => {
-        doc.text(line, content.x + 24, blockY);
-        blockY += turmaLh;
-      });
+      ({ yTop } = drawLabelValueBlock({
+        yTop,
+        label: deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA",
+        value: turmaBody,
+        valueFontSize: fsTurma,
+      }));
       break;
     }
     case "presence-table":
@@ -577,7 +578,9 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
                   : slide.questionsSubsection?.kind === "turma"
                     ? `TABELA DE QUESTÕES — TURMA ${slide.questionsSubsection.turmaNome}`
                     : "TABELA DE QUESTÕES"
-                : presentationTitleTableStudents();
+                : slide.variant === "by-level"
+                  ? "PROFICIÊNCIA — ALUNOS POR NÍVEL"
+                  : presentationTitleTableStudents();
       const pageInfo =
         slide.kind === "questions-table"
           ? slide.questionsPage
@@ -611,6 +614,20 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         },
         headStyles: { fillColor: [226, 232, 240], textColor: [51, 65, 85], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [241, 245, 249] },
+        didParseCell: (data) => {
+          if (slide.kind !== "students-table" || slide.variant !== "by-level") return;
+          const cols = slide.table.columns;
+          const idx = cols.findIndex((c) => String(c).toLowerCase().includes("classifica"));
+          if (idx < 0) return;
+          if (data.section !== "body") return;
+          if (data.column.index !== idx) return;
+          const raw = String(data.cell.raw ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+          // vermelho/amarelo/verde claro/verde escuro
+          const rgb =
+            raw.includes("abaixo") ? [239, 68, 68] : raw.includes("basico") ? [250, 204, 21] : raw.includes("adequado") ? [34, 197, 94] : raw.includes("avan") ? [22, 101, 52] : null;
+          if (rgb) data.cell.styles.textColor = rgb as unknown as [number, number, number];
+          if (rgb) data.cell.styles.fontStyle = "bold";
+        },
       });
       break;
     }
@@ -791,6 +808,8 @@ export async function renderPdfFromSlideSpec(args: RenderPdfArgs): Promise<void>
     unit: "px",
     format: [page.width, page.height],
     compress: true,
+    // Mantém a escala coerente ao usar unidade "px" (evita divergência vs CSS px do preview).
+    hotfixes: ["px_scaling"],
   });
   spec.slides.forEach((slide, idx) => {
     if (idx > 0) doc.addPage([page.width, page.height], "landscape");

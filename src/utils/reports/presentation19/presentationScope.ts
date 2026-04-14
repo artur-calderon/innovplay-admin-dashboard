@@ -8,7 +8,9 @@ export type PresentationScopeSelection = {
 
 /** Deriva o eixo de comparação a partir dos filtros (mesma ideia do relatório escolar). */
 export function deriveComparisonAxis(sel: PresentationScopeSelection): PresentationComparisonAxis {
-  if (sel.turma !== "all") return "aluno";
+  // Quando uma turma está selecionada, o escopo do deck vira "turma" (comparativos),
+  // e o ranking por aluno é controlado explicitamente via slides/dados do deck.
+  if (sel.turma !== "all") return "turma";
   if (sel.serie !== "all") return "turma";
   if (sel.school !== "all") return "serie";
   return "escola";

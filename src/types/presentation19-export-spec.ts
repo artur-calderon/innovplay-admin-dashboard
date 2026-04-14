@@ -60,6 +60,8 @@ export type Presentation19SlideSpec =
       index: number;
       kind: "students-table";
       table: ExportTable;
+      /** "ranking" (ordem por proficiência) vs "by-level" (agrupado por nível). */
+      variant?: "ranking" | "by-level";
       studentsPage?: { current: number; total: number };
     }
   | {
