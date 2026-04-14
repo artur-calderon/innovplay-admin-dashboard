@@ -79,10 +79,16 @@ interface EstatisticasGerais {
   municipio?: string;
   escola?: string;
   serie?: string;
+  total_escolas?: number;
+  total_series?: number;
+  total_turmas?: number;
+  total_gabaritos?: number;
   total_alunos: number;
   alunos_participantes: number;
   alunos_pendentes?: number;
   alunos_ausentes?: number;
+  percentual_comparecimento?: number;
+  nivel_classificacao?: string | null;
   media_nota_geral: number;
   media_proficiencia_geral: number;
   distribuicao_classificacao_geral?: {
@@ -99,18 +105,30 @@ interface GabaritoAgregado {
   serie?: string;
   turma?: string;
   escola?: string;
+  escola_id?: string;
   municipio?: string;
   estado?: string;
   total_alunos: number;
   alunos_participantes: number;
+  alunos_pendentes?: number;
+  alunos_ausentes?: number;
+  percentual_comparecimento?: number;
   media_nota: number;
   media_proficiencia: number;
+  media_nota_lingua_portuguesa?: number | null;
+  media_nota_matematica?: number | null;
+  medias_por_disciplina?: Array<{
+    disciplina: string;
+    media_nota?: number;
+    media_proficiencia?: number;
+  }>;
   distribuicao_classificacao?: {
     abaixo_do_basico: number;
     basico: number;
     adequado: number;
     avancado: number;
   };
+  nivel_classificacao?: string | null;
 }
 
 // Resultados por disciplina (para gráficos) — retornado por GET /answer-sheets/resultados-agregados
@@ -853,13 +871,21 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
       serie: g.serie,
       turma: g.turma,
       escola: g.escola,
+      escola_id: g.escola_id,
       total_alunos: g.total_alunos ?? 0,
       alunos_participantes: g.alunos_participantes ?? 0,
-      alunos_pendentes: (g.total_alunos ?? 0) - (g.alunos_participantes ?? 0),
-      alunos_ausentes: 0,
+      alunos_pendentes:
+        g.alunos_pendentes ??
+        Math.max(0, (g.total_alunos ?? 0) - (g.alunos_participantes ?? 0)),
+      alunos_ausentes: g.alunos_ausentes ?? 0,
+      percentual_comparecimento: g.percentual_comparecimento,
       media_nota: g.media_nota ?? 0,
       media_proficiencia: g.media_proficiencia ?? 0,
+      media_nota_lingua_portuguesa: g.media_nota_lingua_portuguesa,
+      media_nota_matematica: g.media_nota_matematica,
+      medias_por_disciplina: g.medias_por_disciplina,
       distribuicao_classificacao: g.distribuicao_classificacao,
+      nivel_classificacao: g.nivel_classificacao,
     }));
     const alunosParaStats = geralAlunos.map((a) => ({
       id: a.id,

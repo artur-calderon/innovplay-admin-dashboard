@@ -61,11 +61,20 @@ interface EstatisticasGerais {
   total_escolas?: number;
   total_series?: number;
   total_turmas?: number;
+  /** Cartão-resposta agregado: quantidade de gabaritos no recorte (quando o backend envia). */
+  total_gabaritos?: number;
   total_avaliacoes: number;
   total_alunos: number;
   alunos_participantes: number;
   alunos_pendentes: number;
   alunos_ausentes: number;
+  /** Comparecimento agregado (GET /answer-sheets/resultados-agregados). */
+  percentual_comparecimento?: number;
+  /**
+   * Classificação do recorte (ex.: município) — GET /answer-sheets/resultados-agregados.
+   * `null` = sem classificação.
+   */
+  nivel_classificacao?: string | null;
   media_nota_geral: number;
   media_proficiencia_geral: number;
   distribuicao_classificacao_geral: {
@@ -334,10 +343,21 @@ interface EvaluationResult {
     avancado: number;
   };
   /**
-   * Cartão-resposta agregado (escopo município): classificação definida pelo backend por escola.
+   * Cartão-resposta agregado: classificação da linha (escola/série/turma conforme granularidade).
    * `null` = sem classificação (ex.: sem correções).
    */
-  nivel_escola?: string | null;
+  nivel_classificacao?: string | null;
+  /** GET /answer-sheets/resultados-agregados — escola da linha (escopo município). */
+  escola_id?: string;
+  /** Comparecimento já calculado no backend (2 casas). */
+  percentual_comparecimento?: number;
+  media_nota_lingua_portuguesa?: number | null;
+  media_nota_matematica?: number | null;
+  medias_por_disciplina?: Array<{
+    disciplina: string;
+    media_nota?: number;
+    media_proficiencia?: number;
+  }>;
 }
 
 interface StudentResult {

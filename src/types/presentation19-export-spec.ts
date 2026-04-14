@@ -37,27 +37,47 @@ export type Presentation19SlideSpec =
   | { index: 4; kind: "cover-segment" }
   | { index: 5; kind: "presence-table"; table: ExportTable }
   | { index: 6; kind: "presence-chart"; chart: ExportChart }
-  | { index: 7; kind: "section-levels" }
-  | { index: 8; kind: "levels-guide" }
-  | { index: 9; kind: "levels-chart"; chart: ExportChart }
-  | { index: 10; kind: "levels-table"; table: ExportTable }
-  | { index: 11; kind: "section-proficiency" }
-  | { index: 12; kind: "proficiency-general-chart"; chart: ExportChart }
+  | { index: number; kind: "section-levels" }
+  | { index: number; kind: "levels-guide" }
+  | { index: number; kind: "levels-chart"; chart: ExportChart; escolaNome?: string }
+  | { index: number; kind: "levels-table"; table: ExportTable; escolaNome?: string }
+  | { index: number; kind: "section-proficiency" }
+  | { index: number; kind: "proficiency-general-chart"; chart: ExportChart; escolaNome?: string }
   | {
-      index: 13;
+      index: number;
       kind: "proficiency-by-discipline-chart";
       charts: Array<{ title: string; chart: ExportChart }>;
+      escolaNome?: string;
     }
-  | { index: 14; kind: "projection-table"; table: ExportTable }
-  | { index: 15; kind: "section-questions" }
-  | { index: 16; kind: "dynamic-series-cover" }
-  | { index: 17; kind: "dynamic-class-cover" }
+  | { index: number; kind: "section-grades" }
+  | { index: number; kind: "grades-table"; table: ExportTable }
+  | { index: number; kind: "grades-chart"; chart: ExportChart; escolaNome?: string }
+  | { index: number; kind: "section-students" }
+  | { index: number; kind: "section-questions" }
+  | { index: number; kind: "dynamic-series-cover" }
+  | { index: number; kind: "dynamic-class-cover" }
+  | {
+      index: number;
+      kind: "students-table";
+      table: ExportTable;
+      /** "ranking" (ordem por proficiência) vs "by-level" (agrupado por nível). */
+      variant?: "ranking" | "by-level";
+      studentsPage?: { current: number; total: number };
+    }
   | {
       index: number;
       kind: "questions-table";
       table: ExportTable;
       /** Só preenchido quando há mais de um slide de tabela de questões. */
       questionsPage?: { current: number; total: number };
+      /** Bloco "Geral" vs uma turma específica. */
+      questionsSubsection?: { kind: "geral" } | { kind: "turma"; turmaNome: string };
+    }
+  | {
+      index: number;
+      kind: "questions-turma-cover";
+      serieLabel: string;
+      turmaNome: string;
     }
   | { index: number; kind: "thank-you" };
 

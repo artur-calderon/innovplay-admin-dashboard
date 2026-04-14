@@ -4,7 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Download, Upload, Palette } from "lucide-react";
+import { FileText, Download, Upload, Palette, Eye, Maximize2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FilterComponentAnalise } from "@/components/filters";
 import { useAuth } from "@/context/authContext";
 import {
@@ -19,12 +20,30 @@ import { api } from "@/lib/api";
 import buildDeckDataForPresentation19Slides from "@/utils/reports/presentation19/buildDeckData";
 import { buildSlideSpec } from "@/utils/reports/presentation19/buildSlideSpec";
 import { normalizeRelatorioCompletoForAnaliseUI } from "@/utils/report/relatorioCompletoNormalize";
-import type { Presentation19DeckData, Presentation19Mode } from "@/types/presentation19-slides";
-import { Presentation19NativePreviewDeck } from "@/components/reports/presentation19/Presentation19NativePreviewDeck";
+import type { AlunoPresentationRow, Presentation19DeckData, Presentation19Mode } from "@/types/presentation19-slides";
+import { deriveComparisonAxis } from "@/utils/reports/presentation19/presentationScope";
+import {
+  Presentation19NativePreviewDeck,
+  type Presentation19NativePreviewDeckHandle,
+} from "@/components/reports/presentation19/Presentation19NativePreviewDeck";
 import { exportPresentation19Pdf, exportPresentation19Pptx } from "@/services/reports/presentation19/Presentation19SlidesExportService";
 import type { RelatorioCompleto } from "@/types/evaluation-results";
 import { resolveReportLogoForPdf } from "@/utils/pdfCityBranding";
 import { normalizeResultsPeriodYm } from "@/utils/resultsPeriod";
+
+function asNormOpt(o: { nome?: string; name?: string; titulo?: string }): string {
+  return String(o.nome ?? o.name ?? o.titulo ?? "").trim();
+}
+
+/** Mesma heurística do deck (série a partir do rótulo de turma). */
+function extractSerieFromTurmaName(turma?: string | null): string {
+  const t = (turma ?? "").trim();
+  if (!t) return "";
+  if (/^[A-Za-z]$/.test(t)) return "";
+  const m = t.match(/(\d+º)\s*(?:ano)?/i);
+  if (m?.[1]) return `${m[1]} Ano`;
+  return t.split(/\s+/)[0] || "";
+}
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -63,11 +82,61 @@ export default function RelatorioApresentacao19Slides() {
 
   const [deckData, setDeckData] = useState<Presentation19DeckData | null>(null);
 
-  const slidesCount = useMemo(() => (deckData ? buildSlideSpec(deckData).slides.length : 19), [deckData]);
+  /** Cartão-resposta: opções em cascata (mesma rota do relatório escolar). */
+  const [asSerie, setAsSerie] = useState<string>("all");
+  const [asTurma, setAsTurma] = useState<string>("all");
+  const [asOpcoes, setAsOpcoes] = useState<{
+    series?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+    turmas?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+  }>({});
+
+  /** Avaliações: séries/turmas derivadas do relatório completo (sem endpoint dedicado). */
+  const [evSerie, setEvSerie] = useState<string>("all");
+  const [evTurma, setEvTurma] = useState<string>("all");
+  const [relatorioEvalOpcoes, setRelatorioEvalOpcoes] = useState<RelatorioCompleto | null>(null);
+
+  const selectedSerie = activeMode === "answer_sheet" ? asSerie : evSerie;
+  const selectedTurma = activeMode === "answer_sheet" ? asTurma : evTurma;
+
+  const slidesCount = useMemo(() => (deckData ? buildSlideSpec(deckData).slides.length : 22), [deckData]);
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const exportProgressTimerRef = useRef<number | null>(null);
+  const previewDeckRef = useRef<Presentation19NativePreviewDeckHandle>(null);
+
+  const clearProgressInterval = useCallback(() => {
+    if (exportProgressTimerRef.current) {
+      window.clearInterval(exportProgressTimerRef.current);
+      exportProgressTimerRef.current = null;
+    }
+  }, []);
+
+  /** Barra incremental (mesma lógica do export) enquanto há trabalho assíncrono na rede. */
+  const startIndeterminateLoadingBar = useCallback(() => {
+    setExportProgress(10);
+    clearProgressInterval();
+    exportProgressTimerRef.current = window.setInterval(() => {
+      setExportProgress((prev) => {
+        if (prev >= 90) return prev;
+        const step = prev < 50 ? 12 : 6;
+        return Math.min(90, prev + step);
+      });
+    }, 450);
+  }, [clearProgressInterval]);
+
+  const finishIndeterminateLoadingBar = useCallback(() => {
+    clearProgressInterval();
+    setExportProgress(100);
+    window.setTimeout(() => setExportProgress(0), 700);
+  }, [clearProgressInterval]);
+  /** Evita refetch ao repetir “Gerar pré-visualização” / export com os mesmos filtros. */
+  const previewDataCacheRef = useRef<{ key: string; deck: Presentation19DeckData } | null>(null);
+
+  const clearDeckAndCache = useCallback(() => {
+    setDeckData(null);
+    previewDataCacheRef.current = null;
+  }, []);
 
   const normalizedRole = useMemo(() => user?.role?.toLowerCase(), [user?.role]);
   const roleRequiresSpecificSchool = useMemo(
@@ -112,6 +181,46 @@ export default function RelatorioApresentacao19Slides() {
     return n === "all" ? undefined : n;
   }, [selectedPeriod]);
 
+  const fetchAnswerSheetOpcoes = useCallback(async () => {
+    if (activeMode !== "answer_sheet") return;
+    const params = new URLSearchParams();
+    if (selectedState !== "all") params.set("estado", selectedState);
+    if (selectedMunicipality !== "all") params.set("municipio", selectedMunicipality);
+    if (selectedEvaluationAnswerSheet !== "all") params.set("gabarito", selectedEvaluationAnswerSheet);
+    if (selectedSchool !== "all") params.set("escola", selectedSchool);
+    if (asSerie !== "all") params.set("serie", asSerie);
+    if (asTurma !== "all") params.set("turma", asTurma);
+    if (periodoApi) params.set("periodo", periodoApi);
+    const q = params.toString();
+    try {
+      setIsLoadingFilters(true);
+      const res = await api.get<{
+        series?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+        turmas?: Array<{ id: string; nome?: string; name?: string; titulo?: string }>;
+      }>(`/answer-sheets/opcoes-filtros-results${q ? `?${q}` : ""}`);
+      setAsOpcoes(res.data || {});
+    } catch {
+      setAsOpcoes({});
+    } finally {
+      setIsLoadingFilters(false);
+    }
+  }, [
+    activeMode,
+    selectedState,
+    selectedMunicipality,
+    selectedEvaluationAnswerSheet,
+    selectedSchool,
+    asSerie,
+    asTurma,
+    periodoApi,
+  ]);
+
+  useEffect(() => {
+    if (activeMode === "answer_sheet" && selectedMunicipality !== "all" && selectedEvaluationAnswerSheet !== "all") {
+      void fetchAnswerSheetOpcoes();
+    }
+  }, [activeMode, fetchAnswerSheetOpcoes, selectedEvaluationAnswerSheet, selectedMunicipality]);
+
   // hierarquia do usuário (permissões + pre-seleções)
   useEffect(() => {
     const loadUserHierarchy = async () => {
@@ -148,29 +257,181 @@ export default function RelatorioApresentacao19Slides() {
     );
   }, [roleRequiresSpecificSchool, selectedEvaluation, selectedMunicipality, selectedSchool, selectedState]);
 
+  /** Avaliações: carrega relatório para montar listas de série/turma (fallback client-side). */
+  useEffect(() => {
+    if (activeMode !== "evaluations" || !allRequiredFiltersSelected) {
+      setRelatorioEvalOpcoes(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluationEval, {
+          ...(selectedSchool !== "all" ? { schoolId: selectedSchool } : {}),
+          ...(selectedMunicipality !== "all" ? { cityId: selectedMunicipality } : {}),
+          ...(adminCityIdQuery ? { adminCityIdQuery } : {}),
+        });
+        if (!cancelled) setRelatorioEvalOpcoes(r);
+      } catch {
+        if (!cancelled) setRelatorioEvalOpcoes(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeMode, adminCityIdQuery, allRequiredFiltersSelected, selectedEvaluationEval, selectedMunicipality, selectedSchool]);
+
+  const evalSeriesOptions = useMemo(() => {
+    const pt = relatorioEvalOpcoes?.total_alunos?.por_turma ?? [];
+    const uniq = new Set<string>();
+    for (const row of pt) {
+      const s =
+        String((row as { serie?: string }).serie ?? "").trim() || extractSerieFromTurmaName((row as { turma?: string }).turma);
+      if (s) uniq.add(s);
+    }
+    return Array.from(uniq).sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
+  }, [relatorioEvalOpcoes]);
+
+  const evalTurmasOptions = useMemo(() => {
+    if (evSerie === "all") return [] as string[];
+    const pt = relatorioEvalOpcoes?.total_alunos?.por_turma ?? [];
+    const out = new Set<string>();
+    for (const row of pt) {
+      const s =
+        String((row as { serie?: string }).serie ?? "").trim() || extractSerieFromTurmaName((row as { turma?: string }).turma);
+      if (s !== evSerie) continue;
+      const t = String((row as { turma?: string }).turma ?? "").trim();
+      if (t) out.add(t);
+    }
+    return Array.from(out).sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
+  }, [relatorioEvalOpcoes, evSerie]);
+
   useEffect(() => {
     // ao trocar aba, limpamos o deck para forçar recálculo com os dados corretos
-    setDeckData(null);
-  }, [activeMode, selectedEvaluation]);
+    clearDeckAndCache();
+  }, [activeMode, selectedEvaluation, selectedSerie, selectedTurma, selectedSchool, clearDeckAndCache]);
 
   const reportEntityType: ReportEntityTypeQuery | undefined =
     activeMode === "answer_sheet" ? REPORT_ENTITY_TYPE_ANSWER_SHEET : undefined;
+
+  const getDeckLoadCacheKey = useCallback(() => {
+    return JSON.stringify({
+      activeMode,
+      evaluation: selectedEvaluation,
+      state: selectedState,
+      municipality: selectedMunicipality,
+      school: selectedSchool,
+      period: periodoApi ?? "",
+      asSerie,
+      asTurma,
+      evSerie,
+      evTurma,
+      primaryColor,
+      logoDataUrl,
+      reportEntityType: reportEntityType ?? "",
+      adminCity: adminCityIdQuery ?? "",
+    });
+  }, [
+    activeMode,
+    adminCityIdQuery,
+    asSerie,
+    asTurma,
+    evSerie,
+    evTurma,
+    logoDataUrl,
+    periodoApi,
+    primaryColor,
+    reportEntityType,
+    selectedEvaluation,
+    selectedMunicipality,
+    selectedSchool,
+    selectedState,
+  ]);
 
   const loadDeckData = useCallback(async (): Promise<Presentation19DeckData | null> => {
     if (!allRequiredFiltersSelected) return null;
 
     const evaluationId = selectedEvaluation;
+    const cacheKey = getDeckLoadCacheKey();
+    const cached = previewDataCacheRef.current;
+    if (cached?.key === cacheKey) {
+      setDeckData(cached.deck);
+      return cached.deck;
+    }
+
+    const comparisonAxis = deriveComparisonAxis({
+      school: selectedSchool,
+      serie: selectedSerie,
+      turma: selectedTurma,
+    });
+
+    const relatorioParams = {
+      ...(selectedSchool !== "all" ? { schoolId: selectedSchool } : {}),
+      ...(selectedMunicipality !== "all" ? { cityId: selectedMunicipality } : {}),
+      ...(adminCityIdQuery ? { adminCityIdQuery } : {}),
+      ...(reportEntityType ? { reportEntityType } : {}),
+    };
+
+    const fetchNovaResposta = async (): Promise<NovaRespostaAPI | null> => {
+      if (activeMode === "answer_sheet") {
+        const params = new URLSearchParams();
+        params.set("estado", selectedState);
+        params.set("municipio", selectedMunicipality);
+        params.set("gabarito", evaluationId);
+        if (selectedSchool !== "all") params.set("escola", selectedSchool);
+        if (asSerie !== "all") params.set("serie", asSerie);
+        if (asTurma !== "all") params.set("turma", asTurma);
+        if (periodoApi) params.set("periodo", periodoApi);
+        const res2 = await api.get<AnswerSheetResultadosAgregadosRaw>(
+          `/answer-sheets/resultados-agregados?${params.toString()}`,
+          selectedMunicipality !== "all" ? { meta: { cityId: selectedMunicipality } } : {}
+        );
+        return mapAnswerSheetResultadosAgregadosToNovaResposta(res2.data, {
+          estado: selectedState,
+          municipio: selectedMunicipality,
+          gabarito: evaluationId,
+          escola: selectedSchool,
+          serie: asSerie,
+          turma: asTurma,
+        });
+      }
+      const params = new URLSearchParams();
+      params.set("estado", selectedState);
+      params.set("municipio", selectedMunicipality);
+      params.set("avaliacao", evaluationId);
+      if (adminCityIdQuery) params.set("city_id", adminCityIdQuery);
+      if (periodoApi) params.set("periodo", periodoApi);
+      const resEval = await api.get<NovaRespostaAPI>(
+        `/evaluation-results/avaliacoes?${params.toString()}`,
+        selectedMunicipality !== "all" ? { meta: { cityId: selectedMunicipality } } : {}
+      );
+      return resEval.data;
+    };
+
+    const fetchRankingIfNeeded = (): Promise<AlunoPresentationRow[] | null> => {
+      if (comparisonAxis === "aluno" && activeMode === "answer_sheet" && asTurma !== "all") {
+        return EvaluationResultsApiService.getRankingByProficiency(evaluationId, {
+          schoolId: selectedSchool !== "all" ? selectedSchool : undefined,
+          classId: asTurma,
+        }).then((rank) =>
+          rank?.ranked?.map((r) => ({
+            nome: r.nome,
+            turma: r.turma,
+            nota: r.nota,
+            proficiencia: r.proficiencia,
+            classificacao: r.classificacao,
+          })) ?? []
+        );
+      }
+      return Promise.resolve(null);
+    };
 
     try {
-      setIsGenerating(true);
-
-      // 1) endpoint 1: relatório completo (necessário para gerar presença/níveis/proficiência)
-      const relatorioCompleto = await EvaluationResultsApiService.getRelatorioCompleto(evaluationId, {
-        ...(selectedSchool !== "all" ? { schoolId: selectedSchool } : {}),
-        ...(selectedMunicipality !== "all" ? { cityId: selectedMunicipality } : {}),
-        ...(adminCityIdQuery ? { adminCityIdQuery } : {}),
-        ...(reportEntityType ? { reportEntityType } : {}),
-      });
+      const [relatorioCompleto, novaResposta, alunosRankingFromApi] = await Promise.all([
+        EvaluationResultsApiService.getRelatorioCompleto(evaluationId, relatorioParams),
+        fetchNovaResposta(),
+        fetchRankingIfNeeded(),
+      ]);
 
       if (!relatorioCompleto) {
         toast({
@@ -181,8 +442,6 @@ export default function RelatorioApresentacao19Slides() {
         return null;
       }
 
-      // Se o backend retornar um payload "vazio" para o recorte de filtros, o deck vai renderizar N/A.
-      // Mostramos um aviso claro para facilitar o diagnóstico.
       const hasCoreData =
         Boolean(relatorioCompleto.total_alunos) &&
         Boolean(relatorioCompleto.niveis_aprendizagem) &&
@@ -198,58 +457,63 @@ export default function RelatorioApresentacao19Slides() {
         });
       }
 
-      // 2) endpoint 2: agregados por modo
-      let novaResposta: NovaRespostaAPI | null = null;
-
       let relatorioNormalizado: RelatorioCompleto = relatorioCompleto;
       if (activeMode === "answer_sheet") {
-        // `reports/dados-json` pode vir em shape diferente para answer_sheet.
-        // Normalizamos para bater com o que `buildDeckDataForPresentation19Slides` espera.
         relatorioNormalizado = normalizeRelatorioCompletoForAnaliseUI(relatorioCompleto);
+      }
 
-        const params = new URLSearchParams();
-        params.set("estado", selectedState);
-        params.set("municipio", selectedMunicipality);
-        params.set("gabarito", evaluationId);
-        if (periodoApi) params.set("periodo", periodoApi);
+      const selectedSerieLabel =
+        activeMode === "answer_sheet"
+          ? asNormOpt((asOpcoes.series ?? []).find((s) => s.id === asSerie) ?? {}) || undefined
+          : evSerie !== "all"
+            ? evSerie
+            : undefined;
 
-        const res2 = await api.get<AnswerSheetResultadosAgregadosRaw>(
-          `/answer-sheets/resultados-agregados?${params.toString()}`,
-          // Garante contexto/tenant do município para o backend
-          selectedMunicipality !== "all" ? { meta: { cityId: selectedMunicipality } } : {}
-        );
+      const selectedTurmaLabel =
+        activeMode === "answer_sheet"
+          ? asNormOpt((asOpcoes.turmas ?? []).find((t) => t.id === asTurma) ?? {}) || undefined
+          : evTurma !== "all"
+            ? evTurma
+            : undefined;
 
-        novaResposta = mapAnswerSheetResultadosAgregadosToNovaResposta(res2.data, {
-          estado: selectedState,
-          municipio: selectedMunicipality,
-          gabarito: evaluationId,
-          escola: selectedSchool,
-          serie: "all",
-          turma: "all",
-        });
-      } else {
-        const params = new URLSearchParams();
-        params.set("estado", selectedState);
-        params.set("municipio", selectedMunicipality);
-        params.set("avaliacao", evaluationId);
-        if (adminCityIdQuery) params.set("city_id", adminCityIdQuery);
-        if (periodoApi) params.set("periodo", periodoApi);
-
-        const resEval = await api.get<NovaRespostaAPI>(
-          `/evaluation-results/avaliacoes?${params.toString()}`,
-          selectedMunicipality !== "all" ? { meta: { cityId: selectedMunicipality } } : {}
-        );
-        novaResposta = resEval.data;
+      let alunosRanking: AlunoPresentationRow[] | null = null;
+      if (comparisonAxis === "aluno") {
+        if (activeMode === "answer_sheet" && asTurma !== "all") {
+          alunosRanking = alunosRankingFromApi ?? [];
+        } else if (activeMode === "evaluations" && evTurma !== "all" && novaResposta?.tabela_detalhada?.geral?.alunos) {
+          const want = evTurma.trim().toLowerCase();
+          const raw = novaResposta.tabela_detalhada.geral.alunos as Array<{
+            nome?: string;
+            turma?: string;
+            nota?: number;
+            proficiencia?: number;
+            classificacao?: string;
+          }>;
+          alunosRanking = raw
+            .filter((a) => String(a.turma ?? "").trim().toLowerCase() === want)
+            .map((a) => ({
+              nome: String(a.nome ?? "—"),
+              turma: a.turma,
+              nota: Number(a.nota ?? 0),
+              proficiencia: Number(a.proficiencia ?? 0),
+              classificacao: String(a.classificacao ?? "—"),
+            }));
+        }
       }
 
       const deck = buildDeckDataForPresentation19Slides({
         mode: activeMode,
+        comparisonAxis,
+        selectedSerieLabel,
+        selectedTurmaLabel,
         relatorioDetalhado: relatorioNormalizado,
         novaRespostaAgregados: novaResposta,
         primaryColor,
         logoDataUrl,
+        alunosRanking,
       });
 
+      previewDataCacheRef.current = { key: cacheKey, deck };
       setDeckData(deck);
       return deck;
     } catch (err) {
@@ -259,19 +523,25 @@ export default function RelatorioApresentacao19Slides() {
         variant: "destructive",
       });
       return null;
-    } finally {
-      setIsGenerating(false);
     }
   }, [
+    getDeckLoadCacheKey,
     adminCityIdQuery,
     activeMode,
     allRequiredFiltersSelected,
+    asOpcoes,
+    asSerie,
+    asTurma,
+    evSerie,
+    evTurma,
     logoDataUrl,
     primaryColor,
     reportEntityType,
     selectedEvaluation,
     selectedMunicipality,
     selectedSchool,
+    selectedSerie,
+    selectedTurma,
     selectedState,
     periodoApi,
     toast,
@@ -299,6 +569,56 @@ export default function RelatorioApresentacao19Slides() {
     return true;
   }, [selectedMunicipality, selectedSchool, selectedState, toast, user?.role, userHierarchyContext]);
 
+  const handleGeneratePreview = useCallback(async () => {
+    if (!validateAccess()) return;
+    if (!allRequiredFiltersSelected) {
+      toast({
+        title: "Atenção",
+        description: "Selecione Estado, Município, Escola e Avaliação/Gabarito para gerar a pré-visualização.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const cacheKey = getDeckLoadCacheKey();
+    const hadCache = previewDataCacheRef.current?.key === cacheKey;
+
+    if (hadCache) {
+      const deck = await loadDeckData();
+      if (deck) {
+        const n = buildSlideSpec(deck).slides.length;
+        toast({
+          title: "Pré-visualização pronta",
+          description: `${n} slide${n === 1 ? "" : "s"} (mesmos filtros, sem nova busca na rede).`,
+        });
+      }
+      return;
+    }
+
+    setIsGenerating(true);
+    startIndeterminateLoadingBar();
+    try {
+      const deck = await loadDeckData();
+      if (deck) {
+        const n = buildSlideSpec(deck).slides.length;
+        toast({
+          title: "Pré-visualização atualizada",
+          description: `${n} slide${n === 1 ? "" : "s"} carregado${n === 1 ? "" : "s"}.`,
+        });
+      }
+    } finally {
+      setIsGenerating(false);
+      finishIndeterminateLoadingBar();
+    }
+  }, [
+    allRequiredFiltersSelected,
+    finishIndeterminateLoadingBar,
+    getDeckLoadCacheKey,
+    loadDeckData,
+    startIndeterminateLoadingBar,
+    toast,
+    validateAccess,
+  ]);
+
   const handleExport = useCallback(
     async (format: "pdf" | "pptx") => {
       if (!validateAccess()) return;
@@ -311,20 +631,7 @@ export default function RelatorioApresentacao19Slides() {
         return;
       }
       setIsGenerating(true);
-      setExportProgress(10);
-
-      // Progresso "indeterminado" (incremental) enquanto o exportador processa.
-      if (exportProgressTimerRef.current) {
-        window.clearInterval(exportProgressTimerRef.current);
-      }
-      exportProgressTimerRef.current = window.setInterval(() => {
-        setExportProgress((prev) => {
-          // sobe mais rápido no começo e desacelera perto de 90%
-          if (prev >= 90) return prev;
-          const step = prev < 50 ? 12 : 6;
-          return Math.min(90, prev + step);
-        });
-      }, 450);
+      startIndeterminateLoadingBar();
 
       try {
         // Se o deck ainda não existe para as seleções atuais, carregamos.
@@ -370,15 +677,21 @@ export default function RelatorioApresentacao19Slides() {
         });
       } finally {
         setIsGenerating(false);
-        if (exportProgressTimerRef.current) {
-          window.clearInterval(exportProgressTimerRef.current);
-          exportProgressTimerRef.current = null;
-        }
-        setExportProgress(100);
-        window.setTimeout(() => setExportProgress(0), 700);
+        finishIndeterminateLoadingBar();
       }
     },
-    [activeMode, allRequiredFiltersSelected, deckData, loadDeckData, selectedEvaluation, selectedMunicipality, toast, validateAccess]
+    [
+      activeMode,
+      allRequiredFiltersSelected,
+      deckData,
+      finishIndeterminateLoadingBar,
+      loadDeckData,
+      selectedEvaluation,
+      selectedMunicipality,
+      startIndeterminateLoadingBar,
+      toast,
+      validateAccess,
+    ]
   );
 
   return (
@@ -423,8 +736,59 @@ export default function RelatorioApresentacao19Slides() {
               selectedPeriod={selectedPeriod}
               onPeriodChange={(p) => {
                 setSelectedPeriod(p);
-                setDeckData(null);
+                clearDeckAndCache();
               }}
+              extraFilters={
+                <>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Série</label>
+                    <Select
+                      value={asSerie}
+                      onValueChange={(v) => {
+                        setAsSerie(v);
+                        setAsTurma("all");
+                        clearDeckAndCache();
+                      }}
+                      disabled={isLoadingFilters || selectedSchool === "all"}
+                    >
+                      <SelectTrigger className="w-full min-w-0">
+                        <SelectValue placeholder="Todas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas</SelectItem>
+                        {(asOpcoes.series ?? []).map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {asNormOpt(s) || s.id}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Turma</label>
+                    <Select
+                      value={asTurma}
+                      onValueChange={(v) => {
+                        setAsTurma(v);
+                        clearDeckAndCache();
+                      }}
+                      disabled={isLoadingFilters || asSerie === "all"}
+                    >
+                      <SelectTrigger className="w-full min-w-0">
+                        <SelectValue placeholder="Todas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas</SelectItem>
+                        {(asOpcoes.turmas ?? []).map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {asNormOpt(t) || t.id}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              }
             />
           </TabsContent>
 
@@ -450,9 +814,63 @@ export default function RelatorioApresentacao19Slides() {
               selectedPeriod={selectedPeriod}
               onPeriodChange={(p) => {
                 setSelectedPeriod(p);
-                setDeckData(null);
+                clearDeckAndCache();
               }}
-              // sem reportEntityType
+              extraFilters={
+                <>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Série</label>
+                    <Select
+                      value={evSerie}
+                      onValueChange={(v) => {
+                        setEvSerie(v);
+                        setEvTurma("all");
+                        clearDeckAndCache();
+                      }}
+                      disabled={selectedSchool === "all" || evalSeriesOptions.length === 0}
+                    >
+                      <SelectTrigger className="w-full min-w-0">
+                        <SelectValue placeholder="Todas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas</SelectItem>
+                        {evalSeriesOptions.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Turma</label>
+                    <Select
+                      value={evTurma}
+                      onValueChange={(v) => {
+                        setEvTurma(v);
+                        clearDeckAndCache();
+                      }}
+                      disabled={evSerie === "all" || evalTurmasOptions.length === 0}
+                    >
+                      <SelectTrigger className="w-full min-w-0">
+                        <SelectValue placeholder="Todas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas</SelectItem>
+                        {evalTurmasOptions.map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {t}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-xs text-muted-foreground col-span-full">
+                    Séries e turmas são derivadas do relatório após escolher escola e avaliação. O eixo de comparação do deck segue estes
+                    filtros.
+                  </p>
+                </>
+              }
             />
           </TabsContent>
           </Tabs>
@@ -525,7 +943,16 @@ export default function RelatorioApresentacao19Slides() {
               </div>
             </CardContent>
           </Card>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void handleGeneratePreview()}
+                disabled={isGenerating || !allRequiredFiltersSelected}
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                Gerar pré-visualização
+              </Button>
               <Button
                 onClick={() => handleExport("pdf")}
                 disabled={isGenerating || !allRequiredFiltersSelected}
@@ -556,7 +983,7 @@ export default function RelatorioApresentacao19Slides() {
             {isGenerating && (
               <div className="mt-4 space-y-2">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium">Gerando relatório...</div>
+                  <div className="text-sm font-medium">Carregando dados…</div>
                   <div className="text-xs text-muted-foreground">{exportProgress}%</div>
                 </div>
                 <Progress value={exportProgress} className="h-2" />
@@ -565,20 +992,29 @@ export default function RelatorioApresentacao19Slides() {
 
           {deckData && (
             <div className="relative border border-border rounded-xl p-4 bg-card overflow-hidden">
-              <div className="flex items-center justify-between gap-4 mb-3">
-                <div>
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
+                <div className="min-w-0 flex-1">
                   <div className="font-bold">Pré-visualização</div>
-                  <div className="text-xs text-muted-foreground">
-                    A exportação usa renderização nativa (sem print de tela). Slides extras aparecem quando a tabela de
-                    questões tem mais de 15 linhas (uma página a cada 15 questões).
-                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground">{slidesCount} slides</div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">{slidesCount} slides</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 shrink-0"
+                    onClick={() => previewDeckRef.current?.openFullscreen()}
+                    disabled={slidesCount === 0}
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                    Tela cheia
+                  </Button>
+                </div>
               </div>
 
               <div className="overflow-auto">
                 <div>
-                  <Presentation19NativePreviewDeck deckData={deckData} />
+                  <Presentation19NativePreviewDeck ref={previewDeckRef} deckData={deckData} />
                 </div>
               </div>
             </div>
