@@ -3,24 +3,26 @@ import type { RelatorioCompleto } from "@/types/evaluation-results";
 
 export type Presentation19Mode = "answer_sheet" | "evaluations";
 
+export type PresentationComparisonAxis = "escola" | "serie" | "turma" | "aluno";
+
 export type SlideQuestionRow = {
   questao: number;
   habilidade: string;
   percentualAcertos: number;
 };
 
+/** Linha de presença: `label` é o rótulo do eixo (escola, série, turma ou turma agregada). */
 export type PresenceBySeriesRow = {
-  serie: string;
+  label: string;
   totalAlunos: number;
   totalPresentes: number;
   presencaMediaPct: number;
   alunosFaltosos: number;
-  /** usado apenas para capa/labels quando necessário */
   turmaLabel?: string;
 };
 
 export type NiveisBySeriesRow = {
-  serie: string;
+  label: string;
   abaixoDoBasico: number;
   basico: number;
   adequado: number;
@@ -29,7 +31,7 @@ export type NiveisBySeriesRow = {
 };
 
 export type ProficiencyGeneralByTurmaRow = {
-  turma: string;
+  label: string;
   proficiencia: number;
 };
 
@@ -38,16 +40,29 @@ export type ProficiencyByDisciplineByTurmaRow = {
   valuesByTurma: Array<{ turma: string; proficiencia: number }>;
 };
 
-export type ProjectionTableRow = {
+export type NotaPorDisciplinaDeck = {
   disciplina: string;
-  proficienciaDisciplina: number;
-  projPlus20Disciplina: number;
-  proficienciaGeral: number;
-  projPlus20Geral: number;
+  mediaNota: number;
+};
+
+/** Nota média agregada por categoria (escola/série/turma) para gráficos de comparação. */
+export type NotaPorCategoriaDeck = {
+  label: string;
+  mediaNota: number;
+};
+
+export type AlunoPresentationRow = {
+  nome: string;
+  turma?: string;
+  nota: number;
+  proficiencia: number;
+  classificacao: string;
 };
 
 export type Presentation19DeckData = {
   mode: Presentation19Mode;
+  /** Eixo usado nos gráficos/tabelas de comparação. */
+  comparisonAxis: PresentationComparisonAxis;
   municipioNome: string;
   avaliacaoNome: string;
   escolasParticipantes: string[];
@@ -57,21 +72,34 @@ export type Presentation19DeckData = {
   /** Slide 4 */
   curso: string;
   serie: string;
+  /** Texto exibido no campo Turma(s) da capa (lista separada por vírgula quando há várias). */
   turma: string;
+  /** Turmas distintas que participaram (avaliação/cartão), para layout em lista quando necessário. */
+  turmasParticipantesCapa: string[];
 
-  /** Slides 5-6 */
+  /** Slides 5-6 — coluna principal = `label` conforme `comparisonAxis`. */
   presencaPorSerie: PresenceBySeriesRow[];
 
   /** Slides 9-10 */
   niveisPorSerie: NiveisBySeriesRow[];
 
-  /** Slides 12-14 */
+  /** Proficiência */
   proficienciaGeralPorTurma: ProficiencyGeneralByTurmaRow[];
   proficienciaPorDisciplinaPorTurma: ProficiencyByDisciplineByTurmaRow[];
-  projeccaoTabela: ProjectionTableRow[];
 
-  /** Slides 18 */
-  questoesTabela: SlideQuestionRow[];
+  /** Notas (médias agregadas pela API) */
+  mediaNotaGeral: number | null;
+  notasPorDisciplina: NotaPorDisciplinaDeck[];
+  /** Opcional: nota média por categoria (ex.: por escola) para o gráfico de notas. */
+  notasPorCategoria: NotaPorCategoriaDeck[];
+
+  /** Quando `comparisonAxis === "aluno"`, ranking/detalhe por aluno. */
+  alunosDetalhados: AlunoPresentationRow[];
+
+  /** Acertos por questão agregados no escopo geral (município/escola conforme relatório). */
+  questoesTabelaGeral: SlideQuestionRow[];
+  /** Mesma métrica discriminada por turma (a partir da tabela detalhada por aluno). */
+  questoesPorTurma: Array<{ turma: string; serieTurma?: string; questoes: SlideQuestionRow[] }>;
 
   /** Slide 8 */
   levelGuide: Array<{
@@ -90,11 +118,15 @@ export type Presentation19DeckData = {
 
 export type BuildDeckDataArgs = {
   mode: Presentation19Mode;
-  // O endpoint 1 (`relatorio-detalhado`) pode variar entre contratos no backend.
-  // Para o deck, tratamos como parcial e usamos apenas as chaves existentes.
+  comparisonAxis: PresentationComparisonAxis;
+  /** Rótulos para filtrar `por_turma` quando série/turma vierem como id da API. */
+  selectedSerieLabel?: string;
+  /** Nome da turma selecionada (ex.: rótulo do select de opções). */
+  selectedTurmaLabel?: string;
   relatorioDetalhado: Partial<RelatorioCompleto> | null;
   novaRespostaAgregados: NovaRespostaAPI | null;
   primaryColor: string;
   logoDataUrl?: string;
+  /** Preenchido no escopo turma (alunos) via ranking. */
+  alunosRanking?: AlunoPresentationRow[] | null;
 };
-
