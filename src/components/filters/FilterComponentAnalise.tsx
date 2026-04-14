@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from "react";
 import { ResultsPeriodMonthYearPicker } from "./ResultsPeriodMonthYearPicker";
 import { normalizeResultsPeriodYm } from "@/utils/resultsPeriod";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -75,6 +75,8 @@ interface FilterComponentAnaliseProps {
   /** `all` ou `YYYY-MM` (mês de aplicação online / correção cartão). */
   selectedPeriod?: string;
   onPeriodChange?: (period: string) => void;
+  /** Conteúdo extra no mesmo card (ex.: Série / Turma), abaixo da grade principal. */
+  extraFilters?: ReactNode;
 }
 
 export function FilterComponentAnalise({
@@ -102,6 +104,7 @@ export function FilterComponentAnalise({
   displayEvaluationFirst = false,
   selectedPeriod = "all",
   onPeriodChange = () => {},
+  extraFilters,
 }: FilterComponentAnaliseProps) {
   const { toast } = useToast();
   const periodoForApi = useMemo(() => {
@@ -753,6 +756,14 @@ export function FilterComponentAnalise({
             </>
           )}
         </div>
+
+        {extraFilters != null && extraFilters !== false && (
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 w-full min-w-0">
+              {extraFilters}
+            </div>
+          </div>
+        )}
 
         {/* Informação sobre filtros */}
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">

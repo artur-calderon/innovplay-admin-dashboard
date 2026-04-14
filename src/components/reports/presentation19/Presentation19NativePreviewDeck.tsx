@@ -1,14 +1,97 @@
-import React from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { buildSlideSpec } from "@/utils/reports/presentation19/buildSlideSpec";
-import type { ExportChart } from "@/types/presentation19-export-spec";
+import type { ExportChart, Presentation19SlideSpec } from "@/types/presentation19-export-spec";
 import type { Presentation19DeckData } from "@/types/presentation19-slides";
+import {
+  presentationSectionGrades,
+  presentationSectionGradesTagline,
+  presentationSectionLevels,
+  presentationSectionLevelsTagline,
+  presentationSectionProficiency,
+  presentationSectionProficiencyTagline,
+  presentationSectionQuestionsTagline,
+  presentationSectionQuestionsTitle,
+  presentationSectionStudentsTitle,
+  presentationTitleChartGrades,
+  presentationTitleChartLevels,
+  presentationTitleChartPresence,
+  presentationTitleProficiencyByDiscipline,
+  presentationTitleProficiencyGeneralChart,
+  presentationTitleTableGrades,
+  presentationTitleTableLevels,
+  presentationTitleTablePresence,
+  presentationTitleTableStudents,
+  presentationQuestionsTurmaCoverLine,
+} from "@/utils/reports/presentation19/presentationScope";
+import {
+  P19_CHART_REF_H_PX,
+  P19_CONTENT,
+  P19_COVER_MAIN_LABEL_PX,
+  P19_COVER_MAIN_TITLE_PX,
+  P19_COVER_MAIN_VALUE_PX,
+  P19_COVER_SCHOOL_SINGLE_PX,
+  P19_DYNAMIC_COVER_PX,
+  P19_HORIZONTAL_CHART_LABEL_WIDTH_PX,
+  P19_LEVELS_GUIDE_DESC_PX,
+  P19_LEVELS_GUIDE_TITLE_PX,
+  P19_METRIC_HEADER_PX,
+  P19_METRIC_NUMBER_PX,
+  P19_PAGE,
+  P19_PAGE_INDICATOR_FONT_PX,
+  P19_SEGMENT_FIELD_LABEL_PX,
+  P19_SEGMENT_FIELD_VALUE_PX,
+  P19_TABLE_CELL_FONT_PX,
+  P19_TABLE_CELL_PADDING_PX,
+  P19_TITLE_ACCENT_H_PX,
+  P19_TITLE_ACCENT_W_PX,
+  P19_TITLE_FONT_PX,
+  P19_TITLE_SUBTITLE_GAP_PX,
+  P19_TITLE_TEXT_OFFSET_X_PX,
+  P19_SUBTITLE_FONT_PX,
+  P19_THANK_YOU_FONT_PX,
+} from "@/utils/reports/presentation19/presentation19ExportTypography";
 
 type Props = {
   deckData: Presentation19DeckData;
 };
 
-const page = { width: 1123, height: 793 };
-const content = { x: 40, y: 60, w: 1043, h: 680 };
+export type Presentation19NativePreviewDeckHandle = {
+  openFullscreen: () => void;
+};
+
+/** Elemento em tela cheia (API padrão + prefixos WebKit legados). */
+function getFullscreenElement(): Element | null {
+  const d = document as Document & { webkitFullscreenElement?: Element | null };
+  return document.fullscreenElement ?? d.webkitFullscreenElement ?? null;
+}
+
+/** Solicita tela cheia do documento (gesto do usuário no mesmo clique). */
+function requestBrowserFullscreen(): void {
+  const el = document.documentElement as HTMLElement & {
+    webkitRequestFullscreen?: () => Promise<void>;
+  };
+  if (typeof el.requestFullscreen === "function") {
+    void el.requestFullscreen().catch(() => {
+      /* permissão negada, iOS, etc. */
+    });
+  } else if (typeof el.webkitRequestFullscreen === "function") {
+    void el.webkitRequestFullscreen();
+  }
+}
+
+function exitBrowserFullscreen(): void {
+  if (!getFullscreenElement()) return;
+  const d = document as Document & { webkitExitFullscreen?: () => Promise<void> };
+  if (typeof document.exitFullscreen === "function") {
+    void document.exitFullscreen().catch(() => {});
+  } else if (typeof d.webkitExitFullscreen === "function") {
+    void d.webkitExitFullscreen();
+  }
+}
+
+const page = P19_PAGE;
+const content = P19_CONTENT;
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const safe = hex.replace("#", "");
@@ -22,18 +105,23 @@ function rgbCss(hex: string): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-function Title({ text, primaryColor }: { text: string; primaryColor: string }) {
+function Title({ text, primaryColor, subtitle }: { text: string; primaryColor: string; subtitle?: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-      <div style={{ width: 10, height: 34, borderRadius: 999, background: primaryColor }} />
-      <h2 style={{ margin: 0, fontSize: 32, fontWeight: 800, color: "#0F172A", letterSpacing: 0.2 }}>{text}</h2>
+    <div style={{ display: "flex", flexDirection: "column", gap: subtitle ? P19_TITLE_SUBTITLE_GAP_PX : 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ width: P19_TITLE_ACCENT_W_PX, height: P19_TITLE_ACCENT_H_PX, borderRadius: 999, background: primaryColor }} />
+        <h2 style={{ margin: 0, fontSize: P19_TITLE_FONT_PX, fontWeight: 800, color: "#0F172A", letterSpacing: 0.2 }}>{text}</h2>
+      </div>
+      {subtitle ? (
+        <div style={{ paddingLeft: P19_TITLE_TEXT_OFFSET_X_PX, fontSize: P19_SUBTITLE_FONT_PX, fontWeight: 700, color: "#52525B" }}>
+          {subtitle}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-const H_PREVIEW_LABEL_W = 168;
-
-function HorizontalBarChartPreview({ chart, height = 470 }: { chart: ExportChart; height?: number }) {
+function HorizontalBarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: ExportChart; height?: number }) {
   const rawMax = Math.max(1, ...chart.data.flatMap((d) => chart.valueKeys.map((s) => Number(d[s.key] ?? 0))));
   const axisMin = Number.isFinite(chart.yAxis?.min) ? Number(chart.yAxis?.min) : 0;
   const axisMax = Number.isFinite(chart.yAxis?.max) ? Number(chart.yAxis?.max) : Math.max(1, Math.ceil(rawMax * 1.15));
@@ -69,7 +157,7 @@ function HorizontalBarChartPreview({ chart, height = 470 }: { chart: ExportChart
             <div key={idx} style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", gap: 10 }}>
               <div
                 style={{
-                  width: H_PREVIEW_LABEL_W,
+                  width: P19_HORIZONTAL_CHART_LABEL_WIDTH_PX,
                   flexShrink: 0,
                   fontSize: 11,
                   fontWeight: 600,
@@ -111,7 +199,7 @@ function HorizontalBarChartPreview({ chart, height = 470 }: { chart: ExportChart
           );
         })}
       </div>
-      <div style={{ position: "relative", height: 22, marginLeft: H_PREVIEW_LABEL_W + 10, marginRight: 8 }}>
+      <div style={{ position: "relative", height: 22, marginLeft: P19_HORIZONTAL_CHART_LABEL_WIDTH_PX + 10, marginRight: 8 }}>
         {ticks.map((v) => (
           <div
             key={v}
@@ -131,7 +219,7 @@ function HorizontalBarChartPreview({ chart, height = 470 }: { chart: ExportChart
   );
 }
 
-function BarChartPreview({ chart, height = 470 }: { chart: ExportChart; height?: number }) {
+function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: ExportChart; height?: number }) {
   if (chart.orientation === "horizontal") {
     return <HorizontalBarChartPreview chart={chart} height={height} />;
   }
@@ -489,13 +577,9 @@ function BarChartPreview({ chart, height = 470 }: { chart: ExportChart; height?:
   );
 }
 
-export function Presentation19NativePreviewDeck({ deckData }: Props) {
-  const spec = buildSlideSpec(deckData);
+function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec; deckData: Presentation19DeckData }) {
   return (
-    <div data-presentation19-native-root style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      {spec.slides.map((slide) => (
-        <div key={slide.index} data-slide-index={slide.index}>
-          <div
+    <div
             data-slide-frame
             style={{
               width: page.width,
@@ -509,77 +593,156 @@ export function Presentation19NativePreviewDeck({ deckData }: Props) {
             }}
           >
             <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: 10, background: deckData.primaryColor }} />
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                pointerEvents: "none",
-                backgroundImage:
-                  "repeating-linear-gradient(90deg, rgba(51,65,85,0.06) 0 1px, transparent 1px 56px), repeating-linear-gradient(0deg, rgba(51,65,85,0.05) 0 1px, transparent 1px 56px)",
-              }}
-            />
             <div style={{ position: "absolute", left: content.x, top: content.y, width: content.w, height: content.h, color: "#0F172A" }}>
               {slide.kind === "cover-main" && (
                 <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                  <h1 style={{ margin: "80px 0 0", color: rgbCss(deckData.primaryColor), fontSize: 62, fontWeight: 900 }}>{deckData.avaliacaoNome}</h1>
+                  <h1 style={{ margin: "80px 0 0", color: rgbCss(deckData.primaryColor), fontSize: P19_COVER_MAIN_TITLE_PX, fontWeight: 900 }}>{deckData.avaliacaoNome}</h1>
                   <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 16, padding: 24 }}>
-                    <div style={{ color: "#52525B", fontSize: 14, fontWeight: 700 }}>MUNICÍPIO</div>
-                    <div style={{ color: "#18181B", fontSize: 30, fontWeight: 900 }}>{deckData.municipioNome}</div>
+                    <div style={{ color: "#52525B", fontSize: P19_COVER_MAIN_LABEL_PX, fontWeight: 700 }}>MUNICÍPIO</div>
+                    <div style={{ color: "#18181B", fontSize: P19_COVER_MAIN_VALUE_PX, fontWeight: 900 }}>{deckData.municipioNome}</div>
                     <div style={{ height: 14 }} />
-                    <div style={{ color: "#52525B", fontSize: 14, fontWeight: 700 }}>SÉRIE</div>
-                    <div style={{ color: "#18181B", fontSize: 30, fontWeight: 900 }}>{deckData.serie}</div>
+                    <div style={{ color: "#52525B", fontSize: P19_COVER_MAIN_LABEL_PX, fontWeight: 700 }}>SÉRIE</div>
+                    <div style={{ color: "#18181B", fontSize: P19_COVER_MAIN_VALUE_PX, fontWeight: 900 }}>{deckData.serie}</div>
                   </div>
                 </div>
               )}
               {slide.kind === "cover-school" && (
-                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 46, fontWeight: 900 }}>
-                  {deckData.escolasParticipantes[0] ?? "N/A"}
+                <div
+                  style={{
+                    height: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 24,
+                    overflow: "auto",
+                  }}
+                >
+                  {deckData.escolasParticipantes.length <= 1 ? (
+                    <div style={{ fontSize: P19_COVER_SCHOOL_SINGLE_PX, fontWeight: 900, textAlign: "center" }}>
+                      {deckData.escolasParticipantes[0] ?? "N/A"}
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: "#52525B", marginBottom: 14 }}>
+                        ESCOLAS PARTICIPANTES
+                      </div>
+                      <ul
+                        style={{
+                          margin: 0,
+                          paddingLeft: 22,
+                          fontSize: deckData.escolasParticipantes.length > 14 ? 17 : 24,
+                          fontWeight: 800,
+                          lineHeight: 1.45,
+                          maxHeight: 380,
+                          overflow: "auto",
+                          width: "100%",
+                          maxWidth: 920,
+                        }}
+                      >
+                        {deckData.escolasParticipantes.map((nome) => (
+                          <li key={nome}>{nome}</li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
                 </div>
               )}
               {slide.kind === "metric-total-students" && (
                 <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14 }}>
-                  <div style={{ fontSize: 30, fontWeight: 900 }}>MÉTRICA GERAL</div>
-                  <div style={{ fontSize: 82, fontWeight: 900, color: rgbCss(deckData.primaryColor) }}>
+                  <div style={{ fontSize: P19_METRIC_HEADER_PX, fontWeight: 900 }}>MÉTRICA GERAL</div>
+                  <div style={{ fontSize: P19_METRIC_NUMBER_PX, fontWeight: 900, color: rgbCss(deckData.primaryColor) }}>
                     {Math.round(deckData.totalAlunosParticiparam).toLocaleString("pt-BR")}
                   </div>
-                  <div style={{ fontSize: 30, fontWeight: 900 }}>Alunos que realizaram a avaliação</div>
+                  <div style={{ fontSize: P19_METRIC_HEADER_PX, fontWeight: 900 }}>Alunos que realizaram a avaliação</div>
                 </div>
               )}
               {slide.kind === "cover-segment" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
                   <Title text="CAPA DE SEGMENTO" primaryColor={deckData.primaryColor} />
                   <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 16, padding: 24 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#52525B" }}>CURSO</div>
-                    <div style={{ fontSize: 34, fontWeight: 900 }}>{deckData.curso}</div>
-                    <div style={{ marginTop: 24, fontSize: 14, fontWeight: 700, color: "#52525B" }}>SÉRIE</div>
-                    <div style={{ fontSize: 34, fontWeight: 900 }}>{deckData.serie}</div>
-                    <div style={{ marginTop: 24, fontSize: 14, fontWeight: 700, color: "#52525B" }}>TURMA</div>
-                    <div style={{ fontSize: 34, fontWeight: 900 }}>{deckData.turma}</div>
+                    <div style={{ fontSize: P19_SEGMENT_FIELD_LABEL_PX, fontWeight: 700, color: "#52525B" }}>CURSO</div>
+                    <div style={{ fontSize: P19_SEGMENT_FIELD_VALUE_PX, fontWeight: 900 }}>{deckData.curso}</div>
+                    <div style={{ marginTop: 24, fontSize: P19_SEGMENT_FIELD_LABEL_PX, fontWeight: 700, color: "#52525B" }}>SÉRIE</div>
+                    <div style={{ fontSize: P19_SEGMENT_FIELD_VALUE_PX, fontWeight: 900 }}>{deckData.serie}</div>
+                    <div style={{ marginTop: 24, fontSize: P19_SEGMENT_FIELD_LABEL_PX, fontWeight: 700, color: "#52525B" }}>
+                      {deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA"}
+                    </div>
+                    {deckData.turmasParticipantesCapa.length > 8 ? (
+                      <ul
+                        style={{
+                          margin: "8px 0 0",
+                          paddingLeft: 22,
+                          fontSize: 20,
+                          fontWeight: 800,
+                          lineHeight: 1.45,
+                          maxHeight: 280,
+                          overflow: "auto",
+                        }}
+                      >
+                        {deckData.turmasParticipantesCapa.map((t) => (
+                          <li key={t}>{t}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div
+                        style={{
+                          fontSize: deckData.turma.length > 120 ? 22 : 34,
+                          fontWeight: 900,
+                          lineHeight: 1.25,
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {deckData.turma}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
-              {(slide.kind === "presence-table" || slide.kind === "levels-table" || slide.kind === "projection-table" || slide.kind === "questions-table") && (
+              {(slide.kind === "presence-table" ||
+                slide.kind === "levels-table" ||
+                slide.kind === "grades-table" ||
+                slide.kind === "students-table" ||
+                slide.kind === "questions-table") && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
                     <div style={{ flex: "1 1 auto", minWidth: 0 }}>
                     <Title
                       text={
                         slide.kind === "presence-table"
-                          ? "TABELA DE PRESENÇA"
+                          ? presentationTitleTablePresence(deckData.comparisonAxis)
                           : slide.kind === "levels-table"
-                            ? "TABELA DE NÍVEIS"
-                            : slide.kind === "projection-table"
-                              ? "TABELA DE PROJEÇÃO"
-                              : "TABELA DE QUESTÕES"
+                            ? presentationTitleTableLevels(deckData.comparisonAxis)
+                            : slide.kind === "grades-table"
+                              ? presentationTitleTableGrades(deckData.comparisonAxis)
+                              : slide.kind === "students-table"
+                                ? slide.variant === "by-level"
+                                  ? "PROFICIÊNCIA — ALUNOS POR NÍVEL"
+                                  : presentationTitleTableStudents()
+                                : slide.kind === "questions-table"
+                                  ? slide.questionsSubsection?.kind === "geral"
+                                    ? "TABELA DE QUESTÕES — GERAL"
+                                    : slide.questionsSubsection?.kind === "turma"
+                                      ? `TABELA DE QUESTÕES — TURMA ${slide.questionsSubsection.turmaNome}`
+                                      : "TABELA DE QUESTÕES"
+                                  : "TABELA DE QUESTÕES"
                       }
+                      subtitle={slide.kind === "levels-table" && slide.escolaNome ? slide.escolaNome : undefined}
                       primaryColor={deckData.primaryColor}
                     />
                     </div>
                     {slide.kind === "questions-table" &&
                       slide.questionsPage != null &&
                       slide.questionsPage.total > 1 && (
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "#52525B", flexShrink: 0 }}>
+                        <div style={{ fontSize: P19_PAGE_INDICATOR_FONT_PX, fontWeight: 700, color: "#52525B", flexShrink: 0 }}>
                           Página {slide.questionsPage.current}/{slide.questionsPage.total}
+                        </div>
+                      )}
+                    {slide.kind === "students-table" &&
+                      slide.studentsPage != null &&
+                      slide.studentsPage.total > 1 && (
+                        <div style={{ fontSize: P19_PAGE_INDICATOR_FONT_PX, fontWeight: 700, color: "#52525B", flexShrink: 0 }}>
+                          Página {slide.studentsPage.current}/{slide.studentsPage.total}
                         </div>
                       )}
                   </div>
@@ -587,16 +750,58 @@ export function Presentation19NativePreviewDeck({ deckData }: Props) {
                     <thead>
                       <tr style={{ background: "#E2E8F0" }}>
                         {slide.table.columns.map((c) => (
-                          <th key={c} style={{ border: "1px solid #CBD5E1", textAlign: "left", padding: 8, fontSize: 13, color: "#334155" }}>{c}</th>
+                          <th
+                            key={c}
+                            style={{
+                              border: "1px solid #CBD5E1",
+                              textAlign: "left",
+                              padding: P19_TABLE_CELL_PADDING_PX,
+                              fontSize: P19_TABLE_CELL_FONT_PX,
+                              color: "#334155",
+                            }}
+                          >
+                            {c}
+                          </th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {slide.table.rows.map((r, idx) => (
                         <tr key={idx} style={{ background: idx % 2 === 0 ? "#FCFCFD" : "#F1F5F9" }}>
-                          {r.map((cell, cIdx) => (
-                            <td key={cIdx} style={{ border: "1px solid #CBD5E1", padding: 8, fontSize: 13, color: "#0F172A" }}>{String(cell)}</td>
-                          ))}
+                          {r.map((cell, cIdx) => {
+                            const cellText = String(cell);
+                            const isClassificationCell =
+                              slide.kind === "students-table" && slide.table.columns[cIdx]?.toLowerCase().includes("classifica");
+                            const normalized = cellText
+                              .normalize("NFD")
+                              .replace(/[\u0300-\u036f]/g, "")
+                              .toLowerCase();
+                            const classificationColor = isClassificationCell
+                              ? normalized.includes("abaixo")
+                                ? "#EF4444"
+                                : normalized.includes("basico")
+                                  ? "#FACC15"
+                                  : normalized.includes("adequado")
+                                    ? "#22C55E"
+                                    : normalized.includes("avan")
+                                      ? "#166534"
+                                      : undefined
+                              : undefined;
+                            return (
+                            <td
+                              key={cIdx}
+                              style={{
+                                border: "1px solid #CBD5E1",
+                                padding: P19_TABLE_CELL_PADDING_PX,
+                                fontSize: P19_TABLE_CELL_FONT_PX,
+                                color: classificationColor ?? "#0F172A",
+                                fontWeight: classificationColor ? 800 : undefined,
+                              }}
+                            >
+                              {cellText}
+                            </td>
+                          );
+                          })}
                         </tr>
                       ))}
                     </tbody>
@@ -605,48 +810,104 @@ export function Presentation19NativePreviewDeck({ deckData }: Props) {
               )}
               {slide.kind === "presence-chart" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                  <Title text="GRÁFICO DE PRESENÇA" primaryColor={deckData.primaryColor} />
+                  <Title text={presentationTitleChartPresence(deckData.comparisonAxis)} primaryColor={deckData.primaryColor} />
                   <BarChartPreview chart={slide.chart} />
                 </div>
               )}
               {slide.kind === "levels-chart" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                  <Title text="GRÁFICO DE NÍVEIS" primaryColor={deckData.primaryColor} />
+                  <Title
+                    text={presentationTitleChartLevels(deckData.comparisonAxis)}
+                    subtitle={slide.escolaNome}
+                    primaryColor={deckData.primaryColor}
+                  />
                   <BarChartPreview chart={slide.chart} />
                 </div>
               )}
               {slide.kind === "section-levels" && (
                 <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Title text="NÍVEIS DE APRENDIZAGEM" primaryColor={deckData.primaryColor} />
+                  <Title
+                    text={presentationSectionLevels(deckData.comparisonAxis)}
+                    subtitle={presentationSectionLevelsTagline(deckData.comparisonAxis)}
+                    primaryColor={deckData.primaryColor}
+                  />
                 </div>
               )}
               {slide.kind === "levels-guide" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                  <Title text="GUIA DE NÍVEIS" primaryColor={deckData.primaryColor} />
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                  <Title text="GUIA DE NÍVEIS DE APRENDIZAGEM" primaryColor={deckData.primaryColor} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                     {deckData.levelGuide.map((lvl, idx) => (
-                      <div key={idx} style={{ border: "1px solid #E4E4E7", borderRadius: 12, padding: 12, background: "#F8FAFC" }}>
-                        <div style={{ fontSize: 22, fontWeight: 900, color: lvl.color }}>{lvl.label}</div>
-                        <div style={{ marginTop: 6, fontSize: 13, color: "#3F3F46", lineHeight: 1.35 }}>{lvl.description}</div>
+                      <div
+                        key={idx}
+                        style={{
+                          border: "1px solid #E4E4E7",
+                          borderRadius: 12,
+                          padding: "16px 18px",
+                          background: "#F8FAFC",
+                          borderLeftWidth: 6,
+                          borderLeftColor: lvl.color,
+                        }}
+                      >
+                        <div style={{ fontSize: P19_LEVELS_GUIDE_TITLE_PX, fontWeight: 900, color: lvl.color, letterSpacing: 0.3 }}>{lvl.label}</div>
+                        <div style={{ marginTop: 10, fontSize: P19_LEVELS_GUIDE_DESC_PX, color: "#3F3F46", lineHeight: 1.5, maxWidth: 980 }}>
+                          {lvl.description}
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
+              {slide.kind === "section-students" && (
+                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Title text={presentationSectionStudentsTitle()} primaryColor={deckData.primaryColor} />
+                </div>
+              )}
+              {slide.kind === "section-grades" && (
+                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Title
+                    text={presentationSectionGrades(deckData.comparisonAxis)}
+                    subtitle={presentationSectionGradesTagline(deckData.comparisonAxis)}
+                    primaryColor={deckData.primaryColor}
+                  />
+                </div>
+              )}
+              {slide.kind === "grades-chart" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                  <Title
+                    text={presentationTitleChartGrades(deckData.comparisonAxis)}
+                    subtitle={slide.escolaNome}
+                    primaryColor={deckData.primaryColor}
+                  />
+                  <BarChartPreview chart={slide.chart} />
+                </div>
+              )}
               {slide.kind === "section-proficiency" && (
                 <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Title text="PROFICIÊNCIAS" primaryColor={deckData.primaryColor} />
+                  <Title
+                    text={presentationSectionProficiency(deckData.comparisonAxis)}
+                    subtitle={presentationSectionProficiencyTagline(deckData.comparisonAxis)}
+                    primaryColor={deckData.primaryColor}
+                  />
                 </div>
               )}
               {slide.kind === "proficiency-general-chart" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                  <Title text="PROFICIÊNCIA GERAL POR TURMA" primaryColor={deckData.primaryColor} />
+                  <Title
+                    text={presentationTitleProficiencyGeneralChart(deckData.comparisonAxis)}
+                    subtitle={slide.escolaNome}
+                    primaryColor={deckData.primaryColor}
+                  />
                   <BarChartPreview chart={slide.chart} />
                 </div>
               )}
               {slide.kind === "proficiency-by-discipline-chart" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <Title text="PROFICIÊNCIA POR DISCIPLINA POR TURMA" primaryColor={deckData.primaryColor} />
+                  <Title
+                    text={presentationTitleProficiencyByDiscipline(deckData.comparisonAxis)}
+                    subtitle={slide.escolaNome}
+                    primaryColor={deckData.primaryColor}
+                  />
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     {slide.charts.map((entry) => (
                       <div key={entry.title} style={{ border: "1px solid #D4D4D8", borderRadius: 12, padding: 8, background: "#F8FAFC" }}>
@@ -659,28 +920,172 @@ export function Presentation19NativePreviewDeck({ deckData }: Props) {
               )}
               {slide.kind === "section-questions" && (
                 <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Title text="QUESTÕES" primaryColor={deckData.primaryColor} />
+                  <Title
+                    text={presentationSectionQuestionsTitle()}
+                    subtitle={presentationSectionQuestionsTagline()}
+                    primaryColor={deckData.primaryColor}
+                  />
                 </div>
               )}
               {slide.kind === "dynamic-series-cover" && (
-                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 52, fontWeight: 900, color: rgbCss(deckData.primaryColor) }}>
+                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: P19_DYNAMIC_COVER_PX, fontWeight: 900, color: rgbCss(deckData.primaryColor) }}>
                   [{deckData.serieNomeCapas}]
                 </div>
               )}
               {slide.kind === "dynamic-class-cover" && (
-                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 52, fontWeight: 900, color: rgbCss(deckData.primaryColor) }}>
+                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: P19_DYNAMIC_COVER_PX, fontWeight: 900, color: rgbCss(deckData.primaryColor) }}>
                   [{deckData.turmaNomeCapas}]
                 </div>
               )}
+              {slide.kind === "questions-turma-cover" && (
+                <div
+                  style={{
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "0 48px",
+                    textAlign: "center",
+                    fontSize: slide.serieLabel.length + slide.turmaNome.length > 80 ? 26 : 34,
+                    fontWeight: 900,
+                    lineHeight: 1.35,
+                    color: rgbCss(deckData.primaryColor),
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {presentationQuestionsTurmaCoverLine(slide.serieLabel, slide.turmaNome)}
+                </div>
+              )}
               {slide.kind === "thank-you" && (
-                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 64, fontWeight: 900, color: rgbCss(deckData.primaryColor) }}>
+                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: P19_THANK_YOU_FONT_PX, fontWeight: 900, color: rgbCss(deckData.primaryColor) }}>
                   Obrigado!!
                 </div>
               )}
             </div>
           </div>
-        </div>
-      ))}
-    </div>
   );
 }
+
+export const Presentation19NativePreviewDeck = forwardRef<Presentation19NativePreviewDeckHandle, Props>(
+  function Presentation19NativePreviewDeck({ deckData }, ref) {
+  const spec = buildSlideSpec(deckData);
+  const total = spec.slides.length;
+  const [fullscreenOpen, setFullscreenOpen] = useState(false);
+  const [fsIndex, setFsIndex] = useState(0);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  const exitPresentation = useCallback(() => {
+    setFullscreenOpen(false);
+    exitBrowserFullscreen();
+  }, []);
+
+  const openFullscreen = useCallback(() => {
+    if (total === 0) return;
+    setFsIndex(0);
+    requestBrowserFullscreen();
+    setFullscreenOpen(true);
+  }, [total]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      openFullscreen,
+    }),
+    [openFullscreen]
+  );
+
+  useLayoutEffect(() => {
+    if (!fullscreenOpen || !stageRef.current) return;
+    const run = () => {
+      const el = stageRef.current;
+      if (!el) return;
+      const pw = el.clientWidth;
+      const ph = el.clientHeight;
+      // Sem teto em 1: em tela cheia o slide deve ampliar para caber no viewport (projeção).
+      setScale(Math.min(pw / page.width, ph / page.height));
+    };
+    run();
+    const ro = new ResizeObserver(run);
+    ro.observe(stageRef.current);
+    return () => ro.disconnect();
+  }, [fullscreenOpen, fsIndex]);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      if (!getFullscreenElement()) {
+        setFullscreenOpen(false);
+      }
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    document.addEventListener("webkitfullscreenchange", onFsChange as EventListener);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFsChange);
+      document.removeEventListener("webkitfullscreenchange", onFsChange as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!fullscreenOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        exitPresentation();
+        return;
+      }
+      if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
+        e.preventDefault();
+        setFsIndex((i) => Math.min(total - 1, i + 1));
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp" || e.key === "PageUp") {
+        e.preventDefault();
+        setFsIndex((i) => Math.max(0, i - 1));
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        setFsIndex(0);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        setFsIndex(Math.max(0, total - 1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [exitPresentation, fullscreenOpen, total]);
+
+  useEffect(() => {
+    setFsIndex((i) => Math.min(i, Math.max(0, total - 1)));
+  }, [total]);
+
+  const safeFsIndex = Math.min(fsIndex, Math.max(0, total - 1));
+  const currentFsSlide = total > 0 ? spec.slides[safeFsIndex] : undefined;
+
+  return (
+    <>
+      <div data-presentation19-native-root style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        {spec.slides.map((slide) => (
+          <div key={slide.index} data-slide-index={slide.index}>
+            <NativeSlideFrame slide={slide} deckData={deckData} />
+          </div>
+        ))}
+      </div>
+      {fullscreenOpen && currentFsSlide
+        ? createPortal(
+            <div className="fixed inset-0 z-[200] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-black">
+              <div ref={stageRef} className="flex h-full w-full min-h-0 min-w-0 items-center justify-center overflow-hidden">
+                <div
+                  style={{
+                    width: page.width,
+                    height: page.height,
+                    transform: `scale(${scale})`,
+                    transformOrigin: "center center",
+                  }}
+                >
+                  <NativeSlideFrame slide={currentFsSlide} deckData={deckData} />
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </>
+  );
+});
