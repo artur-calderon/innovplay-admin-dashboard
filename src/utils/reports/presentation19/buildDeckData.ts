@@ -639,6 +639,58 @@ function buildQuestoesPorTurmaFromNova(
   return out;
 }
 
+/** % de acerto por questão, agregado por série (município — sem blocos por turma). */
+function buildQuestoesPorSerieFromNova(
+  novaRespostaAgregados: NovaRespostaAPI | null,
+  habilidadePorQuestao: Map<number, string>
+): Array<{ serie: string; questoes: SlideQuestionRow[] }> {
+  if (!novaRespostaAgregados) return [];
+
+  const habMap = habilidadePorQuestao;
+
+  const alunos = (novaRespostaAgregados.tabela_detalhada?.geral?.alunos ?? []) as Array<{
+    turma?: string;
+    serie?: string;
+    respostas_por_questao?: Array<{ questao?: number; acertou?: boolean }>;
+  }>;
+  if (alunos.length === 0) return [];
+
+  const bySerie = new Map<string, typeof alunos>();
+  for (const aluno of alunos) {
+    const turmaStr = String(aluno.turma ?? "").trim();
+    const serieRaw = String(aluno.serie ?? "").trim();
+    const serie = serieRaw || extractSerieFromTurma(turmaStr) || "GERAL";
+    if (!bySerie.has(serie)) bySerie.set(serie, []);
+    bySerie.get(serie)!.push(aluno);
+  }
+
+  const out: Array<{ serie: string; questoes: SlideQuestionRow[] }> = [];
+  for (const [serie, lista] of [...bySerie.entries()].sort((a, b) =>
+    a[0].localeCompare(b[0], "pt-BR", { sensitivity: "base" })
+  )) {
+    const byQuestao = new Map<number, { total: number; acertos: number }>();
+    for (const aluno of lista) {
+      for (const r of aluno.respostas_por_questao ?? []) {
+        const q = clampToNumber(r.questao, 0);
+        if (q <= 0) continue;
+        const cur = byQuestao.get(q) ?? { total: 0, acertos: 0 };
+        cur.total += 1;
+        if (r.acertou) cur.acertos += 1;
+        byQuestao.set(q, cur);
+      }
+    }
+    const questoes = Array.from(byQuestao.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([questao, v]) => ({
+        questao,
+        habilidade: habMap.get(questao)?.trim() || "—",
+        percentualAcertos: v.total > 0 ? Math.round((v.acertos / v.total) * 1000) / 10 : 0,
+      }));
+    if (questoes.length > 0) out.push({ serie, questoes });
+  }
+  return out;
+}
+
 function buildCursoSerieTurma(
   relatorio: Partial<RelatorioCompleto> | null,
   deckPresence: PresenceBySeriesRow[],
@@ -1004,8 +1056,7 @@ function buildMetricsForAxis(
   relatorio: Partial<RelatorioCompleto> | null,
   nova: NovaRespostaAPI | null,
   serieFilterLabel: string | undefined,
-  turmaFilterLabel: string | undefined,
-  alunosRanking: AlunoPresentationRow[] | null | undefined
+  turmaFilterLabel: string | undefined
 ): {
   presencaPorSerie: PresenceBySeriesRow[];
   niveisPorSerie: NiveisBySeriesRow[];
@@ -1107,65 +1158,8 @@ function buildMetricsForAxis(
     };
   }
 
-  // aluno
-  const alunos = alunosRanking ?? [];
-  const presencaSingle: PresenceBySeriesRow[] =
-    alunos.length > 0
-      ? [
-          {
-            label: turmaFilterLabel
-              ? `${turmaFilterLabel} (${alunos.length} alunos)`
-              : serieFilterLabel
-                ? `${serieFilterLabel} (${alunos.length} alunos)`
-                : `Turma (${alunos.length} alunos)`,
-            totalAlunos: alunos.length,
-            totalPresentes: alunos.length,
-            presencaMediaPct: 100,
-            alunosFaltosos: 0,
-          },
-        ]
-      : groupPresenceFromNova(nova, nova?.estatisticas_gerais?.serie ?? "GERAL");
-
-  const clsCount = { abaixo: 0, basico: 0, adequado: 0, avancado: 0 };
-  for (const a of alunos) {
-    const c = normalizeText(a.classificacao).toLowerCase();
-    if (c.includes("abaixo")) clsCount.abaixo += 1;
-    else if (c.includes("adequado")) clsCount.adequado += 1;
-    else if (c.includes("avan")) clsCount.avancado += 1;
-    else if (c.includes("basico") || c.includes("básico")) clsCount.basico += 1;
-  }
-  const niveis: NiveisBySeriesRow[] =
-    alunos.length > 0
-      ? [
-          {
-            label: "Distribuição (alunos)",
-            abaixoDoBasico: clsCount.abaixo,
-            basico: clsCount.basico,
-            adequado: clsCount.adequado,
-            avancado: clsCount.avancado,
-            total: alunos.length,
-          },
-        ]
-      : groupNiveisFromNova(nova, "GERAL");
-
-  const profGeral: ProficiencyGeneralByTurmaRow[] = alunos.map((a) => ({
-    label: a.nome,
-    proficiencia: clampToNumber(a.proficiencia, 0),
-  }));
-
-  const profDisc = buildProficiencyByDisciplineByTurmaFromNova(nova);
-  const notasCat: NotaPorCategoriaDeck[] = alunos.map((a) => ({
-    label: a.nome,
-    mediaNota: clampToNumber(a.nota, 0),
-  }));
-
-  return {
-    presencaPorSerie: presencaSingle,
-    niveisPorSerie: niveis,
-    proficienciaGeralPorTurma: profGeral.length ? profGeral : buildProficiencyGeneralByTurmaFromNova(nova),
-    proficienciaPorDisciplinaPorTurma: profDisc,
-    notasPorCategoria: notasCat,
-  };
+  // Eixo legado "aluno": sem tabelas de alunos no deck; métricas alinhadas ao eixo turma.
+  return buildMetricsForAxis("turma", relatorio, nova, serieFilterLabel, turmaFilterLabel);
 }
 
 function buildLevelGuideDescriptions(_serieNome?: string): Array<{ label: string; description: string; color: string }> {
@@ -1202,7 +1196,6 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
     novaRespostaAgregados,
     primaryColor,
     logoDataUrl,
-    alunosRanking,
   } = args;
 
   const municipioNome =
@@ -1286,8 +1279,7 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
     relatorioDetalhado,
     novaRespostaAgregados,
     selectedSerieLabel,
-    selectedTurmaLabel,
-    alunosRanking
+    selectedTurmaLabel
   );
 
   let presencaPorSerie = metrics.presencaPorSerie;
@@ -1362,6 +1354,7 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
     buildQuestaoHabilidadeMapFromGeralRows(questoesTabelaGeral)
   );
   const questoesPorTurma = buildQuestoesPorTurmaFromNova(novaRespostaAgregados, habilidadePorQuestaoTurma);
+  const questoesPorSerieFromNova = buildQuestoesPorSerieFromNova(novaRespostaAgregados, habilidadePorQuestaoTurma);
 
   // Quando há turma selecionada, o deck deve comparar Turma vs Geral da série,
   // e as seções de capa/questões devem ser restritas à turma selecionada.
@@ -1380,15 +1373,6 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
     proficienciaGeralPorTurma,
     comparisonAxis
   );
-  if (turmasParticipantesCapa.length === 0 && alunosRanking?.length) {
-    const s = new Set<string>();
-    for (const a of alunosRanking) {
-      const t = a.turma?.trim();
-      if (t) s.add(t);
-    }
-    turmasParticipantesCapa = Array.from(s).sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
-  }
-
   if (selectedTurmaEffective) {
     turmasParticipantesCapa = [selectedTurmaEffective];
   }
@@ -1404,44 +1388,7 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
   const serieNomeCapas = serieFinal;
   const turmaNomeCapas = turmaCapa;
 
-  const alunosDetalhados: AlunoPresentationRow[] = (() => {
-    // Quando vier explicitamente via ranking (escopo aluno antigo), prioriza.
-    if (alunosRanking && alunosRanking.length > 0) return alunosRanking;
-
-    const alunos = (novaRespostaAgregados?.tabela_detalhada?.geral?.alunos ?? []) as Array<{
-      nome?: string;
-      turma?: string;
-      serie?: string;
-      nota?: number;
-      proficiencia?: number;
-      classificacao?: string;
-    }>;
-    if (!alunos.length) return [];
-
-    // Filtros (série/turma) para ranking ao final do deck.
-    const serieKey = selectedSerieLabel?.trim()
-      ? selectedSerieLabel.trim()
-      : String(novaRespostaAgregados?.estatisticas_gerais?.serie ?? "").trim();
-    const turmaKey = selectedTurmaLabel?.trim() ? selectedTurmaLabel.trim() : "";
-
-    const filtered = alunos.filter((a) => {
-      const t = String(a.turma ?? "").trim();
-      const s = String(a.serie ?? "").trim() || extractSerieFromTurma(t);
-      if (turmaKey) return normKey(t) === normKey(turmaKey);
-      if (serieKey && serieKey !== "all") return normKey(s) === normKey(serieKey);
-      return true;
-    });
-
-    return filtered
-      .map((a) => ({
-        nome: String(a.nome ?? "—"),
-        turma: String(a.turma ?? "").trim() || undefined,
-        nota: clampToNumber(a.nota, 0),
-        proficiencia: clampToNumber(a.proficiencia, 0),
-        classificacao: String(a.classificacao ?? "—"),
-      }))
-      .sort((a, b) => (b.proficiencia || 0) - (a.proficiencia || 0));
-  })();
+  const alunosDetalhados: AlunoPresentationRow[] = [];
 
   warnIfProficiencyOutOfRange(serieFinal, proficienciaGeralPorTurma, proficienciaPorDisciplinaPorTurma);
 
@@ -1457,6 +1404,7 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
   let notasCatFinal = notasPorCategoria;
   let questoesTabelaGeralFinal = questoesTabelaGeral;
   let questoesPorTurmaFinal = questoesPorTurma;
+  let questoesPorSerieFinal = questoesPorSerieFromNova;
 
   if (selectedTurmaEffective) {
     // Presença: agrega a série a partir das turmas filtradas e pega a turma selecionada.
@@ -1543,6 +1491,18 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
     // Questões: somente a turma selecionada.
     questoesTabelaGeralFinal = [];
     questoesPorTurmaFinal = questoesPorTurmaFinal.filter((b) => normKey(b.turma) === normKey(selectedTurmaEffective));
+    questoesPorSerieFinal = [];
+  } else if (comparisonAxis === "escola") {
+    // Município: uma tabela por série (geral da série), sem blocos por turma.
+    questoesPorTurmaFinal = [];
+    if (questoesPorSerieFinal.length > 0) {
+      questoesTabelaGeralFinal = [];
+    }
+  } else {
+    // Performance: sem turma selecionada, não geramos blocos por turma na seção de questões,
+    // pois isso pode criar dezenas/centenas de slides e travar preview/export.
+    questoesPorTurmaFinal = [];
+    questoesPorSerieFinal = [];
   }
 
   return {
@@ -1573,6 +1533,7 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
 
     questoesTabelaGeral: questoesTabelaGeralFinal,
     questoesPorTurma: questoesPorTurmaFinal,
+    questoesPorSerie: questoesPorSerieFinal,
 
     levelGuide: buildLevelGuideDescriptions(serieFinal),
 

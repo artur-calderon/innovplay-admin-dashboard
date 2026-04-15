@@ -106,6 +106,24 @@ export function presentationTitleChartPresence(axis: PresentationComparisonAxis)
   return `GRÁFICO DE PRESENÇA — ${presentationPresenceScopeUpper(axis)}`;
 }
 
+/** Título amigável da tabela de níveis (alinhado aos anexos oficiais). */
+export function niveisAprendizagemTituloPorEixo(axis: PresentationComparisonAxis): string {
+  switch (axis) {
+    case "escola":
+      return "Níveis de Aprendizagem por Escola";
+    case "serie":
+      return "Níveis de Aprendizagem por Série";
+    case "turma":
+    case "aluno":
+      return "Níveis de Aprendizagem por Turma";
+    default:
+      return "Níveis de Aprendizagem";
+  }
+}
+
+/** Fundo dos cabeçalhos das 4 faixas (tons escuros; texto claro). */
+export const P19_LEVELS_TABLE_LEVEL_HEADER_BG_HEX = ["991B1B", "A16207", "166534", "14532D"] as const;
+
 export function presentationTitleTableLevels(axis: PresentationComparisonAxis): string {
   return `TABELA DE NÍVEIS — ${presentationScopeSuffixUpper(axis)}`;
 }
@@ -159,15 +177,6 @@ export function presentationSectionGradesTagline(axis: PresentationComparisonAxi
   }
 }
 
-/** Slides de ranking/detalhe (eixo aluno). */
-export function presentationTitleTableStudents(): string {
-  return "TABELA DE ALUNOS — POR ALUNO";
-}
-
-export function presentationSectionStudentsTitle(): string {
-  return "ALUNOS — DETALHES POR ALUNO";
-}
-
 export function presentationSectionQuestionsTitle(): string {
   return "QUESTÕES — ANÁLISE POR HABILIDADE";
 }
@@ -179,6 +188,12 @@ export function presentationSectionQuestionsTagline(): string {
 /** Capa antes da tabela de questões de uma turma (cartão-resposta / tabela detalhada). */
 export function presentationQuestionsTurmaCoverLine(serieLabel: string, turmaNome: string): string {
   return `Tabela de questões — ${serieLabel} — ${turmaNome}`;
+}
+
+/** Título da tabela de questões no escopo município (agregado geral da série, sem turma). */
+export function presentationTitleQuestionsSerieGeral(serieLabel: string): string {
+  const s = String(serieLabel ?? "").trim() || "—";
+  return `TABELA DE QUESTÕES — GERAL DA SÉRIE ${s}`;
 }
 
 /** Subtítulo de capítulo quando o slide usa duas linhas (PPTX / preview). */

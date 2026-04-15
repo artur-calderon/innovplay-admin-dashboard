@@ -19,8 +19,7 @@ import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, U
 import { api } from "@/lib/api";
 import buildDeckDataForPresentation19Slides from "@/utils/reports/presentation19/buildDeckData";
 import { buildSlideSpec } from "@/utils/reports/presentation19/buildSlideSpec";
-import { normalizeRelatorioCompletoForAnaliseUI } from "@/utils/report/relatorioCompletoNormalize";
-import type { AlunoPresentationRow, Presentation19DeckData, Presentation19Mode } from "@/types/presentation19-slides";
+import type { Presentation19DeckData, Presentation19Mode } from "@/types/presentation19-slides";
 import { deriveComparisonAxis } from "@/utils/reports/presentation19/presentationScope";
 import {
   Presentation19NativePreviewDeck,
@@ -408,29 +407,10 @@ export default function RelatorioApresentacao19Slides() {
       return resEval.data;
     };
 
-    const fetchRankingIfNeeded = (): Promise<AlunoPresentationRow[] | null> => {
-      if (comparisonAxis === "aluno" && activeMode === "answer_sheet" && asTurma !== "all") {
-        return EvaluationResultsApiService.getRankingByProficiency(evaluationId, {
-          schoolId: selectedSchool !== "all" ? selectedSchool : undefined,
-          classId: asTurma,
-        }).then((rank) =>
-          rank?.ranked?.map((r) => ({
-            nome: r.nome,
-            turma: r.turma,
-            nota: r.nota,
-            proficiencia: r.proficiencia,
-            classificacao: r.classificacao,
-          })) ?? []
-        );
-      }
-      return Promise.resolve(null);
-    };
-
     try {
-      const [relatorioCompleto, novaResposta, alunosRankingFromApi] = await Promise.all([
+      const [relatorioCompleto, novaResposta] = await Promise.all([
         EvaluationResultsApiService.getRelatorioCompleto(evaluationId, relatorioParams),
         fetchNovaResposta(),
-        fetchRankingIfNeeded(),
       ]);
 
       if (!relatorioCompleto) {
@@ -457,10 +437,10 @@ export default function RelatorioApresentacao19Slides() {
         });
       }
 
-      let relatorioNormalizado: RelatorioCompleto = relatorioCompleto;
-      if (activeMode === "answer_sheet") {
-        relatorioNormalizado = normalizeRelatorioCompletoForAnaliseUI(relatorioCompleto);
-      }
+      // IMPORTANT:
+      // O deck (buildDeckData) trabalha com o shape original do RelatorioCompleto (snake_case).
+      // Normalizações para UI podem alterar chaves e zerar métricas (níveis/proficiência).
+      const relatorioNormalizado: RelatorioCompleto = relatorioCompleto;
 
       const selectedSerieLabel =
         activeMode === "answer_sheet"
@@ -476,31 +456,6 @@ export default function RelatorioApresentacao19Slides() {
             ? evTurma
             : undefined;
 
-      let alunosRanking: AlunoPresentationRow[] | null = null;
-      if (comparisonAxis === "aluno") {
-        if (activeMode === "answer_sheet" && asTurma !== "all") {
-          alunosRanking = alunosRankingFromApi ?? [];
-        } else if (activeMode === "evaluations" && evTurma !== "all" && novaResposta?.tabela_detalhada?.geral?.alunos) {
-          const want = evTurma.trim().toLowerCase();
-          const raw = novaResposta.tabela_detalhada.geral.alunos as Array<{
-            nome?: string;
-            turma?: string;
-            nota?: number;
-            proficiencia?: number;
-            classificacao?: string;
-          }>;
-          alunosRanking = raw
-            .filter((a) => String(a.turma ?? "").trim().toLowerCase() === want)
-            .map((a) => ({
-              nome: String(a.nome ?? "—"),
-              turma: a.turma,
-              nota: Number(a.nota ?? 0),
-              proficiencia: Number(a.proficiencia ?? 0),
-              classificacao: String(a.classificacao ?? "—"),
-            }));
-        }
-      }
-
       const deck = buildDeckDataForPresentation19Slides({
         mode: activeMode,
         comparisonAxis,
@@ -510,7 +465,6 @@ export default function RelatorioApresentacao19Slides() {
         novaRespostaAgregados: novaResposta,
         primaryColor,
         logoDataUrl,
-        alunosRanking,
       });
 
       previewDataCacheRef.current = { key: cacheKey, deck };

@@ -351,6 +351,19 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
         page: geralPages.length > 1 ? `${i + 1}/${geralPages.length}` : "",
       });
     });
+    for (const bloco of deckData.questoesPorSerie ?? []) {
+      const serieLabel = String(bloco.serie ?? "").trim() || "—";
+      out.push({ kind: "cover", serieLabel, turmaNome: "Geral da série" });
+      const seriePages = chunkPresentation19SlideQuestionRows(bloco.questoes);
+      seriePages.forEach((chunk, i) => {
+        out.push({
+          kind: "table",
+          chunk,
+          titulo: `Geral da série — ${serieLabel}`,
+          page: seriePages.length > 1 ? `${i + 1}/${seriePages.length}` : "",
+        });
+      });
+    }
     for (const bloco of deckData.questoesPorTurma ?? []) {
       const serieLabel = String(bloco.serieTurma ?? deckData.serie ?? "").trim() || "—";
       out.push({ kind: "cover", serieLabel, turmaNome: bloco.turma });
@@ -365,7 +378,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
       });
     }
     return out;
-  }, [deckData.questoesTabelaGeral, deckData.questoesPorTurma, deckData.serie]);
+  }, [deckData.questoesTabelaGeral, deckData.questoesPorSerie, deckData.questoesPorTurma, deckData.serie]);
 
   const firstQuestionsSlideIndex = 20;
   const thanksSlideIndex = firstQuestionsSlideIndex + questoesSlides.length;

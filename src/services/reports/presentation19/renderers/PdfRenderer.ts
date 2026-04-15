@@ -10,17 +10,17 @@ import {
   presentationSectionProficiencyTagline,
   presentationSectionQuestionsTagline,
   presentationSectionQuestionsTitle,
-  presentationSectionStudentsTitle,
   presentationTitleChartGrades,
   presentationTitleChartLevels,
   presentationTitleChartPresence,
   presentationTitleProficiencyByDiscipline,
   presentationTitleProficiencyGeneralChart,
   presentationTitleTableGrades,
-  presentationTitleTableLevels,
   presentationTitleTablePresence,
-  presentationTitleTableStudents,
+  niveisAprendizagemTituloPorEixo,
+  P19_LEVELS_TABLE_LEVEL_HEADER_BG_HEX,
   presentationQuestionsTurmaCoverLine,
+  presentationTitleQuestionsSerieGeral,
 } from "@/utils/reports/presentation19/presentationScope";
 import {
   P19_CHART_AXIS_TICK_PX,
@@ -561,32 +561,21 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       break;
     }
     case "presence-table":
-    case "levels-table":
     case "grades-table":
-    case "questions-table":
-    case "students-table": {
+    case "questions-table": {
       const titleText =
         slide.kind === "presence-table"
           ? presentationTitleTablePresence(deckData.comparisonAxis)
-          : slide.kind === "levels-table"
-            ? presentationTitleTableLevels(deckData.comparisonAxis)
-            : slide.kind === "grades-table"
-              ? presentationTitleTableGrades(deckData.comparisonAxis)
-              : slide.kind === "questions-table"
-                ? slide.questionsSubsection?.kind === "geral"
-                  ? "TABELA DE QUESTÕES — GERAL"
-                  : slide.questionsSubsection?.kind === "turma"
-                    ? `TABELA DE QUESTÕES — TURMA ${slide.questionsSubsection.turmaNome}`
-                    : "TABELA DE QUESTÕES"
-                : slide.variant === "by-level"
-                  ? "PROFICIÊNCIA — ALUNOS POR NÍVEL"
-                  : presentationTitleTableStudents();
-      const pageInfo =
-        slide.kind === "questions-table"
-          ? slide.questionsPage
-          : slide.kind === "students-table"
-            ? slide.studentsPage
-            : undefined;
+          : slide.kind === "grades-table"
+            ? presentationTitleTableGrades(deckData.comparisonAxis)
+            : slide.questionsSubsection?.kind === "geral"
+              ? "TABELA DE QUESTÕES — GERAL"
+              : slide.questionsSubsection?.kind === "serie-geral"
+                ? presentationTitleQuestionsSerieGeral(slide.questionsSubsection.serieLabel)
+                : slide.questionsSubsection?.kind === "turma"
+                  ? `TABELA DE QUESTÕES — TURMA ${slide.questionsSubsection.turmaNome}`
+                  : "TABELA DE QUESTÕES";
+      const pageInfo = slide.kind === "questions-table" ? slide.questionsPage : undefined;
       const titleMaxW = pageInfo != null && pageInfo.total > 1 ? content.w - 160 : content.w - P19_TITLE_TEXT_OFFSET_X_PX;
       let yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, 100, titleMaxW);
       if (pageInfo != null && pageInfo.total > 1) {
@@ -595,8 +584,31 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         doc.setTextColor(82, 82, 91);
         doc.text(`Página ${pageInfo.current}/${pageInfo.total}`, content.x + content.w, 100, { align: "right" });
       }
+      const tableStartY = yAfter + 16;
+      autoTable(doc, {
+        startY: tableStartY,
+        margin: { left: content.x, right: content.x },
+        head: [slide.table.columns],
+        body: slide.table.rows,
+        styles: {
+          fontSize: P19_TABLE_CELL_FONT_PX,
+          lineColor: [203, 213, 225],
+          lineWidth: 1,
+          cellPadding: P19_TABLE_CELL_PADDING_PX,
+          fillColor: [252, 252, 253],
+          textColor: [15, 23, 42],
+        },
+        headStyles: { fillColor: [226, 232, 240], textColor: [51, 65, 85], fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [241, 245, 249] },
+      });
+      break;
+    }
+    case "levels-table": {
+      const titleText = niveisAprendizagemTituloPorEixo(deckData.comparisonAxis);
+      const titleMaxW = content.w - P19_TITLE_TEXT_OFFSET_X_PX;
+      let yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, 100, titleMaxW);
       let tableStartY = yAfter + 16;
-      if (slide.kind === "levels-table" && slide.escolaNome) {
+      if (slide.escolaNome) {
         tableStartY = drawWrappedSubtitle(doc, slide.escolaNome, yAfter + 10, content.w - P19_TITLE_TEXT_OFFSET_X_PX) + 14;
       }
       autoTable(doc, {
@@ -615,18 +627,19 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         headStyles: { fillColor: [226, 232, 240], textColor: [51, 65, 85], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [241, 245, 249] },
         didParseCell: (data) => {
-          if (slide.kind !== "students-table" || slide.variant !== "by-level") return;
-          const cols = slide.table.columns;
-          const idx = cols.findIndex((c) => String(c).toLowerCase().includes("classifica"));
-          if (idx < 0) return;
-          if (data.section !== "body") return;
-          if (data.column.index !== idx) return;
-          const raw = String(data.cell.raw ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-          // vermelho/amarelo/verde claro/verde escuro
-          const rgb =
-            raw.includes("abaixo") ? [239, 68, 68] : raw.includes("basico") ? [250, 204, 21] : raw.includes("adequado") ? [34, 197, 94] : raw.includes("avan") ? [22, 101, 52] : null;
-          if (rgb) data.cell.styles.textColor = rgb as unknown as [number, number, number];
-          if (rgb) data.cell.styles.fontStyle = "bold";
+          if (data.section === "head" && data.column.index >= 1 && data.column.index <= 4) {
+            const hx = P19_LEVELS_TABLE_LEVEL_HEADER_BG_HEX[data.column.index - 1];
+            const rgb = hexToRgb(`#${hx}`);
+            data.cell.styles.fillColor = [rgb.r, rgb.g, rgb.b];
+            data.cell.styles.textColor = [248, 250, 252];
+          }
+          if (data.section === "body") {
+            const row = data.row.raw as unknown[] | undefined;
+            if (row && String(row[0]) === "TOTAL GERAL") {
+              data.cell.styles.fontStyle = "bold";
+              data.cell.styles.fillColor = [226, 232, 240];
+            }
+          }
         },
       });
       break;
@@ -744,9 +757,6 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       drawBarChart(doc, slide.chart, { x: content.x, y: chartY, w: content.w, h: Math.max(200, chartH) });
       break;
     }
-    case "section-students":
-      drawCenteredSectionBlock(doc, presentationSectionStudentsTitle(), undefined, deckData.primaryColor);
-      break;
     case "section-questions":
       drawCenteredSectionBlock(doc, presentationSectionQuestionsTitle(), presentationSectionQuestionsTagline(), deckData.primaryColor);
       break;
