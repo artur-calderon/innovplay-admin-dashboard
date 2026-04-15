@@ -21,12 +21,6 @@ import { normalizeResultsPeriodYm } from "@/utils/resultsPeriod";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext, cityIdQueryParamForAdmin } from "@/utils/userHierarchy";
 import { cn } from "@/lib/utils";
 import {
-  getListaFrequenciaPorAvaliacao,
-  getListaFrequenciaPorAvaliacaoTodasTurmas,
-} from "@/services/listaFrequenciaApi";
-import type { TipoListaFrequencia } from "@/types/lista-frequencia";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
   getProficiencyLevelLabel,
   getProficiencyTableInfo,
   PROFICIENCY_TABLES,
@@ -126,15 +120,7 @@ interface ProficiencyDistribution {
   bars: Array<{ label: string; value: number; quantidade: number }>;
   /** Nome da disciplina para buscar descrições dos níveis (mesma lógica de niveisEscolares) */
   disciplinaNome?: string;
-  /** Lista de alunos participantes agrupados por nível (quando disponível). */
-  alunosPorNivel?: Record<number, Array<{ id: string; nome: string; turma?: string }>>;
 }
-
-type AttendanceModalData = {
-  participantes: Array<{ numero: number; nome: string; escola: string; serie: string; turma: string }>;
-  faltosos: Array<{ numero: number; nome: string; escola: string; serie: string; turma: string }>;
-  evaluationLabel?: string;
-};
 
 const formatAverage = (value?: number, decimals = 1) => {
   if (value === undefined || value === null || Number.isNaN(value)) {
@@ -1062,9 +1048,6 @@ export default function RelatorioEscolar({
           return true;
         });
 
-        const alunosPorNivel: Record<number, Array<{ id: string; nome: string; turma?: string }>> = {};
-        for (let i = 0; i <= maxLevel; i++) alunosPorNivel[i] = [];
-
         // ✅ MELHORADO: Classificar cada aluno participante por nível usando validação rigorosa
         alunosParticipantes.forEach((aluno) => {
           const proficiencia = Number(aluno.proficiencia);
@@ -1082,15 +1065,6 @@ export default function RelatorioEscolar({
           
           if (nivel >= 0 && nivel <= maxLevel) {
             contagemPorNivel[nivel] = (contagemPorNivel[nivel] || 0) + 1;
-            const id = alunoRowId(aluno);
-            const nome = String((aluno as { nome?: string; nome_estudante?: string }).nome ?? (aluno as { nome_estudante?: string }).nome_estudante ?? "").trim();
-            if (id && nome) {
-              alunosPorNivel[nivel]!.push({
-                id,
-                nome,
-                turma: String((aluno as { turma?: string }).turma ?? "").trim() || undefined,
-              });
-            }
           }
         });
 
@@ -1136,206 +1110,11 @@ export default function RelatorioEscolar({
             { label: scopeLabel, data: percentuaisPorNivel }
           ],
           bars,
-          disciplinaNome: nomeDisciplina,
-          alunosPorNivel
+          disciplinaNome: nomeDisciplina
         };
       })
       .filter((item): item is ProficiencyDistribution & { disciplinaNome: string } => item !== null);
   }, [apiData, isAnswerSheetAgregados, isMunicipalView]);
-
-  const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
-  const [attendanceModalLoading, setAttendanceModalLoading] = useState(false);
-  const [attendanceModalData, setAttendanceModalData] = useState<AttendanceModalData | null>(null);
-
-  const resolveAsEscolaNome = useCallback((): string | undefined => {
-    if (asEscola === "all") return undefined;
-    const item = (asOpcoes.escolas ?? []).find((e) => e.id === asEscola);
-    const label = item ? asNorm(item) : "";
-    return label || undefined;
-  }, [asEscola, asOpcoes.escolas]);
-
-  const resolveAsSerieLabel = useCallback((): string | undefined => {
-    if (asSerie === "all") return undefined;
-    const item = (asOpcoes.series ?? []).find((s) => s.id === asSerie);
-    const label = item ? asNorm(item) : "";
-    return label || undefined;
-  }, [asOpcoes.series, asSerie]);
-
-  const resolveAsTurmaLabel = useCallback((): string | undefined => {
-    if (asTurma === "all") return undefined;
-    const item = (asOpcoes.turmas ?? []).find((t) => t.id === asTurma);
-    const label = item ? asNorm(item) : "";
-    return label || undefined;
-  }, [asOpcoes.turmas, asTurma]);
-
-  const openAttendanceModal = useCallback(async () => {
-    if (!repGabaritoOrEval || repGabaritoOrEval === "all") {
-      toast({ title: "Atenção", description: "Selecione uma avaliação/cartão resposta.", variant: "destructive" });
-      return;
-    }
-
-    setAttendanceModalOpen(true);
-    setAttendanceModalLoading(true);
-    setAttendanceModalData(null);
-    try {
-      // Cartão-resposta (answer-sheets): o ID do gabarito não é `test_id`, então não usamos `lista-frequencia`.
-      // A lista vem de `tabela_detalhada.geral.alunos` (mesmo shape do AnswerSheetResults).
-      if (reportAnswerSheet) {
-        const alunos = apiData?.tabela_detalhada?.geral?.alunos ?? [];
-        if (!Array.isArray(alunos) || alunos.length === 0) {
-          toast({
-            title: "Sem dados",
-            description: "Este cartão resposta não retornou a lista de alunos (tabela detalhada).",
-            variant: "destructive",
-          });
-          setAttendanceModalOpen(false);
-          return;
-        }
-
-        const selectedSchoolName = isAnswerSheetAgregados ? resolveAsEscolaNome() : selectedSchoolInfo?.name;
-        const selectedSerieLabel = isAnswerSheetAgregados ? resolveAsSerieLabel() : undefined;
-        const selectedTurmaLabel = isAnswerSheetAgregados ? resolveAsTurmaLabel() : undefined;
-
-        const schoolFilter = selectedSchoolName ? normalizeText(selectedSchoolName) : null;
-        const serieFilter = selectedSerieLabel ? normalizeText(selectedSerieLabel) : null;
-        const turmaFilter = selectedTurmaLabel ? normalizeText(selectedTurmaLabel) : null;
-
-        type Row = { numero: number; nome: string; escola: string; serie: string; turma: string; status: string };
-        const rows: Row[] = [];
-
-        const filtered = alunos.filter((a) => {
-          const escola = String((a as { escola?: string }).escola ?? "").trim();
-          const serie = String((a as { serie?: string }).serie ?? "").trim();
-          const turma = String((a as { turma?: string }).turma ?? "").trim();
-          if (schoolFilter && !normalizeText(escola).includes(schoolFilter)) return false;
-          if (serieFilter && !normalizeText(serie).includes(serieFilter)) return false;
-          if (turmaFilter && !normalizeText(turma).includes(turmaFilter)) return false;
-          return true;
-        });
-
-        filtered.forEach((a, idx) => {
-          const nome = String((a as { nome?: string }).nome ?? "").trim();
-          if (!nome) return;
-          const escola = String((a as { escola?: string }).escola ?? "—").trim() || "—";
-          const serie = String((a as { serie?: string }).serie ?? "—").trim() || "—";
-          const turma = String((a as { turma?: string }).turma ?? "—").trim() || "—";
-          const status = String((a as { status_geral?: string }).status_geral ?? "").toLowerCase();
-          rows.push({
-            numero: idx + 1,
-            nome,
-            escola,
-            serie,
-            turma,
-            status,
-          });
-        });
-
-        const participantes = rows
-          .filter((r) => r.status === "concluida" || r.status === "concluído" || r.status === "concluída")
-          .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
-        const faltosos = rows
-          .filter((r) => !(r.status === "concluida" || r.status === "concluído" || r.status === "concluída"))
-          .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
-
-        setAttendanceModalData({
-          participantes,
-          faltosos,
-          evaluationLabel: undefined,
-        });
-        return;
-      }
-
-      const tipo: TipoListaFrequencia = "avaliacao";
-      const selectedSchoolName = isAnswerSheetAgregados ? resolveAsEscolaNome() : selectedSchoolInfo?.name;
-      const selectedSerieLabel = isAnswerSheetAgregados ? resolveAsSerieLabel() : undefined;
-      const selectedTurmaLabel = isAnswerSheetAgregados ? resolveAsTurmaLabel() : undefined;
-
-      const schoolFilter = selectedSchoolName ? normalizeText(selectedSchoolName) : null;
-      const serieFilter = selectedSerieLabel ? normalizeText(selectedSerieLabel) : null;
-      const turmaFilter = selectedTurmaLabel ? normalizeText(selectedTurmaLabel) : null;
-
-      type Row = { numero: number; nome: string; escola: string; serie: string; turma: string; status: string };
-      const rows: Row[] = [];
-      let firstEvaluationLabel: string | undefined;
-
-      const pushFromOneTurma = (item: {
-        cabecalho?: { nome_escola?: string; serie?: string; turma?: string; serie_turma?: string; nome_prova_ano?: string };
-        estudantes?: Array<{ numero: number; nome_estudante: string; status: string | null }>;
-      }) => {
-        const cab = item.cabecalho;
-        if (!firstEvaluationLabel) {
-          const t = String(cab?.nome_prova_ano ?? "").trim();
-          if (t) firstEvaluationLabel = t;
-        }
-        const escola = String(cab?.nome_escola ?? "—").trim() || "—";
-        const serie = String(cab?.serie ?? cab?.serie_turma ?? "—").trim() || "—";
-        const turma = String(cab?.turma ?? "—").trim() || "—";
-
-        if (schoolFilter && !normalizeText(escola).includes(schoolFilter)) return;
-        if (serieFilter && !normalizeText(serie).includes(serieFilter)) return;
-        if (turmaFilter && !normalizeText(turma).includes(turmaFilter)) return;
-
-        const estudantes = Array.isArray(item.estudantes) ? item.estudantes : [];
-        for (const e of estudantes) {
-          const nome = String(e?.nome_estudante ?? "").trim();
-          if (!nome) continue;
-          rows.push({
-            numero: Number(e.numero),
-            nome,
-            escola,
-            serie,
-            turma,
-            status: String(e.status ?? "").toUpperCase(),
-          });
-        }
-      };
-
-      // Se houver turma selecionada (cartão-resposta), usar chamada única. Caso contrário, carregar todas as turmas.
-      if (isAnswerSheetAgregados && asTurma !== "all") {
-        const res = await getListaFrequenciaPorAvaliacao(repGabaritoOrEval, asTurma, { tipo });
-        pushFromOneTurma(res);
-      } else {
-        const all = await getListaFrequenciaPorAvaliacaoTodasTurmas(repGabaritoOrEval, {
-          tipo,
-          ...(isAnswerSheetAgregados && asSerie !== "all" ? { grade_id: asSerie } : {}),
-        });
-        all.forEach((item) => pushFromOneTurma(item));
-      }
-
-      const participantes = rows
-        .filter((r) => r.status === "P")
-        .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
-      const faltosos = rows
-        .filter((r) => r.status === "A")
-        .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
-
-      setAttendanceModalData({
-        participantes,
-        faltosos,
-        evaluationLabel: firstEvaluationLabel,
-      });
-    } catch {
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar a lista de participantes/faltosos.",
-        variant: "destructive",
-      });
-      setAttendanceModalOpen(false);
-    } finally {
-      setAttendanceModalLoading(false);
-    }
-  }, [
-    asSerie,
-    asTurma,
-    isAnswerSheetAgregados,
-    repGabaritoOrEval,
-    reportAnswerSheet,
-    resolveAsEscolaNome,
-    resolveAsSerieLabel,
-    resolveAsTurmaLabel,
-    selectedSchoolInfo?.name,
-    toast,
-  ]);
 
   // Estados dos dados dos filtros (movidos para FilterComponentAnalise)
 
@@ -3552,45 +3331,87 @@ export default function RelatorioEscolar({
             doc.text(bar.label, barX + actualBarWidth / 2, chartStartY + chartHeight + 5, { align: 'center' });
           });
 
-          // Lista de alunos por nível no PDF (participantes, agrupados).
-          if (distribution.alunosPorNivel) {
-            let yList = chartStartY + chartHeight + 12;
-            if (yList > pageHeight - 50) {
+          // Descrição do Nível - O estudante provavelmente é capaz de (no PDF),
+          // em layout compacto logo abaixo do gráfico. Mostra níveis de 0 até o maior nível com alunos.
+          const cursoPdf = inferirCursoFromApiData(apiData);
+          const maxLevelWithStudentsPdf =
+            distribution.bars.length > 0
+              ? distribution.bars.reduce(
+                  (max, bar, idx) => ((bar.quantidade ?? 0) > 0 ? Math.max(max, idx) : max),
+                  -1
+                )
+              : -1;
+          const serieParaDescricaoPdf = inferirSerieParaDescricao(apiData);
+          const descricoesPdf = distribution.disciplinaNome && maxLevelWithStudentsPdf >= 0
+            ? obterDescricoesNiveis(cursoPdf, distribution.disciplinaNome, serieParaDescricaoPdf).filter(
+                (d) => d.level <= maxLevelWithStudentsPdf
+              )
+            : [];
+
+          if (descricoesPdf.length > 0) {
+            const lineHeight = 3.6;
+            const paddingVertical = 3;
+            const gapBetweenBlocks = 0;
+            const headerDescHeight = 6;
+            const descWidth = pageWidth - 2 * margin;
+            const textPadding = 3;
+
+            const drawDescSectionHeader = (y: number) => {
+              doc.setFillColor(r, g, b);
+              doc.rect(margin, y, descWidth, headerDescHeight, 'F');
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(8);
+              doc.setTextColor(255, 255, 255);
+              doc.text(
+                'Descrição do Nível - O estudante provavelmente é capaz de:',
+                pageWidth / 2,
+                y + headerDescHeight - 1.5,
+                { align: 'center', maxWidth: descWidth - 4 }
+              );
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(7.5);
+              doc.setTextColor(31, 41, 55);
+            };
+
+            let yDesc = chartStartY + chartHeight + 12;
+            if (yDesc > pageHeight - 50) {
               addFooter(pageCount);
               doc.addPage();
               pageCount++;
-              yList = addHeader() + 6;
+              yDesc = addHeader() + 6;
             }
+            drawDescSectionHeader(yDesc);
+            yDesc += headerDescHeight + 3;
 
-            const levels = Object.keys(distribution.alunosPorNivel)
-              .map((k) => Number(k))
-              .filter((n) => Number.isFinite(n))
-              .sort((a, b) => a - b);
+            const combinedDescription = descricoesPdf.map((d) => d.description).join(' ');
+            let lines = doc.splitTextToSize(combinedDescription, descWidth - 2 * textPadding);
 
-            const body = levels
-              .map((lvl) => {
-                const alunos = (distribution.alunosPorNivel?.[lvl] ?? [])
-                  .slice()
-                  .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
-                const nomes = alunos.map((a) => a.nome).join(", ");
-                return [`Nível ${lvl}`, nomes || "—"];
-              })
-              .filter((row) => row[1] !== "—");
+            while (lines.length > 0) {
+              const spaceLeft = pageHeight - 22 - yDesc;
+              const linesThatFit = Math.floor(spaceLeft / lineHeight);
+              if (linesThatFit <= 0) {
+                addFooter(pageCount);
+                doc.addPage();
+                pageCount++;
+                yDesc = addHeader() + 6;
+                drawDescSectionHeader(yDesc);
+                yDesc += headerDescHeight + 3;
+                continue;
+              }
 
-            if (body.length > 0) {
-              autoTable(doc, {
-                startY: yList,
-                head: [["Nível", "Alunos participantes"]],
-                body,
-                theme: "grid",
-                margin: { left: margin, right: margin },
-                styles: { fontSize: 8, cellPadding: 2, valign: "top", overflow: "linebreak" },
-                headStyles: { fillColor: [r, g, b], textColor: [255, 255, 255], fontStyle: "bold" },
-                columnStyles: {
-                  0: { cellWidth: 20, halign: "left", fontStyle: "bold" },
-                  1: { cellWidth: pageWidth - 2 * margin - 20 },
-                },
+              const chunk = lines.slice(0, Math.min(lines.length, linesThatFit));
+              lines = lines.slice(chunk.length);
+              const chunkHeight = chunk.length * lineHeight + paddingVertical * 2;
+
+              doc.setFillColor(255, 255, 255);
+              // Apenas preenchimento para manter o texto contínuo (sem "blocos" separados).
+              doc.rect(margin, yDesc, descWidth, chunkHeight, 'F');
+              doc.text(chunk, margin + textPadding, yDesc + textPadding + 2, {
+                maxWidth: descWidth - 2 * textPadding,
+                lineHeightFactor: 1.35
               });
+
+              yDesc += chunkHeight + gapBetweenBlocks;
             }
           }
 
@@ -4437,16 +4258,7 @@ export default function RelatorioEscolar({
                         </div>
 
                         {/* Gráfico de barras mobile - Grid compacto */}
-                        <div
-                          className="border rounded-lg p-4 bg-muted/20 cursor-pointer"
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => void openAttendanceModal()}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") void openAttendanceModal();
-                          }}
-                          aria-label="Ver participantes e faltosos"
-                        >
+                        <div className="border rounded-lg p-4 bg-muted/20">
                           <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                             {distribution.bars.map((bar, index) => {
                               const heightPercentage = (bar.value / maxValue) * 100;
@@ -4540,16 +4352,7 @@ export default function RelatorioEscolar({
                                         <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
                                           {bar.quantidade || 0} {bar.quantidade === 1 ? 'aluno' : 'alunos'}
                                         </span>
-                                        <div
-                                          className="flex h-40 w-full max-w-[60px] mx-auto items-end justify-center rounded-t-lg bg-muted cursor-pointer"
-                                          role="button"
-                                          tabIndex={0}
-                                          onClick={() => void openAttendanceModal()}
-                                          onKeyDown={(e) => {
-                                            if (e.key === "Enter" || e.key === " ") void openAttendanceModal();
-                                          }}
-                                          aria-label="Ver participantes e faltosos"
-                                        >
+                                        <div className="flex h-40 w-full max-w-[60px] mx-auto items-end justify-center rounded-t-lg bg-muted">
                                           <div
                                             className="w-full rounded-t-lg transition-all"
                                             style={{
@@ -4572,7 +4375,37 @@ export default function RelatorioEscolar({
                         </div>
                       </div>
 
-                      {/* Descrição removida conforme solicitação do Relatório Escolar */}
+                      {/* Descrição do Nível - O estudante provavelmente é capaz de: (do nível 0 até o maior nível com alunos) */}
+                      {distribution.disciplinaNome && (() => {
+                        const curso = inferirCursoFromApiData(apiData);
+                        const serieParaDescricao = inferirSerieParaDescricao(apiData);
+                        const descricoes = obterDescricoesNiveis(curso, distribution.disciplinaNome!, serieParaDescricao);
+                        const maxLevelWithStudents = distribution.bars.length > 0
+                          ? distribution.bars.reduce(
+                              (max, bar, idx) => ((bar.quantidade ?? 0) > 0 ? Math.max(max, idx) : max),
+                              -1
+                            )
+                          : -1;
+                        const descricoesAteMax = maxLevelWithStudents >= 0
+                          ? descricoes.filter((d) => d.level <= maxLevelWithStudents)
+                          : [];
+                        if (descricoesAteMax.length === 0) return null;
+                        return (
+                          <div className="mt-8 rounded-lg overflow-hidden border border-border">
+                            <div
+                              className="px-4 py-3 text-center"
+                              style={{ backgroundColor: distribution.color }}
+                            >
+                              <h4 className="text-sm font-bold text-white uppercase tracking-wide">
+                                Descrição do Nível - O estudante provavelmente é capaz de:
+                              </h4>
+                            </div>
+                            <div className="p-4 bg-background">
+                              <p className="leading-relaxed m-0 text-sm text-foreground">{descricoesAteMax.map((d) => d.description).join(' ')}</p>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </CardContent>
                   </Card>
                 );
@@ -4626,74 +4459,6 @@ export default function RelatorioEscolar({
           ) : null}
         </div>
       )}
-
-      <Dialog open={attendanceModalOpen} onOpenChange={setAttendanceModalOpen}>
-        <DialogContent className="max-w-3xl" ariaTitle="Participantes e faltosos">
-          <DialogHeader>
-            <DialogTitle>Participantes e faltosos</DialogTitle>
-          </DialogHeader>
-
-          {attendanceModalLoading ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">Carregando…</div>
-          ) : !attendanceModalData ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">Sem dados.</div>
-          ) : (
-            <div className="space-y-4">
-              <div className="text-sm text-muted-foreground">
-                {attendanceModalData.evaluationLabel ? attendanceModalData.evaluationLabel : "Avaliação"}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="rounded-lg border border-border p-3">
-                  <div className="text-sm font-semibold mb-2">
-                    Participantes ({attendanceModalData.participantes.length})
-                  </div>
-                  <div className="max-h-[45vh] overflow-auto">
-                    {attendanceModalData.participantes.length === 0 ? (
-                      <div className="text-sm text-muted-foreground">Nenhum participante.</div>
-                    ) : (
-                      <ul className="space-y-1 text-sm">
-                        {attendanceModalData.participantes.map((e) => (
-                          <li key={`${e.escola}-${e.serie}-${e.turma}-${e.numero}-${e.nome}`} className="flex gap-2">
-                            <span className="w-8 shrink-0 text-muted-foreground">{e.numero}.</span>
-                            <div className="min-w-0">
-                              <div className="truncate">{e.nome}</div>
-                              <div className="truncate text-xs text-muted-foreground">{e.escola} · {e.serie} · {e.turma}</div>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-border p-3">
-                  <div className="text-sm font-semibold mb-2">
-                    Faltosos ({attendanceModalData.faltosos.length})
-                  </div>
-                  <div className="max-h-[45vh] overflow-auto">
-                    {attendanceModalData.faltosos.length === 0 ? (
-                      <div className="text-sm text-muted-foreground">Nenhum faltoso.</div>
-                    ) : (
-                      <ul className="space-y-1 text-sm">
-                        {attendanceModalData.faltosos.map((e) => (
-                          <li key={`${e.escola}-${e.serie}-${e.turma}-${e.numero}-${e.nome}`} className="flex gap-2">
-                            <span className="w-8 shrink-0 text-muted-foreground">{e.numero}.</span>
-                            <div className="min-w-0">
-                              <div className="truncate">{e.nome}</div>
-                              <div className="truncate text-xs text-muted-foreground">{e.escola} · {e.serie} · {e.turma}</div>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
