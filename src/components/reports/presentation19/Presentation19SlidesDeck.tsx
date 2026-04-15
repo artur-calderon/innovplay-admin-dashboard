@@ -475,24 +475,26 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                   <div className="text-sm text-zinc-500 font-semibold">SÉRIE</div>
                   <div className="text-3xl font-black">{deckData.serie}</div>
                 </div>
-                <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-6">
-                  <div className="text-sm text-zinc-500 font-semibold">
-                    {deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA"}
-                  </div>
-                  {deckData.turmasParticipantesCapa.length > 8 ? (
-                    <ul className="mt-2 list-disc pl-5 text-lg font-black space-y-1 max-h-64 overflow-y-auto">
-                      {deckData.turmasParticipantesCapa.map((t) => (
-                        <li key={t}>{t}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div
-                      className={`font-black mt-1 ${deckData.turma.length > 120 ? "text-lg leading-snug" : "text-3xl"}`}
-                    >
-                      {deckData.turma}
+                {deckData.comparisonAxis !== "escola" ? (
+                  <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-6">
+                    <div className="text-sm text-zinc-500 font-semibold">
+                      {deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA"}
                     </div>
-                  )}
-                </div>
+                    {deckData.turmasParticipantesCapa.length > 8 ? (
+                      <ul className="mt-2 list-disc pl-5 text-lg font-black space-y-1 max-h-64 overflow-y-auto">
+                        {deckData.turmasParticipantesCapa.map((t) => (
+                          <li key={t}>{t}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div
+                        className={`font-black mt-1 ${deckData.turma.length > 120 ? "text-lg leading-snug" : "text-3xl"}`}
+                      >
+                        {deckData.turma}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -866,15 +868,15 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                   const out: Array<Array<string | number>> = [];
                   const medLabel = multiSchool ? "Média municipal" : "Média geral";
                   if (deckData.mediaNotaGeral != null && Number.isFinite(deckData.mediaNotaGeral)) {
-                    out.push([medLabel, Number(deckData.mediaNotaGeral.toFixed(2))]);
+                    out.push([medLabel, deckData.mediaNotaGeral.toFixed(1).replace(".", ",")]);
                   }
                   if (!multiSchool) {
                     for (const d of deckData.notasPorDisciplina) {
-                      out.push([d.disciplina, Number(d.mediaNota.toFixed(2))]);
+                      out.push([d.disciplina, Number(d.mediaNota).toFixed(1).replace(".", ",")]);
                     }
                   }
                   for (const c of deckData.notasPorCategoria) {
-                    out.push([c.label, Number(c.mediaNota.toFixed(2))]);
+                    out.push([c.label, Number(c.mediaNota).toFixed(1).replace(".", ",")]);
                   }
                   if (out.length === 0) out.push(["—", "Sem dados de nota"]);
                   return out;
@@ -910,7 +912,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                   <LabelList
                     dataKey="nota"
                     position="top"
-                    formatter={(v: number) => Number(v).toFixed(2)}
+                    formatter={(v: number) => Number(v).toFixed(1).replace(".", ",")}
                     style={{ fontSize: 11, fill: "#0f172a", fontWeight: 700 }}
                   />
                 </Bar>

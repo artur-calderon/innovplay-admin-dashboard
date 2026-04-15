@@ -1,9 +1,7 @@
-import type { ProficiencyLevel } from "@/components/evaluations/results/utils/proficiency";
 import type { NiveisBySeriesRow, Presentation19DeckData, SlideQuestionRow } from "@/types/presentation19-slides";
 import type { ExportChart, Presentation19ExportSpec, Presentation19SlideSpec } from "@/types/presentation19-export-spec";
 import { getProficiencyTableInfo } from "@/components/evaluations/results/utils/proficiency";
 import { getSubjectPaletteIndex } from "@/utils/competition/competitionSubjectColors";
-import { classifyQuestionAcertoToLevel } from "@/utils/reports/presentation19/questionAcertoLevel";
 import { chunkPresentation19QuestionTableRows, chunkPresentation19SlideQuestionRows } from "@/utils/reports/presentation19/questionsTablePagination";
 import { comparisonColumnLabel } from "@/utils/reports/presentation19/presentationScope";
 
@@ -232,7 +230,7 @@ function buildGradesChartRowsYMax(
     valueKeys: [{ key: "nota", label: "Nota média", color: primaryColor }],
     data: rows.map((r) => ({
       ...r,
-      nota: Number(clampToRange(Number(r.nota), 0, yMax).toFixed(2)),
+      nota: Number(clampToRange(Number(r.nota), 0, yMax).toFixed(1)),
     })),
     yAxis: {
       min: 0,
@@ -254,14 +252,14 @@ function buildGradesChartMunicipalCompare(deckData: Presentation19DeckData): Exp
     if (!cat) return;
     rows.push({
       escopo: row.label,
-      nota: Number(clampToRange(cat.mediaNota, 0, 1000).toFixed(2)),
+      nota: Number(clampToRange(cat.mediaNota, 0, 1000).toFixed(1)),
       color: disciplinePalette[idx % disciplinePalette.length],
     });
   });
   if (deckData.mediaNotaGeral != null && Number.isFinite(deckData.mediaNotaGeral)) {
     rows.push({
       escopo: "Média municipal",
-      nota: Number(clampToRange(deckData.mediaNotaGeral, 0, 1000).toFixed(2)),
+      nota: Number(clampToRange(deckData.mediaNotaGeral, 0, 1000).toFixed(1)),
       color: deckData.primaryColor,
     });
   }
@@ -273,14 +271,14 @@ function buildGradesChart(deckData: Presentation19DeckData): ExportChart {
   if (deckData.mediaNotaGeral != null && Number.isFinite(deckData.mediaNotaGeral)) {
     rows.push({
       escopo: "Média geral",
-      nota: Number(clampToRange(deckData.mediaNotaGeral, 0, 1000).toFixed(2)),
+      nota: Number(clampToRange(deckData.mediaNotaGeral, 0, 1000).toFixed(1)),
       color: deckData.primaryColor,
     });
   }
   deckData.notasPorDisciplina.forEach((d, idx) => {
     rows.push({
       escopo: d.disciplina,
-      nota: Number(clampToRange(d.mediaNota, 0, 1000).toFixed(2)),
+      nota: Number(clampToRange(d.mediaNota, 0, 1000).toFixed(1)),
       color: disciplinePalette[idx % disciplinePalette.length],
     });
   });
@@ -288,7 +286,7 @@ function buildGradesChart(deckData: Presentation19DeckData): ExportChart {
     deckData.notasPorCategoria.forEach((c, idx) => {
       rows.push({
         escopo: c.label,
-        nota: Number(clampToRange(c.mediaNota, 0, 1000).toFixed(2)),
+        nota: Number(clampToRange(c.mediaNota, 0, 1000).toFixed(1)),
         color: disciplinePalette[(idx + deckData.notasPorDisciplina.length) % disciplinePalette.length],
       });
     });
@@ -379,7 +377,7 @@ function buildDefaultProficiencyByDisciplineCharts(deckData: Presentation19DeckD
       const paletteIdx = getSubjectPaletteIndex(disciplina.disciplina, disciplina.disciplina);
       const yMax = getProficiencyTableInfo(deckData.serie, disciplina.disciplina).maxProficiency;
       return {
-        title: disciplina.disciplina,
+        title: `Disciplina: ${disciplina.disciplina}`,
         chart: {
           type: "bar" as const,
           categoryKey: "turma",
@@ -438,29 +436,29 @@ function buildProficiencyByDisciplineChartsMunicipalCompare(
         const v = disciplina.valuesByTurma.find((t) => t.turma === n.label);
         return v
           ? {
-              turma: n.label,
+              escola: n.label,
               proficiencia: Number(clampToRange(v.proficiencia, 0, yMax).toFixed(1)),
             }
           : null;
       })
-      .filter((x): x is { turma: string; proficiencia: number } => x != null)
-      .sort((a, b) => a.turma.localeCompare(b.turma, "pt-BR", { sensitivity: "base" }));
+      .filter((x): x is { escola: string; proficiencia: number } => x != null)
+      .sort((a, b) => a.escola.localeCompare(b.escola, "pt-BR", { sensitivity: "base" }));
     const mun = municipalProficiencyForDiscipline(deckData, disciplina);
     const data =
       mun != null && Number.isFinite(mun)
         ? [
             ...schoolData,
             {
-              turma: "Média municipal",
+              escola: "Média municipal",
               proficiencia: Number(clampToRange(mun, 0, yMax).toFixed(1)),
             },
           ]
         : schoolData;
     return {
-      title: disciplina.disciplina,
+      title: `Disciplina: ${disciplina.disciplina}`,
       chart: {
         type: "bar" as const,
-        categoryKey: "turma",
+        categoryKey: "escola",
         valueKeys: [
           {
             key: "proficiencia",
@@ -484,15 +482,15 @@ function buildGradesTableRows(deckData: Presentation19DeckData): Array<Array<str
   const out: Array<Array<string | number>> = [];
   const medLabel = escolaMulti ? "Média municipal" : "Média geral";
   if (deckData.mediaNotaGeral != null && Number.isFinite(deckData.mediaNotaGeral)) {
-    out.push([medLabel, Number(deckData.mediaNotaGeral.toFixed(2))]);
+    out.push([medLabel, Number(deckData.mediaNotaGeral).toFixed(1).replace(".", ",")]);
   }
   if (!escolaMulti) {
     for (const d of deckData.notasPorDisciplina) {
-      out.push([d.disciplina, Number(d.mediaNota.toFixed(2))]);
+      out.push([d.disciplina, Number(d.mediaNota).toFixed(1).replace(".", ",")]);
     }
   }
   for (const c of deckData.notasPorCategoria) {
-    out.push([c.label, Number(c.mediaNota.toFixed(2))]);
+    out.push([c.label, Number(c.mediaNota).toFixed(1).replace(".", ",")]);
   }
   if (out.length === 0) out.push(["—", "Sem dados de nota"]);
   return out;
@@ -588,8 +586,9 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
       `${q.percentualAcertos.toFixed(1).replace(".", ",")}%`,
     ]);
 
-  const questionLevelsForChunk = (questChunk: SlideQuestionRow[], serieHint: string): ProficiencyLevel[] =>
-    questChunk.map((q) => classifyQuestionAcertoToLevel(q.percentualAcertos, serieHint));
+  // Regra: só destacar questões com >= 70% de acertos (verde). O resto fica sem cor.
+  const questionLevelsForChunk = (questChunk: SlideQuestionRow[]): Array<"adequado" | undefined> =>
+    questChunk.map((q) => (Number(q.percentualAcertos) >= 70 ? "adequado" : undefined));
 
   const questionSlidesFromDeck: Presentation19SlideSpec[] = [];
   const serieDeckHint = deckData.serie?.trim() || "GERAL";
@@ -598,7 +597,7 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
     const geralQuestChunks = chunkPresentation19SlideQuestionRows(deckData.questoesTabelaGeral);
     geralQuestChunks.forEach((questChunk, pageIdx) => {
       const rows = questoesToTableRows(questChunk);
-      const questionRowLevels = questionLevelsForChunk(questChunk, serieDeckHint);
+      const questionRowLevels = questionLevelsForChunk(questChunk);
       questionSlidesFromDeck.push({
         index: 0,
         kind: "questions-table" as const,
@@ -626,7 +625,7 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
     const serieQuestChunks = chunkPresentation19SlideQuestionRows(bloco.questoes);
     serieQuestChunks.forEach((questChunk, pageIdx) => {
       const rows = questoesToTableRows(questChunk);
-      const questionRowLevels = questionLevelsForChunk(questChunk, serieLabel);
+      const questionRowLevels = questionLevelsForChunk(questChunk);
       questionSlidesFromDeck.push({
         index: 0,
         kind: "questions-table" as const,
@@ -654,7 +653,7 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
     const turmaQuestChunks = chunkPresentation19SlideQuestionRows(bloco.questoes);
     turmaQuestChunks.forEach((questChunk, pageIdx) => {
       const rows = questoesToTableRows(questChunk);
-      const questionRowLevels = questionLevelsForChunk(questChunk, serieLabel);
+      const questionRowLevels = questionLevelsForChunk(questChunk);
       questionSlidesFromDeck.push({
         index: 0,
         kind: "questions-table" as const,

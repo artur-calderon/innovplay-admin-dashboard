@@ -20,6 +20,9 @@ import { FilterComponentAnalise, ResultsPeriodMonthYearPicker } from "@/componen
 import { normalizeResultsPeriodYm } from "@/utils/resultsPeriod";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext, cityIdQueryParamForAdmin } from "@/utils/userHierarchy";
 import { cn } from "@/lib/utils";
+import { getListaFrequenciaPorAvaliacao } from "@/services/listaFrequenciaApi";
+import type { Estudante, TipoListaFrequencia } from "@/types/lista-frequencia";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   getProficiencyLevelLabel,
   getProficiencyTableInfo,
@@ -120,7 +123,16 @@ interface ProficiencyDistribution {
   bars: Array<{ label: string; value: number; quantidade: number }>;
   /** Nome da disciplina para buscar descrições dos níveis (mesma lógica de niveisEscolares) */
   disciplinaNome?: string;
+  /** Lista de alunos participantes agrupados por nível (quando disponível). */
+  alunosPorNivel?: Record<number, Array<{ id: string; nome: string; turma?: string }>>;
 }
+
+type AttendanceModalData = {
+  participantes: Estudante[];
+  faltosos: Estudante[];
+  turmaLabel?: string;
+  evaluationLabel?: string;
+};
 
 const formatAverage = (value?: number, decimals = 1) => {
   if (value === undefined || value === null || Number.isNaN(value)) {
@@ -1048,6 +1060,9 @@ export default function RelatorioEscolar({
           return true;
         });
 
+        const alunosPorNivel: Record<number, Array<{ id: string; nome: string; turma?: string }>> = {};
+        for (let i = 0; i <= maxLevel; i++) alunosPorNivel[i] = [];
+
         // ✅ MELHORADO: Classificar cada aluno participante por nível usando validação rigorosa
         alunosParticipantes.forEach((aluno) => {
           const proficiencia = Number(aluno.proficiencia);
@@ -1065,6 +1080,15 @@ export default function RelatorioEscolar({
           
           if (nivel >= 0 && nivel <= maxLevel) {
             contagemPorNivel[nivel] = (contagemPorNivel[nivel] || 0) + 1;
+            const id = alunoRowId(aluno);
+            const nome = String((aluno as { nome?: string; nome_estudante?: string }).nome ?? (aluno as { nome_estudante?: string }).nome_estudante ?? "").trim();
+            if (id && nome) {
+              alunosPorNivel[nivel]!.push({
+                id,
+                nome,
+                turma: String((aluno as { turma?: string }).turma ?? "").trim() || undefined,
+              });
+            }
           }
         });
 
@@ -1110,11 +1134,55 @@ export default function RelatorioEscolar({
             { label: scopeLabel, data: percentuaisPorNivel }
           ],
           bars,
-          disciplinaNome: nomeDisciplina
+          disciplinaNome: nomeDisciplina,
+          alunosPorNivel
         };
       })
       .filter((item): item is ProficiencyDistribution & { disciplinaNome: string } => item !== null);
   }, [apiData, isAnswerSheetAgregados, isMunicipalView]);
+
+  const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
+  const [attendanceModalLoading, setAttendanceModalLoading] = useState(false);
+  const [attendanceModalData, setAttendanceModalData] = useState<AttendanceModalData | null>(null);
+
+  const openAttendanceModal = useCallback(async () => {
+    if (!repGabaritoOrEval || repGabaritoOrEval === "all") {
+      toast({ title: "Atenção", description: "Selecione uma avaliação/cartão resposta.", variant: "destructive" });
+      return;
+    }
+
+    const turmaId = isAnswerSheetAgregados ? asTurma : "all";
+    if (!turmaId || turmaId === "all") {
+      toast({ title: "Atenção", description: "Selecione uma turma para ver participantes e faltosos.", variant: "destructive" });
+      return;
+    }
+
+    const tipo: TipoListaFrequencia = reportAnswerSheet ? "prova_fisica" : "avaliacao";
+    setAttendanceModalOpen(true);
+    setAttendanceModalLoading(true);
+    setAttendanceModalData(null);
+    try {
+      const res = await getListaFrequenciaPorAvaliacao(repGabaritoOrEval, turmaId, { tipo });
+      const estudantes = Array.isArray(res?.estudantes) ? res.estudantes : [];
+      const participantes = estudantes.filter((e) => String(e.status ?? "").toUpperCase() === "P");
+      const faltosos = estudantes.filter((e) => String(e.status ?? "").toUpperCase() === "A");
+      setAttendanceModalData({
+        participantes,
+        faltosos,
+        turmaLabel: res?.cabecalho?.turma ?? undefined,
+        evaluationLabel: res?.cabecalho?.nome_prova_ano ?? undefined,
+      });
+    } catch {
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar a lista de participantes/faltosos.",
+        variant: "destructive",
+      });
+      setAttendanceModalOpen(false);
+    } finally {
+      setAttendanceModalLoading(false);
+    }
+  }, [asTurma, isAnswerSheetAgregados, repGabaritoOrEval, reportAnswerSheet, toast]);
 
   // Estados dos dados dos filtros (movidos para FilterComponentAnalise)
 
@@ -3331,87 +3399,45 @@ export default function RelatorioEscolar({
             doc.text(bar.label, barX + actualBarWidth / 2, chartStartY + chartHeight + 5, { align: 'center' });
           });
 
-          // Descrição do Nível - O estudante provavelmente é capaz de (no PDF),
-          // em layout compacto logo abaixo do gráfico. Mostra níveis de 0 até o maior nível com alunos.
-          const cursoPdf = inferirCursoFromApiData(apiData);
-          const maxLevelWithStudentsPdf =
-            distribution.bars.length > 0
-              ? distribution.bars.reduce(
-                  (max, bar, idx) => ((bar.quantidade ?? 0) > 0 ? Math.max(max, idx) : max),
-                  -1
-                )
-              : -1;
-          const serieParaDescricaoPdf = inferirSerieParaDescricao(apiData);
-          const descricoesPdf = distribution.disciplinaNome && maxLevelWithStudentsPdf >= 0
-            ? obterDescricoesNiveis(cursoPdf, distribution.disciplinaNome, serieParaDescricaoPdf).filter(
-                (d) => d.level <= maxLevelWithStudentsPdf
-              )
-            : [];
-
-          if (descricoesPdf.length > 0) {
-            const lineHeight = 3.6;
-            const paddingVertical = 3;
-            const gapBetweenBlocks = 0;
-            const headerDescHeight = 6;
-            const descWidth = pageWidth - 2 * margin;
-            const textPadding = 3;
-
-            const drawDescSectionHeader = (y: number) => {
-              doc.setFillColor(r, g, b);
-              doc.rect(margin, y, descWidth, headerDescHeight, 'F');
-              doc.setFont('helvetica', 'bold');
-              doc.setFontSize(8);
-              doc.setTextColor(255, 255, 255);
-              doc.text(
-                'Descrição do Nível - O estudante provavelmente é capaz de:',
-                pageWidth / 2,
-                y + headerDescHeight - 1.5,
-                { align: 'center', maxWidth: descWidth - 4 }
-              );
-              doc.setFont('helvetica', 'normal');
-              doc.setFontSize(7.5);
-              doc.setTextColor(31, 41, 55);
-            };
-
-            let yDesc = chartStartY + chartHeight + 12;
-            if (yDesc > pageHeight - 50) {
+          // Lista de alunos por nível no PDF (participantes, agrupados).
+          if (distribution.alunosPorNivel) {
+            let yList = chartStartY + chartHeight + 12;
+            if (yList > pageHeight - 50) {
               addFooter(pageCount);
               doc.addPage();
               pageCount++;
-              yDesc = addHeader() + 6;
+              yList = addHeader() + 6;
             }
-            drawDescSectionHeader(yDesc);
-            yDesc += headerDescHeight + 3;
 
-            const combinedDescription = descricoesPdf.map((d) => d.description).join(' ');
-            let lines = doc.splitTextToSize(combinedDescription, descWidth - 2 * textPadding);
+            const levels = Object.keys(distribution.alunosPorNivel)
+              .map((k) => Number(k))
+              .filter((n) => Number.isFinite(n))
+              .sort((a, b) => a - b);
 
-            while (lines.length > 0) {
-              const spaceLeft = pageHeight - 22 - yDesc;
-              const linesThatFit = Math.floor(spaceLeft / lineHeight);
-              if (linesThatFit <= 0) {
-                addFooter(pageCount);
-                doc.addPage();
-                pageCount++;
-                yDesc = addHeader() + 6;
-                drawDescSectionHeader(yDesc);
-                yDesc += headerDescHeight + 3;
-                continue;
-              }
+            const body = levels
+              .map((lvl) => {
+                const alunos = (distribution.alunosPorNivel?.[lvl] ?? [])
+                  .slice()
+                  .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
+                const nomes = alunos.map((a) => a.nome).join(", ");
+                return [`Nível ${lvl}`, nomes || "—"];
+              })
+              .filter((row) => row[1] !== "—");
 
-              const chunk = lines.slice(0, Math.min(lines.length, linesThatFit));
-              lines = lines.slice(chunk.length);
-              const chunkHeight = chunk.length * lineHeight + paddingVertical * 2;
-
-              doc.setFillColor(255, 255, 255);
-              // Apenas preenchimento para manter o texto contínuo (sem "blocos" separados).
-              doc.rect(margin, yDesc, descWidth, chunkHeight, 'F');
-              doc.text(chunk, margin + textPadding, yDesc + textPadding + 2, {
-                maxWidth: descWidth - 2 * textPadding,
-                lineHeightFactor: 1.35
+            if (body.length > 0) {
+              autoTable(doc, {
+                startY: yList,
+                head: [["Nível", "Alunos participantes"]],
+                body,
+                theme: "grid",
+                margin: { left: margin, right: margin },
+                styles: { fontSize: 8, cellPadding: 2, valign: "top", overflow: "linebreak" },
+                headStyles: { fillColor: [r, g, b], textColor: [255, 255, 255], fontStyle: "bold" },
+                columnStyles: {
+                  0: { cellWidth: 20, halign: "left", fontStyle: "bold" },
+                  1: { cellWidth: pageWidth - 2 * margin - 20 },
+                },
               });
-
-              yDesc += chunkHeight + gapBetweenBlocks;
             }
           }
 
@@ -4258,7 +4284,16 @@ export default function RelatorioEscolar({
                         </div>
 
                         {/* Gráfico de barras mobile - Grid compacto */}
-                        <div className="border rounded-lg p-4 bg-muted/20">
+                        <div
+                          className="border rounded-lg p-4 bg-muted/20 cursor-pointer"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => void openAttendanceModal()}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") void openAttendanceModal();
+                          }}
+                          aria-label="Ver participantes e faltosos"
+                        >
                           <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                             {distribution.bars.map((bar, index) => {
                               const heightPercentage = (bar.value / maxValue) * 100;
@@ -4352,7 +4387,16 @@ export default function RelatorioEscolar({
                                         <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
                                           {bar.quantidade || 0} {bar.quantidade === 1 ? 'aluno' : 'alunos'}
                                         </span>
-                                        <div className="flex h-40 w-full max-w-[60px] mx-auto items-end justify-center rounded-t-lg bg-muted">
+                                        <div
+                                          className="flex h-40 w-full max-w-[60px] mx-auto items-end justify-center rounded-t-lg bg-muted cursor-pointer"
+                                          role="button"
+                                          tabIndex={0}
+                                          onClick={() => void openAttendanceModal()}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter" || e.key === " ") void openAttendanceModal();
+                                          }}
+                                          aria-label="Ver participantes e faltosos"
+                                        >
                                           <div
                                             className="w-full rounded-t-lg transition-all"
                                             style={{
@@ -4375,37 +4419,7 @@ export default function RelatorioEscolar({
                         </div>
                       </div>
 
-                      {/* Descrição do Nível - O estudante provavelmente é capaz de: (do nível 0 até o maior nível com alunos) */}
-                      {distribution.disciplinaNome && (() => {
-                        const curso = inferirCursoFromApiData(apiData);
-                        const serieParaDescricao = inferirSerieParaDescricao(apiData);
-                        const descricoes = obterDescricoesNiveis(curso, distribution.disciplinaNome!, serieParaDescricao);
-                        const maxLevelWithStudents = distribution.bars.length > 0
-                          ? distribution.bars.reduce(
-                              (max, bar, idx) => ((bar.quantidade ?? 0) > 0 ? Math.max(max, idx) : max),
-                              -1
-                            )
-                          : -1;
-                        const descricoesAteMax = maxLevelWithStudents >= 0
-                          ? descricoes.filter((d) => d.level <= maxLevelWithStudents)
-                          : [];
-                        if (descricoesAteMax.length === 0) return null;
-                        return (
-                          <div className="mt-8 rounded-lg overflow-hidden border border-border">
-                            <div
-                              className="px-4 py-3 text-center"
-                              style={{ backgroundColor: distribution.color }}
-                            >
-                              <h4 className="text-sm font-bold text-white uppercase tracking-wide">
-                                Descrição do Nível - O estudante provavelmente é capaz de:
-                              </h4>
-                            </div>
-                            <div className="p-4 bg-background">
-                              <p className="leading-relaxed m-0 text-sm text-foreground">{descricoesAteMax.map((d) => d.description).join(' ')}</p>
-                            </div>
-                          </div>
-                        );
-                      })()}
+                      {/* Descrição removida conforme solicitação do Relatório Escolar */}
                     </CardContent>
                   </Card>
                 );
@@ -4459,6 +4473,69 @@ export default function RelatorioEscolar({
           ) : null}
         </div>
       )}
+
+      <Dialog open={attendanceModalOpen} onOpenChange={setAttendanceModalOpen}>
+        <DialogContent className="max-w-3xl" ariaTitle="Participantes e faltosos">
+          <DialogHeader>
+            <DialogTitle>Participantes e faltosos</DialogTitle>
+          </DialogHeader>
+
+          {attendanceModalLoading ? (
+            <div className="py-10 text-center text-sm text-muted-foreground">Carregando…</div>
+          ) : !attendanceModalData ? (
+            <div className="py-10 text-center text-sm text-muted-foreground">Sem dados.</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="text-sm text-muted-foreground">
+                {(attendanceModalData.evaluationLabel ? `${attendanceModalData.evaluationLabel}` : "Avaliação") +
+                  (attendanceModalData.turmaLabel ? ` · Turma ${attendanceModalData.turmaLabel}` : "")}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-lg border border-border p-3">
+                  <div className="text-sm font-semibold mb-2">
+                    Participantes ({attendanceModalData.participantes.length})
+                  </div>
+                  <div className="max-h-[45vh] overflow-auto">
+                    {attendanceModalData.participantes.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">Nenhum participante.</div>
+                    ) : (
+                      <ul className="space-y-1 text-sm">
+                        {attendanceModalData.participantes.map((e) => (
+                          <li key={`${e.numero}-${e.nome_estudante}`} className="flex gap-2">
+                            <span className="w-8 shrink-0 text-muted-foreground">{e.numero}.</span>
+                            <span className="min-w-0 truncate">{e.nome_estudante}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-border p-3">
+                  <div className="text-sm font-semibold mb-2">
+                    Faltosos ({attendanceModalData.faltosos.length})
+                  </div>
+                  <div className="max-h-[45vh] overflow-auto">
+                    {attendanceModalData.faltosos.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">Nenhum faltoso.</div>
+                    ) : (
+                      <ul className="space-y-1 text-sm">
+                        {attendanceModalData.faltosos.map((e) => (
+                          <li key={`${e.numero}-${e.nome_estudante}`} className="flex gap-2">
+                            <span className="w-8 shrink-0 text-muted-foreground">{e.numero}.</span>
+                            <span className="min-w-0 truncate">{e.nome_estudante}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

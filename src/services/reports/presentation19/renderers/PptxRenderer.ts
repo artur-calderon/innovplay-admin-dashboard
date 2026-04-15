@@ -1,5 +1,4 @@
 import PptxGenJS from "pptxgenjs";
-import type { ProficiencyLevel } from "@/components/evaluations/results/utils/proficiency";
 import type { ExportChart, Presentation19ExportSpec, Presentation19SlideSpec } from "@/types/presentation19-export-spec";
 import { P19_QUESTION_NUM_LEVEL_STYLE } from "@/utils/reports/presentation19/questionAcertoLevel";
 import {
@@ -87,16 +86,13 @@ function resolveGridTicks(chart: ExportChart, axisMin: number, maxValue: number)
 }
 
 function formatAxisTick(tick: number): string {
-  const r = Math.round(tick);
-  if (Math.abs(tick - r) < 1e-6) return String(r);
-  return tick.toFixed(1);
+  if (!Number.isFinite(tick)) return "0,0";
+  return Number(tick).toFixed(1).replace(".", ",");
 }
 
 function formatBarValueLabel(value: number): string {
-  if (!Number.isFinite(value)) return "0";
-  const r = Math.round(value);
-  if (Math.abs(value - r) < 1e-6) return String(r);
-  return Number(value).toFixed(1);
+  if (!Number.isFinite(value)) return "0,0";
+  return Number(value).toFixed(1).replace(".", ",");
 }
 
 /** Evita sobreposição de rótulos quando a área útil do gráfico é pequena (mini-gráficos PPTX). */
@@ -115,14 +111,7 @@ function selectTicksEvenly(ticks: number[], chartSpanIn: number, minPitchIn: num
  * Espelha `PdfRenderer.drawBarChart` / `drawHorizontalBarChart` (fundo branco, grade, barras como shapes).
  */
 function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box: { x: number; y: number; w: number; h: number }, pptx: PptxPresentation): void {
-  slide.addShape(pptx.ShapeType.rect, {
-    x: box.x,
-    y: box.y,
-    w: box.w,
-    h: box.h,
-    fill: { color: "FFFFFF" },
-    line: { color: "CBD5E1", pt: 0.75 },
-  });
+  const palette = ["#3B82F6", "#22C55E", "#F97316", "#A855F7", "#EF4444", "#06B6D4", "#EAB308", "#14B8A6"];
 
   if (!chart.valueKeys.length || !chart.data.length) return;
 
@@ -146,40 +135,7 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
     const axisMin = Number.isFinite(chart.yAxis?.min) ? Number(chart.yAxis?.min) : 0;
     const axisMax = Number.isFinite(chart.yAxis?.max) ? Number(chart.yAxis?.max) : Math.max(1, Math.ceil(rawMax * 1.15));
     const maxValue = Math.max(axisMin + 1, axisMax);
-    const gridTicksRaw = resolveGridTicks(chart, axisMin, maxValue);
-    const gridTicks = selectTicksEvenly(gridTicksRaw, chartAreaW, 0.2, 6);
     const serie = chart.valueKeys[0];
-    const tickBoxW = Math.max(xScale(24), 0.36);
-
-    slide.addShape(pptx.ShapeType.line, {
-      x: baselineX,
-      y: plotTop,
-      w: 0,
-      h: plotBottom - plotTop,
-      line: { color: "64748B", pt: 1.25 },
-    });
-
-    const tickY = plotBottom + yScale(14);
-    for (const tick of gridTicks) {
-      const gx = baselineX + (chartAreaW * Math.max(0, tick - axisMin)) / (maxValue - axisMin);
-      slide.addShape(pptx.ShapeType.line, {
-        x: gx,
-        y: plotTop,
-        w: 0,
-        h: plotBottom - plotTop,
-        line: { color: "CBD5E1", pt: 0.75, dashType: "sysDash" },
-      });
-      slide.addText(formatAxisTick(tick), {
-        x: gx - tickBoxW / 2,
-        y: tickY,
-        w: tickBoxW,
-        h: Math.max(yScale(16), 0.14),
-        fontSize: p19PxToPtForPptx(P19_CHART_AXIS_TICK_PX),
-        color: "64748B",
-        align: "center",
-        wrap: false,
-      });
-    }
 
     const n = Math.max(1, chart.data.length);
     const rowH = plotH / n;
@@ -189,7 +145,7 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
       const rowCenterY = plotTop + (idx + 0.5) * rowH;
       const barThickness = Math.min(yScale(34), rowH * 0.55);
       const barY = rowCenterY - barThickness / 2;
-      const barColor = String(row.color ?? serie.color);
+      const barColor = String(row.color ?? palette[idx % palette.length] ?? serie.color);
       slide.addShape(pptx.ShapeType.rect, {
         x: baselineX,
         y: barY,
@@ -225,10 +181,7 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
     return;
   }
 
-  const tickLabelW = Math.max(0.4, xScale(26));
-  const tickPadLeft = Math.max(0.05, xScale(4));
-  const axisLeftX = box.x + tickLabelW + tickPadLeft + 0.02;
-  const barsStartX = axisLeftX + xScale(8);
+  const barsStartX = box.x + xScale(8);
   const barsW = Math.max(0.35, box.x + box.w - barsStartX - xScale(10));
   const topPad = yScale(6);
   const bottomPad = yScale(34);
@@ -239,42 +192,9 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
   const axisMin = Number.isFinite(chart.yAxis?.min) ? Number(chart.yAxis?.min) : 0;
   const axisMax = Number.isFinite(chart.yAxis?.max) ? Number(chart.yAxis?.max) : Math.max(1, Math.ceil(rawMax * 1.15));
   const maxValue = Math.max(axisMin + 1, axisMax);
-  const gridTicksRaw = resolveGridTicks(chart, axisMin, maxValue);
-  const gridTicks = selectTicksEvenly(gridTicksRaw, chartAreaH, 0.14, 5);
   const categories = chart.data.map((d) => String(d[chart.categoryKey] ?? ""));
   const colWidth = barsW / Math.max(1, categories.length);
   const hasMultipleSeries = chart.valueKeys.length > 1;
-  const tickLabelH = Math.max(yScale(14), 0.13);
-  const tickFont = Math.max(6, p19PxToPtForPptx(P19_CHART_AXIS_TICK_PX) - (chartAreaH < 0.85 ? 1 : 0));
-
-  slide.addShape(pptx.ShapeType.line, {
-    x: axisLeftX,
-    y: box.y + topPad,
-    w: 0,
-    h: chartAreaH,
-    line: { color: "64748B", pt: 1.25 },
-  });
-
-  for (const tick of gridTicks) {
-    const gy = baselineY - (chartAreaH * Math.max(0, tick - axisMin)) / (maxValue - axisMin);
-    slide.addShape(pptx.ShapeType.line, {
-      x: axisLeftX,
-      y: gy,
-      w: box.x + box.w - axisLeftX,
-      h: 0,
-      line: { color: "CBD5E1", pt: 0.75, dashType: "sysDash" },
-    });
-    slide.addText(formatAxisTick(tick), {
-      x: axisLeftX - tickLabelW - tickPadLeft,
-      y: gy - tickLabelH / 2,
-      w: tickLabelW,
-      h: tickLabelH,
-      fontSize: tickFont,
-      color: "64748B",
-      align: "right",
-      wrap: false,
-    });
-  }
 
   const catY = box.y + box.h - yScale(6);
   const catH = Math.max(yScale(20), bottomPad - yScale(6));
@@ -349,7 +269,7 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
       const value = Number(row[s.key] ?? 0);
       const barH = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaH;
       const barY = baselineY - barH;
-      const barColor = String(row.color ?? s.color);
+      const barColor = String(row.color ?? palette[idx % palette.length] ?? s.color);
       const singleW = Math.max(0.04, Math.min(xScale(22), innerW * 0.45));
       const singleX = baseXAligned + (innerW - singleW) / 2;
       slide.addShape(pptx.ShapeType.rect, {
@@ -389,8 +309,8 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
 }
 
 function drawFrame(slide: PptxGenJS.Slide, primaryColor: string, pptx: PptxPresentation): void {
-  slide.background = { color: "F1F5F9" };
-  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.333, h: 0.12, fill: { color: hexNoHash(primaryColor) }, line: { color: hexNoHash(primaryColor) } });
+  // Fundo totalmente branco (sem faixa superior).
+  slide.background = { color: "FFFFFF" };
 }
 
 function drawTitle(slide: PptxGenJS.Slide, title: string, primaryColor: string, pptx: PptxPresentation): void {
@@ -480,7 +400,7 @@ function drawQuestionsTable(
   slide: PptxGenJS.Slide,
   columns: string[],
   rows: Array<Array<string | number>>,
-  questionRowLevels: ProficiencyLevel[] | undefined,
+  questionRowLevels: Array<keyof typeof P19_QUESTION_NUM_LEVEL_STYLE | undefined> | undefined,
   startY = 1.4
 ): void {
   const cellPad = P19_TABLE_CELL_PADDING_PX / 72;
@@ -720,14 +640,18 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
           { text: `${deckData.curso}\n\n`, options: { fontSize: valPt, color: "18181B", bold: true } },
           { text: "SÉRIE\n", options: { fontSize: labPt, color: "52525B", bold: true } },
           { text: `${deckData.serie}\n\n`, options: { fontSize: valPt, color: "18181B", bold: true } },
-          {
-            text: `${deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA"}\n`,
-            options: { fontSize: labPt, color: "52525B", bold: true },
-          },
-          {
-            text: turmaList ? deckData.turmasParticipantesCapa.map((t) => `• ${t}`).join("\n") : deckData.turma,
-            options: { fontSize: turmaBodyPt, color: "18181B", bold: true },
-          },
+          ...(deckData.comparisonAxis !== "escola"
+            ? ([
+                {
+                  text: `${deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA"}\n`,
+                  options: { fontSize: labPt, color: "52525B", bold: true },
+                },
+                {
+                  text: turmaList ? deckData.turmasParticipantesCapa.map((t) => `• ${t}`).join("\n") : deckData.turma,
+                  options: { fontSize: turmaBodyPt, color: "18181B", bold: true },
+                },
+              ] as const)
+            : []),
         ],
         { x: 0.76, y: 1.55, w: 11.8, h: 4.9, valign: "top" }
       );
@@ -914,7 +838,7 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
           y: boxY + 0.12,
           w: p19PxToSlideInX(innerWpx),
           h: 0.28,
-          fontSize: p19PxToPtForPptx(P19_CHART_H_BAR_LABEL_PX),
+          fontSize: p19PxToPtForPptx(P19_CHART_H_BAR_LABEL_PX + 2),
           bold: true,
           color: "3F3F46",
           wrap: true,

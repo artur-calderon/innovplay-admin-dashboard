@@ -136,13 +136,14 @@ function HorizontalBarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { cha
     .sort((a, b) => a - b);
   const ratioOf = (val: number) => (Math.max(0, val - axisMin) / (maxValue - axisMin));
   const serie = chart.valueKeys[0] ?? { key: "valor", label: "", color: "#22C55E" };
+  const palette = ["#3B82F6", "#22C55E", "#F97316", "#A855F7", "#EF4444", "#06B6D4", "#EAB308", "#14B8A6"];
 
   return (
     <div
       style={{
         border: "1px solid #CBD5E1",
         borderRadius: 12,
-        background: "#F8FAFC",
+        background: "transparent",
         height,
         padding: "12px 16px 10px",
         boxSizing: "border-box",
@@ -154,14 +155,14 @@ function HorizontalBarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { cha
         {chart.data.map((row, idx) => {
           const value = Number(row[serie.key] ?? 0);
           const q = ratioOf(value);
-          const color = String(row.color ?? serie.color);
+          const color = String(row.color ?? palette[idx % palette.length] ?? serie.color);
           return (
             <div key={idx} style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", gap: 10 }}>
               <div
                 style={{
                   width: P19_HORIZONTAL_CHART_LABEL_WIDTH_PX,
                   flexShrink: 0,
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: 600,
                   color: "#334155",
                   textAlign: "right",
@@ -173,18 +174,7 @@ function HorizontalBarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { cha
               <div style={{ flex: 1, minWidth: 0, height: 30, position: "relative", display: "flex", alignItems: "center" }}>
                 <div
                   style={{
-                    position: "absolute",
-                    left: 0,
-                    top: 2,
-                    bottom: 2,
-                    width: 2,
-                    background: "#64748B",
-                    borderRadius: 1,
-                  }}
-                />
-                <div
-                  style={{
-                    marginLeft: 2,
+                    marginLeft: 0,
                     width: `${q * 100}%`,
                     height: "82%",
                     maxHeight: 26,
@@ -193,29 +183,13 @@ function HorizontalBarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { cha
                     borderRadius: "0 8px 8px 0",
                   }}
                 />
-                <span style={{ marginLeft: 2, fontSize: 11, fontWeight: 700, color: "#0F172A", whiteSpace: "nowrap" }}>
-                  {Math.abs(value - Math.round(value)) < 1e-6 ? Math.round(value) : value.toFixed(1)}
+                <span style={{ marginLeft: 6, fontSize: 14, fontWeight: 800, color: "#0F172A", whiteSpace: "nowrap" }}>
+                  {Number(value).toFixed(1).replace(".", ",")}
                 </span>
               </div>
             </div>
           );
         })}
-      </div>
-      <div style={{ position: "relative", height: 22, marginLeft: P19_HORIZONTAL_CHART_LABEL_WIDTH_PX + 10, marginRight: 8 }}>
-        {ticks.map((v) => (
-          <div
-            key={v}
-            style={{
-              position: "absolute",
-              left: `${ratioOf(v) * 100}%`,
-              transform: "translateX(-50%)",
-              fontSize: 9,
-              color: "#64748B",
-            }}
-          >
-            {Number(v).toFixed(Number.isInteger(v) ? 0 : 1)}
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -241,13 +215,14 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
   const AXIS_LAB_W = 24;
 
   const ratioOf = (val: number) => (Math.max(0, val - axisMin) / (maxValue - axisMin));
+  const palette = ["#3B82F6", "#22C55E", "#F97316", "#A855F7", "#EF4444", "#06B6D4", "#EAB308", "#14B8A6"];
 
   return (
     <div
       style={{
         border: "1px solid #CBD5E1",
         borderRadius: 12,
-        background: "#F8FAFC",
+        background: "transparent",
         height,
         padding: "12px 14px 8px",
         display: "flex",
@@ -255,49 +230,7 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
         boxSizing: "border-box",
       }}
     >
-      <div style={{ flex: 1, minHeight: 0, position: "relative", marginLeft: AXIS_LAB_W }}>
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 2,
-            background: "#64748B",
-            zIndex: 1,
-            pointerEvents: "none",
-          }}
-        />
-        {gridValues.map((v) => (
-          <div
-            key={`${v}`}
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: `${ratioOf(v) * 100}%`,
-              borderTop: "1px dashed #CBD5E1",
-              pointerEvents: "none",
-              zIndex: 0,
-            }}
-          >
-            <span
-              style={{
-                position: "absolute",
-                left: -AXIS_LAB_W,
-                top: -8,
-                width: AXIS_LAB_W - 2,
-                textAlign: "right",
-                fontSize: 9,
-                color: "#64748B",
-                background: "#F8FAFC",
-                paddingInline: 2,
-              }}
-            >
-              {Number(v).toFixed(Number.isInteger(v) ? 0 : 1)}
-            </span>
-          </div>
-        ))}
+      <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
         <div
           style={{
             position: "absolute",
@@ -306,7 +239,7 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
             gap: 12,
             /* stretch: colunas precisam da altura total do plot; só `absolute` não gera altura no fluxo */
             alignItems: "stretch",
-            paddingLeft: 6,
+            paddingLeft: 0,
             zIndex: 2,
           }}
         >
@@ -480,9 +413,8 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                   const serie = chart.valueKeys[0];
                   const value = Number(row[serie.key] ?? 0);
                   const q = ratioOf(value);
-                  const rowColor = String(row.color ?? serie.color);
-                  const labelText =
-                    Math.abs(value - Math.round(value)) < 1e-6 ? String(Math.round(value)) : value.toFixed(1);
+                  const rowColor = String(row.color ?? palette[idx % palette.length] ?? serie.color);
+                  const labelText = Number(value).toFixed(1).replace(".", ",");
                   const growBar = value > 0 ? Math.max(1e-6, q) : 0;
                   const growTop = value > 0 ? Math.max(1e-6, 1 - q) : 1;
                   return (
@@ -527,8 +459,8 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                             left: "50%",
                             transform: "translateX(-50%)",
                             bottom: `calc(${q * 100}% + 4px)`,
-                            fontSize: 11,
-                            fontWeight: 700,
+                            fontSize: 16,
+                            fontWeight: 900,
                             color: "#0F172A",
                             whiteSpace: "nowrap",
                             lineHeight: 1,
@@ -589,12 +521,11 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
               borderRadius: 16,
               overflow: "hidden",
               border: "1px solid #CBD5E1",
-              background: "#F1F5F9",
+              background: "#FFFFFF",
               color: "#0F172A",
               position: "relative",
             }}
           >
-            <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: 10, background: deckData.primaryColor }} />
             <div style={{ position: "absolute", left: content.x, top: content.y, width: content.w, height: content.h, color: "#0F172A" }}>
               {slide.kind === "cover-main" && (
                 <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
@@ -667,37 +598,41 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                     <div style={{ fontSize: P19_SEGMENT_FIELD_VALUE_PX, fontWeight: 900 }}>{deckData.curso}</div>
                     <div style={{ marginTop: 24, fontSize: P19_SEGMENT_FIELD_LABEL_PX, fontWeight: 700, color: "#52525B" }}>SÉRIE</div>
                     <div style={{ fontSize: P19_SEGMENT_FIELD_VALUE_PX, fontWeight: 900 }}>{deckData.serie}</div>
-                    <div style={{ marginTop: 24, fontSize: P19_SEGMENT_FIELD_LABEL_PX, fontWeight: 700, color: "#52525B" }}>
-                      {deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA"}
-                    </div>
-                    {deckData.turmasParticipantesCapa.length > 8 ? (
-                      <ul
-                        style={{
-                          margin: "8px 0 0",
-                          paddingLeft: 22,
-                          fontSize: 20,
-                          fontWeight: 800,
-                          lineHeight: 1.45,
-                          maxHeight: 280,
-                          overflow: "auto",
-                        }}
-                      >
-                        {deckData.turmasParticipantesCapa.map((t) => (
-                          <li key={t}>{t}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div
-                        style={{
-                          fontSize: deckData.turma.length > 120 ? 22 : 34,
-                          fontWeight: 900,
-                          lineHeight: 1.25,
-                          wordBreak: "break-word",
-                        }}
-                      >
-                        {deckData.turma}
-                      </div>
-                    )}
+                    {deckData.comparisonAxis !== "escola" ? (
+                      <>
+                        <div style={{ marginTop: 24, fontSize: P19_SEGMENT_FIELD_LABEL_PX, fontWeight: 700, color: "#52525B" }}>
+                          {deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA"}
+                        </div>
+                        {deckData.turmasParticipantesCapa.length > 8 ? (
+                          <ul
+                            style={{
+                              margin: "8px 0 0",
+                              paddingLeft: 22,
+                              fontSize: 20,
+                              fontWeight: 800,
+                              lineHeight: 1.45,
+                              maxHeight: 280,
+                              overflow: "auto",
+                            }}
+                          >
+                            {deckData.turmasParticipantesCapa.map((t) => (
+                              <li key={t}>{t}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div
+                            style={{
+                              fontSize: deckData.turma.length > 120 ? 22 : 34,
+                              fontWeight: 900,
+                              lineHeight: 1.25,
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            {deckData.turma}
+                          </div>
+                        )}
+                      </>
+                    ) : null}
                   </div>
                 </div>
               )}
@@ -926,7 +861,18 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                   >
                     {slide.charts.map((entry) => (
                       <div key={entry.title} style={{ border: "1px solid #D4D4D8", borderRadius: 12, padding: 8, background: "#F8FAFC" }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, color: "#3F3F46", marginBottom: 4 }}>{entry.title}</div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 900,
+                            color: "#3F3F46",
+                            marginBottom: 6,
+                            lineHeight: 1.15,
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {entry.title}
+                        </div>
                         <BarChartPreview chart={entry.chart} height={200} />
                       </div>
                     ))}

@@ -61,7 +61,7 @@ export type Presentation19SlideSpec =
       kind: "questions-table";
       table: ExportTable;
       /** Uma classificação por linha de corpo (coluna Questão), alinhada a `table.rows`. */
-      questionRowLevels?: ProficiencyLevel[];
+      questionRowLevels?: Array<ProficiencyLevel | undefined>;
       /** Só preenchido quando há mais de um slide de tabela de questões. */
       questionsPage?: { current: number; total: number };
       /** Bloco "Geral" vs uma turma específica. */

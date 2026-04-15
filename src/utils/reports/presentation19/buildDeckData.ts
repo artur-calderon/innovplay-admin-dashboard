@@ -1479,7 +1479,8 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
       const presencaMediaPct = totalAlunos > 0 ? (totalPresentes / totalAlunos) * 100 : 0;
       return { label: TURMA_COMPARE_GERAL_LABEL, totalAlunos, totalPresentes, presencaMediaPct, alunosFaltosos };
     })();
-    presencaFinal = [seriePresenceAgg, turmaPresence].filter(Boolean) as PresenceBySeriesRow[];
+    // Ordem desejada: TURMA selecionada primeiro, depois Geral da série.
+    presencaFinal = [turmaPresence, seriePresenceAgg].filter(Boolean) as PresenceBySeriesRow[];
 
     // Quando houver agregado "geral da série" vindo do backend (NovaResposta sem turma),
     // usar estes valores para evitar qualquer agregação no front.
@@ -1492,18 +1493,18 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
       const presentesTurma = clampToNumber(turmaEg.alunos_participantes, 0);
       presencaFinal = [
         {
-          label: TURMA_COMPARE_GERAL_LABEL,
-          totalAlunos: totalAlunosSerie,
-          totalPresentes: presentesSerie,
-          presencaMediaPct: totalAlunosSerie > 0 ? (presentesSerie / totalAlunosSerie) * 100 : 0,
-          alunosFaltosos: Math.max(0, totalAlunosSerie - presentesSerie),
-        },
-        {
           label: selectedTurmaEffective,
           totalAlunos: totalAlunosTurma,
           totalPresentes: presentesTurma,
           presencaMediaPct: totalAlunosTurma > 0 ? (presentesTurma / totalAlunosTurma) * 100 : 0,
           alunosFaltosos: Math.max(0, totalAlunosTurma - presentesTurma),
+        },
+        {
+          label: TURMA_COMPARE_GERAL_LABEL,
+          totalAlunos: totalAlunosSerie,
+          totalPresentes: presentesSerie,
+          presencaMediaPct: totalAlunosSerie > 0 ? (presentesSerie / totalAlunosSerie) * 100 : 0,
+          alunosFaltosos: Math.max(0, totalAlunosSerie - presentesSerie),
         },
       ];
     }
@@ -1545,7 +1546,7 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
         total: clampToNumber(g.total, 0),
       };
     })();
-    niveisFinal = [serieLevelsAgg, turmaLevelsRow].filter(Boolean) as NiveisBySeriesRow[];
+    niveisFinal = [turmaLevelsRow, serieLevelsAgg].filter(Boolean) as NiveisBySeriesRow[];
 
     if (novaRespostaSerieAgregados?.estatisticas_gerais?.distribuicao_classificacao_geral && novaRespostaAgregados?.estatisticas_gerais?.distribuicao_classificacao_geral) {
       const distSerie = novaRespostaSerieAgregados.estatisticas_gerais.distribuicao_classificacao_geral;
@@ -1558,7 +1559,7 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
         const total = safeSum([abaixoDoBasico, basico, adequado, avancado]);
         return { label, abaixoDoBasico, basico, adequado, avancado, total };
       };
-      niveisFinal = [mkRow(distSerie, TURMA_COMPARE_GERAL_LABEL), mkRow(distTurma, selectedTurmaEffective)];
+      niveisFinal = [mkRow(distTurma, selectedTurmaEffective), mkRow(distSerie, TURMA_COMPARE_GERAL_LABEL)];
     }
 
     // Proficiência (geral + por disciplina) e notas: preferir agregados do backend (NovaResposta) para
@@ -1567,8 +1568,8 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
       const pSerie = clampToNumber(novaRespostaSerieAgregados.estatisticas_gerais.media_proficiencia_geral, 0);
       const pTurma = clampToNumber(novaRespostaAgregados.estatisticas_gerais.media_proficiencia_geral, 0);
       profGeralFinal = [
-        { label: TURMA_COMPARE_GERAL_LABEL, proficiencia: pSerie },
         { label: selectedTurmaEffective, proficiencia: pTurma },
+        { label: TURMA_COMPARE_GERAL_LABEL, proficiencia: pSerie },
       ];
 
       const serieByDisc = new Map<string, number>();
@@ -1589,8 +1590,8 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
       profDiscFinal = allDisc.map((disciplina) => ({
         disciplina,
         valuesByTurma: [
-          { turma: TURMA_COMPARE_GERAL_LABEL, proficiencia: serieByDisc.get(disciplina) ?? 0 },
           { turma: selectedTurmaEffective, proficiencia: turmaByDisc.get(disciplina) ?? 0 },
+          { turma: TURMA_COMPARE_GERAL_LABEL, proficiencia: serieByDisc.get(disciplina) ?? 0 },
         ],
       }));
 
@@ -1599,8 +1600,8 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
       notasDiscFinal = [];
       mediaNotaFinal = null;
       notasCatFinal = [
-        { label: TURMA_COMPARE_GERAL_LABEL, mediaNota: nSerie },
         { label: selectedTurmaEffective, mediaNota: nTurma },
+        { label: TURMA_COMPARE_GERAL_LABEL, mediaNota: nSerie },
       ];
     }
 
@@ -1615,8 +1616,8 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
         return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
       })();
       profGeralFinal = [
-        { label: TURMA_COMPARE_GERAL_LABEL, proficiencia: serieProf },
         turmaProf ? { label: selectedTurmaEffective, proficiencia: clampToNumber(turmaProf.proficiencia, 0) } : null,
+        { label: TURMA_COMPARE_GERAL_LABEL, proficiencia: serieProf },
       ].filter(Boolean) as ProficiencyGeneralByTurmaRow[];
     }
 
@@ -1631,8 +1632,8 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
           return {
             disciplina: row.disciplina,
             valuesByTurma: [
-              { turma: TURMA_COMPARE_GERAL_LABEL, proficiencia: avg },
               { turma: selectedTurmaEffective, proficiencia: clampToNumber(turmaEntry.proficiencia, 0) },
+              { turma: TURMA_COMPARE_GERAL_LABEL, proficiencia: avg },
             ],
           };
         })
@@ -1650,8 +1651,8 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
       notasDiscFinal = [];
       mediaNotaFinal = null;
       notasCatFinal = [
-        { label: TURMA_COMPARE_GERAL_LABEL, mediaNota: serieNotaAvg },
         turmaNota ? { label: selectedTurmaEffective, mediaNota: clampToNumber(turmaNota.mediaNota, 0) } : null,
+        { label: TURMA_COMPARE_GERAL_LABEL, mediaNota: serieNotaAvg },
       ].filter(Boolean) as NotaPorCategoriaDeck[];
     }
 

@@ -71,9 +71,9 @@ export const P19_THANK_YOU_FONT_PX = 64;
 /** Eixo / rótulos de gráfico (preview `BarChartPreview`) */
 export const P19_CHART_AXIS_TICK_PX = 9;
 export const P19_CHART_CATEGORY_LABEL_PX = 10;
-export const P19_CHART_BAR_VALUE_TOP_PX = 8;
+export const P19_CHART_BAR_VALUE_TOP_PX = 14;
 export const P19_CHART_H_BAR_LABEL_PX = 11;
-export const P19_CHART_H_BAR_VALUE_PX = 10;
+export const P19_CHART_H_BAR_VALUE_PX = 15;
 
 /** Altura de linha relativa ao tamanho da fonte (jsPDF) */
 export function p19PdfLineHeightPx(fontSizePx: number): number {

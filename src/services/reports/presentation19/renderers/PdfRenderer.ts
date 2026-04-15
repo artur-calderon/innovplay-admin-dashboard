@@ -68,17 +68,14 @@ const page = P19_PAGE;
 const content = P19_CONTENT;
 
 function formatBarValueLabel(value: number): string {
-  if (!Number.isFinite(value)) return "0";
-  const r = Math.round(value);
-  if (Math.abs(value - r) < 1e-6) return String(r);
-  return Number(value).toFixed(1);
+  if (!Number.isFinite(value)) return "0,0";
+  return Number(value).toFixed(1).replace(".", ",");
 }
 
 function drawFrame(doc: jsPDF, primaryColor: string): void {
-  doc.setFillColor(241, 245, 249);
+  // Fundo totalmente branco.
+  doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, page.width, page.height, "F");
-  doc.setFillColor(primaryColor);
-  doc.rect(0, 0, page.width, 10, "F");
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -136,7 +133,7 @@ function drawWrappedSubtitle(doc: jsPDF, text: string, firstLineBaselineY: numbe
 function drawHorizontalBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: number; w: number; h: number }): void {
   const { x, y, w, h } = area;
   const topPad = 8;
-  const bottomPad = 38;
+  const bottomPad = 18;
   const leftLabelW = P19_HORIZONTAL_CHART_LABEL_WIDTH_PX;
   const plotTop = y + topPad;
   const plotBottom = y + h - bottomPad;
@@ -145,10 +142,6 @@ function drawHorizontalBarChart(doc: jsPDF, chart: ExportChart, area: { x: numbe
   const plotRight = x + w - 10;
   const chartAreaW = Math.max(40, plotRight - baselineX);
 
-  doc.setFillColor(255, 255, 255);
-  doc.setDrawColor(203, 213, 225);
-  doc.rect(x, y, w, h, "FD");
-
   const rawMax = Math.max(
     1,
     ...chart.data.flatMap((d) => chart.valueKeys.map((s) => Number(d[s.key] ?? 0)))
@@ -156,26 +149,7 @@ function drawHorizontalBarChart(doc: jsPDF, chart: ExportChart, area: { x: numbe
   const axisMin = Number.isFinite(chart.yAxis?.min) ? Number(chart.yAxis?.min) : 0;
   const axisMax = Number.isFinite(chart.yAxis?.max) ? Number(chart.yAxis?.max) : Math.max(1, Math.ceil(rawMax * 1.15));
   const maxValue = Math.max(axisMin + 1, axisMax);
-  const gridTicks = (chart.yAxis?.ticks?.length
-    ? chart.yAxis.ticks
-    : Array.from({ length: 5 }, (_, i) => axisMin + ((maxValue - axisMin) * i) / 4)
-  )
-    .filter((v, idx, arr) => Number.isFinite(v) && v >= axisMin && v <= maxValue && arr.indexOf(v) === idx)
-    .sort((a, b) => a - b);
-
-  doc.setDrawColor(100, 116, 139);
-  doc.setLineWidth(1.2);
-  doc.line(baselineX, plotTop, baselineX, plotBottom);
-
-  doc.setDrawColor(203, 213, 225);
-  for (const tick of gridTicks) {
-    const gx = baselineX + (chartAreaW * Math.max(0, tick - axisMin)) / (maxValue - axisMin);
-    doc.line(gx, plotTop, gx, plotBottom);
-    doc.setTextColor(100, 116, 139);
-    doc.setFontSize(P19_CHART_AXIS_TICK_PX);
-    const text = Number.isInteger(tick) ? String(Math.round(tick)) : tick.toFixed(1);
-    doc.text(text, gx, plotBottom + 14, { align: "center" });
-  }
+  const palette = ["#3B82F6", "#22C55E", "#F97316", "#A855F7", "#EF4444", "#06B6D4", "#EAB308", "#14B8A6"];
 
   const n = Math.max(1, chart.data.length);
   const rowH = plotH / n;
@@ -189,7 +163,7 @@ function drawHorizontalBarChart(doc: jsPDF, chart: ExportChart, area: { x: numbe
     const rowCenterY = plotTop + (idx + 0.5) * rowH;
     const barThickness = Math.min(34, rowH * 0.55);
     const barY = rowCenterY - barThickness / 2;
-    const barColor = String(row.color ?? serie.color);
+    const barColor = String(row.color ?? palette[idx % palette.length] ?? serie.color);
     const rgb = hexToRgb(barColor);
     doc.setFillColor(rgb.r, rgb.g, rgb.b);
     doc.rect(baselineX, barY, Math.max(0, barW), barThickness, "F");
@@ -243,9 +217,8 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
   }
 
   const { x, y, w, h } = area;
-  const axisLeftX = x + 26;
-  const barsStartX = axisLeftX + 8;
-  const barsW = w - 34;
+  const barsStartX = x + 8;
+  const barsW = w - 16;
   const topPad = 6;
   const colWidth = barsW / Math.max(1, chart.data.length);
   const innerW = Math.max(8, colWidth - 36);
@@ -284,28 +257,8 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
   const chartAreaH = baselineY - (y + topPad);
   const catLineH = p19PdfLineHeightPx(catFs);
 
-  doc.setFillColor(255, 255, 255);
-  doc.setDrawColor(203, 213, 225);
-  doc.rect(x, y, w, h, "FD");
+  const palette = ["#3B82F6", "#22C55E", "#F97316", "#A855F7", "#EF4444", "#06B6D4", "#EAB308", "#14B8A6"];
   const isStacked = chart.type === "stackedBar";
-  const gridTicks = (chart.yAxis?.ticks?.length
-    ? chart.yAxis.ticks
-    : Array.from({ length: 5 }, (_, i) => axisMin + ((maxValue - axisMin) * i) / 4)
-  )
-    .filter((v, idx, arr) => Number.isFinite(v) && v >= axisMin && v <= maxValue && arr.indexOf(v) === idx)
-    .sort((a, b) => a - b);
-  doc.setDrawColor(100, 116, 139);
-  doc.setLineWidth(1.2);
-  doc.line(axisLeftX, y + topPad, axisLeftX, baselineY);
-  doc.setDrawColor(203, 213, 225);
-  for (const tick of gridTicks) {
-    const gy = baselineY - (chartAreaH * Math.max(0, tick - axisMin)) / (maxValue - axisMin);
-    doc.line(axisLeftX, gy, x + w, gy);
-    doc.setTextColor(100, 116, 139);
-    doc.setFontSize(P19_CHART_AXIS_TICK_PX);
-    const text = Number.isInteger(tick) ? String(Math.round(tick)) : tick.toFixed(1);
-    doc.text(text, axisLeftX - 2, gy - 2, { align: "right" });
-  }
   const hasMultipleSeries = chart.valueKeys.length > 1;
 
   chart.data.forEach((row, idx) => {
@@ -348,7 +301,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
       const value = Number(row[serie.key] ?? 0);
       const barH = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaH;
       const barY = baselineY - barH;
-      const barColor = String(row.color ?? serie.color);
+      const barColor = String(row.color ?? palette[idx % palette.length] ?? serie.color);
       const rgb = hexToRgb(barColor);
       doc.setFillColor(rgb.r, rgb.g, rgb.b);
       const singleW = Math.max(8, Math.min(22, innerW * 0.45));
@@ -548,17 +501,19 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       ({ yTop } = drawLabelValueBlock({ yTop, label: "CURSO", value: deckData.curso, valueFontSize: P19_SEGMENT_FIELD_VALUE_PX }));
       ({ yTop } = drawLabelValueBlock({ yTop, label: "SÉRIE", value: deckData.serie, valueFontSize: P19_SEGMENT_FIELD_VALUE_PX }));
 
-      const turmaBody =
-        deckData.turmasParticipantesCapa.length > 8
-          ? deckData.turmasParticipantesCapa.map((t) => `• ${t}`).join("\n")
-          : deckData.turma;
-      const fsTurma = turmaBody.length > 200 ? 16 : turmaBody.length > 100 ? 20 : 28;
-      ({ yTop } = drawLabelValueBlock({
-        yTop,
-        label: deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA",
-        value: turmaBody,
-        valueFontSize: fsTurma,
-      }));
+      if (deckData.comparisonAxis !== "escola") {
+        const turmaBody =
+          deckData.turmasParticipantesCapa.length > 8
+            ? deckData.turmasParticipantesCapa.map((t) => `• ${t}`).join("\n")
+            : deckData.turma;
+        const fsTurma = turmaBody.length > 200 ? 16 : turmaBody.length > 100 ? 20 : 28;
+        ({ yTop } = drawLabelValueBlock({
+          yTop,
+          label: deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA",
+          value: turmaBody,
+          valueFontSize: fsTurma,
+        }));
+      }
       break;
     }
     case "presence-table":
@@ -762,9 +717,9 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         doc.setDrawColor(212, 212, 216);
         doc.roundedRect(boxX, boxY, boxW, boxH, 10, 10, "FD");
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(P19_CHART_H_BAR_LABEL_PX);
+        doc.setFontSize(P19_CHART_H_BAR_LABEL_PX + 2);
         const tlines = doc.splitTextToSize(entry.title, boxW - 16);
-        const tlh = p19PdfLineHeightPx(P19_CHART_H_BAR_LABEL_PX);
+        const tlh = p19PdfLineHeightPx(P19_CHART_H_BAR_LABEL_PX + 2);
         let tty = boxY + 16;
         tlines.forEach((ln) => {
           doc.text(ln, boxX + 8, tty);
