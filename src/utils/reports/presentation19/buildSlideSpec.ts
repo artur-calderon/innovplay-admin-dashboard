@@ -1,8 +1,10 @@
+import type { ProficiencyLevel } from "@/components/evaluations/results/utils/proficiency";
 import type { NiveisBySeriesRow, Presentation19DeckData, SlideQuestionRow } from "@/types/presentation19-slides";
 import type { ExportChart, Presentation19ExportSpec, Presentation19SlideSpec } from "@/types/presentation19-export-spec";
 import { getProficiencyTableInfo } from "@/components/evaluations/results/utils/proficiency";
 import { getSubjectPaletteIndex } from "@/utils/competition/competitionSubjectColors";
-import { chunkPresentation19QuestionTableRows } from "@/utils/reports/presentation19/questionsTablePagination";
+import { classifyQuestionAcertoToLevel } from "@/utils/reports/presentation19/questionAcertoLevel";
+import { chunkPresentation19QuestionTableRows, chunkPresentation19SlideQuestionRows } from "@/utils/reports/presentation19/questionsTablePagination";
 import { comparisonColumnLabel } from "@/utils/reports/presentation19/presentationScope";
 
 const MAX_CATEGORY_ROWS_PER_SLIDE = 14;
@@ -586,10 +588,17 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
       `${q.percentualAcertos.toFixed(1).replace(".", ",")}%`,
     ]);
 
+  const questionLevelsForChunk = (questChunk: SlideQuestionRow[], serieHint: string): ProficiencyLevel[] =>
+    questChunk.map((q) => classifyQuestionAcertoToLevel(q.percentualAcertos, serieHint));
+
   const questionSlidesFromDeck: Presentation19SlideSpec[] = [];
+  const serieDeckHint = deckData.serie?.trim() || "GERAL";
+
   if (deckData.questoesTabelaGeral.length > 0) {
-    const geralChunks = chunkPresentation19QuestionTableRows(questoesToTableRows(deckData.questoesTabelaGeral));
-    geralChunks.forEach((rows, pageIdx) => {
+    const geralQuestChunks = chunkPresentation19SlideQuestionRows(deckData.questoesTabelaGeral);
+    geralQuestChunks.forEach((questChunk, pageIdx) => {
+      const rows = questoesToTableRows(questChunk);
+      const questionRowLevels = questionLevelsForChunk(questChunk, serieDeckHint);
       questionSlidesFromDeck.push({
         index: 0,
         kind: "questions-table" as const,
@@ -597,8 +606,9 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
           columns: ["Questão", "Habilidade", "% Acertos"],
           rows,
         },
-        ...(geralChunks.length > 1
-          ? { questionsPage: { current: pageIdx + 1, total: geralChunks.length } }
+        questionRowLevels,
+        ...(geralQuestChunks.length > 1
+          ? { questionsPage: { current: pageIdx + 1, total: geralQuestChunks.length } }
           : {}),
         questionsSubsection: { kind: "geral" },
       });
@@ -613,8 +623,10 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
       serieLabel,
       turmaNome: "Geral da série",
     });
-    const serieChunks = chunkPresentation19QuestionTableRows(questoesToTableRows(bloco.questoes));
-    serieChunks.forEach((rows, pageIdx) => {
+    const serieQuestChunks = chunkPresentation19SlideQuestionRows(bloco.questoes);
+    serieQuestChunks.forEach((questChunk, pageIdx) => {
+      const rows = questoesToTableRows(questChunk);
+      const questionRowLevels = questionLevelsForChunk(questChunk, serieLabel);
       questionSlidesFromDeck.push({
         index: 0,
         kind: "questions-table" as const,
@@ -622,8 +634,9 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
           columns: ["Questão", "Habilidade", "% Acertos"],
           rows,
         },
-        ...(serieChunks.length > 1
-          ? { questionsPage: { current: pageIdx + 1, total: serieChunks.length } }
+        questionRowLevels,
+        ...(serieQuestChunks.length > 1
+          ? { questionsPage: { current: pageIdx + 1, total: serieQuestChunks.length } }
           : {}),
         questionsSubsection: { kind: "serie-geral", serieLabel },
       });
@@ -638,8 +651,10 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
       serieLabel,
       turmaNome: bloco.turma,
     });
-    const turmaChunks = chunkPresentation19QuestionTableRows(questoesToTableRows(bloco.questoes));
-    turmaChunks.forEach((rows, pageIdx) => {
+    const turmaQuestChunks = chunkPresentation19SlideQuestionRows(bloco.questoes);
+    turmaQuestChunks.forEach((questChunk, pageIdx) => {
+      const rows = questoesToTableRows(questChunk);
+      const questionRowLevels = questionLevelsForChunk(questChunk, serieLabel);
       questionSlidesFromDeck.push({
         index: 0,
         kind: "questions-table" as const,
@@ -647,8 +662,9 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
           columns: ["Questão", "Habilidade", "% Acertos"],
           rows,
         },
-        ...(turmaChunks.length > 1
-          ? { questionsPage: { current: pageIdx + 1, total: turmaChunks.length } }
+        questionRowLevels,
+        ...(turmaQuestChunks.length > 1
+          ? { questionsPage: { current: pageIdx + 1, total: turmaQuestChunks.length } }
           : {}),
         questionsSubsection: { kind: "turma", turmaNome: bloco.turma },
       });

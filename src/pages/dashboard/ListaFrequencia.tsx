@@ -10,6 +10,7 @@ import { ClipboardList, Filter, Loader2, Printer } from 'lucide-react';
 import { api } from '@/lib/api';
 import { DashboardApiService } from '@/services/dashboardApi';
 import { FormFiltersApiService } from '@/services/formFiltersApi';
+import { EvaluationResultsApiService, REPORT_ENTITY_TYPE_ANSWER_SHEET } from '@/services/evaluation/evaluationResultsApi';
 import {
   getListaFrequencia,
   getListaFrequenciaPorAvaliacao,
@@ -297,34 +298,32 @@ export default function ListaFrequencia() {
 
   useEffect(() => {
     if (!isModoAplicada) return;
-    // Só carrega avaliações após selecionar escola e série
-    if (!selectedSchool || selectedSchool === 'all' || !selectedSerie || selectedSerie === 'all') {
+    // Só carrega opções após selecionar contexto completo (estado/município/escola/série)
+    if (
+      !selectedEstado ||
+      selectedEstado === 'all' ||
+      !selectedMunicipio ||
+      selectedMunicipio === 'all' ||
+      !selectedSchool ||
+      selectedSchool === 'all' ||
+      !selectedSerie ||
+      selectedSerie === 'all'
+    ) {
       setAvaliacoes([]);
       setSelectedAvaliacaoId('all');
       return;
     }
     let cancelled = false;
     setIsLoadingAvaliacoes(true);
-    DashboardApiService.getAvaliacoesRecentes(50)
-      .then((data) => {
-        if (cancelled || !data?.avaliacoes) return;
-        const looksLikeCartaoResposta = (titulo: string): boolean => {
-          const upper = String(titulo ?? '').toUpperCase();
-          const normalized = upper.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-          return (
-            normalized.includes('GABARITO') ||
-            normalized.includes('CARTAO RESPOSTA') ||
-            normalized.includes('CARTAO')
-          );
-        };
-
-        const mapped = data.avaliacoes.map((a) => ({ id: a.avaliacao_id, titulo: a.titulo || a.avaliacao_id }));
-        const filtered =
-          modoLista === 'cartao_resposta'
-            ? mapped.filter((a) => looksLikeCartaoResposta(a.titulo))
-            : mapped.filter((a) => !looksLikeCartaoResposta(a.titulo));
-
-        setAvaliacoes(filtered);
+    EvaluationResultsApiService.getFilterEvaluations({
+      estado: selectedEstado,
+      municipio: selectedMunicipio,
+      escola: selectedSchool,
+      ...(modoLista === 'cartao_resposta' ? { report_entity_type: REPORT_ENTITY_TYPE_ANSWER_SHEET } : {}),
+    })
+      .then((items) => {
+        if (cancelled) return;
+        setAvaliacoes((items ?? []).map((a) => ({ id: a.id, titulo: a.titulo || a.id })));
       })
       .catch(() => {
         if (!cancelled) setAvaliacoes([]);
@@ -335,7 +334,7 @@ export default function ListaFrequencia() {
     return () => {
       cancelled = true;
     };
-  }, [isModoAplicada, modoLista, selectedSchool, selectedSerie]);
+  }, [isModoAplicada, modoLista, selectedEstado, selectedMunicipio, selectedSchool, selectedSerie]);
 
   // No modo avaliação: ao selecionar uma avaliação, carregar as turmas vinculadas a ela (todas as turmas da série aplicadas)
   useEffect(() => {

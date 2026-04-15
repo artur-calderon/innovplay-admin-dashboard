@@ -620,17 +620,22 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
           <div className="h-full flex flex-col">
             <SlideTitle title={presentationTitleChartLevels(deckData.comparisonAxis)} primaryColor={deckData.primaryColor} />
-            <div className="mt-6 flex-1">
+            <div
+              className="mt-6 flex-1 min-h-0 rounded-2xl border-2 border-slate-300 bg-white p-5 shadow-xl"
+              style={{
+                boxShadow: `0 16px 40px rgba(15, 23, 42, 0.10), 0 0 0 1px ${hexToRgba(deckData.primaryColor, 0.12)}`,
+              }}
+            >
               <BarChart
-                width={980}
-                height={520}
+                width={940}
+                height={500}
                 data={levelsChartData}
                 layout="vertical"
-                margin={{ top: 16, right: 52, bottom: 40, left: 24 }}
+                margin={{ top: 10, right: 36, bottom: 34, left: 10 }}
               >
                 <CartesianGrid
-                  stroke="#94a3b8"
-                  strokeOpacity={0.55}
+                  stroke="#64748b"
+                  strokeOpacity={0.40}
                   strokeDasharray="3 3"
                   horizontal={false}
                   vertical
@@ -639,20 +644,26 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                   type="number"
                   domain={[0, levelsAxisMax]}
                   ticks={linearTicks(0, levelsAxisMax, 4)}
-                  tick={{ fontSize: 12, fill: "#334155" }}
+                  tick={{ fontSize: 12, fill: "#0f172a", fontWeight: 600 }}
                   tickLine={false}
                   tickMargin={10}
-                  axisLine={{ stroke: "#64748b" }}
+                  axisLine={{ stroke: "#475569", strokeWidth: 1.5 }}
                 />
                 <YAxis
                   type="category"
                   dataKey="nivel"
-                  width={172}
-                  tick={{ fontSize: 11, fill: "#334155" }}
+                  width={200}
+                  tick={{ fontSize: 11, fill: "#0f172a", fontWeight: 700 }}
                   tickLine={false}
                   axisLine={false}
                 />
-                <Tooltip />
+                <Tooltip
+                  contentStyle={{
+                    borderWidth: 2,
+                    borderColor: hexToRgba(deckData.primaryColor, 0.35),
+                    fontWeight: 600,
+                  }}
+                />
                 <Bar dataKey="valor" barSize={28} radius={[0, 8, 8, 0]}>
                   {levelsChartData.map((entry, idx) => (
                     <Cell key={`cell-${idx}`} fill={entry.color} />

@@ -22,6 +22,7 @@ import {
   presentationQuestionsTurmaCoverLine,
   presentationTitleQuestionsSerieGeral,
 } from "@/utils/reports/presentation19/presentationScope";
+import { P19_QUESTION_NUM_LEVEL_STYLE } from "@/utils/reports/presentation19/questionAcertoLevel";
 import {
   P19_CHART_AXIS_TICK_PX,
   P19_CHART_BAR_VALUE_TOP_PX,
@@ -561,29 +562,13 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       break;
     }
     case "presence-table":
-    case "grades-table":
-    case "questions-table": {
+    case "grades-table": {
       const titleText =
         slide.kind === "presence-table"
           ? presentationTitleTablePresence(deckData.comparisonAxis)
-          : slide.kind === "grades-table"
-            ? presentationTitleTableGrades(deckData.comparisonAxis)
-            : slide.questionsSubsection?.kind === "geral"
-              ? "TABELA DE QUESTÕES — GERAL"
-              : slide.questionsSubsection?.kind === "serie-geral"
-                ? presentationTitleQuestionsSerieGeral(slide.questionsSubsection.serieLabel)
-                : slide.questionsSubsection?.kind === "turma"
-                  ? `TABELA DE QUESTÕES — TURMA ${slide.questionsSubsection.turmaNome}`
-                  : "TABELA DE QUESTÕES";
-      const pageInfo = slide.kind === "questions-table" ? slide.questionsPage : undefined;
-      const titleMaxW = pageInfo != null && pageInfo.total > 1 ? content.w - 160 : content.w - P19_TITLE_TEXT_OFFSET_X_PX;
+          : presentationTitleTableGrades(deckData.comparisonAxis);
+      const titleMaxW = content.w - P19_TITLE_TEXT_OFFSET_X_PX;
       let yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, 100, titleMaxW);
-      if (pageInfo != null && pageInfo.total > 1) {
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(P19_PAGE_INDICATOR_FONT_PX);
-        doc.setTextColor(82, 82, 91);
-        doc.text(`Página ${pageInfo.current}/${pageInfo.total}`, content.x + content.w, 100, { align: "right" });
-      }
       const tableStartY = yAfter + 16;
       autoTable(doc, {
         startY: tableStartY,
@@ -600,6 +585,53 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         },
         headStyles: { fillColor: [226, 232, 240], textColor: [51, 65, 85], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [241, 245, 249] },
+      });
+      break;
+    }
+    case "questions-table": {
+      const titleText =
+        slide.questionsSubsection?.kind === "geral"
+          ? "TABELA DE QUESTÕES — GERAL"
+          : slide.questionsSubsection?.kind === "serie-geral"
+            ? presentationTitleQuestionsSerieGeral(slide.questionsSubsection.serieLabel)
+            : slide.questionsSubsection?.kind === "turma"
+              ? `TABELA DE QUESTÕES — TURMA ${slide.questionsSubsection.turmaNome}`
+              : "TABELA DE QUESTÕES";
+      const pageInfo = slide.questionsPage;
+      const titleMaxW = pageInfo != null && pageInfo.total > 1 ? content.w - 160 : content.w - P19_TITLE_TEXT_OFFSET_X_PX;
+      let yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, 100, titleMaxW);
+      if (pageInfo != null && pageInfo.total > 1) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(P19_PAGE_INDICATOR_FONT_PX);
+        doc.setTextColor(82, 82, 91);
+        doc.text(`Página ${pageInfo.current}/${pageInfo.total}`, content.x + content.w, 100, { align: "right" });
+      }
+      const tableStartY = yAfter + 16;
+      const levels = slide.questionRowLevels;
+      autoTable(doc, {
+        startY: tableStartY,
+        margin: { left: content.x, right: content.x },
+        head: [slide.table.columns],
+        body: slide.table.rows,
+        styles: {
+          fontSize: P19_TABLE_CELL_FONT_PX,
+          lineColor: [203, 213, 225],
+          lineWidth: 1,
+          cellPadding: P19_TABLE_CELL_PADDING_PX,
+          fillColor: [252, 252, 253],
+          textColor: [15, 23, 42],
+        },
+        headStyles: { fillColor: [226, 232, 240], textColor: [51, 65, 85], fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [241, 245, 249] },
+        didParseCell: (data) => {
+          if (!levels?.length || data.section !== "body") return;
+          const lvl = levels[data.row.index];
+          if (!lvl) return;
+          const st = P19_QUESTION_NUM_LEVEL_STYLE[lvl];
+          data.cell.styles.fillColor = st.pdfFill;
+          data.cell.styles.textColor = st.pdfText;
+          data.cell.styles.fontStyle = "bold";
+        },
       });
       break;
     }
@@ -669,7 +701,8 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         chartY = drawWrappedSubtitle(doc, slide.escolaNome, yb + 10, content.w - P19_TITLE_TEXT_OFFSET_X_PX) + 12;
       }
       const chartH = page.height - chartY - 40;
-      drawBarChart(doc, slide.chart, { x: content.x, y: chartY, w: content.w, h: Math.max(200, chartH) });
+      const inset = P19_TITLE_TEXT_OFFSET_X_PX;
+      drawBarChart(doc, slide.chart, { x: content.x + inset, y: chartY, w: content.w - inset, h: Math.max(200, chartH) });
       break;
     }
     case "section-proficiency":
@@ -693,7 +726,13 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         chartY = drawWrappedSubtitle(doc, slide.escolaNome, yb + 10, content.w - P19_TITLE_TEXT_OFFSET_X_PX) + 12;
       }
       const chartH = page.height - chartY - 40;
-      drawBarChart(doc, slide.chart, { x: content.x, y: chartY, w: content.w, h: Math.max(200, chartH) });
+      const profInset = P19_TITLE_TEXT_OFFSET_X_PX;
+      drawBarChart(doc, slide.chart, {
+        x: content.x + profInset,
+        y: chartY,
+        w: content.w - profInset,
+        h: Math.max(200, chartH),
+      });
       break;
     }
     case "proficiency-by-discipline-chart": {
@@ -708,12 +747,16 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       if (slide.escolaNome) {
         gridTop = drawWrappedSubtitle(doc, slide.escolaNome, yb + 10, content.w - P19_TITLE_TEXT_OFFSET_X_PX) + 12;
       }
+      const profInset = P19_TITLE_TEXT_OFFSET_X_PX;
+      const gridLeft = content.x + profInset;
+      const gridW = content.w - profInset;
+      const gridPad = 8;
+      const boxW = (gridW - gridPad * 3) / 2;
       slide.charts.forEach((entry, idx) => {
         const row = Math.floor(idx / 2);
         const col = idx % 2;
-        const boxX = content.x + col * (content.w / 2) + 8;
+        const boxX = gridLeft + gridPad + col * (boxW + gridPad);
         const boxY = gridTop + row * 250;
-        const boxW = content.w / 2 - 16;
         const boxH = 220;
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(212, 212, 216);

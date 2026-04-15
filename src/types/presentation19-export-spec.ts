@@ -1,3 +1,4 @@
+import type { ProficiencyLevel } from "@/components/evaluations/results/utils/proficiency";
 import type { Presentation19DeckData } from "@/types/presentation19-slides";
 
 export type ExportChartType = "bar" | "stackedBar";
@@ -59,6 +60,8 @@ export type Presentation19SlideSpec =
       index: number;
       kind: "questions-table";
       table: ExportTable;
+      /** Uma classificação por linha de corpo (coluna Questão), alinhada a `table.rows`. */
+      questionRowLevels?: ProficiencyLevel[];
       /** Só preenchido quando há mais de um slide de tabela de questões. */
       questionsPage?: { current: number; total: number };
       /** Bloco "Geral" vs uma turma específica. */

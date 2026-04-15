@@ -25,6 +25,7 @@ import {
   niveisAprendizagemTituloPorEixo,
   P19_LEVELS_TABLE_LEVEL_HEADER_BG_HEX,
 } from "@/utils/reports/presentation19/presentationScope";
+import { P19_QUESTION_NUM_LEVEL_STYLE } from "@/utils/reports/presentation19/questionAcertoLevel";
 import {
   P19_CHART_REF_H_PX,
   P19_CONTENT,
@@ -767,11 +768,20 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                       {slide.table.rows.map((r, idx) => {
                         const isTotalRow =
                           slide.kind === "levels-table" && String(r[0] ?? "") === "TOTAL GERAL";
+                        const questionRowStyle =
+                          slide.kind === "questions-table" && slide.questionRowLevels?.[idx]
+                            ? P19_QUESTION_NUM_LEVEL_STYLE[slide.questionRowLevels[idx]]
+                            : null;
+                        const rowBg = isTotalRow
+                          ? "#E2E8F0"
+                          : idx % 2 === 0
+                            ? "#FCFCFD"
+                            : "#F1F5F9";
                         return (
                         <tr
                           key={idx}
                           style={{
-                            background: isTotalRow ? "#E2E8F0" : idx % 2 === 0 ? "#FCFCFD" : "#F1F5F9",
+                            background: questionRowStyle?.bg ?? (isTotalRow ? "#E2E8F0" : idx % 2 === 0 ? "#FCFCFD" : "#F1F5F9"),
                           }}
                         >
                           {r.map((cell, cIdx) => {
@@ -783,8 +793,9 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                                 border: "1px solid #CBD5E1",
                                 padding: P19_TABLE_CELL_PADDING_PX,
                                 fontSize: P19_TABLE_CELL_FONT_PX,
-                                color: "#0F172A",
-                                fontWeight: isTotalRow ? 800 : undefined,
+                                background: questionRowStyle?.bg ?? rowBg,
+                                color: questionRowStyle?.color ?? "#0F172A",
+                                fontWeight: isTotalRow ? 800 : questionRowStyle ? 700 : undefined,
                               }}
                             >
                               {cellText}
@@ -811,7 +822,9 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                     subtitle={slide.escolaNome}
                     primaryColor={deckData.primaryColor}
                   />
-                  <BarChartPreview chart={slide.chart} />
+                  <div style={{ width: "100%", boxSizing: "border-box", paddingLeft: P19_TITLE_TEXT_OFFSET_X_PX }}>
+                    <BarChartPreview chart={slide.chart} />
+                  </div>
                 </div>
               )}
               {slide.kind === "section-levels" && (
@@ -883,7 +896,15 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                     subtitle={slide.escolaNome}
                     primaryColor={deckData.primaryColor}
                   />
-                  <BarChartPreview chart={slide.chart} />
+                  <div
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      paddingLeft: P19_TITLE_TEXT_OFFSET_X_PX,
+                    }}
+                  >
+                    <BarChartPreview chart={slide.chart} />
+                  </div>
                 </div>
               )}
               {slide.kind === "proficiency-by-discipline-chart" && (
@@ -893,7 +914,16 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                     subtitle={slide.escolaNome}
                     primaryColor={deckData.primaryColor}
                   />
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 12,
+                      width: "100%",
+                      boxSizing: "border-box",
+                      paddingLeft: P19_TITLE_TEXT_OFFSET_X_PX,
+                    }}
+                  >
                     {slide.charts.map((entry) => (
                       <div key={entry.title} style={{ border: "1px solid #D4D4D8", borderRadius: 12, padding: 8, background: "#F8FAFC" }}>
                         <div style={{ fontSize: 11, fontWeight: 800, color: "#3F3F46", marginBottom: 4 }}>{entry.title}</div>
