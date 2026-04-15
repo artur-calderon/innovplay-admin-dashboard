@@ -11,10 +11,16 @@ export interface AnswerSheetResultadosAgregadosRaw {
     municipio?: string;
     escola?: string;
     serie?: string;
+    total_escolas?: number;
+    total_series?: number;
+    total_turmas?: number;
+    total_gabaritos?: number;
     total_alunos?: number;
     alunos_participantes?: number;
     alunos_pendentes?: number;
     alunos_ausentes?: number;
+    percentual_comparecimento?: number;
+    nivel_classificacao?: string | null;
     media_nota_geral?: number;
     media_proficiencia_geral?: number;
     distribuicao_classificacao_geral?: {
@@ -46,18 +52,30 @@ export interface AnswerSheetResultadosAgregadosRaw {
       serie?: string;
       turma?: string;
       escola?: string;
+      escola_id?: string;
       municipio?: string;
       estado?: string;
       total_alunos?: number;
       alunos_participantes?: number;
+      alunos_pendentes?: number;
+      alunos_ausentes?: number;
+      percentual_comparecimento?: number;
       media_nota?: number;
       media_proficiencia?: number;
+      media_nota_lingua_portuguesa?: number | null;
+      media_nota_matematica?: number | null;
+      medias_por_disciplina?: Array<{
+        disciplina: string;
+        media_nota?: number;
+        media_proficiencia?: number;
+      }>;
       distribuicao_classificacao?: {
         abaixo_do_basico?: number;
         basico?: number;
         adequado?: number;
         avancado?: number;
       };
+      nivel_classificacao?: string | null;
     }>;
     paginacao?: { page: number; per_page: number; total: number; total_pages: number };
   };
@@ -241,6 +259,7 @@ export function mapAnswerSheetResultadosAgregadosToNovaResposta(
   }));
 
   const gabaritos = raw.resultados_detalhados?.gabaritos ?? [];
+
   const avaliacoesFromGabaritos = gabaritos.map((g) => ({
     id: g.id,
     titulo: g.titulo,
@@ -248,18 +267,26 @@ export function mapAnswerSheetResultadosAgregadosToNovaResposta(
     serie: g.serie,
     turma: g.turma,
     escola: g.escola,
+    escola_id: g.escola_id,
     municipio: g.municipio,
     estado: g.estado,
     data_aplicacao: "",
     status: "finalized" as const,
     total_alunos: g.total_alunos ?? 0,
     alunos_participantes: g.alunos_participantes ?? 0,
-    alunos_pendentes: 0,
-    alunos_ausentes: 0,
+    alunos_pendentes: g.alunos_pendentes ?? 0,
+    alunos_ausentes: g.alunos_ausentes ?? 0,
+    percentual_comparecimento: g.percentual_comparecimento,
     media_nota: g.media_nota ?? 0,
     media_proficiencia: g.media_proficiencia ?? 0,
+    media_nota_lingua_portuguesa: g.media_nota_lingua_portuguesa,
+    media_nota_matematica: g.media_nota_matematica,
+    medias_por_disciplina: g.medias_por_disciplina,
     distribuicao_classificacao: { ...emptyDist(), ...g.distribuicao_classificacao },
+    nivel_classificacao: g.nivel_classificacao,
   }));
+
+  const avaliacoesLinhas = avaliacoesFromGabaritos;
 
   const ranking: RankingItem[] = (raw.ranking ?? []).map((r) => ({
     posicao: r.posicao,
@@ -295,22 +322,28 @@ export function mapAnswerSheetResultadosAgregadosToNovaResposta(
       municipio: eg.municipio,
       escola: eg.escola,
       serie: eg.serie,
-      total_avaliacoes: eg.total_avaliacoes ?? Math.max(1, gabaritos.length),
+      total_escolas: eg.total_escolas,
+      total_series: eg.total_series,
+      total_turmas: eg.total_turmas,
+      total_gabaritos: eg.total_gabaritos,
+      total_avaliacoes: eg.total_avaliacoes ?? Math.max(1, avaliacoesLinhas.length),
       total_alunos: eg.total_alunos ?? 0,
       alunos_participantes: eg.alunos_participantes ?? 0,
       alunos_pendentes: eg.alunos_pendentes ?? 0,
       alunos_ausentes: eg.alunos_ausentes ?? 0,
+      percentual_comparecimento: eg.percentual_comparecimento,
+      nivel_classificacao: eg.nivel_classificacao ?? null,
       media_nota_geral: eg.media_nota_geral ?? 0,
       media_proficiencia_geral: eg.media_proficiencia_geral ?? 0,
       distribuicao_classificacao_geral: distGeral,
     },
     resultados_por_disciplina: resultadosPorDisciplina,
     resultados_detalhados: {
-      avaliacoes: avaliacoesFromGabaritos,
+      avaliacoes: avaliacoesLinhas,
       paginacao: raw.resultados_detalhados?.paginacao ?? {
         page: 1,
         per_page: 100,
-        total: avaliacoesFromGabaritos.length,
+        total: avaliacoesLinhas.length,
         total_pages: 1,
       },
     },
