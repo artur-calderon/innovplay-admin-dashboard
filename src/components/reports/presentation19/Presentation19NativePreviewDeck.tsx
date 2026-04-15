@@ -239,7 +239,8 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
             gap: 12,
             /* stretch: colunas precisam da altura total do plot; só `absolute` não gera altura no fluxo */
             alignItems: "stretch",
-            paddingLeft: 0,
+            // Reservar o mesmo espaço do "eixo" para alinhar com os rótulos.
+            paddingLeft: AXIS_LAB_W + 6,
             zIndex: 2,
           }}
         >
@@ -354,7 +355,7 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                           style={{
                             flex: 1,
                             minWidth: 0,
-                            maxWidth: 28,
+                            maxWidth: 32,
                             minHeight: 0,
                             position: "relative",
                             display: "flex",
@@ -380,7 +381,7 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                                   height: "100%",
                                   minHeight: 2,
                                   background: serie.color,
-                                  borderRadius: "6px 6px 0 0",
+                                  borderRadius: "8px 8px 0 0",
                                 }}
                               />
                             </div>
@@ -391,7 +392,7 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                                 position: "absolute",
                                 left: "50%",
                                 transform: "translateX(-50%)",
-                                bottom: `calc(${q * 100}% + 3px)`,
+                                bottom: `calc(${q * 100}% + 1px)`,
                                 fontSize: 8,
                                 fontWeight: 700,
                                 color: "#0F172A",
@@ -443,11 +444,11 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                         >
                           <div
                             style={{
-                              width: "min(26px, 75%)",
+                              width: "min(32px, 82%)",
                               height: "100%",
                               minHeight: 2,
                               background: rowColor,
-                              borderRadius: "8px 8px 0 0",
+                              borderRadius: "10px 10px 0 0",
                             }}
                           />
                         </div>
@@ -458,7 +459,7 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                             position: "absolute",
                             left: "50%",
                             transform: "translateX(-50%)",
-                            bottom: `calc(${q * 100}% + 4px)`,
+                            bottom: `calc(${q * 100}% + 1px)`,
                             fontSize: 16,
                             fontWeight: 900,
                             color: "#0F172A",
@@ -481,11 +482,10 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
       <div
         style={{
           display: "flex",
-          marginLeft: AXIS_LAB_W,
           minHeight: LABEL_ROW_H,
           paddingTop: 6,
           gap: 12,
-          paddingLeft: 6,
+          paddingLeft: AXIS_LAB_W + 6,
         }}
       >
         {chart.data.map((row, idx) => (
@@ -557,20 +557,21 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                     </div>
                   ) : (
                     <>
-                      <div style={{ fontSize: 22, fontWeight: 800, color: "#52525B", marginBottom: 14 }}>
+                      <div style={{ fontSize: P19_COVER_SCHOOL_MULTI_HEADER_PX, fontWeight: 900, color: "#52525B", marginBottom: 14 }}>
                         ESCOLAS PARTICIPANTES
                       </div>
                       <ul
                         style={{
                           margin: 0,
                           paddingLeft: 22,
-                          fontSize: deckData.escolasParticipantes.length > 14 ? 17 : 24,
-                          fontWeight: 800,
+                          fontSize: deckData.escolasParticipantes.length > 14 ? P19_COVER_SCHOOL_LIST_SMALL_PX : P19_COVER_SCHOOL_LIST_LARGE_PX,
+                          fontWeight: 900,
                           lineHeight: 1.45,
                           maxHeight: 380,
                           overflow: "auto",
                           width: "100%",
                           maxWidth: 920,
+                          fontFamily: "Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
                         }}
                       >
                         {deckData.escolasParticipantes.map((nome) => (

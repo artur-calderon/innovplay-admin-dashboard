@@ -722,8 +722,12 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
   }
 
   push({ kind: "section-questions" });
-  push({ kind: "dynamic-series-cover" });
-  push({ kind: "dynamic-class-cover" });
+  // No municipal (comparação por escola), evitar capas extras (“[SÉRIE]” e “[TURMA]”)
+  // logo após a seção de questões: elas poluem o fluxo e não agregam informação.
+  if (!multiSchool) {
+    push({ kind: "dynamic-series-cover" });
+    push({ kind: "dynamic-class-cover" });
+  }
 
   for (const s of questionSlidesFromDeck) {
     if (s.kind === "questions-table" || s.kind === "questions-turma-cover") push(s);

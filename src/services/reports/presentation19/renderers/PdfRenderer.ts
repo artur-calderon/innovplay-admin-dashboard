@@ -90,6 +90,43 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 }
 
 /**
+ * Word-wrap que quebra linhas apenas por espaços (sem dividir palavras).
+ * Se uma palavra isolada exceder `maxWidthPx`, cai no comportamento padrão do jsPDF para aquela palavra.
+ */
+function splitTextToSizeBySpaces(doc: jsPDF, text: string, maxWidthPx: number): string[] {
+  const raw = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (!raw) return [""];
+  const words = raw.split(" ");
+  const lines: string[] = [];
+  let cur = "";
+
+  const flush = () => {
+    if (cur.trim()) lines.push(cur.trim());
+    cur = "";
+  };
+
+  for (const w of words) {
+    if (!w) continue;
+    const next = cur ? `${cur} ${w}` : w;
+    if (doc.getTextWidth(next) <= maxWidthPx) {
+      cur = next;
+      continue;
+    }
+    // Se não cabe, fecha linha atual e tenta colocar a palavra sozinha.
+    flush();
+    if (doc.getTextWidth(w) <= maxWidthPx) {
+      cur = w;
+      continue;
+    }
+    // Palavra maior que a largura: usa fallback do jsPDF (pode quebrar a palavra).
+    const fallback = doc.splitTextToSize(w, maxWidthPx);
+    for (const ln of fallback) lines.push(String(ln));
+  }
+  flush();
+  return lines.length ? lines : [raw];
+}
+
+/**
  * Título de slide com barra lateral e quebra de linha. `firstLineBaselineY` é a baseline da primeira linha.
  * Retorna a baseline após a última linha do título.
  */
@@ -241,7 +278,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
     let maxCatLines = 1;
     chart.data.forEach((row) => {
       const catStr = String(row[chart.categoryKey] ?? "");
-      const lines = doc.splitTextToSize(catStr, innerW);
+      const lines = splitTextToSizeBySpaces(doc, catStr, innerW);
       maxCatLines = Math.max(maxCatLines, lines.length);
     });
     const neededBottom = 8 + maxCatLines * lineH + 10;
@@ -265,7 +302,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
     const baseX = barsStartX + idx * colWidth + 18;
     if (hasMultipleSeries && !isStacked) {
       const gap = 8;
-      const seriesW = Math.max(4, Math.min(16, (innerW - gap * (chart.valueKeys.length - 1)) / chart.valueKeys.length));
+      const seriesW = Math.max(5, Math.min(18, (innerW - gap * (chart.valueKeys.length - 1)) / chart.valueKeys.length));
       chart.valueKeys.forEach((serie, sIdx) => {
         const value = Number(row[serie.key] ?? 0);
         const barH = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaH;
@@ -273,13 +310,13 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
         const barX = baseX + sIdx * (seriesW + gap);
         const rgb = hexToRgb(serie.color);
         doc.setFillColor(rgb.r, rgb.g, rgb.b);
-        doc.rect(barX, barY, seriesW, barH, "F");
+        doc.roundedRect(barX, barY, seriesW, barH, 4, 4, "F");
         doc.setTextColor(15, 23, 42);
         doc.setFontSize(P19_CHART_BAR_VALUE_TOP_PX);
-        doc.text(formatBarValueLabel(value), barX + seriesW / 2, barY - 2, { align: "center" });
+        doc.text(formatBarValueLabel(value), barX + seriesW / 2, barY - 1, { align: "center" });
       });
     } else if (hasMultipleSeries && isStacked) {
-      const singleW = Math.max(8, Math.min(22, innerW * 0.45));
+      const singleW = Math.max(10, Math.min(26, innerW * 0.55));
       const singleX = baseX + (innerW - singleW) / 2;
       let currentTop = baselineY;
       let total = 0;
@@ -290,12 +327,12 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
         const barY = currentTop - barH;
         const rgb = hexToRgb(serie.color);
         doc.setFillColor(rgb.r, rgb.g, rgb.b);
-        doc.rect(singleX, barY, singleW, barH, "F");
+        doc.roundedRect(singleX, barY, singleW, barH, 4, 4, "F");
         currentTop = barY;
       });
       doc.setTextColor(15, 23, 42);
       doc.setFontSize(P19_CHART_BAR_VALUE_TOP_PX + 1);
-      doc.text(formatBarValueLabel(total), singleX + singleW / 2, currentTop - 2, { align: "center" });
+      doc.text(formatBarValueLabel(total), singleX + singleW / 2, currentTop - 1, { align: "center" });
     } else {
       const serie = chart.valueKeys[0];
       const value = Number(row[serie.key] ?? 0);
@@ -304,12 +341,12 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
       const barColor = String(row.color ?? palette[idx % palette.length] ?? serie.color);
       const rgb = hexToRgb(barColor);
       doc.setFillColor(rgb.r, rgb.g, rgb.b);
-      const singleW = Math.max(8, Math.min(22, innerW * 0.45));
+      const singleW = Math.max(10, Math.min(26, innerW * 0.55));
       const singleX = baseX + (innerW - singleW) / 2;
-      doc.rect(singleX, barY, singleW, barH, "F");
+      doc.roundedRect(singleX, barY, singleW, barH, 6, 6, "F");
       doc.setTextColor(15, 23, 42);
       doc.setFontSize(P19_CHART_BAR_VALUE_TOP_PX);
-      doc.text(formatBarValueLabel(value), singleX + singleW / 2, barY - 2, { align: "center" });
+      doc.text(formatBarValueLabel(value), singleX + singleW / 2, barY - 1, { align: "center" });
     }
   });
 
@@ -319,7 +356,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
   chart.data.forEach((row, idx) => {
     const baseX = barsStartX + idx * colWidth + 18;
     const catStr = String(row[chart.categoryKey] ?? "");
-    const catLines = doc.splitTextToSize(catStr, innerW);
+    const catLines = splitTextToSizeBySpaces(doc, catStr, innerW);
     const cx = baseX + innerW / 2;
     let labY = baselineY + 6 + catLineH * 0.72;
     catLines.forEach((ln) => {
@@ -443,13 +480,15 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
           yy += lh;
         });
       } else {
+        doc.setTextColor(82, 82, 91);
         doc.setFontSize(P19_COVER_SCHOOL_MULTI_HEADER_PX);
         doc.text("ESCOLAS PARTICIPANTES", page.width / 2, 180, { align: "center" });
+        doc.setTextColor(24, 24, 27);
         const maxW = content.w - 32;
         const fs = escolas.length > 14 ? P19_COVER_SCHOOL_LIST_SMALL_PX : P19_COVER_SCHOOL_LIST_LARGE_PX;
         doc.setFontSize(fs);
         const body = escolas.map((s) => `• ${s}`).join("\n");
-        const lines = doc.splitTextToSize(body, maxW);
+        const lines = splitTextToSizeBySpaces(doc, body, maxW);
         doc.text(lines, content.x + 16, 220);
       }
       break;

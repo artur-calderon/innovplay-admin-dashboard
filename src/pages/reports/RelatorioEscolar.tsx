@@ -20,8 +20,11 @@ import { FilterComponentAnalise, ResultsPeriodMonthYearPicker } from "@/componen
 import { normalizeResultsPeriodYm } from "@/utils/resultsPeriod";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext, cityIdQueryParamForAdmin } from "@/utils/userHierarchy";
 import { cn } from "@/lib/utils";
-import { getListaFrequenciaPorAvaliacao } from "@/services/listaFrequenciaApi";
-import type { Estudante, TipoListaFrequencia } from "@/types/lista-frequencia";
+import {
+  getListaFrequenciaPorAvaliacao,
+  getListaFrequenciaPorAvaliacaoTodasTurmas,
+} from "@/services/listaFrequenciaApi";
+import type { TipoListaFrequencia } from "@/types/lista-frequencia";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   getProficiencyLevelLabel,
@@ -128,9 +131,8 @@ interface ProficiencyDistribution {
 }
 
 type AttendanceModalData = {
-  participantes: Estudante[];
-  faltosos: Estudante[];
-  turmaLabel?: string;
+  participantes: Array<{ numero: number; nome: string; escola: string; serie: string; turma: string }>;
+  faltosos: Array<{ numero: number; nome: string; escola: string; serie: string; turma: string }>;
   evaluationLabel?: string;
 };
 
@@ -1145,32 +1147,172 @@ export default function RelatorioEscolar({
   const [attendanceModalLoading, setAttendanceModalLoading] = useState(false);
   const [attendanceModalData, setAttendanceModalData] = useState<AttendanceModalData | null>(null);
 
+  const resolveAsEscolaNome = useCallback((): string | undefined => {
+    if (asEscola === "all") return undefined;
+    const item = (asOpcoes.escolas ?? []).find((e) => e.id === asEscola);
+    const label = item ? asNorm(item) : "";
+    return label || undefined;
+  }, [asEscola, asOpcoes.escolas]);
+
+  const resolveAsSerieLabel = useCallback((): string | undefined => {
+    if (asSerie === "all") return undefined;
+    const item = (asOpcoes.series ?? []).find((s) => s.id === asSerie);
+    const label = item ? asNorm(item) : "";
+    return label || undefined;
+  }, [asOpcoes.series, asSerie]);
+
+  const resolveAsTurmaLabel = useCallback((): string | undefined => {
+    if (asTurma === "all") return undefined;
+    const item = (asOpcoes.turmas ?? []).find((t) => t.id === asTurma);
+    const label = item ? asNorm(item) : "";
+    return label || undefined;
+  }, [asOpcoes.turmas, asTurma]);
+
   const openAttendanceModal = useCallback(async () => {
     if (!repGabaritoOrEval || repGabaritoOrEval === "all") {
       toast({ title: "Atenção", description: "Selecione uma avaliação/cartão resposta.", variant: "destructive" });
       return;
     }
 
-    const turmaId = isAnswerSheetAgregados ? asTurma : "all";
-    if (!turmaId || turmaId === "all") {
-      toast({ title: "Atenção", description: "Selecione uma turma para ver participantes e faltosos.", variant: "destructive" });
-      return;
-    }
-
-    const tipo: TipoListaFrequencia = reportAnswerSheet ? "prova_fisica" : "avaliacao";
     setAttendanceModalOpen(true);
     setAttendanceModalLoading(true);
     setAttendanceModalData(null);
     try {
-      const res = await getListaFrequenciaPorAvaliacao(repGabaritoOrEval, turmaId, { tipo });
-      const estudantes = Array.isArray(res?.estudantes) ? res.estudantes : [];
-      const participantes = estudantes.filter((e) => String(e.status ?? "").toUpperCase() === "P");
-      const faltosos = estudantes.filter((e) => String(e.status ?? "").toUpperCase() === "A");
+      // Cartão-resposta (answer-sheets): o ID do gabarito não é `test_id`, então não usamos `lista-frequencia`.
+      // A lista vem de `tabela_detalhada.geral.alunos` (mesmo shape do AnswerSheetResults).
+      if (reportAnswerSheet) {
+        const alunos = apiData?.tabela_detalhada?.geral?.alunos ?? [];
+        if (!Array.isArray(alunos) || alunos.length === 0) {
+          toast({
+            title: "Sem dados",
+            description: "Este cartão resposta não retornou a lista de alunos (tabela detalhada).",
+            variant: "destructive",
+          });
+          setAttendanceModalOpen(false);
+          return;
+        }
+
+        const selectedSchoolName = isAnswerSheetAgregados ? resolveAsEscolaNome() : selectedSchoolInfo?.name;
+        const selectedSerieLabel = isAnswerSheetAgregados ? resolveAsSerieLabel() : undefined;
+        const selectedTurmaLabel = isAnswerSheetAgregados ? resolveAsTurmaLabel() : undefined;
+
+        const schoolFilter = selectedSchoolName ? normalizeText(selectedSchoolName) : null;
+        const serieFilter = selectedSerieLabel ? normalizeText(selectedSerieLabel) : null;
+        const turmaFilter = selectedTurmaLabel ? normalizeText(selectedTurmaLabel) : null;
+
+        type Row = { numero: number; nome: string; escola: string; serie: string; turma: string; status: string };
+        const rows: Row[] = [];
+
+        const filtered = alunos.filter((a) => {
+          const escola = String((a as { escola?: string }).escola ?? "").trim();
+          const serie = String((a as { serie?: string }).serie ?? "").trim();
+          const turma = String((a as { turma?: string }).turma ?? "").trim();
+          if (schoolFilter && !normalizeText(escola).includes(schoolFilter)) return false;
+          if (serieFilter && !normalizeText(serie).includes(serieFilter)) return false;
+          if (turmaFilter && !normalizeText(turma).includes(turmaFilter)) return false;
+          return true;
+        });
+
+        filtered.forEach((a, idx) => {
+          const nome = String((a as { nome?: string }).nome ?? "").trim();
+          if (!nome) return;
+          const escola = String((a as { escola?: string }).escola ?? "—").trim() || "—";
+          const serie = String((a as { serie?: string }).serie ?? "—").trim() || "—";
+          const turma = String((a as { turma?: string }).turma ?? "—").trim() || "—";
+          const status = String((a as { status_geral?: string }).status_geral ?? "").toLowerCase();
+          rows.push({
+            numero: idx + 1,
+            nome,
+            escola,
+            serie,
+            turma,
+            status,
+          });
+        });
+
+        const participantes = rows
+          .filter((r) => r.status === "concluida" || r.status === "concluído" || r.status === "concluída")
+          .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
+        const faltosos = rows
+          .filter((r) => !(r.status === "concluida" || r.status === "concluído" || r.status === "concluída"))
+          .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
+
+        setAttendanceModalData({
+          participantes,
+          faltosos,
+          evaluationLabel: undefined,
+        });
+        return;
+      }
+
+      const tipo: TipoListaFrequencia = "avaliacao";
+      const selectedSchoolName = isAnswerSheetAgregados ? resolveAsEscolaNome() : selectedSchoolInfo?.name;
+      const selectedSerieLabel = isAnswerSheetAgregados ? resolveAsSerieLabel() : undefined;
+      const selectedTurmaLabel = isAnswerSheetAgregados ? resolveAsTurmaLabel() : undefined;
+
+      const schoolFilter = selectedSchoolName ? normalizeText(selectedSchoolName) : null;
+      const serieFilter = selectedSerieLabel ? normalizeText(selectedSerieLabel) : null;
+      const turmaFilter = selectedTurmaLabel ? normalizeText(selectedTurmaLabel) : null;
+
+      type Row = { numero: number; nome: string; escola: string; serie: string; turma: string; status: string };
+      const rows: Row[] = [];
+      let firstEvaluationLabel: string | undefined;
+
+      const pushFromOneTurma = (item: {
+        cabecalho?: { nome_escola?: string; serie?: string; turma?: string; serie_turma?: string; nome_prova_ano?: string };
+        estudantes?: Array<{ numero: number; nome_estudante: string; status: string | null }>;
+      }) => {
+        const cab = item.cabecalho;
+        if (!firstEvaluationLabel) {
+          const t = String(cab?.nome_prova_ano ?? "").trim();
+          if (t) firstEvaluationLabel = t;
+        }
+        const escola = String(cab?.nome_escola ?? "—").trim() || "—";
+        const serie = String(cab?.serie ?? cab?.serie_turma ?? "—").trim() || "—";
+        const turma = String(cab?.turma ?? "—").trim() || "—";
+
+        if (schoolFilter && !normalizeText(escola).includes(schoolFilter)) return;
+        if (serieFilter && !normalizeText(serie).includes(serieFilter)) return;
+        if (turmaFilter && !normalizeText(turma).includes(turmaFilter)) return;
+
+        const estudantes = Array.isArray(item.estudantes) ? item.estudantes : [];
+        for (const e of estudantes) {
+          const nome = String(e?.nome_estudante ?? "").trim();
+          if (!nome) continue;
+          rows.push({
+            numero: Number(e.numero),
+            nome,
+            escola,
+            serie,
+            turma,
+            status: String(e.status ?? "").toUpperCase(),
+          });
+        }
+      };
+
+      // Se houver turma selecionada (cartão-resposta), usar chamada única. Caso contrário, carregar todas as turmas.
+      if (isAnswerSheetAgregados && asTurma !== "all") {
+        const res = await getListaFrequenciaPorAvaliacao(repGabaritoOrEval, asTurma, { tipo });
+        pushFromOneTurma(res);
+      } else {
+        const all = await getListaFrequenciaPorAvaliacaoTodasTurmas(repGabaritoOrEval, {
+          tipo,
+          ...(isAnswerSheetAgregados && asSerie !== "all" ? { grade_id: asSerie } : {}),
+        });
+        all.forEach((item) => pushFromOneTurma(item));
+      }
+
+      const participantes = rows
+        .filter((r) => r.status === "P")
+        .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
+      const faltosos = rows
+        .filter((r) => r.status === "A")
+        .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
+
       setAttendanceModalData({
         participantes,
         faltosos,
-        turmaLabel: res?.cabecalho?.turma ?? undefined,
-        evaluationLabel: res?.cabecalho?.nome_prova_ano ?? undefined,
+        evaluationLabel: firstEvaluationLabel,
       });
     } catch {
       toast({
@@ -1182,7 +1324,18 @@ export default function RelatorioEscolar({
     } finally {
       setAttendanceModalLoading(false);
     }
-  }, [asTurma, isAnswerSheetAgregados, repGabaritoOrEval, reportAnswerSheet, toast]);
+  }, [
+    asSerie,
+    asTurma,
+    isAnswerSheetAgregados,
+    repGabaritoOrEval,
+    reportAnswerSheet,
+    resolveAsEscolaNome,
+    resolveAsSerieLabel,
+    resolveAsTurmaLabel,
+    selectedSchoolInfo?.name,
+    toast,
+  ]);
 
   // Estados dos dados dos filtros (movidos para FilterComponentAnalise)
 
@@ -4487,8 +4640,7 @@ export default function RelatorioEscolar({
           ) : (
             <div className="space-y-4">
               <div className="text-sm text-muted-foreground">
-                {(attendanceModalData.evaluationLabel ? `${attendanceModalData.evaluationLabel}` : "Avaliação") +
-                  (attendanceModalData.turmaLabel ? ` · Turma ${attendanceModalData.turmaLabel}` : "")}
+                {attendanceModalData.evaluationLabel ? attendanceModalData.evaluationLabel : "Avaliação"}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -4502,9 +4654,12 @@ export default function RelatorioEscolar({
                     ) : (
                       <ul className="space-y-1 text-sm">
                         {attendanceModalData.participantes.map((e) => (
-                          <li key={`${e.numero}-${e.nome_estudante}`} className="flex gap-2">
+                          <li key={`${e.escola}-${e.serie}-${e.turma}-${e.numero}-${e.nome}`} className="flex gap-2">
                             <span className="w-8 shrink-0 text-muted-foreground">{e.numero}.</span>
-                            <span className="min-w-0 truncate">{e.nome_estudante}</span>
+                            <div className="min-w-0">
+                              <div className="truncate">{e.nome}</div>
+                              <div className="truncate text-xs text-muted-foreground">{e.escola} · {e.serie} · {e.turma}</div>
+                            </div>
                           </li>
                         ))}
                       </ul>
@@ -4522,9 +4677,12 @@ export default function RelatorioEscolar({
                     ) : (
                       <ul className="space-y-1 text-sm">
                         {attendanceModalData.faltosos.map((e) => (
-                          <li key={`${e.numero}-${e.nome_estudante}`} className="flex gap-2">
+                          <li key={`${e.escola}-${e.serie}-${e.turma}-${e.numero}-${e.nome}`} className="flex gap-2">
                             <span className="w-8 shrink-0 text-muted-foreground">{e.numero}.</span>
-                            <span className="min-w-0 truncate">{e.nome_estudante}</span>
+                            <div className="min-w-0">
+                              <div className="truncate">{e.nome}</div>
+                              <div className="truncate text-xs text-muted-foreground">{e.escola} · {e.serie} · {e.turma}</div>
+                            </div>
                           </li>
                         ))}
                       </ul>

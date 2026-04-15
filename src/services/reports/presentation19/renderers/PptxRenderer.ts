@@ -205,7 +205,7 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
 
     if (hasMultipleSeries && !isStacked) {
       const gapIn = xScale(8);
-      const seriesW = Math.max(0.02, Math.min(xScale(16), (innerW - gapIn * (chart.valueKeys.length - 1)) / chart.valueKeys.length));
+      const seriesW = Math.max(0.02, Math.min(xScale(18), (innerW - gapIn * (chart.valueKeys.length - 1)) / chart.valueKeys.length));
       chart.valueKeys.forEach((s, sIdx) => {
         const value = Number(row[s.key] ?? 0);
         const barH = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaH;
@@ -218,11 +218,13 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
           h: barH,
           fill: { color: hexNoHash(s.color) },
           line: { color: hexNoHash(s.color), pt: 0 },
+          rx: 0.06,
+          ry: 0.06,
         });
         const valBoxW = Math.max(0.58, seriesW + 0.26);
         slide.addText(formatBarValueLabel(value), {
           x: barX + seriesW / 2 - valBoxW / 2,
-          y: barY - yScale(13),
+          y: barY - yScale(13) + yScale(1),
           w: valBoxW,
           h: yScale(14),
           fontSize: p19PxToPtForPptx(P19_CHART_BAR_VALUE_TOP_PX),
@@ -233,7 +235,7 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
         });
       });
     } else if (hasMultipleSeries && isStacked) {
-      const singleW = Math.max(0.04, Math.min(xScale(22), innerW * 0.45));
+      const singleW = Math.max(0.04, Math.min(xScale(26), innerW * 0.55));
       const singleX = baseXAligned + (innerW - singleW) / 2;
       let currentTop = baselineY;
       let total = 0;
@@ -249,13 +251,15 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
           h: barH,
           fill: { color: hexNoHash(s.color) },
           line: { color: hexNoHash(s.color), pt: 0 },
+          rx: 0.08,
+          ry: 0.08,
         });
         currentTop = barY;
       });
       const totW = Math.max(0.58, singleW + 0.28);
       slide.addText(formatBarValueLabel(total), {
         x: singleX + singleW / 2 - totW / 2,
-        y: currentTop - yScale(14),
+        y: currentTop - yScale(14) + yScale(1),
         w: totW,
         h: yScale(14),
         fontSize: p19PxToPtForPptx(P19_CHART_BAR_VALUE_TOP_PX + 1),
@@ -270,7 +274,7 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
       const barH = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaH;
       const barY = baselineY - barH;
       const barColor = String(row.color ?? palette[idx % palette.length] ?? s.color);
-      const singleW = Math.max(0.04, Math.min(xScale(22), innerW * 0.45));
+      const singleW = Math.max(0.04, Math.min(xScale(26), innerW * 0.55));
       const singleX = baseXAligned + (innerW - singleW) / 2;
       slide.addShape(pptx.ShapeType.rect, {
         x: singleX,
@@ -279,11 +283,13 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
         h: barH,
         fill: { color: hexNoHash(barColor) },
         line: { color: hexNoHash(barColor), pt: 0 },
+        rx: 0.10,
+        ry: 0.10,
       });
       const oneSerW = Math.max(0.62, singleW + 0.32);
       slide.addText(formatBarValueLabel(value), {
         x: singleX + singleW / 2 - oneSerW / 2,
-        y: barY - yScale(14),
+        y: barY - yScale(14) + yScale(1),
         w: oneSerW,
         h: yScale(14),
         fontSize: p19PxToPtForPptx(P19_CHART_BAR_VALUE_TOP_PX),
