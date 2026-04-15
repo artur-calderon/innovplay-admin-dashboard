@@ -9,17 +9,17 @@ import {
   presentationSectionProficiencyTagline,
   presentationSectionQuestionsTagline,
   presentationSectionQuestionsTitle,
-  presentationSectionStudentsTitle,
   presentationTitleChartGrades,
   presentationTitleChartLevels,
   presentationTitleChartPresence,
   presentationTitleProficiencyByDiscipline,
   presentationTitleProficiencyGeneralChart,
   presentationTitleTableGrades,
-  presentationTitleTableLevels,
   presentationTitleTablePresence,
-  presentationTitleTableStudents,
+  niveisAprendizagemTituloPorEixo,
+  P19_LEVELS_TABLE_LEVEL_HEADER_BG_HEX,
   presentationQuestionsTurmaCoverLine,
+  presentationTitleQuestionsSerieGeral,
 } from "@/utils/reports/presentation19/presentationScope";
 import {
   P19_CHART_AXIS_TICK_PX,
@@ -472,6 +472,70 @@ function drawTable(
   });
 }
 
+function drawLevelsTable(
+  slide: PptxGenJS.Slide,
+  columns: string[],
+  rows: Array<Array<string | number>>,
+  startY = 1.4
+): void {
+  const cellPad = P19_TABLE_CELL_PADDING_PX / 72;
+  const rowHeadH = 0.42;
+  const rowBodyH = 0.38;
+  const rowHeights = [rowHeadH, ...rows.map(() => rowBodyH)];
+  const tableH = rowHeights.reduce((sum, h) => sum + h, 0);
+  const cellFs = p19PxToPtForPptx(P19_TABLE_CELL_FONT_PX);
+  const tableRows: PptxGenJS.TableRow[] = [
+    columns.map((c, ci) => {
+      if (ci >= 1 && ci <= 4) {
+        const idx = ci - 1;
+        return {
+          text: c,
+          options: {
+            bold: true,
+            fontSize: cellFs,
+            color: "F8FAFC",
+            fill: { color: P19_LEVELS_TABLE_LEVEL_HEADER_BG_HEX[idx] },
+            margin: cellPad,
+          },
+        };
+      }
+      return {
+        text: c,
+        options: {
+          bold: true,
+          fontSize: cellFs,
+          color: "334155",
+          fill: { color: "E2E8F0" },
+          margin: cellPad,
+        },
+      };
+    }),
+    ...rows.map((r, ri) => {
+      const totalRow = String(r[0] ?? "") === "TOTAL GERAL";
+      const bodyBg = totalRow ? "E2E8F0" : ri % 2 === 0 ? "FCFCFD" : "F1F5F9";
+      return r.map((c) => ({
+        text: String(c),
+        options: {
+          fontSize: cellFs,
+          color: "0F172A",
+          bold: totalRow,
+          fill: { color: bodyBg },
+          margin: cellPad,
+        },
+      }));
+    }),
+  ];
+  slide.addTable(tableRows, {
+    x: 0.48,
+    y: startY,
+    w: 12.35,
+    h: tableH,
+    rowH: rowHeights,
+    border: { type: "solid", pt: 1, color: "CBD5E1" },
+    colW: 12.35 / columns.length,
+  });
+}
+
 function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec, spec: Presentation19ExportSpec, pptx: PptxPresentation): void {
   const { deckData } = spec;
   drawFrame(slide, deckData.primaryColor, pptx);
@@ -684,7 +748,7 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
       );
       break;
     case "levels-table":
-      drawTitle(slide, presentationTitleTableLevels(deckData.comparisonAxis), deckData.primaryColor, pptx);
+      drawTitle(slide, niveisAprendizagemTituloPorEixo(deckData.comparisonAxis), deckData.primaryColor, pptx);
       if (slideSpec.escolaNome) {
         slide.addText(slideSpec.escolaNome, {
           x: 0.62,
@@ -696,7 +760,7 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
           wrap: true,
         });
       }
-      drawTable(slide, slideSpec.table.columns, slideSpec.table.rows, slideSpec.escolaNome ? 1.52 : 1.4);
+      drawLevelsTable(slide, slideSpec.table.columns, slideSpec.table.rows, slideSpec.escolaNome ? 1.52 : 1.4);
       break;
     case "section-proficiency":
       drawTitle(slide, presentationSectionProficiency(deckData.comparisonAxis), deckData.primaryColor, pptx);
@@ -807,9 +871,6 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
         pptx
       );
       break;
-    case "section-students":
-      drawTitle(slide, presentationSectionStudentsTitle(), deckData.primaryColor, pptx);
-      break;
     case "section-questions":
       drawTitle(slide, presentationSectionQuestionsTitle(), deckData.primaryColor, pptx);
       slide.addText(presentationSectionQuestionsTagline(), {
@@ -870,9 +931,11 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
       const qt =
         slideSpec.questionsSubsection?.kind === "geral"
           ? "TABELA DE QUESTÕES — GERAL"
-          : slideSpec.questionsSubsection?.kind === "turma"
-            ? `TABELA DE QUESTÕES — TURMA ${slideSpec.questionsSubsection.turmaNome}`
-            : "TABELA DE QUESTÕES";
+          : slideSpec.questionsSubsection?.kind === "serie-geral"
+            ? presentationTitleQuestionsSerieGeral(slideSpec.questionsSubsection.serieLabel)
+            : slideSpec.questionsSubsection?.kind === "turma"
+              ? `TABELA DE QUESTÕES — TURMA ${slideSpec.questionsSubsection.turmaNome}`
+              : "TABELA DE QUESTÕES";
       drawTitle(slide, qt, deckData.primaryColor, pptx);
       if (slideSpec.questionsPage != null && slideSpec.questionsPage.total > 1) {
         slide.addText(`Página ${slideSpec.questionsPage.current}/${slideSpec.questionsPage.total}`, {
@@ -888,21 +951,6 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
       drawTable(slide, slideSpec.table.columns, slideSpec.table.rows);
       break;
     }
-    case "students-table":
-      drawTitle(slide, presentationTitleTableStudents(), deckData.primaryColor, pptx);
-      if (slideSpec.studentsPage != null && slideSpec.studentsPage.total > 1) {
-        slide.addText(`Página ${slideSpec.studentsPage.current}/${slideSpec.studentsPage.total}`, {
-          x: 9.0,
-          y: 0.58,
-          w: 4.0,
-          h: 0.35,
-          fontSize: p19PxToPtForPptx(P19_PAGE_INDICATOR_FONT_PX),
-          color: "52525B",
-          align: "right",
-        });
-      }
-      drawTable(slide, slideSpec.table.columns, slideSpec.table.rows);
-      break;
     case "thank-you":
       slide.addText("Obrigado!!", {
         x: 0.8,

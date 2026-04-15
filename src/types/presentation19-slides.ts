@@ -93,13 +93,15 @@ export type Presentation19DeckData = {
   /** Opcional: nota média por categoria (ex.: por escola) para o gráfico de notas. */
   notasPorCategoria: NotaPorCategoriaDeck[];
 
-  /** Quando `comparisonAxis === "aluno"`, ranking/detalhe por aluno. */
+  /** Legado: mantido vazio (slides de alunos removidos do deck). */
   alunosDetalhados: AlunoPresentationRow[];
 
   /** Acertos por questão agregados no escopo geral (município/escola conforme relatório). */
   questoesTabelaGeral: SlideQuestionRow[];
   /** Mesma métrica discriminada por turma (a partir da tabela detalhada por aluno). */
   questoesPorTurma: Array<{ turma: string; serieTurma?: string; questoes: SlideQuestionRow[] }>;
+  /** Escopo município (`comparisonAxis === "escola"`): por série, sem discriminar turma. */
+  questoesPorSerie: Array<{ serie: string; questoes: SlideQuestionRow[] }>;
 
   /** Slide 8 */
   levelGuide: Array<{
@@ -127,6 +129,4 @@ export type BuildDeckDataArgs = {
   novaRespostaAgregados: NovaRespostaAPI | null;
   primaryColor: string;
   logoDataUrl?: string;
-  /** Preenchido no escopo turma (alunos) via ranking. */
-  alunosRanking?: AlunoPresentationRow[] | null;
 };

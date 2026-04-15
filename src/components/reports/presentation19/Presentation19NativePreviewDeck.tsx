@@ -12,7 +12,6 @@ import {
   presentationSectionProficiencyTagline,
   presentationSectionQuestionsTagline,
   presentationSectionQuestionsTitle,
-  presentationSectionStudentsTitle,
   presentationTitleChartGrades,
   presentationTitleChartLevels,
   presentationTitleChartPresence,
@@ -21,8 +20,10 @@ import {
   presentationTitleTableGrades,
   presentationTitleTableLevels,
   presentationTitleTablePresence,
-  presentationTitleTableStudents,
   presentationQuestionsTurmaCoverLine,
+  presentationTitleQuestionsSerieGeral,
+  niveisAprendizagemTituloPorEixo,
+  P19_LEVELS_TABLE_LEVEL_HEADER_BG_HEX,
 } from "@/utils/reports/presentation19/presentationScope";
 import {
   P19_CHART_REF_H_PX,
@@ -702,7 +703,6 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
               {(slide.kind === "presence-table" ||
                 slide.kind === "levels-table" ||
                 slide.kind === "grades-table" ||
-                slide.kind === "students-table" ||
                 slide.kind === "questions-table") && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
@@ -712,20 +712,16 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                         slide.kind === "presence-table"
                           ? presentationTitleTablePresence(deckData.comparisonAxis)
                           : slide.kind === "levels-table"
-                            ? presentationTitleTableLevels(deckData.comparisonAxis)
+                            ? niveisAprendizagemTituloPorEixo(deckData.comparisonAxis)
                             : slide.kind === "grades-table"
                               ? presentationTitleTableGrades(deckData.comparisonAxis)
-                              : slide.kind === "students-table"
-                                ? slide.variant === "by-level"
-                                  ? "PROFICIÊNCIA — ALUNOS POR NÍVEL"
-                                  : presentationTitleTableStudents()
-                                : slide.kind === "questions-table"
-                                  ? slide.questionsSubsection?.kind === "geral"
-                                    ? "TABELA DE QUESTÕES — GERAL"
-                                    : slide.questionsSubsection?.kind === "turma"
-                                      ? `TABELA DE QUESTÕES — TURMA ${slide.questionsSubsection.turmaNome}`
-                                      : "TABELA DE QUESTÕES"
-                                  : "TABELA DE QUESTÕES"
+                              : slide.questionsSubsection?.kind === "geral"
+                                ? "TABELA DE QUESTÕES — GERAL"
+                                : slide.questionsSubsection?.kind === "serie-geral"
+                                  ? presentationTitleQuestionsSerieGeral(slide.questionsSubsection.serieLabel)
+                                  : slide.questionsSubsection?.kind === "turma"
+                                    ? `TABELA DE QUESTÕES — TURMA ${slide.questionsSubsection.turmaNome}`
+                                    : "TABELA DE QUESTÕES"
                       }
                       subtitle={slide.kind === "levels-table" && slide.escolaNome ? slide.escolaNome : undefined}
                       primaryColor={deckData.primaryColor}
@@ -738,55 +734,48 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                           Página {slide.questionsPage.current}/{slide.questionsPage.total}
                         </div>
                       )}
-                    {slide.kind === "students-table" &&
-                      slide.studentsPage != null &&
-                      slide.studentsPage.total > 1 && (
-                        <div style={{ fontSize: P19_PAGE_INDICATOR_FONT_PX, fontWeight: 700, color: "#52525B", flexShrink: 0 }}>
-                          Página {slide.studentsPage.current}/{slide.studentsPage.total}
-                        </div>
-                      )}
                   </div>
                   <table style={{ width: "100%", borderCollapse: "collapse", background: "#FCFCFD", border: "1px solid #CBD5E1", borderRadius: 12, overflow: "hidden" }}>
                     <thead>
-                      <tr style={{ background: "#E2E8F0" }}>
-                        {slide.table.columns.map((c) => (
-                          <th
-                            key={c}
-                            style={{
-                              border: "1px solid #CBD5E1",
-                              textAlign: "left",
-                              padding: P19_TABLE_CELL_PADDING_PX,
-                              fontSize: P19_TABLE_CELL_FONT_PX,
-                              color: "#334155",
-                            }}
-                          >
-                            {c}
-                          </th>
-                        ))}
+                      <tr>
+                        {slide.table.columns.map((c, cIdx) => {
+                          const levelHdr =
+                            slide.kind === "levels-table" && cIdx >= 1 && cIdx <= 4
+                              ? {
+                                  background: `#${P19_LEVELS_TABLE_LEVEL_HEADER_BG_HEX[cIdx - 1]}`,
+                                  color: "#F8FAFC",
+                                }
+                              : { background: "#E2E8F0", color: "#334155" };
+                          return (
+                            <th
+                              key={`${c}-${cIdx}`}
+                              style={{
+                                border: "1px solid #CBD5E1",
+                                textAlign: "left",
+                                padding: P19_TABLE_CELL_PADDING_PX,
+                                fontSize: P19_TABLE_CELL_FONT_PX,
+                                ...levelHdr,
+                              }}
+                            >
+                              {c}
+                            </th>
+                          );
+                        })}
                       </tr>
                     </thead>
                     <tbody>
-                      {slide.table.rows.map((r, idx) => (
-                        <tr key={idx} style={{ background: idx % 2 === 0 ? "#FCFCFD" : "#F1F5F9" }}>
+                      {slide.table.rows.map((r, idx) => {
+                        const isTotalRow =
+                          slide.kind === "levels-table" && String(r[0] ?? "") === "TOTAL GERAL";
+                        return (
+                        <tr
+                          key={idx}
+                          style={{
+                            background: isTotalRow ? "#E2E8F0" : idx % 2 === 0 ? "#FCFCFD" : "#F1F5F9",
+                          }}
+                        >
                           {r.map((cell, cIdx) => {
                             const cellText = String(cell);
-                            const isClassificationCell =
-                              slide.kind === "students-table" && slide.table.columns[cIdx]?.toLowerCase().includes("classifica");
-                            const normalized = cellText
-                              .normalize("NFD")
-                              .replace(/[\u0300-\u036f]/g, "")
-                              .toLowerCase();
-                            const classificationColor = isClassificationCell
-                              ? normalized.includes("abaixo")
-                                ? "#EF4444"
-                                : normalized.includes("basico")
-                                  ? "#FACC15"
-                                  : normalized.includes("adequado")
-                                    ? "#22C55E"
-                                    : normalized.includes("avan")
-                                      ? "#166534"
-                                      : undefined
-                              : undefined;
                             return (
                             <td
                               key={cIdx}
@@ -794,8 +783,8 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                                 border: "1px solid #CBD5E1",
                                 padding: P19_TABLE_CELL_PADDING_PX,
                                 fontSize: P19_TABLE_CELL_FONT_PX,
-                                color: classificationColor ?? "#0F172A",
-                                fontWeight: classificationColor ? 800 : undefined,
+                                color: "#0F172A",
+                                fontWeight: isTotalRow ? 800 : undefined,
                               }}
                             >
                               {cellText}
@@ -803,7 +792,8 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                           );
                           })}
                         </tr>
-                      ))}
+                      );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -856,11 +846,6 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-              {slide.kind === "section-students" && (
-                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Title text={presentationSectionStudentsTitle()} primaryColor={deckData.primaryColor} />
                 </div>
               )}
               {slide.kind === "section-grades" && (

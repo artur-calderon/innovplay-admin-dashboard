@@ -52,18 +52,9 @@ export type Presentation19SlideSpec =
   | { index: number; kind: "section-grades" }
   | { index: number; kind: "grades-table"; table: ExportTable }
   | { index: number; kind: "grades-chart"; chart: ExportChart; escolaNome?: string }
-  | { index: number; kind: "section-students" }
   | { index: number; kind: "section-questions" }
   | { index: number; kind: "dynamic-series-cover" }
   | { index: number; kind: "dynamic-class-cover" }
-  | {
-      index: number;
-      kind: "students-table";
-      table: ExportTable;
-      /** "ranking" (ordem por proficiência) vs "by-level" (agrupado por nível). */
-      variant?: "ranking" | "by-level";
-      studentsPage?: { current: number; total: number };
-    }
   | {
       index: number;
       kind: "questions-table";
@@ -71,7 +62,11 @@ export type Presentation19SlideSpec =
       /** Só preenchido quando há mais de um slide de tabela de questões. */
       questionsPage?: { current: number; total: number };
       /** Bloco "Geral" vs uma turma específica. */
-      questionsSubsection?: { kind: "geral" } | { kind: "turma"; turmaNome: string };
+      questionsSubsection?:
+        | { kind: "geral" }
+        | { kind: "turma"; turmaNome: string }
+        /** Escopo município: uma tabela por série (agregado “geral da série”), sem turmas. */
+        | { kind: "serie-geral"; serieLabel: string };
     }
   | {
       index: number;
