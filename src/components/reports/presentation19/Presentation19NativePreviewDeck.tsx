@@ -32,7 +32,10 @@ import {
   P19_COVER_MAIN_LABEL_PX,
   P19_COVER_MAIN_TITLE_PX,
   P19_COVER_MAIN_VALUE_PX,
+  P19_COVER_SCHOOL_MULTI_HEADER_PX,
   P19_COVER_SCHOOL_SINGLE_PX,
+  P19_COVER_SCHOOL_LIST_SMALL_PX,
+  P19_COVER_SCHOOL_LIST_LARGE_PX,
   P19_DYNAMIC_COVER_PX,
   P19_HORIZONTAL_CHART_LABEL_WIDTH_PX,
   P19_LEVELS_GUIDE_DESC_PX,
@@ -200,6 +203,28 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
     return <HorizontalBarChartPreview chart={chart} height={height} />;
   }
 
+  const wrapLabelBySpaces = (text: string, maxCharsPerLine: number): string => {
+    const t = (text ?? "").trim();
+    if (!t) return "";
+    const words = t.split(/\s+/).filter(Boolean);
+    const lines: string[] = [];
+    let cur = "";
+    for (const w of words) {
+      if (!cur) {
+        cur = w;
+        continue;
+      }
+      if ((cur + " " + w).length <= maxCharsPerLine) {
+        cur = cur + " " + w;
+      } else {
+        lines.push(cur);
+        cur = w;
+      }
+    }
+    if (cur) lines.push(cur);
+    return lines.join("\n");
+  };
+
   const categories = chart.data.map((d) => String(d[chart.categoryKey] ?? ""));
   const rawMax = Math.max(1, ...chart.data.flatMap((d) => chart.valueKeys.map((s) => Number(d[s.key] ?? 0))));
   const axisMin = Number.isFinite(chart.yAxis?.min) ? Number(chart.yAxis?.min) : 0;
@@ -241,6 +266,7 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
             alignItems: "stretch",
             // Reservar o mesmo espaço do "eixo" para alinhar com os rótulos.
             paddingLeft: AXIS_LAB_W + 6,
+            paddingRight: AXIS_LAB_W + 6,
             zIndex: 2,
           }}
         >
@@ -342,6 +368,7 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                       alignItems: "stretch",
                       gap: 6,
                       paddingInline: 4,
+                      justifyContent: "center",
                     }}
                   >
                     {chart.valueKeys.map((serie) => {
@@ -355,7 +382,7 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                           style={{
                             flex: 1,
                             minWidth: 0,
-                            maxWidth: 32,
+                            maxWidth: 40,
                             minHeight: 0,
                             position: "relative",
                             display: "flex",
@@ -393,8 +420,8 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                                 left: "50%",
                                 transform: "translateX(-50%)",
                                 bottom: `calc(${q * 100}% + 1px)`,
-                                fontSize: 8,
-                                fontWeight: 700,
+                                fontSize: 16,
+                                fontWeight: 900,
                                 color: "#0F172A",
                                 whiteSpace: "nowrap",
                                 lineHeight: 1,
@@ -444,11 +471,11 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                         >
                           <div
                             style={{
-                              width: "min(32px, 82%)",
+                              width: "min(40px, 88%)",
                               height: "100%",
                               minHeight: 2,
                               background: rowColor,
-                              borderRadius: "10px 10px 0 0",
+                              borderRadius: "12px 12px 0 0",
                             }}
                           />
                         </div>
@@ -486,6 +513,7 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
           paddingTop: 6,
           gap: 12,
           paddingLeft: AXIS_LAB_W + 6,
+          paddingRight: AXIS_LAB_W + 6,
         }}
       >
         {chart.data.map((row, idx) => (
@@ -503,7 +531,7 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
               textOverflow: "ellipsis",
             }}
           >
-            {String(row[chart.categoryKey] ?? categories[idx])}
+            {wrapLabelBySpaces(String(row[chart.categoryKey] ?? categories[idx]), 14)}
           </div>
         ))}
       </div>
@@ -758,7 +786,14 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                     subtitle={slide.escolaNome}
                     primaryColor={deckData.primaryColor}
                   />
-                  <div style={{ width: "100%", boxSizing: "border-box", paddingLeft: P19_TITLE_TEXT_OFFSET_X_PX }}>
+                  <div
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      paddingLeft: P19_TITLE_TEXT_OFFSET_X_PX,
+                      paddingRight: P19_TITLE_TEXT_OFFSET_X_PX,
+                    }}
+                  >
                     <BarChartPreview chart={slide.chart} />
                   </div>
                 </div>

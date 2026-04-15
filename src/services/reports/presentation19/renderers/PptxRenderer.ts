@@ -95,6 +95,35 @@ function formatBarValueLabel(value: number): string {
   return Number(value).toFixed(1).replace(".", ",");
 }
 
+function wrapTextBySpacesForPptx(text: string, maxCharsPerLine: number): string {
+  const t = (text ?? "").trim();
+  if (!t) return "";
+  const maxC = Math.max(8, Math.min(26, Math.floor(maxCharsPerLine)));
+  const words = t.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of words) {
+    if (!cur) {
+      cur = w;
+      continue;
+    }
+    if ((cur + " " + w).length <= maxC) {
+      cur = cur + " " + w;
+    } else {
+      lines.push(cur);
+      cur = w;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.join("\n");
+}
+
+function approxMaxCharsForWidth(innerWIn: number, fontSizePt: number): number {
+  // Aproximação conservadora: largura média de caractere ~0,55em.
+  const pts = Math.max(1, innerWIn * 72);
+  return Math.floor(pts / Math.max(8, fontSizePt) / 0.55);
+}
+
 /** Evita sobreposição de rótulos quando a área útil do gráfico é pequena (mini-gráficos PPTX). */
 function selectTicksEvenly(ticks: number[], chartSpanIn: number, minPitchIn: number, hardCap: number): number[] {
   const maxLabels = Math.max(2, Math.min(hardCap, Math.floor(chartSpanIn / minPitchIn)));
@@ -154,12 +183,14 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
         fill: { color: hexNoHash(barColor) },
         line: { color: hexNoHash(barColor), pt: 0 },
       });
-      slide.addText(String(row[chart.categoryKey] ?? ""), {
+      const catFontPt = p19PxToPtForPptx(P19_CHART_H_BAR_LABEL_PX);
+      const maxChars = approxMaxCharsForWidth(Math.max(0.35, leftLabelW - padX10), catFontPt);
+      slide.addText(wrapTextBySpacesForPptx(String(row[chart.categoryKey] ?? ""), maxChars), {
         x: box.x + padX6,
         y: barY - yScale(2),
         w: Math.max(0.35, leftLabelW - padX10),
         h: barThickness + yScale(6),
-        fontSize: p19PxToPtForPptx(P19_CHART_H_BAR_LABEL_PX),
+        fontSize: catFontPt,
         color: "334155",
         align: "left",
         valign: "middle",
@@ -205,7 +236,7 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
 
     if (hasMultipleSeries && !isStacked) {
       const gapIn = xScale(8);
-      const seriesW = Math.max(0.02, Math.min(xScale(18), (innerW - gapIn * (chart.valueKeys.length - 1)) / chart.valueKeys.length));
+      const seriesW = Math.max(0.02, Math.min(xScale(22), (innerW - gapIn * (chart.valueKeys.length - 1)) / chart.valueKeys.length));
       chart.valueKeys.forEach((s, sIdx) => {
         const value = Number(row[s.key] ?? 0);
         const barH = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaH;
@@ -235,7 +266,7 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
         });
       });
     } else if (hasMultipleSeries && isStacked) {
-      const singleW = Math.max(0.04, Math.min(xScale(26), innerW * 0.55));
+      const singleW = Math.max(0.04, Math.min(xScale(34), innerW * 0.7));
       const singleX = baseXAligned + (innerW - singleW) / 2;
       let currentTop = baselineY;
       let total = 0;
@@ -274,7 +305,7 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
       const barH = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaH;
       const barY = baselineY - barH;
       const barColor = String(row.color ?? palette[idx % palette.length] ?? s.color);
-      const singleW = Math.max(0.04, Math.min(xScale(26), innerW * 0.55));
+      const singleW = Math.max(0.04, Math.min(xScale(34), innerW * 0.7));
       const singleX = baseXAligned + (innerW - singleW) / 2;
       slide.addShape(pptx.ShapeType.rect, {
         x: singleX,
@@ -300,12 +331,14 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
       });
     }
 
-    slide.addText(String(row[chart.categoryKey] ?? ""), {
+    const catFontPt = p19PxToPtForPptx(P19_CHART_CATEGORY_LABEL_PX);
+    const maxChars = approxMaxCharsForWidth(innerW, catFontPt);
+    slide.addText(wrapTextBySpacesForPptx(String(row[chart.categoryKey] ?? ""), maxChars), {
       x: baseXAligned,
       y: catY,
       w: innerW,
       h: catH,
-      fontSize: p19PxToPtForPptx(P19_CHART_CATEGORY_LABEL_PX),
+      fontSize: catFontPt,
       color: "334155",
       align: "center",
       valign: "top",
@@ -739,7 +772,8 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
         });
       }
       const chartX = p19PxToSlideInX(P19_CONTENT.x + P19_TITLE_TEXT_OFFSET_X_PX);
-      const chartW = p19PxToSlideInX(P19_CONTENT.x + P19_CONTENT.w) - chartX;
+      const insetR = p19PxToSlideInX(P19_TITLE_TEXT_OFFSET_X_PX);
+      const chartW = p19PxToSlideInX(P19_CONTENT.x + P19_CONTENT.w) - chartX - insetR;
       drawPdfAlignedBarChart(
         slide,
         slideSpec.chart,

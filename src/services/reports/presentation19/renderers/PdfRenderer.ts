@@ -302,7 +302,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
     const baseX = barsStartX + idx * colWidth + 18;
     if (hasMultipleSeries && !isStacked) {
       const gap = 8;
-      const seriesW = Math.max(5, Math.min(18, (innerW - gap * (chart.valueKeys.length - 1)) / chart.valueKeys.length));
+      const seriesW = Math.max(7, Math.min(22, (innerW - gap * (chart.valueKeys.length - 1)) / chart.valueKeys.length));
       chart.valueKeys.forEach((serie, sIdx) => {
         const value = Number(row[serie.key] ?? 0);
         const barH = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaH;
@@ -316,7 +316,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
         doc.text(formatBarValueLabel(value), barX + seriesW / 2, barY - 1, { align: "center" });
       });
     } else if (hasMultipleSeries && isStacked) {
-      const singleW = Math.max(10, Math.min(26, innerW * 0.55));
+      const singleW = Math.max(14, Math.min(34, innerW * 0.7));
       const singleX = baseX + (innerW - singleW) / 2;
       let currentTop = baselineY;
       let total = 0;
@@ -341,7 +341,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
       const barColor = String(row.color ?? palette[idx % palette.length] ?? serie.color);
       const rgb = hexToRgb(barColor);
       doc.setFillColor(rgb.r, rgb.g, rgb.b);
-      const singleW = Math.max(10, Math.min(26, innerW * 0.55));
+      const singleW = Math.max(14, Math.min(34, innerW * 0.7));
       const singleX = baseX + (innerW - singleW) / 2;
       doc.roundedRect(singleX, barY, singleW, barH, 6, 6, "F");
       doc.setTextColor(15, 23, 42);
@@ -487,9 +487,15 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         const maxW = content.w - 32;
         const fs = escolas.length > 14 ? P19_COVER_SCHOOL_LIST_SMALL_PX : P19_COVER_SCHOOL_LIST_LARGE_PX;
         doc.setFontSize(fs);
-        const body = escolas.map((s) => `• ${s}`).join("\n");
-        const lines = splitTextToSizeBySpaces(doc, body, maxW);
-        doc.text(lines, content.x + 16, 220);
+        const x = content.x + 16;
+        let y = 220;
+        const lh = p19PdfLineHeightPx(fs);
+        for (const s of escolas) {
+          const name = String(s || "—").trim() || "—";
+          const lines = splitTextToSizeBySpaces(doc, `• ${name}`, maxW);
+          doc.text(lines, x, y);
+          y += lines.length * lh + Math.max(4, lh * 0.25);
+        }
       }
       break;
     }
@@ -696,7 +702,12 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       }
       const chartH = page.height - chartY - 40;
       const inset = P19_TITLE_TEXT_OFFSET_X_PX;
-      drawBarChart(doc, slide.chart, { x: content.x + inset, y: chartY, w: content.w - inset, h: Math.max(200, chartH) });
+      drawBarChart(doc, slide.chart, {
+        x: content.x + inset,
+        y: chartY,
+        w: content.w - inset * 2,
+        h: Math.max(200, chartH),
+      });
       break;
     }
     case "section-proficiency":
