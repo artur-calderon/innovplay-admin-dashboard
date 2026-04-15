@@ -2403,6 +2403,17 @@ export default function AcertoNiveis({
             ? schools.find((s) => s.id === selectedSchoolId)?.nome || "Escola Selecionada"
             : "Todas as Escolas";
 
+      /** Alinhado a AcertoNiveis.tsx: título e corpo 12 pt; espaçamentos proporcionais */
+      const PDF_CARD_TITLE_PT = 12;
+      const PDF_CARD_BODY_PT = 12;
+      const pdfLabelValueGapMm = 4;
+      const pdfCardRowH = PDF_CARD_BODY_PT * 0.43;
+      const pdfCardWrapStep = PDF_CARD_BODY_PT * 0.4;
+      const pdfCardTitleBlockH =
+        9 + PDF_CARD_TITLE_PT * 0.48 + 1 + 4 + PDF_CARD_BODY_PT * 0.32;
+      const pdfTituloBlocoInformacoes = "INFORMAÇÕES DO CARTÃO RESPOSTA";
+      const pdfLabelPrimeiroItem = "CARTÃO:";
+
       // Função para adicionar capa inicial
       const addInitialCover = () => {
         doc.setFillColor(...COLORS.white);
@@ -2422,52 +2433,54 @@ export default function AcertoNiveis({
           doc.addImage(logoDataUrl, 'PNG', centerX - desiredLogoWidth / 2, 7, desiredLogoWidth, desiredLogoHeight);
           logoBottomInBand = 7 + desiredLogoHeight;
         } else {
-          doc.setFontSize(18);
+          doc.setFontSize(20);
           doc.setTextColor(...COLORS.white);
           doc.setFont('helvetica', 'bold');
           doc.text('AFIRME PLAY', centerX, 22, { align: 'center' });
           logoBottomInBand = 28;
         }
 
-        // Títulos na faixa
+        // Títulos na faixa (mesmo padrão que AcertoNiveis.tsx)
         const titleY = Math.max(logoBottomInBand + 5, BAND_H - 17);
         doc.setTextColor(...COLORS.white);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(17);
+        doc.setFontSize(19);
         doc.text('RELATÓRIO DE DESEMPENHO', centerX, titleY, { align: 'center' });
-        doc.setFontSize(11);
+        doc.setFontSize(12);
         doc.text('ACERTO E NÍVEIS DE PROFICIÊNCIA', centerX, titleY + 8, { align: 'center' });
 
         let y = BAND_H + 13;
 
         // Município
-        doc.setFontSize(13);
+        doc.setFontSize(14);
         doc.setTextColor(...COLORS.primary);
         doc.setFont('helvetica', 'bold');
         doc.text(`${evaluationInfo.municipio?.toUpperCase() || 'MUNICÍPIO'} - ALAGOAS`, centerX, y, { align: 'center' });
         y += 7;
 
         // Secretaria
-        doc.setFontSize(10);
+        doc.setFontSize(11);
         doc.setTextColor(...COLORS.textGray);
         doc.setFont('helvetica', 'normal');
         doc.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, y, { align: 'center' });
         y += 13;
 
-        // Calcular campos para determinar altura do card
-        const cardWidth = pageWidth - 120;
-        const cardX = (pageWidth - cardWidth) / 2;
+        // Card mais largo e centralizado na página
+        const pwCover = doc.internal.pageSize.getWidth();
+        const cardWidth = pwCover - 72;
+        const cardX = (pwCover - cardWidth) / 2;
         const ACCENT_W = 4;
-        const inset = 10;
-        const labelWidth = 38;
-        const vMaxW = cardWidth - ACCENT_W - inset * 2 - labelWidth;
-        const ROW_H = 5.5;
-        doc.setFontSize(8);
+        const inset = 11;
+        const labelWidth = 52;
+        const vMaxW = cardWidth - ACCENT_W - inset * 2 - labelWidth - pdfLabelValueGapMm;
+        const ROW_H = pdfCardRowH;
+        const fieldLineStep = pdfCardWrapStep;
+        doc.setFontSize(PDF_CARD_BODY_PT);
         const avaliacaoLines = doc.splitTextToSize(evaluationInfo.titulo || 'N/A', vMaxW);
         const escolaLines = doc.splitTextToSize(getPdfEscolaDisplayText().toUpperCase(), vMaxW);
 
         const fieldRows: Array<{ label: string; lines: string[] }> = [
-          { label: 'CARTÃO:', lines: avaliacaoLines },
+          { label: pdfLabelPrimeiroItem, lines: avaliacaoLines },
           { label: 'MUNICÍPIO:', lines: [evaluationInfo.municipio || 'N/A'] },
           { label: 'ESCOLA:', lines: escolaLines },
           { label: 'SÉRIE:', lines: [resolveSerieDisplayForPdf(studentsToUse)] },
@@ -2494,38 +2507,45 @@ export default function AcertoNiveis({
         });
         fieldRows.push({ label: 'TOTAL DE TURMAS:', lines: [`${turmasMapInitial.size}`] });
 
-        const CARD_TITLE_H = 14;
-        const cardContentH = fieldRows.reduce((sum, f) => sum + Math.max(ROW_H, f.lines.length * (ROW_H - 0.5)), 0);
-        const cardHeight = CARD_TITLE_H + cardContentH + 10;
-        const maxCardY = pageHeight - cardHeight - 12;
-        if (y > maxCardY) y = maxCardY;
+        const CARD_TITLE_H = pdfCardTitleBlockH;
+        const cardContentH = fieldRows.reduce(
+          (sum, f) => sum + Math.max(ROW_H, f.lines.length * fieldLineStep),
+          0
+        );
+        const cardHeight = CARD_TITLE_H + cardContentH + 8;
+        const phCover = doc.internal.pageSize.getHeight();
+        const yCardTop =
+          y + Math.max(0, (phCover - y - 14 - cardHeight) / 2);
+        let yCard = yCardTop;
+        if (yCard + cardHeight > phCover - 12) yCard = phCover - 12 - cardHeight;
+        if (yCard < y) yCard = y;
 
         // Card background + acento lateral roxo + borda
         doc.setFillColor(...COLORS.bgLight);
-        doc.rect(cardX, y, cardWidth, cardHeight, 'F');
+        doc.rect(cardX, yCard, cardWidth, cardHeight, 'F');
         doc.setFillColor(...COLORS.primary);
-        doc.rect(cardX, y, ACCENT_W, cardHeight, 'F');
+        doc.rect(cardX, yCard, ACCENT_W, cardHeight, 'F');
         doc.setDrawColor(...COLORS.borderLight);
         doc.setLineWidth(0.4);
-        doc.rect(cardX, y, cardWidth, cardHeight, 'S');
+        doc.rect(cardX, yCard, cardWidth, cardHeight, 'S');
 
         // Título do card
-        let cardY = y + 8;
+        let cardY = yCard + 9;
         const cardContentCenterX = cardX + ACCENT_W + (cardWidth - ACCENT_W) / 2;
-        doc.setFontSize(10);
+        doc.setFontSize(PDF_CARD_TITLE_PT);
         doc.setTextColor(...COLORS.primary);
         doc.setFont('helvetica', 'bold');
-        doc.text('INFORMAÇÕES DO CARTÃO RESPOSTA', cardContentCenterX, cardY, { align: 'center' });
-        cardY += 6;
+        doc.text(pdfTituloBlocoInformacoes, cardContentCenterX, cardY, { align: 'center' });
+        cardY += PDF_CARD_TITLE_PT * 0.48;
         doc.setDrawColor(...COLORS.borderLight);
         doc.setLineWidth(0.3);
         doc.line(cardX + ACCENT_W + 4, cardY, cardX + cardWidth - 4, cardY);
         cardY += 4;
 
-        // Campos
-        doc.setFontSize(8);
+        // Campos (rótulo | gap | valor)
+        doc.setFontSize(PDF_CARD_BODY_PT);
         const lx = cardX + ACCENT_W + inset;
-        const vx = lx + labelWidth;
+        const vx = lx + labelWidth + pdfLabelValueGapMm;
         for (const field of fieldRows) {
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(...COLORS.primary);
@@ -2533,7 +2553,7 @@ export default function AcertoNiveis({
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(...COLORS.textDark);
           doc.text(field.lines, vx, cardY);
-          cardY += Math.max(ROW_H, field.lines.length * (ROW_H - 0.5));
+          cardY += Math.max(ROW_H, field.lines.length * fieldLineStep);
         }
       };
 
@@ -2556,7 +2576,7 @@ export default function AcertoNiveis({
           doc.addImage(logoDataUrl, 'PNG', centerX - desiredLogoWidth / 2, 7, desiredLogoWidth, desiredLogoHeight);
           logoBottomInBand = 7 + desiredLogoHeight;
         } else {
-          doc.setFontSize(18);
+          doc.setFontSize(20);
           doc.setTextColor(...COLORS.white);
           doc.setFont('helvetica', 'bold');
           doc.text('AFIRME PLAY', centerX, 22, { align: 'center' });
@@ -2567,20 +2587,20 @@ export default function AcertoNiveis({
         const sectionTitleY = Math.max(logoBottomInBand + 5, BAND_H - 14);
         doc.setTextColor(...COLORS.white);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(20);
+        doc.setFontSize(22);
         doc.text('FALTOSOS / PENDENTES', centerX, sectionTitleY, { align: 'center' });
 
         let y = BAND_H + 13;
 
         // Município
-        doc.setFontSize(13);
+        doc.setFontSize(14);
         doc.setTextColor(...COLORS.primary);
         doc.setFont('helvetica', 'bold');
         doc.text(`${evaluationInfo.municipio?.toUpperCase() || 'MUNICÍPIO'} - ALAGOAS`, centerX, y, { align: 'center' });
         y += 7;
 
         // Secretaria
-        doc.setFontSize(10);
+        doc.setFontSize(11);
         doc.setTextColor(...COLORS.textGray);
         doc.setFont('helvetica', 'normal');
         doc.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, y, { align: 'center' });
@@ -2589,7 +2609,7 @@ export default function AcertoNiveis({
         // Nome da turma em destaque
         if (turmaName) {
           const len = (turmaName || '').length;
-          const subtitleSize = len > 28 ? 14 : len > 20 ? 18 : 22;
+          const subtitleSize = len > 28 ? 15 : len > 20 ? 20 : 24;
           doc.setFontSize(subtitleSize);
           doc.setTextColor(...COLORS.primary);
           doc.setFont('helvetica', 'bold');
@@ -2603,56 +2623,64 @@ export default function AcertoNiveis({
           y += 5;
         }
 
-        // Card de estatísticas
-        const cardWidth = pageWidth - 120;
-        const cardHeight = 52;
-        const cardX = (pageWidth - cardWidth) / 2;
+        // Card de estatísticas (alinhado a AcertoNiveis.tsx)
+        const pwF = doc.internal.pageSize.getWidth();
+        const phF = doc.internal.pageSize.getHeight();
+        const cardWidth = pwF - 72;
+        const cardHeight = 56;
+        const cardX = (pwF - cardWidth) / 2;
         const ACCENT_W = 4;
         const minSpaceAtBottom = 20;
-        const maxCardY = pageHeight - cardHeight - minSpaceAtBottom;
-        if (y + cardHeight > maxCardY) y = maxCardY;
+        const yBelowHeader = y;
+        let yCard =
+          yBelowHeader + Math.max(0, (phF - yBelowHeader - minSpaceAtBottom - cardHeight) / 2);
+        if (yCard + cardHeight > phF - minSpaceAtBottom) {
+          yCard = phF - minSpaceAtBottom - cardHeight;
+        }
+        if (yCard < yBelowHeader) yCard = yBelowHeader;
 
         doc.setFillColor(...COLORS.bgLight);
-        doc.rect(cardX, y, cardWidth, cardHeight, 'F');
+        doc.rect(cardX, yCard, cardWidth, cardHeight, 'F');
         doc.setFillColor(...COLORS.primary);
-        doc.rect(cardX, y, ACCENT_W, cardHeight, 'F');
+        doc.rect(cardX, yCard, ACCENT_W, cardHeight, 'F');
         doc.setDrawColor(...COLORS.borderLight);
         doc.setLineWidth(0.4);
-        doc.rect(cardX, y, cardWidth, cardHeight, 'S');
+        doc.rect(cardX, yCard, cardWidth, cardHeight, 'S');
 
-        let cardY = y + 8;
+        let cardY = yCard + 9;
         const cardContentCenterX = cardX + ACCENT_W + (cardWidth - ACCENT_W) / 2;
-        doc.setFontSize(10);
+        doc.setFontSize(PDF_CARD_TITLE_PT);
         doc.setTextColor(...COLORS.primary);
         doc.setFont('helvetica', 'bold');
         doc.text('ESTATÍSTICAS', cardContentCenterX, cardY, { align: 'center' });
-        cardY += 6;
+        cardY += PDF_CARD_TITLE_PT * 0.48;
         doc.setDrawColor(...COLORS.borderLight);
         doc.setLineWidth(0.3);
         doc.line(cardX + ACCENT_W + 4, cardY, cardX + cardWidth - 4, cardY);
-        cardY += 5;
+        cardY += 4;
 
         const leftColX = cardX + ACCENT_W + 12;
-        const labelWidth = 48;
-        doc.setFontSize(8);
+        const labelWidth = 58;
+        const rowStepFalt = pdfCardRowH;
+        doc.setFontSize(PDF_CARD_BODY_PT);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...COLORS.primary);
         doc.text('TOTAL DE FALTOSOS:', leftColX, cardY);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...COLORS.textDark);
-        doc.text(`${totalFaltosos}`, leftColX + labelWidth, cardY);
-        cardY += 5;
+        doc.text(`${totalFaltosos}`, leftColX + labelWidth + pdfLabelValueGapMm, cardY);
+        cardY += rowStepFalt;
 
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...COLORS.primary);
         doc.text('SÉRIE:', leftColX, cardY);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...COLORS.textDark);
-        doc.text(resolveSerieDisplayForPdf(alunosParaSerie), leftColX + labelWidth, cardY);
+        doc.text(resolveSerieDisplayForPdf(alunosParaSerie), leftColX + labelWidth + pdfLabelValueGapMm, cardY);
 
-        const cardBottom = y + cardHeight;
+        const cardBottom = yCard + cardHeight;
         const noteY = cardBottom + 8;
-        doc.setFontSize(8);
+        doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...COLORS.textGray);
         const avisoFaltosos = 'Estes alunos ainda não entregaram ou não tiveram o cartão resposta corrigido.';
@@ -2662,24 +2690,25 @@ export default function AcertoNiveis({
 
       // Função para adicionar capa de turma
       const addTurmaCover = (turmaName: string, alunosTurma: StudentResult[], totalQuestoes?: number) => {
+        const pw = doc.internal.pageSize.getWidth();
+        const ph = doc.internal.pageSize.getHeight();
         doc.setFillColor(...COLORS.white);
-        doc.rect(0, 0, pageWidth, pageHeight, 'F');
-        const centerX = pageWidth / 2;
+        doc.rect(0, 0, pw, ph, 'F');
+        const centerX = pw / 2;
         const BAND_H = 45;
 
-        // Faixa superior roxa (menor para deixar espaço ao nome da turma)
         doc.setFillColor(...COLORS.primary);
-        doc.rect(0, 0, pageWidth, BAND_H, 'F');
+        doc.rect(0, 0, pw, BAND_H, 'F');
 
         // Logo na faixa
         let logoBottomInBand = 0;
         if (logoDataUrl && logoWidth > 0 && logoHeight > 0) {
-          const desiredLogoWidth = 30;
+          const desiredLogoWidth = 33;
           const desiredLogoHeight = (logoHeight * desiredLogoWidth) / logoWidth;
           doc.addImage(logoDataUrl, 'PNG', centerX - desiredLogoWidth / 2, 5, desiredLogoWidth, desiredLogoHeight);
           logoBottomInBand = 5 + desiredLogoHeight;
         } else {
-          doc.setFontSize(16);
+          doc.setFontSize(18);
           doc.setTextColor(...COLORS.white);
           doc.setFont('helvetica', 'bold');
           doc.text('AFIRME PLAY', centerX, 18, { align: 'center' });
@@ -2690,36 +2719,23 @@ export default function AcertoNiveis({
         const sectionTitleY = Math.max(logoBottomInBand + 4, BAND_H - 10);
         doc.setTextColor(...COLORS.white);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(14);
+        doc.setFontSize(15);
         doc.text('ANÁLISE POR TURMA', centerX, sectionTitleY, { align: 'center' });
 
-        let y = BAND_H + 14;
+        const yBelowBand = BAND_H + 14;
 
-        // Nome da turma em destaque
-        const len = (turmaName || '').length;
-        const subtitleSize = len > 28 ? 14 : len > 20 ? 18 : len > 12 ? 22 : 26;
-        doc.setFontSize(subtitleSize);
-        doc.setTextColor(...COLORS.primary);
-        doc.setFont('helvetica', 'bold');
-        const maxWidth = pageWidth - 40;
-        const lines = doc.splitTextToSize(turmaName.toUpperCase(), maxWidth);
-        lines.forEach((line: string, i: number) => {
-          doc.text(line, centerX, y + i * (subtitleSize * 0.5), { align: 'center' });
-        });
-        y += Math.max(18, lines.length * subtitleSize * 0.5) + 8;
-
-        // Card compacto com estatísticas e acento lateral
-        const cardWidth = 148;
-        const cardX = (pageWidth - cardWidth) / 2;
+        const cardWidth = pw - 48;
+        const cardX = (pw - cardWidth) / 2;
         const ACCENT_W = 4;
-        const inset = 7;
-        const labelW = 46;
-        const valueX = cardX + ACCENT_W + inset + labelW;
-        const valueMaxW = cardWidth - ACCENT_W - inset * 2 - labelW;
-        const rowStep = 3.35;
-        const padTop = 4.5;
-        const padBottom = 5;
+        const inset = 8;
+        const labelW = 62;
+        const valueX = cardX + ACCENT_W + inset + labelW + pdfLabelValueGapMm;
+        const valueMaxW = cardWidth - ACCENT_W - inset * 2 - labelW - pdfLabelValueGapMm;
+        const rowStep = pdfCardRowH;
+        const padTop = PDF_CARD_BODY_PT * 0.38;
+        const padBottom = PDF_CARD_BODY_PT * 0.38;
 
+        doc.setFontSize(PDF_CARD_BODY_PT);
         const escolaCapLines = doc.splitTextToSize(getPdfEscolaDisplayText(), valueMaxW);
         const turmaCapLines = doc.splitTextToSize(turmaName || '—', valueMaxW);
 
@@ -2736,13 +2752,25 @@ export default function AcertoNiveis({
         const taxaParticipacao = totalAlunos > 0
           ? ((concluidos.length / totalAlunos) * 100).toFixed(1) : '0.0';
 
-        const bodyH = padTop + 5.5 + 2 + escolaCapLines.length * rowStep + rowStep + turmaCapLines.length * rowStep + 1.5 + 6 * rowStep + padBottom;
+        const titleBlockH = PDF_CARD_TITLE_PT * 0.48 + 4;
+        const bodyH =
+          padTop +
+          titleBlockH +
+          escolaCapLines.length * rowStep +
+          rowStep +
+          turmaCapLines.length * rowStep +
+          PDF_CARD_BODY_PT * 0.28 +
+          6 * rowStep +
+          padBottom;
         const cardHeight = bodyH;
 
         const minSpaceAtBottom = 20;
-        let cardTopY = y;
-        const maxCardY = pageHeight - cardHeight - minSpaceAtBottom;
-        if (cardTopY + cardHeight > maxCardY) cardTopY = maxCardY;
+        let cardTopY =
+          yBelowBand + Math.max(0, (ph - yBelowBand - minSpaceAtBottom - cardHeight) / 2);
+        if (cardTopY + cardHeight > ph - minSpaceAtBottom) {
+          cardTopY = ph - minSpaceAtBottom - cardHeight;
+        }
+        if (cardTopY < yBelowBand) cardTopY = yBelowBand;
 
         doc.setFillColor(...COLORS.bgLight);
         doc.rect(cardX, cardTopY, cardWidth, cardHeight, 'F');
@@ -2755,14 +2783,15 @@ export default function AcertoNiveis({
         const lx = cardX + ACCENT_W + inset;
         let cardY = cardTopY + padTop;
 
-        doc.setFontSize(9);
+        doc.setFontSize(PDF_CARD_TITLE_PT);
         doc.setTextColor(...COLORS.primary);
         doc.setFont('helvetica', 'bold');
         doc.text('ESTATÍSTICAS DA TURMA', cardX + ACCENT_W + (cardWidth - ACCENT_W) / 2, cardY, { align: 'center' });
-        cardY += 5.5 + 2;
+        cardY += PDF_CARD_TITLE_PT * 0.52;
 
-        doc.setFontSize(7);
+        doc.setFontSize(PDF_CARD_BODY_PT);
         const drawLabeledBlock = (label: string, valueLines: string[]) => {
+          doc.setFontSize(PDF_CARD_BODY_PT);
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(...COLORS.primary);
           doc.text(label, lx, cardY);
@@ -2778,9 +2807,10 @@ export default function AcertoNiveis({
         drawLabeledBlock('SÉRIE:', [resolveSerieDisplayForPdf(alunosTurma)]);
         drawLabeledBlock('TURMA:', turmaCapLines);
 
-        cardY += 1.5;
+        cardY += 2;
 
         const drawStatRow = (label: string, value: string) => {
+          doc.setFontSize(PDF_CARD_BODY_PT);
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(...COLORS.primary);
           doc.text(label, lx, cardY);
