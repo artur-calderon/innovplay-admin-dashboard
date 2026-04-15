@@ -237,11 +237,13 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
     if (hasMultipleSeries && !isStacked) {
       const gapIn = xScale(8);
       const seriesW = Math.max(0.02, Math.min(xScale(22), (innerW - gapIn * (chart.valueKeys.length - 1)) / chart.valueKeys.length));
+      const groupW = chart.valueKeys.length * seriesW + gapIn * (chart.valueKeys.length - 1);
+      const groupOffsetX = Math.max(0, (innerW - groupW) / 2);
       chart.valueKeys.forEach((s, sIdx) => {
         const value = Number(row[s.key] ?? 0);
         const barH = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaH;
         const barY = baselineY - barH;
-        const barX = baseXAligned + sIdx * (seriesW + gapIn);
+        const barX = baseXAligned + groupOffsetX + sIdx * (seriesW + gapIn);
         slide.addShape(pptx.ShapeType.rect, {
           x: barX,
           y: barY,

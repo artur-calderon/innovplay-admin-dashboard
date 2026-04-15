@@ -303,11 +303,13 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
     if (hasMultipleSeries && !isStacked) {
       const gap = 8;
       const seriesW = Math.max(7, Math.min(22, (innerW - gap * (chart.valueKeys.length - 1)) / chart.valueKeys.length));
+      const groupW = chart.valueKeys.length * seriesW + gap * (chart.valueKeys.length - 1);
+      const groupOffsetX = Math.max(0, (innerW - groupW) / 2);
       chart.valueKeys.forEach((serie, sIdx) => {
         const value = Number(row[serie.key] ?? 0);
         const barH = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaH;
         const barY = baselineY - barH;
-        const barX = baseX + sIdx * (seriesW + gap);
+        const barX = baseX + groupOffsetX + sIdx * (seriesW + gap);
         const rgb = hexToRgb(serie.color);
         doc.setFillColor(rgb.r, rgb.g, rgb.b);
         doc.roundedRect(barX, barY, seriesW, barH, 4, 4, "F");
