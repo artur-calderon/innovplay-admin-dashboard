@@ -218,9 +218,10 @@ function pdfBulkQuestionMarkIconHalfExtentMm(cellWidth: number, cellHeight: numb
   return Math.max(PDF_BULK_Q_ICON_MIN_MM, Math.min(PDF_BULK_Q_ICON_TARGET_MM, maxHalf));
 }
 
-/** Só coluna “Aluno”: encolhe fonte e padding vertical; a altura da linha segue esse texto. */
-const PDF_BULK_NAME_COL_FONT_MUL = 0.86;
-const PDF_BULK_NAME_COL_PAD_V_MUL = 0.42;
+/** Só coluna “Aluno”: fonte ~igual às demais células + padding; altura da linha segue esse texto. */
+/** Nomes na coluna Aluno: ~100% da fonte dinâmica (antes 0.86 — muito pequeno). */
+const PDF_BULK_NAME_COL_FONT_MUL = 1.0;
+const PDF_BULK_NAME_COL_PAD_V_MUL = 0.55;
 
 /** Altura da linha = 1 linha do nome (ellipsize) + padding vertical — no limite. */
 function pdfBulkBodyRowHeightToMatchNameMm(fontSizePt: number, padVerticalMm: number): number {
@@ -3148,6 +3149,11 @@ export default function AcertoNiveis({
       };
 
       // ===== Funções de gráficos =====
+      const pdfTextColorForBarFill = (r: number, g: number, b: number): [number, number, number] => {
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        return lum > 175 ? [33, 33, 33] : [255, 255, 255];
+      };
+
       const drawClassificationChart = (
         x: number,
         y: number,
@@ -3161,42 +3167,83 @@ export default function AcertoNiveis({
           'Adequado',
           'Avançado',
         ];
-        const concluidos = studentsToUse.filter(s => s.status === 'concluida');
+        const concluidos = studentsToUse.filter((s) => s.status === 'concluida');
         const counts = categorias.map((c) =>
           concluidos.filter((s) => normalizeProficiencyLevelLabel(s.classificacao) === c).length
         );
         const total = Math.max(1, concluidos.length);
-        const barAreaW = w - 80; // espaço para labels e números
-        const topPadding = 10;
-        const availableH = Math.max(1, h - topPadding);
-        const rowStep = availableH / categorias.length;
-        const gap = Math.min(5, Math.max(2, rowStep * 0.2));
-        const barH = Math.max(4, rowStep - gap);
-        doc.setFontSize(9);
-        categorias.forEach((cat, i) => {
-          const count = counts[i];
-          const perc = Math.round((count / total) * 100);
-          const yRow = y + topPadding + i * (barH + gap);
-          // Label
-          doc.setTextColor(60);
-          doc.text(cat, x, yRow + barH / 2, { align: 'left' } as unknown as Record<string, unknown>);
-          // Barra
-          const len = barAreaW * (count / Math.max(...counts, 1));
-          const [r, g, b] = getProficiencyLevelRgb(cat);
-          doc.setFillColor(r, g, b);
-          doc.rect(x + 70, yRow, Math.max(1, len), barH, 'F');
-          // Valor
-          doc.setTextColor(30);
-          doc.text(`${count} (${perc}%)`, x + 72 + Math.max(20, len), yRow + barH / 2, {} as unknown as Record<string, unknown>);
-        });
-        // Título do gráfico
+
+        const titleH = 8;
+        const labelUnderH = 12;
+        const rx = 2;
+        const gap = 4;
+
+        doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
         doc.setTextColor(0);
-        doc.text('Distribuição por Classificação', x, y - 3);
+        doc.text('Distribuição por Classificação', x, y + 5);
+        doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
         doc.setTextColor(70);
-        doc.text(`Participantes: ${concluidos.length}`, x + w, y - 3, { align: 'right' });
+        doc.text(`Participantes: ${concluidos.length}`, x + w, y + 5, { align: 'right' });
+
+        const cardsTop = y + titleH + 2;
+        const cardBlockH = Math.max(24, h - titleH - labelUnderH - 4);
+        const nCards = categorias.length;
+        const cardW = (w - (nCards - 1) * gap) / nCards;
+
+        categorias.forEach((cat, i) => {
+          const count = counts[i];
+          const perc = (count / total) * 100;
+          const percStr = `${perc.toFixed(1)}%`;
+
+          const cardX = x + i * (cardW + gap);
+          const cardY = cardsTop;
+
+          doc.setFillColor(243, 244, 246);
+          doc.roundedRect(cardX, cardY, cardW, cardBlockH, rx, rx, 'F');
+          doc.setDrawColor(214, 214, 214);
+          doc.setLineWidth(0.25);
+          doc.roundedRect(cardX, cardY, cardW, cardBlockH, rx, rx, 'S');
+
+          const pad = 2.5;
+          const innerX = cardX + pad;
+          const innerW = cardW - pad * 2;
+          const innerY = cardY + pad;
+          const innerH = cardBlockH - pad * 2;
+
+          const fillH = Math.max(0, (perc / 100) * innerH);
+          const barBottom = innerY + innerH;
+          const barTop = barBottom - fillH;
+
+          if (fillH > 0.2) {
+            const [br, bg, bb] = getProficiencyLevelRgb(cat);
+            doc.setFillColor(br, bg, bb);
+            doc.rect(innerX, barTop, innerW, fillH, 'F');
+
+            const [tr, tg, tb] = pdfTextColorForBarFill(br, bg, bb);
+            doc.setTextColor(tr, tg, tb);
+            doc.setFont('helvetica', 'bold');
+            const fs = Math.min(10, Math.max(5.5, Math.min(innerW * 0.42, fillH * 0.5)));
+            doc.setFontSize(fs);
+            if (fillH > fs * 0.45) {
+              doc.text(percStr, innerX + innerW / 2, barTop + fillH / 2 + fs * 0.12, { align: 'center' });
+            }
+          }
+
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(40, 40, 40);
+          const line1Y = cardY + cardBlockH + 4;
+          doc.text(`${count} (${percStr})`, cardX + cardW / 2, line1Y, { align: 'center' });
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7);
+          doc.setTextColor(70, 70, 70);
+          doc.text(cat, cardX + cardW / 2, line1Y + 4, { align: 'center' });
+        });
       };
+
+      const PDF_QUESTION_CARD_HEADER_RGB: [number, number, number] = [37, 99, 235];
 
       const drawQuestionAccuracyChart = (
         x: number,
@@ -3207,70 +3254,101 @@ export default function AcertoNiveis({
         studentsToUse: StudentResult[] = students
       ) => {
         if (!qs || qs.length === 0) return;
-        // Recalcular % de acerto usando a mesma regra dos ícones (getAnswer)
-        const completed = studentsToUse.filter(s => s.status === 'concluida');
+        const completed = studentsToUse.filter((s) => s.status === 'concluida');
         const denom = Math.max(1, completed.length);
-        // counts: número absoluto de acertos por questão; values: percentual
-        const counts = qs.map(q => {
+        const counts = qs.map((q) => {
           let correct = 0;
-          completed.forEach(s => { if (getAnswer(s, q.numero)) correct++; });
+          completed.forEach((s) => {
+            if (getAnswer(s, q.numero)) correct++;
+          });
           return correct;
         });
-        const values = counts.map(c => Math.round((c / denom) * 100));
-        // Com muitas questões: garantir altura mínima por linha e largura mínima por barra
-        const minRowHeight = 14;
-        const minBarWidth = 5;
-        const barGap = 2;
-        const areaW = w - 20;
-        const areaH = h - 20;
-        const maxRows = Math.max(1, Math.floor(areaH / minRowHeight));
-        const maxBarsPerRowByHeight = Math.ceil(values.length / maxRows);
-        const maxBarsPerRowByWidth = Math.floor(areaW / (minBarWidth + barGap));
-        const maxBarsPerRow = Math.min(
-          Math.max(8, maxBarsPerRowByHeight),
-          Math.max(8, maxBarsPerRowByWidth)
-        );
-        const chunks: number[][] = [];
-        for (let i = 0; i < values.length; i += maxBarsPerRow) {
-          chunks.push(values.slice(i, i + maxBarsPerRow));
-        }
-        const numChunks = chunks.length;
-        const rowH = numChunks > 0 ? areaH / numChunks : areaH;
+        const values = counts.map((c) => Math.round((c / denom) * 100));
+
+        const pad = 3;
+        const titleH = 7;
+        const areaW = w - 2 * pad;
+        const areaH = Math.max(1, h - titleH - 1);
+        const contentTop = y + titleH;
+
+        doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
         doc.setTextColor(0);
-        doc.text('Acerto por Questão (%)', x, y - 3);
-        chunks.forEach((vals, rowIndex) => {
-          const chartTop = y + rowIndex * rowH;
-          const chartBottom = chartTop + rowH - 6;
-          const chartHeight = Math.max(4, chartBottom - chartTop - 10);
-          const barW = Math.max(4, Math.min(16, Math.floor(areaW / vals.length) - barGap));
-          // Grid
-          doc.setDrawColor(220);
-          [0, 50, 100].forEach(p => {
-            const yy = chartBottom - (p / 100) * chartHeight;
-            doc.line(x + 8, yy, x + w - 8, yy);
-            doc.setFontSize(7);
-            doc.setTextColor(100);
-            doc.text(`${p}%`, x + 2, yy + 2);
-          });
-          // Barras
-          vals.forEach((v, idx) => {
-            const barX = x + 10 + idx * (barW + barGap);
-            const barH = (v / 100) * chartHeight;
-            const yy = chartBottom - barH;
-            const color = v >= 60 ? [22, 163, 74] : [239, 68, 68];
-            doc.setFillColor(color[0], color[1], color[2]);
-            doc.rect(barX, yy, barW, barH, 'F');
-            const globalIndex = rowIndex * maxBarsPerRow + idx;
-            const qNum = qs[globalIndex]?.numero ?? globalIndex + 1;
-            doc.setFontSize(7);
-            doc.setTextColor(60);
-            doc.text(`Q${qNum}`, barX + barW / 2, chartBottom + 4, { align: 'center' });
-            const absoluteCorrect = counts[globalIndex] ?? 0;
-            doc.setTextColor(30);
-            doc.text(String(absoluteCorrect), barX + barW / 2, Math.max(chartTop + 2, yy - 1), { align: 'center' });
-          });
-        });
+        doc.text('Acerto por Questão', x + pad, y + 4);
+
+        const gapX = 2.5;
+        const gapY = 3;
+        const n = values.length;
+        const minCardW = 6.2;
+        const minCardH = 7;
+
+        let colsPerRow = 4;
+        let rows = Math.ceil(n / colsPerRow);
+        let cardW = (areaW - (colsPerRow - 1) * gapX) / colsPerRow;
+        let cardH = (areaH - Math.max(0, rows - 1) * gapY) / Math.max(1, rows);
+        let layoutOk = false;
+        for (let c = Math.min(20, Math.max(4, n)); c >= 4; c--) {
+          const r = Math.ceil(n / c);
+          const cw = (areaW - (c - 1) * gapX) / c;
+          const ch = (areaH - Math.max(0, r - 1) * gapY) / Math.max(1, r);
+          if (cw >= minCardW && ch >= minCardH) {
+            colsPerRow = c;
+            rows = r;
+            cardW = cw;
+            cardH = ch;
+            layoutOk = true;
+            break;
+          }
+        }
+        if (!layoutOk) {
+          colsPerRow = Math.min(20, Math.max(4, n));
+          rows = Math.ceil(n / colsPerRow);
+          cardW = (areaW - (colsPerRow - 1) * gapX) / colsPerRow;
+          cardH = Math.max(5, (areaH - Math.max(0, rows - 1) * gapY) / Math.max(1, rows));
+        }
+
+        const greenBg: [number, number, number] = [22, 163, 74];
+        const redBg: [number, number, number] = [239, 68, 68];
+
+        let idx = 0;
+        for (let row = 0; row < rows; row++) {
+          const rowY = contentTop + row * (cardH + gapY);
+          for (let col = 0; col < colsPerRow && idx < n; col++, idx++) {
+            const v = values[idx];
+            const qNum = qs[idx]?.numero ?? idx + 1;
+            const cardX = x + pad + col * (cardW + gapX);
+            const headH = Math.max(4, Math.min(cardH * 0.26, 6));
+            const pctBandH = cardH - headH;
+
+            doc.setDrawColor(220);
+            doc.setLineWidth(0.2);
+            doc.setFillColor(255, 255, 255);
+            doc.rect(cardX, rowY, cardW, cardH, 'FD');
+
+            const [hr, hg, hb] = PDF_QUESTION_CARD_HEADER_RGB;
+            doc.setFillColor(hr, hg, hb);
+            doc.rect(cardX, rowY, cardW, headH, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'bold');
+            const headFs = Math.min(11, Math.max(7, cardW * 0.48));
+            doc.setFontSize(headFs);
+            doc.text(`${qNum}ª Q`, cardX + cardW / 2, rowY + headH * 0.64, { align: 'center' });
+
+            const ok = v >= 60;
+            const [pr, pg, pb] = ok ? greenBg : redBg;
+            doc.setFillColor(pr, pg, pb);
+            doc.rect(cardX, rowY + headH, cardW, pctBandH, 'F');
+            doc.setTextColor(255, 255, 255);
+            const pctFs = Math.min(
+              14,
+              Math.max(8, Math.min(cardW * 0.52, pctBandH * 0.58))
+            );
+            doc.setFontSize(pctFs);
+            doc.text(`${v}%`, cardX + cardW / 2, rowY + headH + pctBandH / 2 + pctFs * 0.11, {
+              align: 'center',
+            });
+          }
+        }
       };
 
       // Função para gerar página de resumo para uma turma específica
@@ -3425,7 +3503,7 @@ export default function AcertoNiveis({
           const dynamicFontSize = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_FONT(numCols));
           const bulkPadH = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_CELL_PAD_H(numCols));
           const bulkPadV = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_CELL_PAD_V(numCols));
-          const nameColFont = Math.max(scalePdfTable(0.78), dynamicFontSize * PDF_BULK_NAME_COL_FONT_MUL);
+          const nameColFont = Math.max(scalePdfTable(0.88), dynamicFontSize * PDF_BULK_NAME_COL_FONT_MUL);
           // Fonte mínima de 6pt para que getStringUnitWidth meça algo legível
           const nameBodyFont = Math.max(6, nameColFont);
           const namePadV = bulkPadV * PDF_BULK_NAME_COL_PAD_V_MUL;
@@ -3712,7 +3790,11 @@ export default function AcertoNiveis({
         const classificationChartMinH = 40;
         const classificationChartH = Math.max(classificationChartMinH, Math.floor(chartsHeight * 0.38));
         const questionChartStartY = chartsTop + classificationChartH + 4;
-        const questionChartH = Math.max(20, pageHeight - questionChartStartY - margin - 6);
+        const CHART_FOOTER_CLEAR_MM = 14;
+        const questionChartH = Math.max(
+          20,
+          pageHeight - questionChartStartY - margin - CHART_FOOTER_CLEAR_MM
+        );
         drawClassificationChart(chartsLeft, chartsTop, chartsWidth, classificationChartH, alunosTurma);
         const qsAll = sortQuestoes(questoesParaUsar);
         drawQuestionAccuracyChart(chartsLeft, questionChartStartY, chartsWidth, questionChartH, qsAll, alunosTurma);
@@ -3860,7 +3942,7 @@ export default function AcertoNiveis({
             const dynamicFontSize = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_FONT(numColsDisc));
             const bulkPadHDisc = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_CELL_PAD_H(numColsDisc));
             const bulkPadVDisc = scaleDetailTableExtra(PDF_BULK_LANDSCAPE_CELL_PAD_V(numColsDisc));
-            const nameColFontDisc = Math.max(scalePdfTable(0.78), dynamicFontSize * PDF_BULK_NAME_COL_FONT_MUL);
+            const nameColFontDisc = Math.max(scalePdfTable(0.88), dynamicFontSize * PDF_BULK_NAME_COL_FONT_MUL);
             // Fonte mínima de 6pt para que getStringUnitWidth meça algo legível
             const nameBodyFontDisc = Math.max(6, nameColFontDisc);
             const namePadVDisc = bulkPadVDisc * PDF_BULK_NAME_COL_PAD_V_MUL;
