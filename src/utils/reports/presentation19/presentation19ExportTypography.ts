@@ -32,8 +32,10 @@ export const P19_TABLE_CELL_PADDING_PX = 8;
 /** Indicador "Página x/y" */
 export const P19_PAGE_INDICATOR_FONT_PX = 13;
 
-/** Gráfico de barras horizontais: largura reservada para rótulo da categoria */
-export const P19_HORIZONTAL_CHART_LABEL_WIDTH_PX = 168;
+/** Gráfico de barras horizontais: largura reservada para rótulo da categoria.
+ * Aumentado para evitar que as barras “entrem” na área do texto em labels longos.
+ */
+export const P19_HORIZONTAL_CHART_LABEL_WIDTH_PX = 230;
 
 /** Referência de tamanho do gráfico no conteúdo (largura × altura em px) — alinhada ao PDF */
 export const P19_CHART_REF_W_PX = 1043;
@@ -46,10 +48,10 @@ export const P19_COVER_MAIN_VALUE_PX = 30;
 
 /** Capa escola (uma escola) */
 export const P19_COVER_SCHOOL_SINGLE_PX = 46;
-export const P19_COVER_SCHOOL_MULTI_HEADER_PX = 22;
-/** Lista de escolas (preview: >14 itens 17px, senão 24px) */
-export const P19_COVER_SCHOOL_LIST_SMALL_PX = 17;
-export const P19_COVER_SCHOOL_LIST_LARGE_PX = 24;
+export const P19_COVER_SCHOOL_MULTI_HEADER_PX = 26;
+/** Lista de escolas (quanto mais escolas, menor a fonte). */
+export const P19_COVER_SCHOOL_LIST_SMALL_PX = 22;
+export const P19_COVER_SCHOOL_LIST_LARGE_PX = 30;
 
 /** Métrica alunos */
 export const P19_METRIC_HEADER_PX = 30;
@@ -71,9 +73,9 @@ export const P19_THANK_YOU_FONT_PX = 64;
 /** Eixo / rótulos de gráfico (preview `BarChartPreview`) */
 export const P19_CHART_AXIS_TICK_PX = 9;
 export const P19_CHART_CATEGORY_LABEL_PX = 10;
-export const P19_CHART_BAR_VALUE_TOP_PX = 8;
+export const P19_CHART_BAR_VALUE_TOP_PX = 14;
 export const P19_CHART_H_BAR_LABEL_PX = 11;
-export const P19_CHART_H_BAR_VALUE_PX = 10;
+export const P19_CHART_H_BAR_VALUE_PX = 15;
 
 /** Altura de linha relativa ao tamanho da fonte (jsPDF) */
 export function p19PdfLineHeightPx(fontSizePx: number): number {

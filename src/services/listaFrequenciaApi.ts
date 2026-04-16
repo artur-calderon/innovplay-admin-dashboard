@@ -59,6 +59,44 @@ export async function getListaFrequenciaPorAvaliacaoTodasTurmas(
   return data.turmas.map((t) => ({ cabecalho: t.cabecalho, estudantes: t.estudantes }));
 }
 
+/**
+ * Lista de frequência para cartão resposta (gabarito). P/A conforme AnswerSheetResult.
+ * GET /lista-frequencia/?gabarito_id=...&city_id=... [&class_id=...] [&grade_id=...] [&tipo=...]
+ * - Uma turma: gabarito_id + city_id + class_id.
+ * - Várias turmas (sem class_id): resposta { turmas: [...] } — use getListaFrequenciaPorGabaritoTodasTurmas.
+ */
+export async function getListaFrequenciaPorGabarito(
+  gabaritoId: string,
+  cityId: string,
+  classId?: string,
+  options?: { grade_id?: string; tipo?: TipoListaFrequencia }
+): Promise<ListaFrequenciaResponse> {
+  const params: Record<string, string> = { gabarito_id: gabaritoId, city_id: cityId };
+  if (classId) params.class_id = classId;
+  if (options?.grade_id) params.grade_id = options.grade_id;
+  if (options?.tipo) params.tipo = options.tipo;
+  const response = await api.get<ListaFrequenciaResponse>('lista-frequencia/', { params });
+  return response.data;
+}
+
+/**
+ * Todas as turmas do cartão (gabarito) numa única chamada.
+ * GET /lista-frequencia/?gabarito_id=...&city_id=... [&grade_id=...] [&tipo=...]
+ */
+export async function getListaFrequenciaPorGabaritoTodasTurmas(
+  gabaritoId: string,
+  cityId: string,
+  options?: { grade_id?: string; tipo?: TipoListaFrequencia }
+): Promise<ListaFrequenciaResponse[]> {
+  const params: Record<string, string> = { gabarito_id: gabaritoId, city_id: cityId };
+  if (options?.grade_id) params.grade_id = options.grade_id;
+  if (options?.tipo) params.tipo = options.tipo;
+  const response = await api.get<ListaFrequenciaTurmasResponse>('lista-frequencia/', { params });
+  const data = response.data;
+  if (!data?.turmas || !Array.isArray(data.turmas)) return [];
+  return data.turmas.map((t) => ({ cabecalho: t.cabecalho, estudantes: t.estudantes }));
+}
+
 /** @deprecated Use getListaFrequenciaPorTurma ou getListaFrequenciaPorAvaliacao. */
 export async function getListaFrequencia(
   classId: string,

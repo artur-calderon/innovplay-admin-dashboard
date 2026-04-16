@@ -10,6 +10,15 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Download, FileText, RefreshCw, Filter, BookOpen, Calculator, LineChart, Trophy, GraduationCap } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -120,6 +129,37 @@ interface ProficiencyDistribution {
   bars: Array<{ label: string; value: number; quantidade: number }>;
   /** Nome da disciplina para buscar descrições dos níveis (mesma lógica de niveisEscolares) */
   disciplinaNome?: string;
+  /** Listas de alunos para modal/PDF (sem novas rotas no backend). */
+  alunosParticipantes?: Array<{
+    id?: string;
+    aluno_id?: string;
+    nome?: string;
+    escola?: string;
+    serie?: string;
+    turma?: string;
+    proficiencia?: number;
+  }>;
+  alunosFaltosos?: Array<{
+    id?: string;
+    aluno_id?: string;
+    nome?: string;
+    escola?: string;
+    serie?: string;
+    turma?: string;
+    proficiencia?: number;
+  }>;
+  alunosPorNivel?: Record<
+    number,
+    Array<{
+      id?: string;
+      aluno_id?: string;
+      nome?: string;
+      escola?: string;
+      serie?: string;
+      turma?: string;
+      proficiencia?: number;
+    }>
+  >;
 }
 
 const formatAverage = (value?: number, decimals = 1) => {
@@ -872,6 +912,14 @@ export default function RelatorioEscolar({
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [selectedSchoolInfo, setSelectedSchoolInfo] = useState<{ id: string; name: string } | null>(null);
+  const [studentsModalOpen, setStudentsModalOpen] = useState(false);
+  const [studentsModalDisciplina, setStudentsModalDisciplina] = useState<string>("");
+  const [studentsModalNivel, setStudentsModalNivel] = useState<number | null>(null);
+  const [studentsModalData, setStudentsModalData] = useState<{
+    participantes: Array<{ nome?: string; escola?: string; serie?: string; turma?: string; id?: string; aluno_id?: string }>;
+    faltosos: Array<{ nome?: string; escola?: string; serie?: string; turma?: string; id?: string; aluno_id?: string }>;
+    porNivel: Record<number, Array<{ nome?: string; escola?: string; serie?: string; turma?: string; id?: string; aluno_id?: string }>>;
+  }>({ participantes: [], faltosos: [], porNivel: {} });
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -1048,6 +1096,27 @@ export default function RelatorioEscolar({
           return true;
         });
 
+        // Faltosos/não participantes: tudo que veio na API e não passou no filtro de participação.
+        const participantesKey = new Set<string>();
+        const alunoKey = (a: { id?: string; aluno_id?: string; nome?: string; turma?: string; serie?: string; escola?: string }) => {
+          const id = alunoRowId(a);
+          if (id) return id;
+          return `${(a.nome ?? "").trim()}|${(a.turma ?? "").trim()}|${(a.serie ?? "").trim()}|${(a.escola ?? "").trim()}`.trim();
+        };
+        for (const a of alunosParticipantes as Array<{ id?: string; aluno_id?: string; nome?: string; turma?: string; serie?: string; escola?: string }>) {
+          const k = alunoKey(a);
+          if (k) participantesKey.add(k);
+        }
+        const alunosFaltosos = (disciplinaData.alunos as Array<{ id?: string; aluno_id?: string; nome?: string; turma?: string; serie?: string; escola?: string; proficiencia?: number }>)
+          .filter((a) => {
+            const k = alunoKey(a);
+            if (!k) return true;
+            return !participantesKey.has(k);
+          });
+
+        const alunosPorNivel: Record<number, Array<{ id?: string; aluno_id?: string; nome?: string; escola?: string; serie?: string; turma?: string; proficiencia?: number }>> = {};
+        for (let i = 0; i <= maxLevel; i++) alunosPorNivel[i] = [];
+
         // ✅ MELHORADO: Classificar cada aluno participante por nível usando validação rigorosa
         alunosParticipantes.forEach((aluno) => {
           const proficiencia = Number(aluno.proficiencia);
@@ -1065,6 +1134,7 @@ export default function RelatorioEscolar({
           
           if (nivel >= 0 && nivel <= maxLevel) {
             contagemPorNivel[nivel] = (contagemPorNivel[nivel] || 0) + 1;
+            (alunosPorNivel[nivel] ||= []).push(aluno);
           }
         });
 
@@ -1110,11 +1180,60 @@ export default function RelatorioEscolar({
             { label: scopeLabel, data: percentuaisPorNivel }
           ],
           bars,
-          disciplinaNome: nomeDisciplina
+          disciplinaNome: nomeDisciplina,
+          alunosParticipantes,
+          alunosFaltosos,
+          alunosPorNivel,
         };
       })
       .filter((item): item is ProficiencyDistribution & { disciplinaNome: string } => item !== null);
   }, [apiData, isAnswerSheetAgregados, isMunicipalView]);
+
+  const formatAlunoLine = useCallback(
+    (aluno: { nome?: string; turma?: string; serie?: string; escola?: string }) => {
+      const nome = (aluno.nome ?? "").trim() || "—";
+      const turma = (aluno.turma ?? "").trim();
+      const serie = (aluno.serie ?? "").trim();
+      const escola = (aluno.escola ?? "").trim();
+      const meta = [turma && `Turma ${turma}`, serie && `Série ${serie}`, escola && escola]
+        .filter(Boolean)
+        .join(" — ");
+      return meta ? `${nome} — ${meta}` : nome;
+    },
+    []
+  );
+
+  const openStudentsModalForDistribution = useCallback(
+    (distribution: ProficiencyDistribution, nivel: number | null) => {
+      const disc = (distribution.disciplinaNome ?? "").trim() || "Disciplina";
+      setStudentsModalDisciplina(disc);
+      setStudentsModalNivel(nivel);
+      setStudentsModalData({
+        participantes: (distribution.alunosParticipantes ?? []) as Array<{
+          nome?: string;
+          escola?: string;
+          serie?: string;
+          turma?: string;
+          id?: string;
+          aluno_id?: string;
+        }>,
+        faltosos: (distribution.alunosFaltosos ?? []) as Array<{
+          nome?: string;
+          escola?: string;
+          serie?: string;
+          turma?: string;
+          id?: string;
+          aluno_id?: string;
+        }>,
+        porNivel: (distribution.alunosPorNivel ?? {}) as Record<
+          number,
+          Array<{ nome?: string; escola?: string; serie?: string; turma?: string; id?: string; aluno_id?: string }>
+        >,
+      });
+      setStudentsModalOpen(true);
+    },
+    []
+  );
 
   // Estados dos dados dos filtros (movidos para FilterComponentAnalise)
 
@@ -3331,87 +3450,76 @@ export default function RelatorioEscolar({
             doc.text(bar.label, barX + actualBarWidth / 2, chartStartY + chartHeight + 5, { align: 'center' });
           });
 
-          // Descrição do Nível - O estudante provavelmente é capaz de (no PDF),
-          // em layout compacto logo abaixo do gráfico. Mostra níveis de 0 até o maior nível com alunos.
-          const cursoPdf = inferirCursoFromApiData(apiData);
-          const maxLevelWithStudentsPdf =
-            distribution.bars.length > 0
-              ? distribution.bars.reduce(
-                  (max, bar, idx) => ((bar.quantidade ?? 0) > 0 ? Math.max(max, idx) : max),
-                  -1
-                )
-              : -1;
-          const serieParaDescricaoPdf = inferirSerieParaDescricao(apiData);
-          const descricoesPdf = distribution.disciplinaNome && maxLevelWithStudentsPdf >= 0
-            ? obterDescricoesNiveis(cursoPdf, distribution.disciplinaNome, serieParaDescricaoPdf).filter(
-                (d) => d.level <= maxLevelWithStudentsPdf
-              )
-            : [];
+          // Lista de alunos por nível (participantes) — padrão similar ao "Mapa de Habilidades".
+          const alunosPorNivelPdf = (distribution.alunosPorNivel ?? {}) as Record<
+            number,
+            Array<{ nome?: string; escola?: string; serie?: string; turma?: string }>
+          >;
+          const levelsWithStudentsPdf = Object.keys(alunosPorNivelPdf)
+            .map((k) => Number(k))
+            .filter((n) => Number.isFinite(n) && (alunosPorNivelPdf[n]?.length ?? 0) > 0)
+            .sort((a, b) => a - b);
 
-          if (descricoesPdf.length > 0) {
-            const lineHeight = 3.6;
-            const paddingVertical = 3;
-            const gapBetweenBlocks = 0;
-            const headerDescHeight = 6;
-            const descWidth = pageWidth - 2 * margin;
-            const textPadding = 3;
-
-            const drawDescSectionHeader = (y: number) => {
-              doc.setFillColor(r, g, b);
-              doc.rect(margin, y, descWidth, headerDescHeight, 'F');
-              doc.setFont('helvetica', 'bold');
-              doc.setFontSize(8);
-              doc.setTextColor(255, 255, 255);
-              doc.text(
-                'Descrição do Nível - O estudante provavelmente é capaz de:',
-                pageWidth / 2,
-                y + headerDescHeight - 1.5,
-                { align: 'center', maxWidth: descWidth - 4 }
-              );
-              doc.setFont('helvetica', 'normal');
-              doc.setFontSize(7.5);
-              doc.setTextColor(31, 41, 55);
-            };
-
-            let yDesc = chartStartY + chartHeight + 12;
-            if (yDesc > pageHeight - 50) {
+          if (levelsWithStudentsPdf.length > 0) {
+            let yList = chartStartY + chartHeight + 14;
+            if (yList > pageHeight - 60) {
               addFooter(pageCount);
               doc.addPage();
               pageCount++;
-              yDesc = addHeader() + 6;
+              yList = addHeader() + 6;
             }
-            drawDescSectionHeader(yDesc);
-            yDesc += headerDescHeight + 3;
 
-            const combinedDescription = descricoesPdf.map((d) => d.description).join(' ');
-            let lines = doc.splitTextToSize(combinedDescription, descWidth - 2 * textPadding);
+            const sectionW = pageWidth - 2 * margin;
+            const headerH = 7;
+            doc.setFillColor(r, g, b);
+            doc.rect(margin, yList, sectionW, headerH, "F");
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(9);
+            doc.setTextColor(255, 255, 255);
+            doc.text("Alunos participantes por nível de proficiência", pageWidth / 2, yList + 5, {
+              align: "center",
+              maxWidth: sectionW - 6,
+            });
+            yList += headerH + 4;
 
-            while (lines.length > 0) {
-              const spaceLeft = pageHeight - 22 - yDesc;
-              const linesThatFit = Math.floor(spaceLeft / lineHeight);
-              if (linesThatFit <= 0) {
+            for (const nivel of levelsWithStudentsPdf) {
+              const list = alunosPorNivelPdf[nivel] ?? [];
+              const title = `Nível ${nivel} (${list.length})`;
+              doc.setFont("helvetica", "bold");
+              doc.setFontSize(9);
+              doc.setTextColor(31, 41, 55);
+              if (yList > pageHeight - 35) {
                 addFooter(pageCount);
                 doc.addPage();
                 pageCount++;
-                yDesc = addHeader() + 6;
-                drawDescSectionHeader(yDesc);
-                yDesc += headerDescHeight + 3;
-                continue;
+                yList = addHeader() + 6;
               }
+              doc.text(title, margin, yList);
+              yList += 3;
 
-              const chunk = lines.slice(0, Math.min(lines.length, linesThatFit));
-              lines = lines.slice(chunk.length);
-              const chunkHeight = chunk.length * lineHeight + paddingVertical * 2;
-
-              doc.setFillColor(255, 255, 255);
-              // Apenas preenchimento para manter o texto contínuo (sem "blocos" separados).
-              doc.rect(margin, yDesc, descWidth, chunkHeight, 'F');
-              doc.text(chunk, margin + textPadding, yDesc + textPadding + 2, {
-                maxWidth: descWidth - 2 * textPadding,
-                lineHeightFactor: 1.35
+              autoTable(doc, {
+                startY: yList,
+                margin: { left: margin, right: margin },
+                head: [["Nome", "Turma"]],
+                body:
+                  list.length > 0
+                    ? list.map((a) => [
+                        String(a.nome ?? "—").trim() || "—",
+                        String(a.turma ?? "—").trim() || "—",
+                      ])
+                    : [["—", "—"]],
+                theme: "grid",
+                styles: { fontSize: 7.5, cellPadding: 2, textColor: [31, 41, 55] },
+                headStyles: { fillColor: [243, 244, 246], textColor: [31, 41, 55], fontStyle: "bold" },
+                columnStyles: {
+                  0: { cellWidth: sectionW - 40, halign: "left" },
+                  1: { cellWidth: 40, halign: "center" },
+                },
+                pageBreak: "auto",
               });
 
-              yDesc += chunkHeight + gapBetweenBlocks;
+              const finalY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
+              yList = (typeof finalY === "number" ? finalY : yList) + 6;
             }
           }
 
@@ -3708,6 +3816,215 @@ export default function RelatorioEscolar({
 
   return (
     <div className="w-full min-w-0 space-y-6">
+      <Dialog open={studentsModalOpen} onOpenChange={setStudentsModalOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>
+              <div className="flex flex-wrap items-center gap-2">
+                <span>Alunos</span>
+                <Badge variant="secondary" className="font-semibold">
+                  {studentsModalDisciplina}
+                </Badge>
+                {studentsModalNivel != null ? (
+                  <Badge variant="outline" className="font-semibold">
+                    Nível {studentsModalNivel}
+                  </Badge>
+                ) : null}
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+
+          {(() => {
+            const StudentRow = ({
+              aluno,
+              tone,
+            }: {
+              aluno: { nome?: string; escola?: string; serie?: string; turma?: string };
+              tone?: "default" | "danger";
+            }) => {
+              const nome = (aluno.nome ?? "").trim() || "—";
+              const turma = (aluno.turma ?? "").trim();
+              const serie = (aluno.serie ?? "").trim();
+              const escola = (aluno.escola ?? "").trim();
+              const toneCls =
+                tone === "danger"
+                  ? "border-red-200 bg-red-50/60 dark:border-red-900/40 dark:bg-red-950/20"
+                  : "border-border bg-card";
+
+              const tagClsBase =
+                "text-[11px] font-semibold px-2 py-0.5 rounded-md border";
+              const tagCls =
+                tone === "danger"
+                  ? "border-red-200 text-red-700 bg-white/60 dark:border-red-900/40 dark:text-red-300 dark:bg-red-950/20"
+                  : "border-border text-muted-foreground bg-background";
+
+              return (
+                <div className={cn("rounded-lg border p-3", toneCls)}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-foreground truncate">
+                        {nome}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {turma ? (
+                          <span className={cn(tagClsBase, tagCls)}>Turma {turma}</span>
+                        ) : null}
+                        {serie ? (
+                          <span className={cn(tagClsBase, tagCls)}>Série {serie}</span>
+                        ) : null}
+                        {escola ? (
+                          <span className={cn(tagClsBase, tagCls)}>{escola}</span>
+                        ) : null}
+                        {!turma && !serie && !escola ? (
+                          <span className={cn(tagClsBase, tagCls)}>Sem metadados</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            };
+
+            const SectionHeader = ({
+              title,
+              subtitle,
+              right,
+            }: {
+              title: string;
+              subtitle?: string;
+              right?: React.ReactNode;
+            }) => (
+              <div className="flex items-end justify-between gap-3">
+                <div className="space-y-0.5">
+                  <div className="text-sm font-semibold text-foreground">{title}</div>
+                  {subtitle ? (
+                    <div className="text-xs text-muted-foreground">{subtitle}</div>
+                  ) : null}
+                </div>
+                {right ? <div className="shrink-0">{right}</div> : null}
+              </div>
+            );
+
+            return (
+          <Tabs defaultValue="por-nivel">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="por-nivel">Por nível</TabsTrigger>
+              <TabsTrigger value="participantes">Participantes</TabsTrigger>
+              <TabsTrigger value="faltosos">Faltosos</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="por-nivel" className="mt-4">
+              <ScrollArea className="h-[60vh] pr-4">
+                <div className="space-y-4">
+                  {(() => {
+                    const entries = Object.entries(studentsModalData.porNivel ?? {})
+                      .map(([k, v]) => [Number(k), v] as const)
+                      .filter(([n, v]) => Number.isFinite(n) && Array.isArray(v) && v.length > 0)
+                      .sort(([a], [b]) => a - b);
+
+                    const filtered = studentsModalNivel != null
+                      ? entries.filter(([n]) => n === studentsModalNivel)
+                      : entries;
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+                          Nenhuma lista por nível disponível.
+                        </div>
+                      );
+                    }
+
+                    return filtered.map(([nivel, alunos], i) => (
+                      <div key={`nivel-${nivel}`} className="rounded-xl border border-border bg-card p-4">
+                        <SectionHeader
+                          title={`Nível ${nivel}`}
+                          subtitle="Alunos participantes classificados neste nível"
+                          right={
+                            <Badge variant="secondary" className="font-semibold">
+                              {alunos.length} alunos
+                            </Badge>
+                          }
+                        />
+                        <Separator className="my-3" />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {alunos
+                            .slice()
+                            .sort((a, b) => String(a.nome ?? "").localeCompare(String(b.nome ?? ""), "pt-BR"))
+                            .map((a, idx) => (
+                              <StudentRow key={`${String(a.id ?? a.aluno_id ?? idx)}-n${nivel}`} aluno={a} />
+                            ))}
+                        </div>
+                        {i < filtered.length - 1 && <div className="h-2" />}
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </ScrollArea>
+            </TabsContent>            
+
+            <TabsContent value="participantes" className="mt-4">
+              <ScrollArea className="h-[60vh] pr-4">
+                <div className="space-y-3">
+                  <SectionHeader
+                    title="Participantes"
+                    subtitle="Alunos considerados participantes (com respostas/dados válidos)"
+                    right={
+                      <Badge variant="secondary" className="font-semibold">
+                        {studentsModalData.participantes.length}
+                      </Badge>
+                    }
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {(studentsModalData.participantes ?? [])
+                      .slice()
+                      .sort((a, b) => String(a.nome ?? "").localeCompare(String(b.nome ?? ""), "pt-BR"))
+                      .map((a, idx) => (
+                        <StudentRow key={`${String(a.id ?? a.aluno_id ?? idx)}-p`} aluno={a} />
+                      ))}
+                  </div>
+                  {(studentsModalData.participantes ?? []).length === 0 && (
+                    <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+                      Nenhum aluno participante encontrado.
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </TabsContent>
+
+            <TabsContent value="faltosos" className="mt-4">
+              <ScrollArea className="h-[60vh] pr-4">
+                <div className="space-y-3">
+                  <SectionHeader
+                    title="Faltosos"
+                    subtitle="Alunos presentes na base, mas fora do critério de participação"
+                    right={
+                      <Badge variant="destructive" className="font-semibold">
+                        {studentsModalData.faltosos.length}
+                      </Badge>
+                    }
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {(studentsModalData.faltosos ?? [])
+                      .slice()
+                      .sort((a, b) => String(a.nome ?? "").localeCompare(String(b.nome ?? ""), "pt-BR"))
+                      .map((a, idx) => (
+                        <StudentRow key={`${String(a.id ?? a.aluno_id ?? idx)}-f`} aluno={a} tone="danger" />
+                      ))}
+                  </div>
+                  {(studentsModalData.faltosos ?? []).length === 0 && (
+                    <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+                      Nenhum aluno faltoso encontrado.
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </TabsContent>
+          </Tabs>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
       {!hidePageHeading && (
         <>
           {/* Header — mobile: título/desc alinhados, badge centralizado abaixo */}
@@ -4352,7 +4669,19 @@ export default function RelatorioEscolar({
                                         <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
                                           {bar.quantidade || 0} {bar.quantidade === 1 ? 'aluno' : 'alunos'}
                                         </span>
-                                        <div className="flex h-40 w-full max-w-[60px] mx-auto items-end justify-center rounded-t-lg bg-muted">
+                                        <div
+                                          className="flex h-40 w-full max-w-[60px] mx-auto items-end justify-center rounded-t-lg bg-muted cursor-pointer"
+                                          role="button"
+                                          tabIndex={0}
+                                          onClick={() => openStudentsModalForDistribution(distribution, index)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter" || e.key === " ") {
+                                              e.preventDefault();
+                                              openStudentsModalForDistribution(distribution, index);
+                                            }
+                                          }}
+                                          aria-label={`Ver lista de alunos do ${bar.label}`}
+                                        >
                                           <div
                                             className="w-full rounded-t-lg transition-all"
                                             style={{
@@ -4375,37 +4704,6 @@ export default function RelatorioEscolar({
                         </div>
                       </div>
 
-                      {/* Descrição do Nível - O estudante provavelmente é capaz de: (do nível 0 até o maior nível com alunos) */}
-                      {distribution.disciplinaNome && (() => {
-                        const curso = inferirCursoFromApiData(apiData);
-                        const serieParaDescricao = inferirSerieParaDescricao(apiData);
-                        const descricoes = obterDescricoesNiveis(curso, distribution.disciplinaNome!, serieParaDescricao);
-                        const maxLevelWithStudents = distribution.bars.length > 0
-                          ? distribution.bars.reduce(
-                              (max, bar, idx) => ((bar.quantidade ?? 0) > 0 ? Math.max(max, idx) : max),
-                              -1
-                            )
-                          : -1;
-                        const descricoesAteMax = maxLevelWithStudents >= 0
-                          ? descricoes.filter((d) => d.level <= maxLevelWithStudents)
-                          : [];
-                        if (descricoesAteMax.length === 0) return null;
-                        return (
-                          <div className="mt-8 rounded-lg overflow-hidden border border-border">
-                            <div
-                              className="px-4 py-3 text-center"
-                              style={{ backgroundColor: distribution.color }}
-                            >
-                              <h4 className="text-sm font-bold text-white uppercase tracking-wide">
-                                Descrição do Nível - O estudante provavelmente é capaz de:
-                              </h4>
-                            </div>
-                            <div className="p-4 bg-background">
-                              <p className="leading-relaxed m-0 text-sm text-foreground">{descricoesAteMax.map((d) => d.description).join(' ')}</p>
-                            </div>
-                          </div>
-                        );
-                      })()}
                     </CardContent>
                   </Card>
                 );

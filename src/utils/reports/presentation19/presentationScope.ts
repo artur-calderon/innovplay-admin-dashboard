@@ -11,8 +11,10 @@ export function deriveComparisonAxis(sel: PresentationScopeSelection): Presentat
   // Quando uma turma está selecionada, o escopo do deck vira "turma" (comparativos),
   // e o ranking por aluno é controlado explicitamente via slides/dados do deck.
   if (sel.turma !== "all") return "turma";
+  // Série específica: uma linha/barra por turma daquela série (não agregar tudo numa única série).
   if (sel.serie !== "all") return "turma";
-  if (sel.school !== "all") return "serie";
+  // Escola específica: todas as turmas da escola no relatório (gráficos/tabelas), não só por série.
+  if (sel.school !== "all") return "turma";
   return "escola";
 }
 

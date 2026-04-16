@@ -121,12 +121,16 @@ export type Presentation19DeckData = {
 export type BuildDeckDataArgs = {
   mode: Presentation19Mode;
   comparisonAxis: PresentationComparisonAxis;
+  /** Quando há escola selecionada no filtro do relatório (id), permite regras específicas de escopo (ex.: questões por turma). */
+  selectedSchoolId?: string;
   /** Rótulos para filtrar `por_turma` quando série/turma vierem como id da API. */
   selectedSerieLabel?: string;
   /** Nome da turma selecionada (ex.: rótulo do select de opções). */
   selectedTurmaLabel?: string;
   relatorioDetalhado: Partial<RelatorioCompleto> | null;
   novaRespostaAgregados: NovaRespostaAPI | null;
+  /** Quando há turma selecionada, agregados do backend para o recorte "geral da série" (mesmos filtros, sem turma). */
+  novaRespostaSerieAgregados?: NovaRespostaAPI | null;
   primaryColor: string;
   logoDataUrl?: string;
 };

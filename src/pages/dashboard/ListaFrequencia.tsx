@@ -8,12 +8,14 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { ClipboardList, Filter, Loader2, Printer } from 'lucide-react';
 import { api } from '@/lib/api';
-import { DashboardApiService } from '@/services/dashboardApi';
 import { FormFiltersApiService } from '@/services/formFiltersApi';
+import { EvaluationResultsApiService, REPORT_ENTITY_TYPE_ANSWER_SHEET } from '@/services/evaluation/evaluationResultsApi';
 import {
   getListaFrequencia,
   getListaFrequenciaPorAvaliacao,
   getListaFrequenciaPorAvaliacaoTodasTurmas,
+  getListaFrequenciaPorGabarito,
+  getListaFrequenciaPorGabaritoTodasTurmas,
 } from '@/services/listaFrequenciaApi';
 import type {
   ListaFrequenciaResponse,
@@ -114,7 +116,7 @@ export default function ListaFrequencia() {
   const [avaliacoes, setAvaliacoes] = useState<{ id: string; titulo: string }[]>([]);
   const [selectedAvaliacaoId, setSelectedAvaliacaoId] = useState('all');
   const [isLoadingAvaliacoes, setIsLoadingAvaliacoes] = useState(false);
-  /** Turmas vinculadas à avaliação selecionada (GET /test/:id/classes). No modo avaliação, o dropdown usa esta lista para mostrar todas as turmas da série aplicadas. */
+  /** Turmas vinculadas à avaliação/cartão selecionado (GET /test/:id/classes ou opções cartão resposta). */
   const [turmasAvaliacao, setTurmasAvaliacao] = useState<{ id: string; name: string }[]>([]);
   const [isLoadingTurmasAvaliacao, setIsLoadingTurmasAvaliacao] = useState(false);
   /** Só exibir ausência (A) quando a prova já tiver expirado. Por turma = null (não aplicável). */
@@ -297,34 +299,32 @@ export default function ListaFrequencia() {
 
   useEffect(() => {
     if (!isModoAplicada) return;
-    // Só carrega avaliações após selecionar escola e série
-    if (!selectedSchool || selectedSchool === 'all' || !selectedSerie || selectedSerie === 'all') {
+    // Só carrega opções após selecionar contexto completo (estado/município/escola/série)
+    if (
+      !selectedEstado ||
+      selectedEstado === 'all' ||
+      !selectedMunicipio ||
+      selectedMunicipio === 'all' ||
+      !selectedSchool ||
+      selectedSchool === 'all' ||
+      !selectedSerie ||
+      selectedSerie === 'all'
+    ) {
       setAvaliacoes([]);
       setSelectedAvaliacaoId('all');
       return;
     }
     let cancelled = false;
     setIsLoadingAvaliacoes(true);
-    DashboardApiService.getAvaliacoesRecentes(50)
-      .then((data) => {
-        if (cancelled || !data?.avaliacoes) return;
-        const looksLikeCartaoResposta = (titulo: string): boolean => {
-          const upper = String(titulo ?? '').toUpperCase();
-          const normalized = upper.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-          return (
-            normalized.includes('GABARITO') ||
-            normalized.includes('CARTAO RESPOSTA') ||
-            normalized.includes('CARTAO')
-          );
-        };
-
-        const mapped = data.avaliacoes.map((a) => ({ id: a.avaliacao_id, titulo: a.titulo || a.avaliacao_id }));
-        const filtered =
-          modoLista === 'cartao_resposta'
-            ? mapped.filter((a) => looksLikeCartaoResposta(a.titulo))
-            : mapped.filter((a) => !looksLikeCartaoResposta(a.titulo));
-
-        setAvaliacoes(filtered);
+    EvaluationResultsApiService.getFilterEvaluations({
+      estado: selectedEstado,
+      municipio: selectedMunicipio,
+      escola: selectedSchool,
+      ...(modoLista === 'cartao_resposta' ? { report_entity_type: REPORT_ENTITY_TYPE_ANSWER_SHEET } : {}),
+    })
+      .then((items) => {
+        if (cancelled) return;
+        setAvaliacoes((items ?? []).map((a) => ({ id: a.id, titulo: a.titulo || a.id })));
       })
       .catch(() => {
         if (!cancelled) setAvaliacoes([]);
@@ -335,14 +335,59 @@ export default function ListaFrequencia() {
     return () => {
       cancelled = true;
     };
-  }, [isModoAplicada, modoLista, selectedSchool, selectedSerie]);
+  }, [isModoAplicada, modoLista, selectedEstado, selectedMunicipio, selectedSchool, selectedSerie]);
 
-  // No modo avaliação: ao selecionar uma avaliação, carregar as turmas vinculadas a ela (todas as turmas da série aplicadas)
+  // Modo avaliação: turmas via GET /test/:id/classes. Modo cartão resposta: turmas via filtros de gabarito (answer_sheet).
   useEffect(() => {
     if (!isModoAplicada || !selectedAvaliacaoId || selectedAvaliacaoId === 'all') {
       setTurmasAvaliacao([]);
       setSelectedTurma('all');
       return;
+    }
+    if (modoLista === 'cartao_resposta') {
+      if (
+        !selectedEstado ||
+        selectedEstado === 'all' ||
+        !selectedMunicipio ||
+        selectedMunicipio === 'all' ||
+        !selectedSchool ||
+        selectedSchool === 'all' ||
+        !selectedSerie ||
+        selectedSerie === 'all'
+      ) {
+        setTurmasAvaliacao([]);
+        setSelectedTurma('all');
+        return;
+      }
+      let cancelled = false;
+      setIsLoadingTurmasAvaliacao(true);
+      EvaluationResultsApiService.getFilterClassesByEvaluation({
+        estado: selectedEstado,
+        municipio: selectedMunicipio,
+        avaliacao: selectedAvaliacaoId,
+        escola: selectedSchool,
+        serie: selectedSerie,
+        report_entity_type: REPORT_ENTITY_TYPE_ANSWER_SHEET,
+      })
+        .then((list) => {
+          if (cancelled) return;
+          const mapped = (list ?? []).map((t) => ({
+            id: t.id,
+            name: t.nome || t.id,
+          }));
+          setTurmasAvaliacao(mapped);
+          const stillExists = selectedTurma === 'all' || mapped.some((x) => x.id === selectedTurma);
+          if (!stillExists) setSelectedTurma('all');
+        })
+        .catch(() => {
+          if (!cancelled) setTurmasAvaliacao([]);
+        })
+        .finally(() => {
+          if (!cancelled) setIsLoadingTurmasAvaliacao(false);
+        });
+      return () => {
+        cancelled = true;
+      };
     }
     let cancelled = false;
     setIsLoadingTurmasAvaliacao(true);
@@ -374,12 +419,24 @@ export default function ListaFrequencia() {
     return () => {
       cancelled = true;
     };
-  }, [isModoAplicada, selectedAvaliacaoId]);
+  }, [
+    isModoAplicada,
+    modoLista,
+    selectedAvaliacaoId,
+    selectedEstado,
+    selectedMunicipio,
+    selectedSchool,
+    selectedSerie,
+  ]);
 
-  // Quando a lista é por avaliação, verificar se a prova já expirou (para exibir ou não ausência)
+  // Por avaliação online: expiração da prova. Por cartão resposta: P/A já vêm dos resultados — exibir coluna A normalmente.
   useEffect(() => {
     if (!isModoAplicada) {
       setProvaExpirada(null);
+      return;
+    }
+    if (modoLista === 'cartao_resposta') {
+      setProvaExpirada(true);
       return;
     }
     if (!data?.length || !selectedAvaliacaoId || selectedAvaliacaoId === 'all') {
@@ -406,7 +463,7 @@ export default function ListaFrequencia() {
       }
     })();
     return () => { cancelled = true; };
-  }, [isModoAplicada, data, selectedAvaliacaoId]);
+  }, [isModoAplicada, modoLista, data, selectedAvaliacaoId]);
 
   // Preencher o nome da avaliação para impressão quando a lista for carregada
   useEffect(() => {
@@ -429,11 +486,32 @@ export default function ListaFrequencia() {
         }
         const classId =
           selectedTurma && selectedTurma !== 'all' ? selectedTurma : undefined;
-        if (classId) {
+        if (modoLista === 'cartao_resposta') {
+          if (!selectedMunicipio || selectedMunicipio === 'all') {
+            setError('Selecione o município.');
+            toast({ title: 'Aviso', description: 'Selecione o município para gerar a lista de cartão resposta.', variant: 'destructive' });
+            return;
+          }
+          if (classId) {
+            const res = await getListaFrequenciaPorGabarito(
+              selectedAvaliacaoId,
+              selectedMunicipio,
+              classId,
+              { tipo: tipoListaAplicada }
+            );
+            setData([res]);
+          } else {
+            const gradeId = selectedSerie && selectedSerie !== 'all' ? selectedSerie : undefined;
+            const results = await getListaFrequenciaPorGabaritoTodasTurmas(selectedAvaliacaoId, selectedMunicipio, {
+              grade_id: gradeId,
+              tipo: tipoListaAplicada,
+            });
+            setData(results.length > 0 ? results : null);
+          }
+        } else if (classId) {
           const res = await getListaFrequenciaPorAvaliacao(selectedAvaliacaoId, classId, { tipo: tipoListaAplicada });
           setData([res]);
         } else {
-          // Todas as turmas: uma única chamada GET /lista-frequencia/?test_id=... (resposta { turmas: [...] })
           const gradeId = selectedSerie && selectedSerie !== 'all' ? selectedSerie : undefined;
           const results = await getListaFrequenciaPorAvaliacaoTodasTurmas(selectedAvaliacaoId, {
             grade_id: gradeId,

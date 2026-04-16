@@ -80,6 +80,7 @@ export default function RelatorioApresentacao19Slides() {
   const [logoDataUrl, setLogoDataUrl] = useState<string>("/LOGO-1-menor.png");
 
   const [deckData, setDeckData] = useState<Presentation19DeckData | null>(null);
+  const lastDeckLoadErrorRef = useRef<string | null>(null);
 
   /** Cartão-resposta: opções em cascata (mesma rota do relatório escolar). */
   const [asSerie, setAsSerie] = useState<string>("all");
@@ -371,28 +372,46 @@ export default function RelatorioApresentacao19Slides() {
       ...(reportEntityType ? { reportEntityType } : {}),
     };
 
-    const fetchNovaResposta = async (): Promise<NovaRespostaAPI | null> => {
+    const fetchNovaResposta = async (): Promise<{ turma: NovaRespostaAPI | null; serie: NovaRespostaAPI | null }> => {
       if (activeMode === "answer_sheet") {
-        const params = new URLSearchParams();
-        params.set("estado", selectedState);
-        params.set("municipio", selectedMunicipality);
-        params.set("gabarito", evaluationId);
-        if (selectedSchool !== "all") params.set("escola", selectedSchool);
-        if (asSerie !== "all") params.set("serie", asSerie);
-        if (asTurma !== "all") params.set("turma", asTurma);
-        if (periodoApi) params.set("periodo", periodoApi);
-        const res2 = await api.get<AnswerSheetResultadosAgregadosRaw>(
-          `/answer-sheets/resultados-agregados?${params.toString()}`,
-          selectedMunicipality !== "all" ? { meta: { cityId: selectedMunicipality } } : {}
-        );
-        return mapAnswerSheetResultadosAgregadosToNovaResposta(res2.data, {
-          estado: selectedState,
-          municipio: selectedMunicipality,
-          gabarito: evaluationId,
-          escola: selectedSchool,
-          serie: asSerie,
-          turma: asTurma,
-        });
+        const mkParams = (turmaId: string) => {
+          const params = new URLSearchParams();
+          params.set("estado", selectedState);
+          params.set("municipio", selectedMunicipality);
+          params.set("gabarito", evaluationId);
+          if (selectedSchool !== "all") params.set("escola", selectedSchool);
+          if (asSerie !== "all") params.set("serie", asSerie);
+          if (turmaId !== "all") params.set("turma", turmaId);
+          if (periodoApi) params.set("periodo", periodoApi);
+          return params;
+        };
+        const requestCfg = selectedMunicipality !== "all" ? { meta: { cityId: selectedMunicipality } } : {};
+
+        const fetchOne = async (turmaId: string): Promise<NovaRespostaAPI | null> => {
+          const params = mkParams(turmaId);
+          const res2 = await api.get<AnswerSheetResultadosAgregadosRaw>(`/answer-sheets/resultados-agregados?${params.toString()}`, requestCfg);
+          return mapAnswerSheetResultadosAgregadosToNovaResposta(res2.data, {
+            estado: selectedState,
+            municipio: selectedMunicipality,
+            gabarito: evaluationId,
+            escola: selectedSchool,
+            serie: asSerie,
+            turma: turmaId,
+          });
+        };
+
+        const turma = await fetchOne(asTurma);
+        let serie: NovaRespostaAPI | null = null;
+        if (asTurma !== "all") {
+          try {
+            serie = await fetchOne("all");
+          } catch {
+            // Se o backend falhar ao retornar o agregado da série, ainda exportamos com o recorte da turma.
+            // O deck mantém fallbacks legados quando `novaRespostaSerieAgregados` não estiver disponível.
+            serie = null;
+          }
+        }
+        return { turma, serie };
       }
       const params = new URLSearchParams();
       params.set("estado", selectedState);
@@ -404,11 +423,12 @@ export default function RelatorioApresentacao19Slides() {
         `/evaluation-results/avaliacoes?${params.toString()}`,
         selectedMunicipality !== "all" ? { meta: { cityId: selectedMunicipality } } : {}
       );
-      return resEval.data;
+      return { turma: resEval.data, serie: null };
     };
 
     try {
-      const [relatorioCompleto, novaResposta] = await Promise.all([
+      lastDeckLoadErrorRef.current = null;
+      const [relatorioCompleto, novaRespostas] = await Promise.all([
         EvaluationResultsApiService.getRelatorioCompleto(evaluationId, relatorioParams),
         fetchNovaResposta(),
       ]);
@@ -459,10 +479,12 @@ export default function RelatorioApresentacao19Slides() {
       const deck = buildDeckDataForPresentation19Slides({
         mode: activeMode,
         comparisonAxis,
+        selectedSchoolId: selectedSchool !== "all" ? selectedSchool : undefined,
         selectedSerieLabel,
         selectedTurmaLabel,
         relatorioDetalhado: relatorioNormalizado,
-        novaRespostaAgregados: novaResposta,
+        novaRespostaAgregados: novaRespostas.turma,
+        novaRespostaSerieAgregados: novaRespostas.serie,
         primaryColor,
         logoDataUrl,
       });
@@ -471,9 +493,11 @@ export default function RelatorioApresentacao19Slides() {
       setDeckData(deck);
       return deck;
     } catch (err) {
+      const msg = err instanceof Error ? err.message : "Falha ao carregar dados para o relatório.";
+      lastDeckLoadErrorRef.current = msg;
       toast({
         title: "Erro ao gerar",
-        description: err instanceof Error ? err.message : "Falha ao carregar dados para o relatório.",
+        description: msg,
         variant: "destructive",
       });
       return null;
@@ -595,7 +619,7 @@ export default function RelatorioApresentacao19Slides() {
         }
 
         if (!activeDeck) {
-          throw new Error("Deck não disponível para exportação.");
+          throw new Error(lastDeckLoadErrorRef.current ? `Falha ao carregar deck: ${lastDeckLoadErrorRef.current}` : "Deck não disponível para exportação.");
         }
         const safeEval = selectedEvaluation.replace(/[^a-zA-Z0-9-_]+/g, "-").toLowerCase();
         const fileName = `relatorio_19-slides_${activeMode}_${safeEval}_${new Date().toISOString().split("T")[0]}.${format === "pdf" ? "pdf" : "pptx"}`;
