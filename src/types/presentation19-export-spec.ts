@@ -77,6 +77,15 @@ export type Presentation19SlideSpec =
       serieLabel: string;
       turmaNome: string;
     }
+  | {
+      index: number;
+      kind: "questions-accuracy-chart";
+      chart: ExportChart;
+      /** @deprecated Reservado; subtítulo removido do layout. */
+      scopeLabel?: string;
+      /** Quando há mais de um slide de gráfico de acertos (máx. 9 barras por página). */
+      accuracyPage?: { current: number; total: number };
+    }
   | { index: number; kind: "thank-you" };
 
 export type Presentation19ExportSpec = {

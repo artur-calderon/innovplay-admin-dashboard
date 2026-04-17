@@ -1,5 +1,6 @@
 import PptxGenJS from "pptxgenjs";
 import type { ExportChart, Presentation19ExportSpec, Presentation19SlideSpec } from "@/types/presentation19-export-spec";
+import type { Presentation19DeckData } from "@/types/presentation19-slides";
 import { P19_QUESTION_NUM_LEVEL_STYLE } from "@/utils/reports/presentation19/questionAcertoLevel";
 import {
   presentationSectionGrades,
@@ -30,9 +31,13 @@ import {
   P19_CHART_H_BAR_VALUE_PX,
   P19_CHART_REF_H_PX,
   P19_CHART_REF_W_PX,
+  P19_CHART_SUBTITLE_GRADES,
+  P19_CHART_SUBTITLE_PRESENCE,
+  P19_CHART_SUBTITLE_PROFICIENCY,
   P19_COVER_MAIN_LABEL_PX,
   P19_COVER_MAIN_TITLE_PX,
   P19_COVER_MAIN_VALUE_PX,
+  P19_COVER_SUBTITLE_FONT_PX,
   P19_COVER_SCHOOL_LIST_LARGE_PX,
   P19_COVER_SCHOOL_LIST_SMALL_PX,
   P19_COVER_SCHOOL_MULTI_HEADER_PX,
@@ -44,22 +49,52 @@ import {
   P19_LEVELS_GUIDE_TITLE_PX,
   P19_METRIC_HEADER_PX,
   P19_METRIC_NUMBER_PX,
+  P19_PAGE,
   P19_PAGE_INDICATOR_FONT_PX,
+  P19_PROFICIENCY_DISC_CARD_TITLE_PX,
   P19_SECTION_TAGLINE_PX,
+  P19_SECTION_TITLE_TAGLINE_GAP_PX,
   P19_SEGMENT_FIELD_LABEL_PX,
   P19_SEGMENT_FIELD_VALUE_PX,
   P19_SUBTITLE_FONT_PX,
   P19_TABLE_CELL_FONT_PX,
   P19_TABLE_CELL_PADDING_PX,
+  P19_TABLE_QUESTIONS_DESC_FONT_PX,
   P19_THANK_YOU_FONT_PX,
   P19_TITLE_ACCENT_H_PX,
   P19_TITLE_ACCENT_W_PX,
   P19_TITLE_FONT_PX,
   P19_TITLE_TEXT_OFFSET_X_PX,
+  p19PdfLineHeightPx,
   p19PxToPtForPptx,
   p19PxToSlideInX,
   p19PxToSlideInY,
 } from "@/utils/reports/presentation19/presentation19ExportTypography";
+import {
+  p19AccuracyChartRectPx,
+  p19ChartAreaTopPxAfterTitle,
+  p19ContentBoxInches,
+  p19ContentWidthInches,
+  p19FullWidthBarChartRectPx,
+  p19LevelsGuideCardBorderHex,
+  p19LevelsGuideCardFillHex,
+  p19ProficiencyGeneralBarChartRectPx,
+  p19RectPxToSlideInches,
+  p19StandardBarChartRectPx,
+  p19TableStartYAfterTitleBlockPx,
+  P19_LEVELS_GUIDE_FIRST_ROW_TOP_PX,
+  P19_LEVELS_GUIDE_ROW_STRIDE_PX,
+  P19_LEVELS_GUIDE_CARD_RADIUS_PX,
+  P19_QUESTIONS_PAGE_INDICATOR_RIGHT_PAD_PX,
+  P19_SECTION_CENTER_VERTICAL_OFFSET_PX,
+  P19_SLIDE_FOOTER_RESERVE_PX,
+  P19_SLIDE_TITLE_FIRST_LINE_TOP_PX,
+  P19_TITLE_TO_SUBTITLE_GAP_PX,
+  P19_DECK_LOGO_H_PX,
+  P19_DECK_LOGO_RIGHT_MARGIN_PX,
+  P19_DECK_LOGO_TOP_PX,
+  P19_DECK_LOGO_W_PX,
+} from "@/utils/reports/presentation19/presentation19Layout";
 
 type RenderPptxArgs = {
   spec: Presentation19ExportSpec;
@@ -90,9 +125,13 @@ function formatAxisTick(tick: number): string {
   return Number(tick).toFixed(1).replace(".", ",");
 }
 
-function formatBarValueLabel(value: number): string {
+function formatBarValueLabel(value: number, serieLabel?: string): string {
   if (!Number.isFinite(value)) return "0,0";
-  return Number(value).toFixed(1).replace(".", ",");
+  const wantsPct = String(serieLabel ?? "").includes("%");
+  const isInt = Math.abs(value - Math.round(value)) < 1e-9;
+  if (!wantsPct && isInt) return String(Math.round(value));
+  const base = Number(value).toFixed(1).replace(".", ",");
+  return wantsPct ? `${base}%` : base;
 }
 
 function wrapTextBySpacesForPptx(text: string, maxCharsPerLine: number): string {
@@ -197,7 +236,7 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
         wrap: true,
       });
       const valW = Math.max(0.48, xScale(52));
-      slide.addText(formatBarValueLabel(value), {
+      slide.addText(formatBarValueLabel(value, serie.label), {
         x: baselineX + barW + Math.max(0.04, padX6 * 0.92),
         y: barY,
         w: valW,
@@ -215,9 +254,14 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
   const barsStartX = box.x + xScale(8);
   const barsW = Math.max(0.35, box.x + box.w - barsStartX - xScale(10));
   const topPad = yScale(6);
-  const bottomPad = yScale(34);
-  const baselineY = box.y + box.h - bottomPad;
-  const chartAreaH = baselineY - (box.y + topPad);
+  /**
+   * Em caixas pequenas (ex.: proficiência por disciplina), só `yScale(34)` deixa a faixa de rótulos
+   * microscopic — preview reserva ~30px de linha + padding (`LABEL_ROW_H` + padding).
+   * Garantimos altura mínima em polegadas para rótulos 10–11px legíveis e negrito.
+   */
+  const bottomPadIn = Math.max(0.6, yScale(42));
+  const baselineY = box.y + box.h - bottomPadIn;
+  const chartAreaH = Math.max(0.12, baselineY - (box.y + topPad));
   const isStacked = chart.type === "stackedBar";
   const rawMax = Math.max(1, ...chart.data.flatMap((d) => chart.valueKeys.map((s) => Number(d[s.key] ?? 0))));
   const axisMin = Number.isFinite(chart.yAxis?.min) ? Number(chart.yAxis?.min) : 0;
@@ -227,8 +271,8 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
   const colWidth = barsW / Math.max(1, categories.length);
   const hasMultipleSeries = chart.valueKeys.length > 1;
 
-  const catY = box.y + box.h - yScale(6);
-  const catH = Math.max(yScale(20), bottomPad - yScale(6));
+  const catY = box.y + box.h - bottomPadIn + 0.04;
+  const catH = Math.max(0.5, bottomPadIn - 0.08);
 
   chart.data.forEach((row, idx) => {
     const baseXAligned = barsStartX + idx * colWidth + xScale(18);
@@ -255,11 +299,11 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
           ry: 0.06,
         });
         const valBoxW = Math.max(0.58, seriesW + 0.26);
-        slide.addText(formatBarValueLabel(value), {
+        slide.addText(formatBarValueLabel(value, s.label), {
           x: barX + seriesW / 2 - valBoxW / 2,
-          y: barY - yScale(13) + yScale(1),
+          y: barY - yScale(16) + yScale(1),
           w: valBoxW,
-          h: yScale(14),
+          h: yScale(18),
           fontSize: p19PxToPtForPptx(P19_CHART_BAR_VALUE_TOP_PX),
           bold: true,
           color: "0F172A",
@@ -290,11 +334,11 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
         currentTop = barY;
       });
       const totW = Math.max(0.58, singleW + 0.28);
-      slide.addText(formatBarValueLabel(total), {
+      slide.addText(formatBarValueLabel(total, chart.valueKeys[0]?.label), {
         x: singleX + singleW / 2 - totW / 2,
-        y: currentTop - yScale(14) + yScale(1),
+        y: currentTop - yScale(17) + yScale(1),
         w: totW,
-        h: yScale(14),
+        h: yScale(18),
         fontSize: p19PxToPtForPptx(P19_CHART_BAR_VALUE_TOP_PX + 1),
         bold: true,
         color: "0F172A",
@@ -320,11 +364,11 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
         ry: 0.10,
       });
       const oneSerW = Math.max(0.62, singleW + 0.32);
-      slide.addText(formatBarValueLabel(value), {
+      slide.addText(formatBarValueLabel(value, s.label), {
         x: singleX + singleW / 2 - oneSerW / 2,
-        y: barY - yScale(14) + yScale(1),
+        y: barY - yScale(17) + yScale(1),
         w: oneSerW,
-        h: yScale(14),
+        h: yScale(18),
         fontSize: p19PxToPtForPptx(P19_CHART_BAR_VALUE_TOP_PX),
         bold: true,
         color: "0F172A",
@@ -333,7 +377,7 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
       });
     }
 
-    const catFontPt = p19PxToPtForPptx(P19_CHART_CATEGORY_LABEL_PX);
+    const catFontPt = Math.max(9.5, p19PxToPtForPptx(P19_CHART_CATEGORY_LABEL_PX));
     const maxChars = approxMaxCharsForWidth(innerW, catFontPt);
     slide.addText(wrapTextBySpacesForPptx(String(row[chart.categoryKey] ?? ""), maxChars), {
       x: baseXAligned,
@@ -341,6 +385,7 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
       w: innerW,
       h: catH,
       fontSize: catFontPt,
+      bold: true,
       color: "334155",
       align: "center",
       valign: "top",
@@ -354,10 +399,57 @@ function drawFrame(slide: PptxGenJS.Slide, primaryColor: string, pptx: PptxPrese
   slide.background = { color: "FFFFFF" };
 }
 
-function drawTitle(slide: PptxGenJS.Slide, title: string, primaryColor: string, pptx: PptxPresentation): void {
+function drawDeckChromePptx(slide: PptxGenJS.Slide, deckData: Presentation19DeckData): void {
+  const footer = deckData.footerText?.trim();
+  if (footer) {
+    slide.addText(footer, {
+      x: 0.45,
+      y: 6.92,
+      w: 12.4,
+      h: 0.48,
+      fontSize: 9,
+      color: "52525B",
+      align: "center",
+      valign: "bottom",
+      wrap: true,
+    });
+  }
+  const raw = deckData.logoDataUrl?.trim();
+  if (!raw?.startsWith("data:image")) return;
+  const m = /^data:image\/(png|jpeg|jpg);base64,(.+)$/i.exec(raw);
+  if (!m) return;
+  try {
+    const logoW = (P19_DECK_LOGO_W_PX / P19_PAGE.width) * 13.333;
+    const logoH = (P19_DECK_LOGO_H_PX / P19_PAGE.height) * 7.5;
+    const logoX = 13.333 - (P19_DECK_LOGO_RIGHT_MARGIN_PX / P19_PAGE.width) * 13.333 - logoW;
+    const logoY = (P19_DECK_LOGO_TOP_PX / P19_PAGE.height) * 7.5;
+    slide.addImage({
+      data: m[2],
+      x: logoX,
+      y: logoY,
+      w: logoW,
+      h: logoH,
+      sizing: { type: "contain", w: logoW, h: logoH },
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+function drawTitle(
+  slide: PptxGenJS.Slide,
+  title: string,
+  primaryColor: string,
+  pptx: PptxPresentation,
+  subtitle?: string,
+  titleMaxRightPadPx = 0
+): void {
+  const titleTopPx = P19_SLIDE_TITLE_FIRST_LINE_TOP_PX;
+  const titleRightPx = P19_CONTENT.x + P19_CONTENT.w - titleMaxRightPadPx;
+  const titleWIn = p19PxToSlideInX(titleRightPx) - p19PxToSlideInX(62);
   slide.addShape(pptx.ShapeType.roundRect, {
     x: p19PxToSlideInX(40),
-    y: p19PxToSlideInY(76),
+    y: p19PxToSlideInY(titleTopPx),
     w: p19PxToSlideInX(P19_TITLE_ACCENT_W_PX),
     h: p19PxToSlideInY(P19_TITLE_ACCENT_H_PX),
     rx: 0.06,
@@ -367,22 +459,76 @@ function drawTitle(slide: PptxGenJS.Slide, title: string, primaryColor: string, 
   });
   slide.addText(title, {
     x: p19PxToSlideInX(62),
-    y: p19PxToSlideInY(76),
-    w: 10.2,
-    h: 1.15,
+    y: p19PxToSlideInY(titleTopPx),
+    w: titleWIn,
+    h: subtitle ? 0.85 : 1.45,
     bold: true,
-    fontSize: 30,
+    fontSize: p19PxToPtForPptx(P19_TITLE_FONT_PX),
     color: "0F172A",
     wrap: true,
   });
+  if (subtitle?.trim()) {
+    const subTopPx = titleTopPx + p19PdfLineHeightPx(P19_TITLE_FONT_PX) + P19_TITLE_TO_SUBTITLE_GAP_PX;
+    slide.addText(subtitle.trim(), {
+      x: p19PxToSlideInX(40 + P19_TITLE_TEXT_OFFSET_X_PX),
+      y: p19PxToSlideInY(subTopPx),
+      w: titleWIn,
+      h: 0.45,
+      fontSize: p19PxToPtForPptx(P19_SUBTITLE_FONT_PX),
+      bold: true,
+      color: "52525B",
+      wrap: true,
+    });
+  }
+}
+
+/** Espelha `PdfRenderer.drawCenteredSectionBlock` (slides section-*). */
+function drawCenteredSectionPptx(slide: PptxGenJS.Slide, title: string, tagline: string | undefined, primaryColor: string): void {
+  const maxWPx = P19_CONTENT.w - 80;
+  const titleFsPt = p19PxToPtForPptx(P19_TITLE_FONT_PX);
+  const tagFsPt = p19PxToPtForPptx(P19_SECTION_TAGLINE_PX);
+  const titleLineH = p19PdfLineHeightPx(P19_TITLE_FONT_PX);
+  const maxChars = approxMaxCharsForWidth((maxWPx / P19_PAGE.width) * 13.333, titleFsPt);
+  const wrappedTitle = wrapTextBySpacesForPptx(title, maxChars);
+  const titleLineCount = Math.max(1, wrappedTitle.split("\n").length);
+  const yPx = P19_PAGE.height / 2 - P19_SECTION_CENTER_VERTICAL_OFFSET_PX - (titleLineCount * titleLineH) / 2;
+  const yTopIn = p19PxToSlideInY(yPx);
+  slide.addText(wrappedTitle, {
+    x: p19PxToSlideInX(40),
+    y: yTopIn,
+    w: p19ContentWidthInches(),
+    h: Math.min(2.6, 0.34 * titleLineCount + 0.35),
+    align: "center",
+    fontSize: titleFsPt,
+    bold: true,
+    color: hexNoHash(primaryColor),
+    wrap: true,
+  });
+  if (tagline?.trim()) {
+    const tagYpx = yPx + titleLineCount * titleLineH + P19_SECTION_TITLE_TAGLINE_GAP_PX;
+    const tagWrapped = wrapTextBySpacesForPptx(tagline.trim(), maxChars);
+    const tagLines = Math.max(1, tagWrapped.split("\n").length);
+    slide.addText(tagWrapped, {
+      x: p19PxToSlideInX(40),
+      y: p19PxToSlideInY(tagYpx),
+      w: p19ContentWidthInches(),
+      h: Math.min(1.35, 0.4 * tagLines + 0.2),
+      align: "center",
+      fontSize: tagFsPt,
+      color: "52525B",
+      wrap: true,
+    });
+  }
 }
 
 function drawTable(
   slide: PptxGenJS.Slide,
   columns: string[],
   rows: Array<Array<string | number>>,
-  startY = 1.4
+  startY = p19PxToSlideInY(p19TableStartYAfterTitleBlockPx(false, 1)),
+  colWFrac?: number[]
 ): void {
+  const { x: tableX, w: totalW } = p19ContentBoxInches();
   const cellPad = P19_TABLE_CELL_PADDING_PX / 72;
   const rowHeadH = 0.42;
   const rowBodyH = 0.38;
@@ -399,7 +545,7 @@ function drawTable(
     return null;
   };
   const tableRows: PptxGenJS.TableRow[] = [
-    columns.map((c) => ({
+    columns.map((c, ci) => ({
       text: c,
       options: {
         bold: true,
@@ -407,6 +553,8 @@ function drawTable(
         color: "334155",
         fill: { color: "E2E8F0" },
         margin: cellPad,
+        align: ci === 0 ? "left" : "center",
+        valign: "middle",
       },
     })),
     ...rows.map((r, ri) =>
@@ -421,19 +569,25 @@ function drawTable(
             bold: Boolean(maybe),
             fill: { color: ri % 2 === 0 ? "FCFCFD" : "F1F5F9" },
             margin: cellPad,
+            align: ci === 0 ? "left" : "center",
+            valign: "middle",
           },
         };
       })
     ),
   ];
+  const colW =
+    colWFrac && colWFrac.length === columns.length
+      ? colWFrac.map((f) => totalW * f)
+      : columns.map(() => totalW / columns.length);
   slide.addTable(tableRows, {
-    x: 0.48,
+    x: tableX,
     y: startY,
-    w: 12.35,
+    w: totalW,
     h: tableH,
     rowH: rowHeights,
-    border: { type: "solid", pt: 1, color: "CBD5E1" },
-    colW: 12.35 / columns.length,
+    border: { type: "solid", pt: 1, color: "E2E8F0" },
+    colW,
   });
 }
 
@@ -442,16 +596,22 @@ function drawQuestionsTable(
   columns: string[],
   rows: Array<Array<string | number>>,
   questionRowLevels: Array<keyof typeof P19_QUESTION_NUM_LEVEL_STYLE | undefined> | undefined,
-  startY = 1.4
+  startY = p19PxToSlideInY(p19TableStartYAfterTitleBlockPx(false, 1))
 ): void {
+  const { x: tableX, w: totalW } = p19ContentBoxInches();
   const cellPad = P19_TABLE_CELL_PADDING_PX / 72;
-  const rowHeadH = 0.42;
-  const rowBodyH = 0.38;
+  const rowHeadH = 0.45;
+  const rowBodyH = 0.52;
   const rowHeights = [rowHeadH, ...rows.map(() => rowBodyH)];
   const tableH = rowHeights.reduce((sum, h) => sum + h, 0);
   const cellFs = p19PxToPtForPptx(P19_TABLE_CELL_FONT_PX);
+  const descFs = p19PxToPtForPptx(P19_TABLE_QUESTIONS_DESC_FONT_PX);
+  const colW =
+    columns.length === 4
+      ? [totalW * 0.09, totalW * 0.16, totalW * 0.58, totalW * 0.12]
+      : columns.map(() => totalW / columns.length);
   const tableRows: PptxGenJS.TableRow[] = [
-    columns.map((c) => ({
+    columns.map((c, ci) => ({
       text: c,
       options: {
         bold: true,
@@ -459,45 +619,52 @@ function drawQuestionsTable(
         color: "334155",
         fill: { color: "E2E8F0" },
         margin: cellPad,
+        align: ci === 0 || ci === 3 ? "center" : "left",
+        valign: "middle",
       },
     })),
     ...rows.map((r, ri) =>
       r.map((c, ci) => {
         const baseColor = "0F172A";
         const zebra = ri % 2 === 0 ? "FCFCFD" : "F1F5F9";
+        const fs = ci === 2 ? descFs : cellFs;
         if (questionRowLevels?.[ri]) {
           const st = P19_QUESTION_NUM_LEVEL_STYLE[questionRowLevels[ri]];
           return {
             text: String(c),
             options: {
-              fontSize: cellFs,
+              fontSize: fs,
               color: hexNoHash(st.color),
               bold: true,
               fill: { color: hexNoHash(st.bg) },
               margin: cellPad,
+              align: ci === 0 || ci === 3 ? "center" : "left",
+              valign: "middle",
             },
           };
         }
         return {
           text: String(c),
           options: {
-            fontSize: cellFs,
+            fontSize: fs,
             color: baseColor,
             fill: { color: zebra },
             margin: cellPad,
+            align: ci === 0 || ci === 3 ? "center" : "left",
+            valign: "middle",
           },
         };
       })
     ),
   ];
   slide.addTable(tableRows, {
-    x: 0.48,
+    x: tableX,
     y: startY,
-    w: 12.35,
+    w: totalW,
     h: tableH,
     rowH: rowHeights,
-    border: { type: "solid", pt: 1, color: "CBD5E1" },
-    colW: 12.35 / columns.length,
+    border: { type: "solid", pt: 1, color: "E2E8F0" },
+    colW,
   });
 }
 
@@ -505,8 +672,9 @@ function drawLevelsTable(
   slide: PptxGenJS.Slide,
   columns: string[],
   rows: Array<Array<string | number>>,
-  startY = 1.4
+  startY = p19PxToSlideInY(p19TableStartYAfterTitleBlockPx(false, 1))
 ): void {
+  const { x: tableX, w: totalW } = p19ContentBoxInches();
   const cellPad = P19_TABLE_CELL_PADDING_PX / 72;
   const rowHeadH = 0.42;
   const rowBodyH = 0.38;
@@ -525,6 +693,8 @@ function drawLevelsTable(
             color: "F8FAFC",
             fill: { color: P19_LEVELS_TABLE_LEVEL_HEADER_BG_HEX[idx] },
             margin: cellPad,
+            align: "center",
+            valign: "middle",
           },
         };
       }
@@ -536,13 +706,15 @@ function drawLevelsTable(
           color: "334155",
           fill: { color: "E2E8F0" },
           margin: cellPad,
+          align: "left",
+          valign: "middle",
         },
       };
     }),
     ...rows.map((r, ri) => {
       const totalRow = String(r[0] ?? "") === "TOTAL GERAL";
       const bodyBg = totalRow ? "E2E8F0" : ri % 2 === 0 ? "FCFCFD" : "F1F5F9";
-      return r.map((c) => ({
+      return r.map((c, ci) => ({
         text: String(c),
         options: {
           fontSize: cellFs,
@@ -550,18 +722,21 @@ function drawLevelsTable(
           bold: totalRow,
           fill: { color: bodyBg },
           margin: cellPad,
+          align: ci === 0 ? "left" : "center",
+          valign: "middle",
         },
       }));
     }),
   ];
+  const colW = columns.map((_, ci) => (ci === 0 ? totalW * 0.22 : (totalW - totalW * 0.22) / (columns.length - 1)));
   slide.addTable(tableRows, {
-    x: 0.48,
+    x: tableX,
     y: startY,
-    w: 12.35,
+    w: totalW,
     h: tableH,
     rowH: rowHeights,
-    border: { type: "solid", pt: 1, color: "CBD5E1" },
-    colW: 12.35 / columns.length,
+    border: { type: "solid", pt: 1, color: "E2E8F0" },
+    colW,
   });
 }
 
@@ -574,35 +749,47 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
         x: 0.48,
         y: 1.4,
         w: 10.8,
-        h: 1.8,
+        h: deckData.coverSubtitle?.trim() ? 1.35 : 1.8,
         fontSize: p19PxToPtForPptx(P19_COVER_MAIN_TITLE_PX),
         bold: true,
         color: hexNoHash(deckData.primaryColor),
         wrap: true,
       });
+      if (deckData.coverSubtitle?.trim()) {
+        slide.addText(deckData.coverSubtitle.trim(), {
+          x: 0.48,
+          y: 2.72,
+          w: 11.8,
+          h: 0.55,
+          fontSize: p19PxToPtForPptx(P19_COVER_SUBTITLE_FONT_PX),
+          bold: true,
+          color: "334155",
+          wrap: true,
+        });
+      }
       slide.addShape(pptx.ShapeType.roundRect, {
         x: 0.48,
-        y: 4.9,
+        y: deckData.coverSubtitle?.trim() ? 3.45 : 4.9,
         w: 12.35,
         h: 1.85,
-        fill: { color: "F4F4F5" },
-        line: { color: "E4E4E7" },
+        fill: { color: "F8FAFC" },
+        line: { color: "E2E8F0" },
         rx: 0.12,
         ry: 0.12,
       });
       slide.addText(
         [
           { text: "MUNICÍPIO\n", options: { fontSize: p19PxToPtForPptx(P19_COVER_MAIN_LABEL_PX), color: "52525B", bold: true } },
-          { text: `${deckData.municipioNome}\n\n`, options: { fontSize: p19PxToPtForPptx(P19_COVER_MAIN_VALUE_PX), color: "18181B", bold: true } },
-          { text: "SÉRIE\n", options: { fontSize: p19PxToPtForPptx(P19_COVER_MAIN_LABEL_PX), color: "52525B", bold: true } },
-          { text: deckData.serie, options: { fontSize: p19PxToPtForPptx(P19_COVER_MAIN_VALUE_PX), color: "18181B", bold: true } },
+          { text: deckData.municipioNome || "N/A", options: { fontSize: p19PxToPtForPptx(P19_COVER_MAIN_VALUE_PX), color: "0F172A", bold: true } },
         ],
-        {
-          x: 0.75,
-          y: 5.15,
-          w: 11.8,
-          h: 1.35,
-        }
+        { x: 0.65, y: deckData.coverSubtitle?.trim() ? 3.68 : 5.12, w: 5.75, h: 1.35, valign: "top" }
+      );
+      slide.addText(
+        [
+          { text: "SÉRIE\n", options: { fontSize: p19PxToPtForPptx(P19_COVER_MAIN_LABEL_PX), color: "52525B", bold: true } },
+          { text: deckData.serie || "N/A", options: { fontSize: p19PxToPtForPptx(P19_COVER_MAIN_VALUE_PX), color: "0F172A", bold: true } },
+        ],
+        { x: 6.75, y: deckData.coverSubtitle?.trim() ? 3.68 : 5.12, w: 5.75, h: 1.35, valign: "top" }
       );
       break;
     case "cover-school": {
@@ -620,20 +807,27 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
         });
       } else {
         const listFsPx = escolas.length > 14 ? P19_COVER_SCHOOL_LIST_SMALL_PX : P19_COVER_SCHOOL_LIST_LARGE_PX;
+        const twoCols = escolas.length > 10;
+        const mid = Math.ceil(escolas.length / 2);
+        /** Com ≤10 escolas uma única coluna deve listar todas (PDF: `colA = escolas` quando não há 2 colunas). */
+        const leftList = twoCols
+          ? escolas.slice(0, mid).map((s) => `• ${s}`).join("\n")
+          : escolas.map((s) => `• ${s}`).join("\n");
+        const rightList = twoCols ? escolas.slice(mid).map((s) => `• ${s}`).join("\n") : "";
         slide.addText(
-          [
-            { text: "ESCOLAS PARTICIPANTES\n", options: { fontSize: p19PxToPtForPptx(P19_COVER_SCHOOL_MULTI_HEADER_PX), color: "52525B", bold: true } },
-            { text: escolas.map((s) => `• ${s}`).join("\n"), options: { fontSize: p19PxToPtForPptx(listFsPx), color: "18181B", bold: true } },
-          ],
-          {
-            x: 0.65,
-            y: 1.85,
-            w: 12.1,
-            h: 5.4,
-            align: "center",
-            valign: "top",
-          }
+          [{ text: "ESCOLAS PARTICIPANTES\n", options: { fontSize: p19PxToPtForPptx(P19_COVER_SCHOOL_MULTI_HEADER_PX), color: "52525B", bold: true } }],
+          { x: 0.65, y: 1.85, w: 12.1, h: 0.45, align: "center" }
         );
+        slide.addText(
+          [{ text: leftList, options: { fontSize: p19PxToPtForPptx(listFsPx), color: "0F172A", bold: true } }],
+          { x: twoCols ? 0.55 : 0.65, y: 2.35, w: twoCols ? 5.9 : 12.1, h: 4.9, align: "left", valign: "top" }
+        );
+        if (twoCols && rightList) {
+          slide.addText(
+            [{ text: rightList, options: { fontSize: p19PxToPtForPptx(listFsPx), color: "0F172A", bold: true } }],
+            { x: 6.75, y: 2.35, w: 5.9, h: 4.9, align: "left", valign: "top" }
+          );
+        }
       }
       break;
     }
@@ -645,6 +839,7 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
         h: 0.6,
         fontSize: p19PxToPtForPptx(P19_METRIC_HEADER_PX),
         bold: true,
+        color: "52525B",
         align: "center",
       });
       slide.addText(Math.round(deckData.totalAlunosParticiparam).toLocaleString("pt-BR"), {
@@ -663,7 +858,7 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
         w: 11.7,
         h: 0.6,
         fontSize: p19PxToPtForPptx(P19_METRIC_HEADER_PX),
-        bold: true,
+        color: "334155",
         align: "center",
       });
       break;
@@ -700,60 +895,62 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
     }
     case "presence-table":
       drawTitle(slide, presentationTitleTablePresence(deckData.comparisonAxis), deckData.primaryColor, pptx);
-      drawTable(slide, slideSpec.table.columns, slideSpec.table.rows);
+      drawTable(slide, slideSpec.table.columns, slideSpec.table.rows, undefined, [0.26, 0.185, 0.185, 0.185, 0.185]);
       break;
     case "presence-chart":
-      drawTitle(slide, presentationTitleChartPresence(deckData.comparisonAxis), deckData.primaryColor, pptx);
-      drawPdfAlignedBarChart(slide, slideSpec.chart, { x: 0.55, y: 1.45, w: 12.2, h: 5.8 }, pptx);
+      drawTitle(slide, presentationTitleChartPresence(deckData.comparisonAxis), deckData.primaryColor, pptx, P19_CHART_SUBTITLE_PRESENCE);
+      drawPdfAlignedBarChart(slide, slideSpec.chart, p19RectPxToSlideInches(p19FullWidthBarChartRectPx(1)), pptx);
       break;
     case "section-levels":
-      drawTitle(slide, presentationSectionLevels(deckData.comparisonAxis), deckData.primaryColor, pptx);
-      slide.addText(presentationSectionLevelsTagline(deckData.comparisonAxis), {
-        x: 0.8,
-        y: 4.1,
-        w: 11.7,
-        h: 0.6,
-        align: "center",
-        fontSize: p19PxToPtForPptx(P19_SECTION_TAGLINE_PX),
-        color: "52525B",
-      });
+      drawCenteredSectionPptx(
+        slide,
+        presentationSectionLevels(deckData.comparisonAxis),
+        presentationSectionLevelsTagline(deckData.comparisonAxis),
+        deckData.primaryColor
+      );
       break;
     case "levels-guide":
       drawTitle(slide, "GUIA DE NÍVEIS DE APRENDIZAGEM", deckData.primaryColor, pptx);
       spec.deckData.levelGuide.forEach((lvl, idx) => {
-        const y = 1.35 + idx * 1.42;
+        const bx = P19_CONTENT.x;
+        const y = P19_LEVELS_GUIDE_FIRST_ROW_TOP_PX + idx * P19_LEVELS_GUIDE_ROW_STRIDE_PX;
+        const w = P19_CONTENT.w;
+        const h = P19_LEVELS_GUIDE_ROW_STRIDE_PX - 10;
+        const cardBox = p19RectPxToSlideInches({ x: bx, y, w, h });
+        const rxIn = (P19_LEVELS_GUIDE_CARD_RADIUS_PX / P19_PAGE.width) * 13.333;
         slide.addShape(pptx.ShapeType.roundRect, {
-          x: 0.55,
-          y,
-          w: 12.25,
-          h: 1.28,
-          fill: { color: "F8FAFC" },
-          line: { color: "E4E4E7" },
-          rx: 0.1,
-          ry: 0.1,
+          x: cardBox.x,
+          y: cardBox.y,
+          w: cardBox.w,
+          h: cardBox.h,
+          fill: { color: p19LevelsGuideCardFillHex() },
+          line: { color: p19LevelsGuideCardBorderHex() },
+          rx: rxIn,
+          ry: rxIn,
         });
+        const stripe = p19RectPxToSlideInches({ x: bx, y, w: 8, h });
         slide.addShape(pptx.ShapeType.rect, {
-          x: 0.55,
-          y,
-          w: 0.14,
-          h: 1.28,
+          x: stripe.x,
+          y: stripe.y,
+          w: stripe.w,
+          h: stripe.h,
           fill: { color: hexNoHash(lvl.color) },
           line: { color: hexNoHash(lvl.color) },
         });
         slide.addText(lvl.label, {
-          x: 0.78,
-          y: y + 0.12,
-          w: 11.9,
+          x: p19PxToSlideInX(bx + 18),
+          y: p19PxToSlideInY(y + 16),
+          w: p19PxToSlideInX(w - 28),
           h: 0.32,
           fontSize: p19PxToPtForPptx(P19_LEVELS_GUIDE_TITLE_PX),
           bold: true,
           color: hexNoHash(lvl.color),
         });
         slide.addText(lvl.description, {
-          x: 0.78,
-          y: y + 0.48,
-          w: 11.9,
-          h: 0.72,
+          x: p19PxToSlideInX(bx + 18),
+          y: p19PxToSlideInY(y + 48),
+          w: p19PxToSlideInX(w - 28),
+          h: 1.05,
           fontSize: p19PxToPtForPptx(P19_LEVELS_GUIDE_DESC_PX),
           color: "3F3F46",
           wrap: true,
@@ -761,185 +958,116 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
       });
       break;
     case "levels-chart": {
-      drawTitle(slide, presentationTitleChartLevels(deckData.comparisonAxis), deckData.primaryColor, pptx);
-      if (slideSpec.escolaNome) {
-        slide.addText(slideSpec.escolaNome, {
-          x: 0.62,
-          y: 1.05,
-          w: 11.5,
-          h: 0.35,
-          fontSize: p19PxToPtForPptx(P19_SUBTITLE_FONT_PX),
-          color: "52525B",
-          wrap: true,
-        });
-      }
-      const chartX = p19PxToSlideInX(P19_CONTENT.x + P19_TITLE_TEXT_OFFSET_X_PX);
-      const insetR = p19PxToSlideInX(P19_TITLE_TEXT_OFFSET_X_PX);
-      const chartW = p19PxToSlideInX(P19_CONTENT.x + P19_CONTENT.w) - chartX - insetR;
+      drawTitle(slide, presentationTitleChartLevels(deckData.comparisonAxis), deckData.primaryColor, pptx, slideSpec.escolaNome);
       drawPdfAlignedBarChart(
         slide,
         slideSpec.chart,
-        { x: chartX, y: slideSpec.escolaNome ? 1.55 : 1.45, w: chartW, h: slideSpec.escolaNome ? 5.65 : 5.8 },
+        p19RectPxToSlideInches(p19StandardBarChartRectPx(slideSpec.escolaNome ? 1 : 0)),
         pptx
       );
       break;
     }
     case "levels-table":
-      drawTitle(slide, niveisAprendizagemTituloPorEixo(deckData.comparisonAxis), deckData.primaryColor, pptx);
-      if (slideSpec.escolaNome) {
-        slide.addText(slideSpec.escolaNome, {
-          x: 0.62,
-          y: 1.05,
-          w: 11.5,
-          h: 0.35,
-          fontSize: p19PxToPtForPptx(P19_SUBTITLE_FONT_PX),
-          color: "52525B",
-          wrap: true,
-        });
-      }
-      drawLevelsTable(slide, slideSpec.table.columns, slideSpec.table.rows, slideSpec.escolaNome ? 1.52 : 1.4);
+      drawTitle(slide, niveisAprendizagemTituloPorEixo(deckData.comparisonAxis), deckData.primaryColor, pptx, slideSpec.escolaNome);
+      drawLevelsTable(
+        slide,
+        slideSpec.table.columns,
+        slideSpec.table.rows,
+        p19PxToSlideInY(p19TableStartYAfterTitleBlockPx(Boolean(slideSpec.escolaNome), 1))
+      );
       break;
     case "section-proficiency":
-      drawTitle(slide, presentationSectionProficiency(deckData.comparisonAxis), deckData.primaryColor, pptx);
-      slide.addText(presentationSectionProficiencyTagline(deckData.comparisonAxis), {
-        x: 0.8,
-        y: 4.1,
-        w: 11.7,
-        h: 0.6,
-        align: "center",
-        fontSize: p19PxToPtForPptx(P19_SECTION_TAGLINE_PX),
-        color: "52525B",
-      });
+      drawCenteredSectionPptx(
+        slide,
+        presentationSectionProficiency(deckData.comparisonAxis),
+        presentationSectionProficiencyTagline(deckData.comparisonAxis),
+        deckData.primaryColor
+      );
       break;
     case "proficiency-general-chart": {
-      drawTitle(slide, presentationTitleProficiencyGeneralChart(deckData.comparisonAxis), deckData.primaryColor, pptx);
-      if (slideSpec.escolaNome) {
-        slide.addText(slideSpec.escolaNome, {
-          x: 0.62,
-          y: 1.05,
-          w: 11.5,
-          h: 0.35,
-          fontSize: p19PxToPtForPptx(P19_SUBTITLE_FONT_PX),
-          color: "52525B",
-          wrap: true,
-        });
-      }
-      const profChartX = p19PxToSlideInX(P19_CONTENT.x + P19_TITLE_TEXT_OFFSET_X_PX);
-      const profChartW = p19PxToSlideInX(P19_CONTENT.x + P19_CONTENT.w) - profChartX;
+      const profSub = [slideSpec.escolaNome, P19_CHART_SUBTITLE_PROFICIENCY].filter(Boolean).join(" • ");
+      drawTitle(slide, presentationTitleProficiencyGeneralChart(deckData.comparisonAxis), deckData.primaryColor, pptx, profSub);
       drawPdfAlignedBarChart(
         slide,
         slideSpec.chart,
-        {
-          x: profChartX,
-          y: slideSpec.escolaNome ? 1.55 : 1.45,
-          w: profChartW,
-          h: slideSpec.escolaNome ? 5.65 : 5.8,
-        },
+        p19RectPxToSlideInches(p19ProficiencyGeneralBarChartRectPx(profSub.trim() ? 1 : 0)),
         pptx
       );
       break;
     }
-    case "proficiency-by-discipline-chart":
-      drawTitle(slide, presentationTitleProficiencyByDiscipline(deckData.comparisonAxis), deckData.primaryColor, pptx);
-      if (slideSpec.escolaNome) {
-        slide.addText(slideSpec.escolaNome, {
-          x: 0.62,
-          y: 1.05,
-          w: 11.5,
-          h: 0.35,
-          fontSize: p19PxToPtForPptx(P19_SUBTITLE_FONT_PX),
-          color: "52525B",
-          wrap: true,
-        });
-      }
+    case "proficiency-by-discipline-chart": {
+      drawTitle(slide, presentationTitleProficiencyByDiscipline(deckData.comparisonAxis), deckData.primaryColor, pptx, slideSpec.escolaNome);
+      /** Uma coluna: um mini-gráfico por linha, largura total (chunk = 1 em `buildSlideSpec`). */
+      const gridTopPx = p19ChartAreaTopPxAfterTitle(slideSpec.escolaNome ? 1 : 0);
+      const gridLeft = P19_CONTENT.x + P19_TITLE_TEXT_OFFSET_X_PX;
+      const gridW = P19_CONTENT.w - P19_TITLE_TEXT_OFFSET_X_PX;
+      const gridPad = 8;
+      const boxWpx = gridW - gridPad * 2;
+      const boxXpx = gridLeft + gridPad;
+      const innerPadPx = 8;
+      const innerWpx = boxWpx - innerPadPx * 2;
+      const rowGapPx = 10;
+      const n = Math.max(1, slideSpec.charts.length);
+      const boxHPx = Math.max(
+        148,
+        (P19_PAGE.height - gridTopPx - P19_SLIDE_FOOTER_RESERVE_PX - Math.max(0, n - 1) * rowGapPx) / n
+      );
+      const titleLabFs = P19_PROFICIENCY_DISC_CARD_TITLE_PX;
+      const titleLabLh = p19PdfLineHeightPx(titleLabFs);
       slideSpec.charts.forEach((entry, idx) => {
-        const col = idx % 2;
-        const row = Math.floor(idx / 2);
-        const gridLeft = P19_CONTENT.x + P19_TITLE_TEXT_OFFSET_X_PX;
-        const gridW = P19_CONTENT.w - P19_TITLE_TEXT_OFFSET_X_PX;
-        const gridPad = 8;
-        const boxWpx = (gridW - gridPad * 3) / 2;
-        const boxXpx = gridLeft + gridPad + col * (boxWpx + gridPad);
-        const boxX = p19PxToSlideInX(boxXpx);
-        const boxWIn = p19PxToSlideInX(boxWpx);
-        const innerPadPx = 8;
-        const innerWpx = boxWpx - innerPadPx * 2;
-        const boxY = (slideSpec.escolaNome ? 1.52 : 1.4) + row * 2.95;
-        slide.addShape(pptx.ShapeType.roundRect, {
-          x: boxX,
-          y: boxY,
-          w: boxWIn,
-          h: 2.75,
-          fill: { color: "F8FAFC" },
-          line: { color: "D4D4D8" },
-          rx: 0.08,
-          ry: 0.08,
-        });
-        slide.addText(entry.title, {
+        const boxYpx = gridTopPx + idx * (boxHPx + rowGapPx);
+        const titleWrapped = wrapTextBySpacesForPptx(
+          entry.title,
+          approxMaxCharsForWidth((innerWpx / P19_PAGE.width) * 13.333, p19PxToPtForPptx(titleLabFs))
+        );
+        const titleLineCount = Math.max(1, titleWrapped.split("\n").filter((l) => l.length > 0).length);
+        const titleTopPx = boxYpx + 16;
+        slide.addText(titleWrapped, {
           x: p19PxToSlideInX(boxXpx + innerPadPx),
-          y: boxY + 0.12,
+          y: p19PxToSlideInY(titleTopPx),
           w: p19PxToSlideInX(innerWpx),
-          h: 0.28,
-          fontSize: p19PxToPtForPptx(P19_CHART_H_BAR_LABEL_PX + 2),
+          h: Math.min(0.72, (titleLineCount * titleLabLh / P19_PAGE.height) * 7.5 + 0.08),
+          fontSize: p19PxToPtForPptx(titleLabFs),
           bold: true,
-          color: "3F3F46",
+          color: "0F172A",
           wrap: true,
         });
-        drawPdfAlignedBarChart(slide, entry.chart, {
-          x: p19PxToSlideInX(boxXpx + innerPadPx),
-          y: boxY + 0.35,
-          w: p19PxToSlideInX(innerWpx),
-          h: 2.25,
-        }, pptx);
+        const chartInnerTopPx = titleTopPx + titleLineCount * titleLabLh + 4;
+        const innerHPx = Math.max(80, boxYpx + boxHPx - chartInnerTopPx - 8);
+        drawPdfAlignedBarChart(
+          slide,
+          entry.chart,
+          p19RectPxToSlideInches({ x: boxXpx + innerPadPx, y: chartInnerTopPx, w: boxWpx - 16, h: innerHPx }),
+          pptx
+        );
       });
       break;
+    }
     case "section-grades":
-      drawTitle(slide, presentationSectionGrades(deckData.comparisonAxis), deckData.primaryColor, pptx);
-      slide.addText(presentationSectionGradesTagline(deckData.comparisonAxis), {
-        x: 0.8,
-        y: 4.1,
-        w: 11.7,
-        h: 0.6,
-        align: "center",
-        fontSize: p19PxToPtForPptx(P19_SECTION_TAGLINE_PX),
-        color: "52525B",
-      });
+      drawCenteredSectionPptx(
+        slide,
+        presentationSectionGrades(deckData.comparisonAxis),
+        presentationSectionGradesTagline(deckData.comparisonAxis),
+        deckData.primaryColor
+      );
       break;
     case "grades-table":
       drawTitle(slide, presentationTitleTableGrades(deckData.comparisonAxis), deckData.primaryColor, pptx);
-      drawTable(slide, slideSpec.table.columns, slideSpec.table.rows);
+      drawTable(slide, slideSpec.table.columns, slideSpec.table.rows, undefined, [0.52, 0.48]);
       break;
-    case "grades-chart":
-      drawTitle(slide, presentationTitleChartGrades(deckData.comparisonAxis), deckData.primaryColor, pptx);
-      if (slideSpec.escolaNome) {
-        slide.addText(slideSpec.escolaNome, {
-          x: 0.62,
-          y: 1.05,
-          w: 11.5,
-          h: 0.35,
-          fontSize: p19PxToPtForPptx(P19_SUBTITLE_FONT_PX),
-          color: "52525B",
-          wrap: true,
-        });
-      }
+    case "grades-chart": {
+      const gradesSub = [slideSpec.escolaNome, P19_CHART_SUBTITLE_GRADES].filter(Boolean).join(" • ");
+      drawTitle(slide, presentationTitleChartGrades(deckData.comparisonAxis), deckData.primaryColor, pptx, gradesSub);
       drawPdfAlignedBarChart(
         slide,
         slideSpec.chart,
-        { x: 0.55, y: slideSpec.escolaNome ? 1.55 : 1.45, w: 12.2, h: slideSpec.escolaNome ? 5.65 : 5.8 },
+        p19RectPxToSlideInches(p19FullWidthBarChartRectPx(gradesSub.trim() ? 1 : 0)),
         pptx
       );
       break;
+    }
     case "section-questions":
-      drawTitle(slide, presentationSectionQuestionsTitle(), deckData.primaryColor, pptx);
-      slide.addText(presentationSectionQuestionsTagline(), {
-        x: 0.8,
-        y: 4.1,
-        w: 11.7,
-        h: 0.6,
-        align: "center",
-        fontSize: p19PxToPtForPptx(P19_SECTION_TAGLINE_PX),
-        color: "52525B",
-      });
+      drawCenteredSectionPptx(slide, presentationSectionQuestionsTitle(), presentationSectionQuestionsTagline(), deckData.primaryColor);
       break;
     case "dynamic-series-cover":
       slide.addText(`[${deckData.serieNomeCapas}]`, {
@@ -994,11 +1122,16 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
             : slideSpec.questionsSubsection?.kind === "turma"
               ? `TABELA DE QUESTÕES — TURMA ${slideSpec.questionsSubsection.turmaNome}`
               : "TABELA DE QUESTÕES";
-      drawTitle(slide, qt, deckData.primaryColor, pptx);
-      if (slideSpec.questionsPage != null && slideSpec.questionsPage.total > 1) {
-        slide.addText(`Página ${slideSpec.questionsPage.current}/${slideSpec.questionsPage.total}`, {
-          x: 9.0,
-          y: 0.58,
+      const qp = slideSpec.questionsPage;
+      const pageMulti = qp != null && qp.total > 1;
+      /** Títulos longos quebram em 2+ linhas; desce a tabela para não sobrepor o título. */
+      const titleLineCount = Math.min(4, Math.max(1, Math.ceil(qt.length / 34)));
+      const tableStartY = p19PxToSlideInY(p19TableStartYAfterTitleBlockPx(false, titleLineCount));
+      drawTitle(slide, qt, deckData.primaryColor, pptx, undefined, pageMulti ? P19_QUESTIONS_PAGE_INDICATOR_RIGHT_PAD_PX : 0);
+      if (pageMulti && qp) {
+        slide.addText(`Página ${qp.current}/${qp.total}`, {
+          x: p19PxToSlideInX(P19_CONTENT.x + P19_CONTENT.w) - 4.0,
+          y: p19PxToSlideInY(P19_SLIDE_TITLE_FIRST_LINE_TOP_PX),
           w: 4.0,
           h: 0.35,
           fontSize: p19PxToPtForPptx(P19_PAGE_INDICATOR_FONT_PX),
@@ -1006,11 +1139,36 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
           align: "right",
         });
       }
-      drawQuestionsTable(slide, slideSpec.table.columns, slideSpec.table.rows, slideSpec.questionRowLevels);
+      drawQuestionsTable(slide, slideSpec.table.columns, slideSpec.table.rows, slideSpec.questionRowLevels, tableStartY);
+      break;
+    }
+    case "questions-accuracy-chart": {
+      const ap = slideSpec.accuracyPage;
+      const pageMulti = ap != null && ap.total > 1;
+      drawTitle(
+        slide,
+        "PORCENTAGEM DE ACERTOS",
+        deckData.primaryColor,
+        pptx,
+        undefined,
+        pageMulti ? P19_QUESTIONS_PAGE_INDICATOR_RIGHT_PAD_PX : 0
+      );
+      if (pageMulti && ap) {
+        slide.addText(`Página ${ap.current}/${ap.total}`, {
+          x: p19PxToSlideInX(P19_CONTENT.x + P19_CONTENT.w) - 4.0,
+          y: p19PxToSlideInY(P19_SLIDE_TITLE_FIRST_LINE_TOP_PX),
+          w: 4.0,
+          h: 0.35,
+          fontSize: p19PxToPtForPptx(P19_PAGE_INDICATOR_FONT_PX),
+          color: "52525B",
+          align: "right",
+        });
+      }
+      drawPdfAlignedBarChart(slide, slideSpec.chart, p19RectPxToSlideInches(p19AccuracyChartRectPx()), pptx);
       break;
     }
     case "thank-you":
-      slide.addText("Obrigado!!", {
+      slide.addText(deckData.closingMessage || "Obrigado!!", {
         x: 0.8,
         y: 3.2,
         w: 11.7,
@@ -1022,6 +1180,7 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
       });
       break;
   }
+  drawDeckChromePptx(slide, deckData);
 }
 
 export async function renderPptxFromSlideSpec(args: RenderPptxArgs): Promise<void> {

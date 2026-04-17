@@ -3,6 +3,19 @@
  * PDF usa as mesmas unidades (px) do canvas jsPDF; PPTX converte px → pt / polegadas.
  */
 
+/** Paleta texto/UI (slides com fundo branco; primária do cliente não entra aqui). */
+export const P19_TEXT_STRONG = "#0F172A";
+export const P19_TEXT_BASE = "#334155";
+export const P19_TEXT_MUTED = "#52525B";
+export const P19_BORDER_SOFT = "#E2E8F0";
+export const P19_BORDER_NEUTRAL = "#D4D4D8";
+/** Superfície apenas dentro de cards (não no fundo do slide). */
+export const P19_SURFACE_CARD = "#F8FAFC";
+/** Micro-legenda curta para leitura guiada em gráficos (Preview/PDF/PPTX). */
+export const P19_CHART_SUBTITLE_PRESENCE = "Quantidade de alunos presentes (inteiro)";
+export const P19_CHART_SUBTITLE_GRADES = "Valores de nota (escala da avaliação)";
+export const P19_CHART_SUBTITLE_PROFICIENCY = "Escala de proficiência";
+
 export const P19_PAGE = { width: 1123, height: 793 } as const;
 
 /** Área útil do conteúdo (mesma base que PdfRenderer). */
@@ -27,7 +40,10 @@ export const P19_SEGMENT_FIELD_VALUE_PX = 34;
 
 /** Tabelas (th/td) */
 export const P19_TABLE_CELL_FONT_PX = 13;
-export const P19_TABLE_CELL_PADDING_PX = 8;
+/** Padding um pouco mais enxuto; mantém legibilidade em trio Preview/PDF/PPTX. */
+export const P19_TABLE_CELL_PADDING_PX = 6;
+/** Coluna “Descrição” na tabela de questões (texto longo). */
+export const P19_TABLE_QUESTIONS_DESC_FONT_PX = 13;
 
 /** Indicador "Página x/y" */
 export const P19_PAGE_INDICATOR_FONT_PX = 13;
@@ -45,6 +61,8 @@ export const P19_CHART_REF_H_PX = 470;
 export const P19_COVER_MAIN_TITLE_PX = 62;
 export const P19_COVER_MAIN_LABEL_PX = 14;
 export const P19_COVER_MAIN_VALUE_PX = 30;
+/** Subtítulo opcional abaixo do título na capa (PDF/PPTX alinhados ao preview). */
+export const P19_COVER_SUBTITLE_FONT_PX = 15;
 
 /** Capa escola (uma escola) */
 export const P19_COVER_SCHOOL_SINGLE_PX = 46;
@@ -58,11 +76,13 @@ export const P19_METRIC_HEADER_PX = 30;
 export const P19_METRIC_NUMBER_PX = 82;
 
 /** Seções centrais: título + tagline */
-export const P19_SECTION_TAGLINE_PX = 16;
+export const P19_SECTION_TAGLINE_PX = 18;
+/** Espaço título → tagline nas seções (Preview/PDF/PPTX alinhados). */
+export const P19_SECTION_TITLE_TAGLINE_GAP_PX = 16;
 
 /** Guias de níveis (cards) — alinhado ao preview (`levels-guide`) */
 export const P19_LEVELS_GUIDE_TITLE_PX = 20;
-export const P19_LEVELS_GUIDE_DESC_PX = 15;
+export const P19_LEVELS_GUIDE_DESC_PX = 16;
 
 /** Capas dinâmicas série/turma (preview) */
 export const P19_DYNAMIC_COVER_PX = 52;
@@ -72,8 +92,12 @@ export const P19_THANK_YOU_FONT_PX = 64;
 
 /** Eixo / rótulos de gráfico (preview `BarChartPreview`) */
 export const P19_CHART_AXIS_TICK_PX = 9;
-export const P19_CHART_CATEGORY_LABEL_PX = 10;
-export const P19_CHART_BAR_VALUE_TOP_PX = 14;
+/** Rótulos categoria (eixo X) — preview `BarChartPreview` usa 10px/600; PPTX usa negrito para legibilidade. */
+export const P19_CHART_CATEGORY_LABEL_PX = 11;
+/** Valor acima da barra — preview usa 16px / 900 (`BarChartPreview`). */
+export const P19_CHART_BAR_VALUE_TOP_PX = 16;
+/** Título dentro do card “proficiência por disciplina” — preview usa 12px/900; export ligeiramente maior para PPTX. */
+export const P19_PROFICIENCY_DISC_CARD_TITLE_PX = 14;
 export const P19_CHART_H_BAR_LABEL_PX = 11;
 export const P19_CHART_H_BAR_VALUE_PX = 15;
 

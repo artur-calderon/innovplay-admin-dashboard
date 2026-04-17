@@ -78,6 +78,9 @@ export default function RelatorioApresentacao19Slides() {
 
   const [primaryColor, setPrimaryColor] = useState<string>("#7c3aed");
   const [logoDataUrl, setLogoDataUrl] = useState<string>("/LOGO-1-menor.png");
+  const [coverSubtitle, setCoverSubtitle] = useState<string>("");
+  const [footerText, setFooterText] = useState<string>("");
+  const [closingMessage, setClosingMessage] = useState<string>("Obrigado!!");
 
   const [deckData, setDeckData] = useState<Presentation19DeckData | null>(null);
   const lastDeckLoadErrorRef = useRef<string | null>(null);
@@ -98,7 +101,9 @@ export default function RelatorioApresentacao19Slides() {
   const selectedSerie = activeMode === "answer_sheet" ? asSerie : evSerie;
   const selectedTurma = activeMode === "answer_sheet" ? asTurma : evTurma;
 
-  const slidesCount = useMemo(() => (deckData ? buildSlideSpec(deckData).slides.length : 22), [deckData]);
+  /** Um `buildSlideSpec` por troca de deck — preview e export reutilizam o mesmo objeto. */
+  const presentationSpec = useMemo(() => (deckData ? buildSlideSpec(deckData) : null), [deckData]);
+  const slidesCount = presentationSpec?.slides.length ?? 22;
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
@@ -328,6 +333,9 @@ export default function RelatorioApresentacao19Slides() {
       evTurma,
       primaryColor,
       logoDataUrl,
+      coverSubtitle,
+      footerText,
+      closingMessage,
       reportEntityType: reportEntityType ?? "",
       adminCity: adminCityIdQuery ?? "",
     });
@@ -336,8 +344,11 @@ export default function RelatorioApresentacao19Slides() {
     adminCityIdQuery,
     asSerie,
     asTurma,
+    closingMessage,
+    coverSubtitle,
     evSerie,
     evTurma,
+    footerText,
     logoDataUrl,
     periodoApi,
     primaryColor,
@@ -487,6 +498,9 @@ export default function RelatorioApresentacao19Slides() {
         novaRespostaSerieAgregados: novaRespostas.serie,
         primaryColor,
         logoDataUrl,
+        coverSubtitle: coverSubtitle.trim() || undefined,
+        footerText: footerText.trim() || undefined,
+        closingMessage: closingMessage.trim() || undefined,
       });
 
       previewDataCacheRef.current = { key: cacheKey, deck };
@@ -512,6 +526,9 @@ export default function RelatorioApresentacao19Slides() {
     asTurma,
     evSerie,
     evTurma,
+    closingMessage,
+    coverSubtitle,
+    footerText,
     logoDataUrl,
     primaryColor,
     reportEntityType,
@@ -632,13 +649,21 @@ export default function RelatorioApresentacao19Slides() {
               deckForPdf = { ...activeDeck, logoDataUrl: mLogo.dataUrl };
             }
           }
+          const specForPdf =
+            presentationSpec != null && activeDeck === deckData
+              ? deckForPdf === activeDeck
+                ? presentationSpec
+                : { ...presentationSpec, deckData: deckForPdf }
+              : buildSlideSpec(deckForPdf);
           await exportPresentation19Pdf({
-            deckData: deckForPdf,
+            spec: specForPdf,
             fileName,
           });
         } else {
+          const specForPptx =
+            presentationSpec != null && activeDeck === deckData ? presentationSpec : buildSlideSpec(activeDeck);
           await exportPresentation19Pptx({
-            deckData: activeDeck,
+            spec: specForPptx,
             fileName,
           });
         }
@@ -664,6 +689,7 @@ export default function RelatorioApresentacao19Slides() {
       deckData,
       finishIndeterminateLoadingBar,
       loadDeckData,
+      presentationSpec,
       selectedEvaluation,
       selectedMunicipality,
       startIndeterminateLoadingBar,
@@ -859,7 +885,9 @@ export default function RelatorioApresentacao19Slides() {
                 <Palette className="h-5 w-5" />
                 Personalização
               </CardTitle>
-              <CardDescription>Logo e cor principal serão aplicadas ao layout do deck.</CardDescription>
+              <CardDescription>
+                Cor, logo, textos institucionais e rodapé são aplicados na pré-visualização e nos arquivos PDF e PPTX.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
@@ -918,6 +946,54 @@ export default function RelatorioApresentacao19Slides() {
                   <img src={logoDataUrl} alt="Logo selecionada" className="h-12 w-auto object-contain border border-border rounded-md bg-white" />
                 </div>
               </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label htmlFor="p19-cover-subtitle" className="text-sm font-medium">
+                    Subtítulo na capa (opcional)
+                  </label>
+                  <input
+                    id="p19-cover-subtitle"
+                    type="text"
+                    value={coverSubtitle}
+                    onChange={(e) => setCoverSubtitle(e.target.value)}
+                    placeholder="Ex.: Secretaria Municipal de Educação"
+                    className="w-full bg-background text-foreground border border-border rounded-md px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-muted-foreground">Aparece abaixo do título da avaliação na primeira página.</p>
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="p19-footer" className="text-sm font-medium">
+                    Rodapé em todos os slides (opcional)
+                  </label>
+                  <input
+                    id="p19-footer"
+                    type="text"
+                    value={footerText}
+                    onChange={(e) => setFooterText(e.target.value)}
+                    placeholder="Ex.: contato@prefeitura.gov.br"
+                    className="w-full bg-background text-foreground border border-border rounded-md px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-muted-foreground">Texto discreto na base de cada slide (PDF, PPTX e pré-visualização).</p>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <label htmlFor="p19-closing" className="text-sm font-medium">
+                    Mensagem final
+                  </label>
+                  <input
+                    id="p19-closing"
+                    type="text"
+                    value={closingMessage}
+                    onChange={(e) => setClosingMessage(e.target.value)}
+                    placeholder="Obrigado!!"
+                    className="w-full max-w-md bg-background text-foreground border border-border rounded-md px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-muted-foreground">Último slide de encerramento do deck.</p>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -992,7 +1068,7 @@ export default function RelatorioApresentacao19Slides() {
 
               <div className="overflow-auto">
                 <div>
-                  <Presentation19NativePreviewDeck ref={previewDeckRef} deckData={deckData} />
+                  <Presentation19NativePreviewDeck ref={previewDeckRef} deckData={deckData} spec={presentationSpec ?? undefined} />
                 </div>
               </div>
             </div>
