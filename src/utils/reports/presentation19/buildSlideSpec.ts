@@ -2,11 +2,14 @@ import type { NiveisBySeriesRow, Presentation19DeckData, SlideQuestionRow } from
 import type { ExportChart, Presentation19ExportSpec, Presentation19SlideSpec } from "@/types/presentation19-export-spec";
 import { getProficiencyTableInfo } from "@/components/evaluations/results/utils/proficiency";
 import { getSubjectPaletteIndex } from "@/utils/competition/competitionSubjectColors";
-import { chunkPresentation19QuestionTableRows, chunkPresentation19SlideQuestionRows } from "@/utils/reports/presentation19/questionsTablePagination";
+import { chunkPresentation19SlideQuestionRows } from "@/utils/reports/presentation19/questionsTablePagination";
 import { comparisonColumnLabel } from "@/utils/reports/presentation19/presentationScope";
 
 const MAX_CATEGORY_ROWS_PER_SLIDE = 14;
-const MAX_PROF_DISC_CHARTS_PER_SLIDE = 8;
+/** Proficiência por disciplina: 1 gráfico por slide (largura total, uma disciplina por “linha”). */
+const MAX_PROF_DISC_CHARTS_PER_SLIDE = 1;
+/** Barras por slide no gráfico “% de acertos por descritor” (legibilidade). */
+const MAX_ACCURACY_CHART_BARS_PER_SLIDE = 9;
 
 function chunkFlat<T>(items: T[], size: number): T[][] {
   if (items.length === 0) return [];
@@ -399,8 +402,7 @@ function buildDefaultProficiencyByDisciplineCharts(deckData: Presentation19DeckD
           },
         },
       };
-    })
-    .slice(0, MAX_PROF_DISC_CHARTS_PER_SLIDE);
+    });
 }
 
 function municipalProficiencyForDiscipline(
@@ -508,10 +510,10 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
       columns: [catLabel, "Total de Alunos", "Total de Presentes", "Presença Média (%)", "Alunos Faltosos"],
       rows: chunk.map((r) => [
         r.label,
-        r.totalAlunos,
-        r.totalPresentes,
-        `${r.presencaMediaPct.toFixed(1).replace(".", ",")}%`,
-        r.alunosFaltosos,
+        Math.round(Number(r.totalAlunos ?? 0)),
+        Math.round(Number(r.totalPresentes ?? 0)),
+        `${Math.round(Number(r.presencaMediaPct ?? 0))}%`,
+        Math.round(Number(r.alunosFaltosos ?? 0)),
       ]),
     },
   }));
@@ -583,8 +585,40 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
     questoes.map((q) => [
       q.questao,
       q.habilidade,
+      String(q.habilidadeDescricao ?? "—"),
       `${q.percentualAcertos.toFixed(1).replace(".", ",")}%`,
     ]);
+
+  const questionDescriptorLabel = (habilidadeCodigoRaw: string, questao: number): string => {
+    const h = String(habilidadeCodigoRaw ?? "").trim();
+    if (!h || h === "—") return `Q${questao}`;
+    // Padrão comum: "D16 ..." — usar o primeiro token como descritor
+    const first = h.split(/\s+/)[0]?.trim() ?? "";
+    if (first.length >= 2 && first.length <= 12) return first;
+    return h.length > 12 ? h.slice(0, 12) : h;
+  };
+
+  const prepareQuestionsAccuracyRows = (rows: SlideQuestionRow[]): SlideQuestionRow[] =>
+    (rows ?? [])
+      .filter((r) => Number(r.questao) > 0)
+      .slice()
+      .sort((a, b) => Number(a.questao) - Number(b.questao));
+
+  const buildQuestionsAccuracyChartFromRows = (list: SlideQuestionRow[]): ExportChart => ({
+    type: "bar",
+    orientation: "vertical",
+    categoryKey: "descritor",
+    valueKeys: [{ key: "percentual", label: "% Acertos", color: "#64748B" }],
+    data: list.map((r) => {
+      const pct = Math.max(0, Math.min(100, Number(r.percentualAcertos) || 0));
+      return {
+        descritor: questionDescriptorLabel(String(r.habilidade ?? ""), Number(r.questao)),
+        percentual: Math.round(pct * 10) / 10,
+        color: pct >= 70 ? "#22C55E" : "#94A3B8",
+      };
+    }),
+    yAxis: { min: 0, max: 100, ticks: [0, 25, 50, 75, 100], scaleLabel: "% de acertos" },
+  });
 
   // Regra: só destacar questões com >= 70% de acertos (verde). O resto fica sem cor.
   const questionLevelsForChunk = (questChunk: SlideQuestionRow[]): Array<"adequado" | undefined> =>
@@ -602,7 +636,7 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
         index: 0,
         kind: "questions-table" as const,
         table: {
-          columns: ["Questão", "Habilidade", "% Acertos"],
+          columns: ["Questão", "Habilidade", "Descrição", "% Acertos"],
           rows,
         },
         questionRowLevels,
@@ -630,7 +664,7 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
         index: 0,
         kind: "questions-table" as const,
         table: {
-          columns: ["Questão", "Habilidade", "% Acertos"],
+          columns: ["Questão", "Habilidade", "Descrição", "% Acertos"],
           rows,
         },
         questionRowLevels,
@@ -658,7 +692,7 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
         index: 0,
         kind: "questions-table" as const,
         table: {
-          columns: ["Questão", "Habilidade", "% Acertos"],
+          columns: ["Questão", "Habilidade", "Descrição", "% Acertos"],
           rows,
         },
         questionRowLevels,
@@ -731,6 +765,30 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
 
   for (const s of questionSlidesFromDeck) {
     if (s.kind === "questions-table" || s.kind === "questions-turma-cover") push(s);
+  }
+
+  // Ao final das questões: gráfico de % acertos por descritor (verde >= 70%), até 9 barras por slide.
+  const baseForAccuracy =
+    deckData.questoesTabelaGeral.length > 0
+      ? { rows: deckData.questoesTabelaGeral }
+      : deckData.questoesPorSerie.length === 1
+        ? { rows: deckData.questoesPorSerie[0]!.questoes }
+        : deckData.questoesPorTurma.length === 1
+          ? { rows: deckData.questoesPorTurma[0]!.questoes }
+          : null;
+
+  if (baseForAccuracy) {
+    const accuracyRows = prepareQuestionsAccuracyRows(baseForAccuracy.rows);
+    if (accuracyRows.length > 0) {
+      const chunks = chunkFlat(accuracyRows, MAX_ACCURACY_CHART_BARS_PER_SLIDE);
+      chunks.forEach((chunk, pageIdx) => {
+        push({
+          kind: "questions-accuracy-chart",
+          chart: buildQuestionsAccuracyChartFromRows(chunk),
+          ...(chunks.length > 1 ? { accuracyPage: { current: pageIdx + 1, total: chunks.length } } : {}),
+        });
+      });
+    }
   }
 
   push({ kind: "thank-you" });

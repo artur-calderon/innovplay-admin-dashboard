@@ -35,7 +35,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext, cityIdQueryParamForAdmin } from "@/utils/userHierarchy";
 import { normalizeRelatorioCompletoForAnaliseUI } from "@/utils/report/relatorioCompletoNormalize";
-import { generateRelatorioOrganizadoPdf } from "@/services/reports/relatorioOrganizadoPdf";
+import { generateRelatorioOrganizadoPdf } from "@/services/reports/analiseAvaliacoesPdf";
 
 // Interfaces para os dados da API
 interface EvaluationResult {
@@ -124,6 +124,30 @@ const formatDecimal = (value?: number | null) => {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1
   });
+};
+
+type TurmaRowLike = {
+  turma?: unknown;
+  serie?: unknown;
+  serie_nome?: unknown;
+  grade?: unknown;
+  ano?: unknown;
+};
+
+const formatTurmaLabel = (row: TurmaRowLike) => {
+  const turma = typeof row?.turma === "string" ? row.turma.trim() : "";
+  const serie =
+    (typeof row?.serie === "string" && row.serie.trim()) ||
+    (typeof row?.serie_nome === "string" && row.serie_nome.trim()) ||
+    (typeof row?.grade === "string" && row.grade.trim()) ||
+    (typeof row?.ano === "string" && row.ano.trim()) ||
+    "";
+
+  if (!serie) return turma;
+  if (!turma) return serie;
+  // Evita duplicar se a API já mandar algo como "9º Ano 9º A"
+  if (turma.toLowerCase().includes(serie.toLowerCase())) return turma;
+  return `${serie} ${turma}`.trim();
 };
 
 export default function AnaliseAvaliacoes() {
@@ -326,7 +350,7 @@ export default function AnaliseAvaliacoes() {
           municipality: selectedMunicipality,
           school: selectedSchool,
           evaluation: selectedEvaluation,
-        },
+        } as unknown as { state?: string; municipality?: string; school?: string; grade?: string; class?: string },
         userHierarchyContext
       );
       if (!validation.isValid) {
@@ -378,7 +402,7 @@ export default function AnaliseAvaliacoes() {
           const reportOptions = {
             ...options,
             ...(adminCityIdQuery ? { adminCityIdQuery } : {}),
-            ...(reportAnswerSheet ? { reportEntityType: REPORT_ENTITY_TYPE_ANSWER_SHEET as const } : {}),
+            ...(reportAnswerSheet ? { reportEntityType: REPORT_ENTITY_TYPE_ANSWER_SHEET } : {}),
           };
           
           // ✅ NOVO: Verificar status antes de buscar (para mostrar feedback visual)
@@ -715,7 +739,9 @@ export default function AnaliseAvaliacoes() {
                         ))
                       : apiData.total_alunos.por_turma?.map((turma, index: number) => (
                           <tr key={index} className="hover:bg-muted transition-colors">
-                            <td className="border border-border px-4 py-2">{turma.turma}</td>
+                            <td className="border border-border px-4 py-2">
+                              {formatTurmaLabel(turma as unknown as TurmaRowLike) || String((turma as { turma?: string }).turma ?? "")}
+                            </td>
                             <td className="border border-border px-4 py-2 text-center">{turma.matriculados}</td>
                             <td className="border border-border px-4 py-2 text-center">{turma.avaliados}</td>
                             <td className="border border-border px-4 py-2 text-center">{turma.percentual}%</td>
@@ -778,7 +804,9 @@ export default function AnaliseAvaliacoes() {
                                ))
                              : dadosDisciplina.por_turma?.map((turma, index: number) => (
                                  <tr key={index} className="hover:bg-muted transition-colors">
-                                   <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
+                                   <td className="border border-border px-4 py-2 font-medium">
+                                     {formatTurmaLabel(turma as unknown as TurmaRowLike) || String((turma as { turma?: string }).turma ?? "")}
+                                   </td>
                                    <td className="border border-border px-4 py-2 text-center bg-red-50 dark:bg-red-950/20">{turma.abaixo_do_basico}</td>
                                    <td className="border border-border px-4 py-2 text-center bg-yellow-50 dark:bg-yellow-950/20">{turma.basico}</td>
                                   <td className="border border-border px-4 py-2 text-center bg-green-50 dark:bg-green-700/25 text-green-900 dark:text-green-200">{turma.adequado}</td>
@@ -863,7 +891,9 @@ export default function AnaliseAvaliacoes() {
                                ))
                              : dadosDisciplina.por_turma?.map((turma, index: number) => (
                                  <tr key={index} className="hover:bg-muted transition-colors">
-                                   <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
+                                   <td className="border border-border px-4 py-2 font-medium">
+                                     {formatTurmaLabel(turma as unknown as TurmaRowLike) || String((turma as { turma?: string }).turma ?? "")}
+                                   </td>
                                    <td className="border border-border px-4 py-2 text-center">{formatDecimal(turma.proficiencia ?? (turma as { media?: number }).media)}</td>
                                  </tr>
                                ))}
@@ -921,7 +951,9 @@ export default function AnaliseAvaliacoes() {
                                ))
                              : dadosDisciplina.por_turma?.map((turma, index: number) => (
                                  <tr key={index} className="hover:bg-muted transition-colors">
-                                   <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
+                                   <td className="border border-border px-4 py-2 font-medium">
+                                     {formatTurmaLabel(turma as unknown as TurmaRowLike) || String((turma as { turma?: string }).turma ?? "")}
+                                   </td>
                                    <td className="border border-border px-4 py-2 text-center">{formatDecimal(turma.nota ?? (turma as { media?: number }).media)}</td>
                                  </tr>
                                ))}
@@ -958,8 +990,8 @@ export default function AnaliseAvaliacoes() {
                     .sort(([aKey, aVal], [bKey, bVal]) => {
                       if (aKey === 'GERAL') return -1;
                       if (bKey === 'GERAL') return 1;
-                      const aMin = Math.min(...(aVal.questoes?.map((q) => q.numero_questao) ?? [Infinity]));
-                      const bMin = Math.min(...(bVal.questoes?.map((q) => q.numero_questao) ?? [Infinity]));
+                      const aMin = Math.min(...(((aVal as any)?.questoes?.map((q: any) => q.numero_questao) ?? [Infinity]) as number[]));
+                      const bMin = Math.min(...(((bVal as any)?.questoes?.map((q: any) => q.numero_questao) ?? [Infinity]) as number[]));
                       return aMin - bMin;
                     })
                     .map(([disciplina, dadosDisciplina]) => (
@@ -970,7 +1002,7 @@ export default function AnaliseAvaliacoes() {
                       
                       {/* Grid de questões */}
                       <div className="grid grid-cols-13 gap-0 border border-border">
-                        {dadosDisciplina.questoes && dadosDisciplina.questoes.length > 0 ? dadosDisciplina.questoes.map((questao, index: number) => (
+                        {(dadosDisciplina as any)?.questoes && (dadosDisciplina as any).questoes.length > 0 ? (dadosDisciplina as any).questoes.map((questao: any, index: number) => (
                           <div key={index} className="flex flex-col">
                             {/* Header da questão */}
                             <div className="bg-blue-600 dark:bg-blue-700 text-white text-center py-2 px-1 text-sm font-medium border-r border-border last:border-r-0">

@@ -7,7 +7,10 @@ export type PresentationComparisonAxis = "escola" | "serie" | "turma" | "aluno";
 
 export type SlideQuestionRow = {
   questao: number;
+  /** Código/identificador da habilidade (ex.: "D16"). */
   habilidade: string;
+  /** Descrição textual da habilidade (quando disponível). */
+  habilidadeDescricao?: string;
   percentualAcertos: number;
 };
 
@@ -113,6 +116,12 @@ export type Presentation19DeckData = {
   /** Metas/aux */
   primaryColor: string;
   logoDataUrl?: string;
+  /** Texto opcional abaixo do título na primeira capa (ex.: secretaria ou rede de ensino). */
+  coverSubtitle?: string;
+  /** Rodapé em todos os slides (ex.: site, e-mail ou endereço). */
+  footerText?: string;
+  /** Mensagem do slide final de agradecimento (padrão no builder: "Obrigado!!"). */
+  closingMessage?: string;
   /** usado para capas dinâmicas 16-17 */
   serieNomeCapas: string;
   turmaNomeCapas: string;
@@ -133,4 +142,7 @@ export type BuildDeckDataArgs = {
   novaRespostaSerieAgregados?: NovaRespostaAPI | null;
   primaryColor: string;
   logoDataUrl?: string;
+  coverSubtitle?: string;
+  footerText?: string;
+  closingMessage?: string;
 };

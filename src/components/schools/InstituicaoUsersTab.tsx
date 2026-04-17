@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -129,7 +130,7 @@ interface CityOption {
   name: string;
 }
 
-interface InstituicaoUsersTabProps {
+export interface InstituicaoUsersTabProps {
   /** ID do município (obrigatório para tecadm; para admin pode vir do seletor) */
   cityId: string | null;
   /** Lista de cidades para o admin escolher (opcional) */
@@ -140,6 +141,12 @@ interface InstituicaoUsersTabProps {
   onCityChange?: (cityId: string) => void;
   /** Se o usuário atual é admin (pode editar qualquer um) */
   isAdmin?: boolean;
+  /** Seleção de usuários para ações em lote (ex.: apagar em lote) */
+  selectedUserIdsForBatchDelete?: ReadonlySet<string>;
+  onToggleUserForBatchDelete?: (userId: string) => void;
+  onSelectManyUsersForBatchDelete?: (userIds: string[]) => void;
+  onClearUsersForBatchDelete?: () => void;
+  onDeleteUsersInBatch?: (userIds: string[]) => Promise<void> | void;
 }
 
 export function InstituicaoUsersTab({
@@ -148,6 +155,11 @@ export function InstituicaoUsersTab({
   selectedCityId,
   onCityChange,
   isAdmin = false,
+  selectedUserIdsForBatchDelete,
+  onToggleUserForBatchDelete,
+  onSelectManyUsersForBatchDelete,
+  onClearUsersForBatchDelete,
+  onDeleteUsersInBatch,
 }: InstituicaoUsersTabProps) {
   const [data, setData] = useState<MunicipioUsersResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -168,9 +180,19 @@ export function InstituicaoUsersTab({
   const [isSubmittingAddTecAdmin, setIsSubmittingAddTecAdmin] = useState(false);
   const [userToDelete, setUserToDelete] = useState<MunicipioUser | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
+  const [isBatchDeleteDialogOpen, setIsBatchDeleteDialogOpen] = useState(false);
+  const [isDeletingBatch, setIsDeletingBatch] = useState(false);
   const { toast } = useToast();
   const { user: authUser } = useAuth();
   const canFetchSchoolEnrichment = authUser?.role === "admin" || authUser?.role === "tecadm";
+  const canBatchDelete = Boolean(
+    authUser?.role === "admin"
+      && selectedUserIdsForBatchDelete
+      && onToggleUserForBatchDelete
+      && onSelectManyUsersForBatchDelete
+      && onClearUsersForBatchDelete
+      && onDeleteUsersInBatch
+  );
 
   const { checkedEmail } = useEmailCheck(addTecAdminForm.name, addTecAdminOpen);
   useEffect(() => {
@@ -457,6 +479,20 @@ export function InstituicaoUsersTab({
     }
   };
 
+  const handleBatchDeleteUsers = async () => {
+    if (!canBatchDelete) return;
+    const ids = Array.from(selectedUserIdsForBatchDelete).map(String).filter(Boolean);
+    if (ids.length === 0) return;
+    setIsDeletingBatch(true);
+    try {
+      await onDeleteUsersInBatch(ids);
+      setIsBatchDeleteDialogOpen(false);
+      fetchUsers();
+    } finally {
+      setIsDeletingBatch(false);
+    }
+  };
+
   const rawUsers = data?.users ?? [];
   const users =
     authUser?.role === "professor"
@@ -485,6 +521,9 @@ export function InstituicaoUsersTab({
 
   const orderedRoles = [...ROLE_ORDER, ...Object.keys(filteredByRole).filter((r) => !ROLE_ORDER.includes(r))];
   const totalFiltered = Object.values(filteredByRole).reduce((s, arr) => s + arr.length, 0);
+  const visibleUserIdsForSelection = canBatchDelete
+    ? Object.values(filteredByRole).flat().map((u) => String(u.id))
+    : [];
 
   const effectiveCityId = cityId || selectedCityId;
   const showCitySelector = isAdmin && cities.length > 0 && !cityId;
@@ -550,6 +589,47 @@ export function InstituicaoUsersTab({
             <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           </div>
 
+          {canBatchDelete && (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-lg border bg-muted/20 px-3 py-2">
+              <div className="text-sm text-muted-foreground">
+                Selecionados:{" "}
+                <span className="font-medium text-foreground">
+                  {selectedUserIdsForBatchDelete.size}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onSelectManyUsersForBatchDelete(visibleUserIdsForSelection)}
+                  disabled={visibleUserIdsForSelection.length === 0}
+                >
+                  Selecionar todos (visíveis)
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onClearUsersForBatchDelete()}
+                  disabled={selectedUserIdsForBatchDelete.size === 0}
+                >
+                  Limpar seleção
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setIsBatchDeleteDialogOpen(true)}
+                  disabled={selectedUserIdsForBatchDelete.size === 0}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Excluir selecionados
+                </Button>
+              </div>
+            </div>
+          )}
+
           {isLoading ? (
             <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-dashed bg-muted/30">
               <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -593,6 +673,14 @@ export function InstituicaoUsersTab({
                             <CardContent className="p-4">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex items-center gap-3 min-w-0 flex-1">
+                                  {canBatchDelete && (
+                                    <Checkbox
+                                      checked={selectedUserIdsForBatchDelete.has(String(u.id))}
+                                      onCheckedChange={() => onToggleUserForBatchDelete(String(u.id))}
+                                      className="mt-1"
+                                      aria-label={`Selecionar usuário ${u.name}`}
+                                    />
+                                  )}
                                   {u.avatar_config ? (
                                     <AvatarPreview config={u.avatar_config} size={44} className="shrink-0" />
                                   ) : (
@@ -909,6 +997,43 @@ export function InstituicaoUsersTab({
                 </>
               ) : (
                 "Excluir"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação de exclusão em lote (somente admin) */}
+      <AlertDialog open={isBatchDeleteDialogOpen} onOpenChange={(open) => !open && !isDeletingBatch && setIsBatchDeleteDialogOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir usuários selecionados?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita.{" "}
+              {selectedUserIdsForBatchDelete?.size
+                ? (
+                  <>Você irá excluir <strong>{selectedUserIdsForBatchDelete.size}</strong> usuário(s).</>
+                )
+                : "Nenhum usuário selecionado."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingBatch}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleBatchDeleteUsers();
+              }}
+              disabled={isDeletingBatch || !selectedUserIdsForBatchDelete?.size}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeletingBatch ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                "Excluir selecionados"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

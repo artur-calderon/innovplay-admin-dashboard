@@ -495,8 +495,9 @@ function flattenQuestions(relatorio: Partial<RelatorioCompleto> | null): SlideQu
     for (const q of qs) {
       const questao = clampToNumber(q.numero_questao ?? q.numero, 0);
       const percentualAcertos = clampToNumber(q.percentual ?? 0, 0);
-      const habilidade = String(q.codigo ?? q.descricao ?? "Habilidade");
-      questoesFlat.push({ questao, habilidade, percentualAcertos });
+      const habilidade = String(q.codigo ?? "").trim() || "—";
+      const habilidadeDescricao = String(q.descricao ?? "").trim() || undefined;
+      questoesFlat.push({ questao, habilidade, habilidadeDescricao, percentualAcertos });
     }
   } else if (habilidades && habilidades.length > 0) {
     for (const hab of habilidades) {
@@ -504,8 +505,9 @@ function flattenQuestions(relatorio: Partial<RelatorioCompleto> | null): SlideQu
       for (const q of qs) {
         const questao = clampToNumber(q.numero_questao ?? q.numero, 0);
         const percentualAcertos = clampToNumber(q.percentual ?? 0, 0);
-        const habilidade = String(q.codigo ?? hab.descricao ?? "Habilidade");
-        questoesFlat.push({ questao, habilidade, percentualAcertos });
+        const habilidade = String(q.codigo ?? hab.codigo ?? "").trim() || "—";
+        const habilidadeDescricao = String(q.descricao ?? hab.descricao ?? "").trim() || undefined;
+        questoesFlat.push({ questao, habilidade, habilidadeDescricao, percentualAcertos });
       }
     }
   }
@@ -516,41 +518,54 @@ function flattenQuestions(relatorio: Partial<RelatorioCompleto> | null): SlideQu
   }));
 }
 
-/** Número da questão → código/descrição da habilidade (metadados em `tabela_detalhada.disciplinas[].questoes`). */
-function buildQuestaoNumeroToHabilidadeMap(novaRespostaAgregados: NovaRespostaAPI | null): Map<number, string> {
-  const map = new Map<number, string>();
+/** Número da questão → metadados da habilidade (metadados em `tabela_detalhada.disciplinas[].questoes`). */
+function buildQuestaoNumeroToHabilidadeMetaMap(
+  novaRespostaAgregados: NovaRespostaAPI | null
+): Map<number, { codigo?: string; descricao?: string }> {
+  const map = new Map<number, { codigo?: string; descricao?: string }>();
   const disciplinas = novaRespostaAgregados?.tabela_detalhada?.disciplinas ?? [];
   for (const disc of disciplinas) {
-    const qs = (disc as { questoes?: Array<{ numero?: number; habilidade?: string; codigo_habilidade?: string }> }).questoes ?? [];
+    const qs =
+      (disc as {
+        questoes?: Array<{ numero?: number; habilidade?: string; codigo_habilidade?: string }>;
+      }).questoes ?? [];
     for (const q of qs) {
       const num = clampToNumber(q.numero, 0);
       if (num <= 0) continue;
-      const hab = String(q.codigo_habilidade ?? q.habilidade ?? "").trim();
-      if (!hab) continue;
-      if (!map.has(num)) map.set(num, hab);
+      const codigo = String(q.codigo_habilidade ?? "").trim() || undefined;
+      const descricao = String(q.habilidade ?? "").trim() || undefined;
+      if (!codigo && !descricao) continue;
+      if (!map.has(num)) map.set(num, { codigo, descricao });
     }
   }
   return map;
 }
 
-/** Mapa questão → habilidade a partir da tabela geral já montada (ex.: `acertos_por_habilidade` do relatório). */
-function buildQuestaoHabilidadeMapFromGeralRows(geral: SlideQuestionRow[]): Map<number, string> {
-  const map = new Map<number, string>();
+/** Mapa questão → metadados a partir da tabela geral já montada (ex.: `acertos_por_habilidade` do relatório). */
+function buildQuestaoMetaMapFromGeralRows(
+  geral: SlideQuestionRow[]
+): Map<number, { codigo?: string; descricao?: string }> {
+  const map = new Map<number, { codigo?: string; descricao?: string }>();
   for (const r of geral) {
     const q = clampToNumber(r.questao, 0);
     if (q <= 0) continue;
-    const hab = String(r.habilidade ?? "").trim();
-    if (!hab || hab === "—") continue;
-    map.set(q, hab);
+    const codigo = String(r.habilidade ?? "").trim() || undefined;
+    const descricao = String(r.habilidadeDescricao ?? "").trim() || undefined;
+    if (!codigo && !descricao) continue;
+    map.set(q, { codigo, descricao });
   }
   return map;
 }
 
-/** União: metadados da nova resposta + habilidades da tabela geral (prioridade à geral quando ambas existem). */
-function mergeHabilidadeMaps(novaMap: Map<number, string>, geralMap: Map<number, string>): Map<number, string> {
+/** União: metadados da nova resposta + tabela geral (prioriza o que existir na geral quando ambas existem). */
+function mergeHabilidadeMetaMaps(
+  novaMap: Map<number, { codigo?: string; descricao?: string }>,
+  geralMap: Map<number, { codigo?: string; descricao?: string }>
+): Map<number, { codigo?: string; descricao?: string }> {
   const out = new Map(novaMap);
-  for (const [q, hab] of geralMap) {
-    out.set(q, hab);
+  for (const [q, meta] of geralMap) {
+    const cur = out.get(q) ?? {};
+    out.set(q, { ...cur, ...meta });
   }
   return out;
 }
@@ -563,7 +578,7 @@ function flattenQuestionsFromNova(novaRespostaAgregados: NovaRespostaAPI | null)
   }>;
   if (alunos.length === 0) return [];
 
-  const habMap = buildQuestaoNumeroToHabilidadeMap(novaRespostaAgregados);
+  const habMetaMap = buildQuestaoNumeroToHabilidadeMetaMap(novaRespostaAgregados);
 
   const byQuestao = new Map<number, { total: number; acertos: number }>();
   for (const aluno of alunos) {
@@ -581,7 +596,8 @@ function flattenQuestionsFromNova(novaRespostaAgregados: NovaRespostaAPI | null)
     .sort((a, b) => a[0] - b[0])
     .map(([questao, v]) => ({
       questao,
-      habilidade: habMap.get(questao)?.trim() || "—",
+      habilidade: habMetaMap.get(questao)?.codigo?.trim() || "—",
+      habilidadeDescricao: habMetaMap.get(questao)?.descricao?.trim() || undefined,
       percentualAcertos: v.total > 0 ? Math.round((v.acertos / v.total) * 1000) / 10 : 0,
     }));
 }
@@ -589,7 +605,7 @@ function flattenQuestionsFromNova(novaRespostaAgregados: NovaRespostaAPI | null)
 /** % de acerto por questão, uma entrada por turma (alunos da tabela detalhada). */
 function buildQuestoesPorTurmaFromNova(
   novaRespostaAgregados: NovaRespostaAPI | null,
-  habilidadePorQuestao: Map<number, string>
+  habilidadePorQuestao: Map<number, { codigo?: string; descricao?: string }>
 ): Array<{ turma: string; serieTurma: string; questoes: SlideQuestionRow[] }> {
   if (!novaRespostaAgregados) return [];
 
@@ -631,7 +647,8 @@ function buildQuestoesPorTurmaFromNova(
       .sort((a, b) => a[0] - b[0])
       .map(([questao, v]) => ({
         questao,
-        habilidade: habMap.get(questao)?.trim() || "—",
+        habilidade: habMap.get(questao)?.codigo?.trim() || "—",
+        habilidadeDescricao: habMap.get(questao)?.descricao?.trim() || undefined,
         percentualAcertos: v.total > 0 ? Math.round((v.acertos / v.total) * 1000) / 10 : 0,
       }));
     if (questoes.length > 0) out.push({ turma, serieTurma, questoes });
@@ -642,7 +659,7 @@ function buildQuestoesPorTurmaFromNova(
 /** % de acerto por questão, agregado por série (município — sem blocos por turma). */
 function buildQuestoesPorSerieFromNova(
   novaRespostaAgregados: NovaRespostaAPI | null,
-  habilidadePorQuestao: Map<number, string>
+  habilidadePorQuestao: Map<number, { codigo?: string; descricao?: string }>
 ): Array<{ serie: string; questoes: SlideQuestionRow[] }> {
   if (!novaRespostaAgregados) return [];
 
@@ -683,7 +700,8 @@ function buildQuestoesPorSerieFromNova(
       .sort((a, b) => a[0] - b[0])
       .map(([questao, v]) => ({
         questao,
-        habilidade: habMap.get(questao)?.trim() || "—",
+        habilidade: habMap.get(questao)?.codigo?.trim() || "—",
+        habilidadeDescricao: habMap.get(questao)?.descricao?.trim() || undefined,
         percentualAcertos: v.total > 0 ? Math.round((v.acertos / v.total) * 1000) / 10 : 0,
       }));
     if (questoes.length > 0) out.push({ serie, questoes });
@@ -1252,6 +1270,9 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
     novaRespostaSerieAgregados,
     primaryColor,
     logoDataUrl,
+    coverSubtitle,
+    footerText,
+    closingMessage,
   } = args;
 
   const municipioNome =
@@ -1405,9 +1426,9 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
   const questoesTabelaGeralBase = flattenQuestions(relatorioDetalhado);
   const questoesTabelaGeral =
     questoesTabelaGeralBase.length > 0 ? questoesTabelaGeralBase : flattenQuestionsFromNova(novaRespostaAgregados);
-  const habilidadePorQuestaoTurma = mergeHabilidadeMaps(
-    buildQuestaoNumeroToHabilidadeMap(novaRespostaAgregados),
-    buildQuestaoHabilidadeMapFromGeralRows(questoesTabelaGeral)
+  const habilidadePorQuestaoTurma = mergeHabilidadeMetaMaps(
+    buildQuestaoNumeroToHabilidadeMetaMap(novaRespostaAgregados),
+    buildQuestaoMetaMapFromGeralRows(questoesTabelaGeral)
   );
   const questoesPorTurma = buildQuestoesPorTurmaFromNova(novaRespostaAgregados, habilidadePorQuestaoTurma);
   const questoesPorSerieFromNova = buildQuestoesPorSerieFromNova(novaRespostaAgregados, habilidadePorQuestaoTurma);
@@ -1721,6 +1742,9 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
 
     primaryColor,
     logoDataUrl,
+    coverSubtitle: coverSubtitle?.trim() || undefined,
+    footerText: footerText?.trim() || undefined,
+    closingMessage: (closingMessage?.trim() || "Obrigado!!").trim(),
     serieNomeCapas,
     turmaNomeCapas,
   };
