@@ -29,6 +29,34 @@ const levelColors = {
 
 const disciplinePalette = ["#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#f43f5e", "#06b6d4", "#84cc16", "#d946ef"];
 
+/** Mesmas chaves que o backend (`media_municipal_por_disciplina.GERAL`) e os outros relatórios. */
+function normDiscKeySlide(s: string) {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function mediaMunicipalRelatorioGeral(mm: Record<string, number> | null | undefined): number | null {
+  if (!mm) return null;
+  if (mm.GERAL != null && Number.isFinite(Number(mm.GERAL))) return Number(mm.GERAL);
+  const e = Object.entries(mm).find(([k]) => k.trim().toUpperCase() === "GERAL");
+  return e != null && Number.isFinite(Number(e[1])) ? Number(e[1]) : null;
+}
+
+function mediaMunicipalRelatorioPorDisciplina(
+  mm: Record<string, number> | null | undefined,
+  disciplina: string
+): number | null {
+  if (!mm || !String(disciplina ?? "").trim()) return null;
+  const d = String(disciplina).trim();
+  if (mm[d] != null && Number.isFinite(Number(mm[d]))) return Number(mm[d]);
+  const nk = normDiscKeySlide(d);
+  const found = Object.entries(mm).find(([k]) => normDiscKeySlide(k) === nk);
+  return found != null && Number.isFinite(Number(found[1])) ? Number(found[1]) : null;
+}
+
 function buildLinearTicks(min: number, max: number, segments: number): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min || segments <= 0) return [min, max];
   const step = (max - min) / segments;
@@ -259,10 +287,14 @@ function buildGradesChartMunicipalCompare(deckData: Presentation19DeckData): Exp
       color: disciplinePalette[idx % disciplinePalette.length],
     });
   });
-  if (deckData.mediaNotaGeral != null && Number.isFinite(deckData.mediaNotaGeral)) {
+  const notaMunicipalOficial =
+    mediaMunicipalRelatorioGeral(deckData.notaMediaMunicipalPorDisciplinaRelatorio ?? undefined) ??
+    deckData.mediaNotaMunicipalAgregados ??
+    deckData.mediaNotaGeral;
+  if (notaMunicipalOficial != null && Number.isFinite(notaMunicipalOficial)) {
     rows.push({
       escopo: "Média municipal",
-      nota: Number(clampToRange(deckData.mediaNotaGeral, 0, 1000).toFixed(1)),
+      nota: Number(clampToRange(notaMunicipalOficial, 0, 1000).toFixed(1)),
       color: deckData.primaryColor,
     });
   }
@@ -319,23 +351,16 @@ function buildGeneralProficiencyChart(deckData: Presentation19DeckData, rows = d
 }
 
 function resolveMunicipalProficiencyGeral(deckData: Presentation19DeckData): number | null {
+  const oficialRel = mediaMunicipalRelatorioGeral(deckData.proficienciaMediaMunicipalPorDisciplinaRelatorio ?? undefined);
+  if (oficialRel != null && Number.isFinite(oficialRel)) return oficialRel;
+
+  const ag = deckData.mediaProficienciaMunicipalAgregados;
+  if (ag != null && Number.isFinite(ag)) return ag;
+
   const geral = deckData.proficienciaGeralPorTurma.find((r) => r.label === "GERAL");
   if (geral && Number.isFinite(geral.proficiencia)) return geral.proficiencia;
-  let sum = 0;
-  let w = 0;
-  for (const n of deckData.niveisPorSerie) {
-    const p = deckData.proficienciaGeralPorTurma.find((r) => r.label === n.label);
-    if (p && n.total > 0) {
-      sum += p.proficiencia * n.total;
-      w += n.total;
-    }
-  }
-  if (w > 0) return sum / w;
-  const points = deckData.proficienciaGeralPorTurma.filter((r) =>
-    deckData.niveisPorSerie.some((s) => s.label === r.label)
-  );
-  if (points.length === 0) return null;
-  return points.reduce((a, r) => a + r.proficiencia, 0) / points.length;
+
+  return null;
 }
 
 /** Todas as escolas + barra «Média municipal» no mesmo gráfico. */
@@ -407,23 +432,16 @@ function buildDefaultProficiencyByDisciplineCharts(deckData: Presentation19DeckD
 
 function municipalProficiencyForDiscipline(
   deckData: Presentation19DeckData,
-  disciplina: { valuesByTurma: Array<{ turma: string; proficiencia: number }> }
+  disciplina: { disciplina: string; valuesByTurma: Array<{ turma: string; proficiencia: number }> }
 ): number | null {
+  const mm = deckData.proficienciaMediaMunicipalPorDisciplinaRelatorio;
+  const oficial = mediaMunicipalRelatorioPorDisciplina(mm ?? undefined, disciplina.disciplina);
+  if (oficial != null && Number.isFinite(oficial)) return oficial;
+
   const g = disciplina.valuesByTurma.find((v) => v.turma === "GERAL");
   if (g && Number.isFinite(g.proficiencia)) return g.proficiencia;
-  let sum = 0;
-  let w = 0;
-  for (const n of deckData.niveisPorSerie) {
-    const v = disciplina.valuesByTurma.find((t) => t.turma === n.label);
-    if (v && n.total > 0) {
-      sum += v.proficiencia * n.total;
-      w += n.total;
-    }
-  }
-  if (w > 0) return sum / w;
-  const vals = disciplina.valuesByTurma.filter((t) => deckData.niveisPorSerie.some((s) => s.label === t.turma));
-  if (vals.length === 0) return null;
-  return vals.reduce((a, v) => a + v.proficiencia, 0) / vals.length;
+
+  return null;
 }
 
 /** Por disciplina: todas as escolas + «Média municipal» no mesmo mini-gráfico. */
@@ -479,12 +497,124 @@ function buildProficiencyByDisciplineChartsMunicipalCompare(
   });
 }
 
+function gradesYMaxFromValues(values: number[]): number {
+  const rawMax = Math.max(10, ...values.map((n) => Number(n ?? 0)));
+  return Math.min(1000, Math.ceil(rawMax / 5) * 5);
+}
+
+function buildDefaultGradesByDisciplineCharts(deckData: Presentation19DeckData): Array<{ title: string; chart: ExportChart }> {
+  return deckData.notasPorDisciplinaPorTurma.map((disciplina) => {
+    const paletteIdx = getSubjectPaletteIndex(disciplina.disciplina, disciplina.disciplina);
+    const yMax = gradesYMaxFromValues(disciplina.valuesByTurma.map((v) => v.mediaNota));
+    return {
+      title: `Disciplina: ${disciplina.disciplina}`,
+      chart: {
+        type: "bar" as const,
+        categoryKey: "turma",
+        valueKeys: [
+          {
+            key: "nota",
+            label: "Nota média",
+            color: disciplinePalette[paletteIdx % disciplinePalette.length],
+          },
+        ],
+        data: disciplina.valuesByTurma.map((v) => ({
+          turma: v.turma,
+          nota: Number(clampToRange(v.mediaNota, 0, yMax).toFixed(1)),
+        })),
+        yAxis: {
+          min: 0,
+          max: yMax,
+          ticks: buildLinearTicks(0, yMax, 4),
+          scaleLabel: "nota",
+        },
+      },
+    };
+  });
+}
+
+function municipalNotaForDiscipline(
+  deckData: Presentation19DeckData,
+  disciplina: { disciplina: string; valuesByTurma: Array<{ turma: string; mediaNota: number }> }
+): number | null {
+  const mm = deckData.notaMediaMunicipalPorDisciplinaRelatorio;
+  const oficial = mediaMunicipalRelatorioPorDisciplina(mm ?? undefined, disciplina.disciplina);
+  if (oficial != null && Number.isFinite(oficial)) return oficial;
+
+  const g = disciplina.valuesByTurma.find((v) => v.turma === "GERAL");
+  if (g && Number.isFinite(g.mediaNota)) return g.mediaNota;
+
+  return null;
+}
+
+function buildGradesByDisciplineChartsMunicipalCompare(
+  deckData: Presentation19DeckData
+): Array<{ title: string; chart: ExportChart }> {
+  return deckData.notasPorDisciplinaPorTurma.map((disciplina) => {
+    const paletteIdx = getSubjectPaletteIndex(disciplina.disciplina, disciplina.disciplina);
+    const schoolData = deckData.niveisPorSerie
+      .map((n) => {
+        const v = disciplina.valuesByTurma.find((t) => t.turma === n.label);
+        return v ? { escola: n.label, nota: v.mediaNota } : null;
+      })
+      .filter((x): x is { escola: string; nota: number } => x != null)
+      .sort((a, b) => a.escola.localeCompare(b.escola, "pt-BR", { sensitivity: "base" }));
+    const mun = municipalNotaForDiscipline(deckData, disciplina);
+    const yMax = gradesYMaxFromValues([
+      ...schoolData.map((s) => s.nota),
+      ...(mun != null && Number.isFinite(mun) ? [mun] : []),
+    ]);
+    const data =
+      mun != null && Number.isFinite(mun)
+        ? [
+            ...schoolData.map((s) => ({
+              escola: s.escola,
+              nota: Number(clampToRange(s.nota, 0, yMax).toFixed(1)),
+            })),
+            {
+              escola: "Média municipal",
+              nota: Number(clampToRange(mun, 0, yMax).toFixed(1)),
+            },
+          ]
+        : schoolData.map((s) => ({
+            escola: s.escola,
+            nota: Number(clampToRange(s.nota, 0, yMax).toFixed(1)),
+          }));
+    return {
+      title: `Disciplina: ${disciplina.disciplina}`,
+      chart: {
+        type: "bar" as const,
+        categoryKey: "escola",
+        valueKeys: [
+          {
+            key: "nota",
+            label: "Nota média",
+            color: disciplinePalette[paletteIdx % disciplinePalette.length],
+          },
+        ],
+        data,
+        yAxis: {
+          min: 0,
+          max: yMax,
+          ticks: buildLinearTicks(0, yMax, 4),
+          scaleLabel: "nota",
+        },
+      },
+    };
+  });
+}
+
 function buildGradesTableRows(deckData: Presentation19DeckData): Array<Array<string | number>> {
   const escolaMulti = isMunicipalMultiSchool(deckData);
   const out: Array<Array<string | number>> = [];
   const medLabel = escolaMulti ? "Média municipal" : "Média geral";
-  if (deckData.mediaNotaGeral != null && Number.isFinite(deckData.mediaNotaGeral)) {
-    out.push([medLabel, Number(deckData.mediaNotaGeral).toFixed(1).replace(".", ",")]);
+  const notaMedResumo = escolaMulti
+    ? mediaMunicipalRelatorioGeral(deckData.notaMediaMunicipalPorDisciplinaRelatorio ?? undefined) ??
+      deckData.mediaNotaMunicipalAgregados ??
+      deckData.mediaNotaGeral
+    : deckData.mediaNotaGeral;
+  if (notaMedResumo != null && Number.isFinite(notaMedResumo)) {
+    out.push([medLabel, Number(notaMedResumo).toFixed(1).replace(".", ",")]);
   }
   if (!escolaMulti) {
     for (const d of deckData.notasPorDisciplina) {
@@ -577,6 +707,19 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
       ? proficiencyDiscChartChunks.map((chunk) => ({
           index: 0,
           kind: "proficiency-by-discipline-chart" as const,
+          charts: chunk,
+        }))
+      : [];
+
+  const gradesDiscChartsAll = multiSchool
+    ? buildGradesByDisciplineChartsMunicipalCompare(deckData)
+    : buildDefaultGradesByDisciplineCharts(deckData);
+  const gradesDiscChartChunks = chunkFlat(gradesDiscChartsAll, MAX_PROF_DISC_CHARTS_PER_SLIDE);
+  const gradesByDisciplineSlides: Presentation19SlideSpec[] =
+    gradesDiscChartChunks.length > 0
+      ? gradesDiscChartChunks.map((chunk) => ({
+          index: 0,
+          kind: "grades-by-discipline-chart" as const,
           charts: chunk,
         }))
       : [];
@@ -753,6 +896,9 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
     push({ kind: "grades-chart", chart: buildGradesChartMunicipalCompare(deckData) });
   } else {
     push({ kind: "grades-chart", chart: buildGradesChart(deckData) });
+  }
+  for (const s of gradesByDisciplineSlides) {
+    if (s.kind === "grades-by-discipline-chart") push(s);
   }
 
   push({ kind: "section-questions" });

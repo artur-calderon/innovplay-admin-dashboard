@@ -52,6 +52,12 @@ export type Presentation19SlideSpec =
     }
   | { index: number; kind: "section-grades" }
   | { index: number; kind: "grades-table"; table: ExportTable }
+  | {
+      index: number;
+      kind: "grades-by-discipline-chart";
+      charts: Array<{ title: string; chart: ExportChart }>;
+      escolaNome?: string;
+    }
   | { index: number; kind: "grades-chart"; chart: ExportChart; escolaNome?: string }
   | { index: number; kind: "section-questions" }
   | { index: number; kind: "dynamic-series-cover" }

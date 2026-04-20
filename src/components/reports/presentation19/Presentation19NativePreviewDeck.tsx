@@ -15,6 +15,7 @@ import {
   presentationTitleChartGrades,
   presentationTitleChartLevels,
   presentationTitleChartPresence,
+  presentationTitleGradesByDiscipline,
   presentationTitleProficiencyByDiscipline,
   presentationTitleProficiencyGeneralChart,
   presentationTitleTableGrades,
@@ -1007,6 +1008,62 @@ const NativeSlideFrame = memo(function NativeSlideFrame({
                     primaryColor={deckData.primaryColor}
                   />
                   <BarChartPreview chart={slide.chart} />
+                </div>
+              )}
+              {slide.kind === "grades-by-discipline-chart" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <Title
+                    text={presentationTitleGradesByDiscipline(deckData.comparisonAxis)}
+                    subtitle={slide.escolaNome}
+                    primaryColor={deckData.primaryColor}
+                  />
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr",
+                      gap: 14,
+                      width: "100%",
+                      boxSizing: "border-box",
+                      paddingLeft: P19_TITLE_TEXT_OFFSET_X_PX,
+                    }}
+                  >
+                    {slide.charts.map((entry, chartIdx) => (
+                      <div
+                        key={`${entry.title}-${chartIdx}`}
+                        style={{
+                          border: `1px solid ${P19_BORDER_NEUTRAL}`,
+                          borderRadius: 12,
+                          padding: 10,
+                          background: P19_SURFACE_CARD,
+                          display: "flex",
+                          flexDirection: "column",
+                          minHeight: 0,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: P19_PROFICIENCY_DISC_CARD_TITLE_PX,
+                            fontWeight: 900,
+                            color: P19_TEXT_STRONG,
+                            marginBottom: 8,
+                            lineHeight: 1.2,
+                            wordBreak: "break-word",
+                            minHeight: 44,
+                            maxHeight: 44,
+                            overflow: "hidden",
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical" as const,
+                          }}
+                        >
+                          {entry.title}
+                        </div>
+                        <div style={{ flex: 1, minHeight: 0 }}>
+                          <BarChartPreview chart={entry.chart} height={380} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               {slide.kind === "section-proficiency" && (

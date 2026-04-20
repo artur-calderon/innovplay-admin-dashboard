@@ -14,6 +14,7 @@ import {
   presentationTitleChartGrades,
   presentationTitleChartLevels,
   presentationTitleChartPresence,
+  presentationTitleGradesByDiscipline,
   presentationTitleProficiencyByDiscipline,
   presentationTitleProficiencyGeneralChart,
   presentationTitleTableGrades,
@@ -950,6 +951,53 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       const gridW = content.w - profInset;
       const gridPad = 8;
       /** Uma coluna: um gráfico por linha, largura total. */
+      const boxW = gridW - gridPad * 2;
+      const footerReserve = P19_SLIDE_FOOTER_RESERVE_PX;
+      const rowGap = 10;
+      const nCharts = slide.charts.length;
+      const boxH = Math.max(
+        120,
+        (page.height - gridTop - footerReserve - Math.max(0, nCharts - 1) * rowGap) / Math.max(1, nCharts)
+      );
+      slide.charts.forEach((entry, idx) => {
+        const boxX = gridLeft + gridPad;
+        const boxY = gridTop + idx * (boxH + rowGap);
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(212, 212, 216);
+        doc.roundedRect(boxX, boxY, boxW, boxH, 10, 10, "FD");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(P19_CHART_H_BAR_LABEL_PX + 2);
+        const tlines = doc.splitTextToSize(entry.title, boxW - 16);
+        const tlh = p19PdfLineHeightPx(P19_CHART_H_BAR_LABEL_PX + 2);
+        let tty = boxY + 16;
+        tlines.forEach((ln) => {
+          doc.text(ln, boxX + 8, tty);
+          tty += tlh;
+        });
+        const chartInnerTop = tty + 4;
+        const innerH = Math.max(80, boxY + boxH - chartInnerTop - 8);
+        drawBarChart(doc, entry.chart, { x: boxX + 8, y: chartInnerTop, w: boxW - 16, h: innerH });
+      });
+      break;
+    }
+    case "grades-by-discipline-chart": {
+      let yb = drawWrappedSlideTitle(
+        doc,
+        presentationTitleGradesByDiscipline(deckData.comparisonAxis),
+        deckData.primaryColor,
+        P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX,
+        content.w - P19_TITLE_TEXT_OFFSET_X_PX
+      );
+      let gridTop = yb + P19_TITLE_TO_BODY_GAP_PX;
+      if (slide.escolaNome) {
+        gridTop =
+          drawWrappedSubtitle(doc, slide.escolaNome, yb + P19_TITLE_TO_SUBTITLE_GAP_PX, content.w - P19_TITLE_TEXT_OFFSET_X_PX) +
+          P19_SUBTITLE_TO_CHART_GAP_PX;
+      }
+      const profInset = P19_TITLE_TEXT_OFFSET_X_PX;
+      const gridLeft = content.x + profInset;
+      const gridW = content.w - profInset;
+      const gridPad = 8;
       const boxW = gridW - gridPad * 2;
       const footerReserve = P19_SLIDE_FOOTER_RESERVE_PX;
       const rowGap = 10;

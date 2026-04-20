@@ -24,6 +24,7 @@
  * | proficiency-by-discipline-chart | Título + mini-gráficos empilhados | cards P19_SURFACE_CARD |
  * | section-grades | Centro | P19_SECTION_* |
  * | grades-table | Título + tabela | P19_TABLE_* |
+ * | grades-by-discipline-chart | Título + mini-gráficos por disciplina | cards P19_SURFACE_CARD |
  * | grades-chart | Título + subtítulo + gráfico | P19_CHART_SUBTITLE_GRADES |
  * | section-questions | Centro | P19_SECTION_* |
  * | dynamic-series-cover / dynamic-class-cover | Texto centro | P19_DYNAMIC_COVER_PX |

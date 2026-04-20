@@ -14,6 +14,7 @@ import {
   presentationTitleChartGrades,
   presentationTitleChartLevels,
   presentationTitleChartPresence,
+  presentationTitleGradesByDiscipline,
   presentationTitleProficiencyByDiscipline,
   presentationTitleProficiencyGeneralChart,
   presentationTitleTableGrades,
@@ -998,6 +999,53 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
     case "proficiency-by-discipline-chart": {
       drawTitle(slide, presentationTitleProficiencyByDiscipline(deckData.comparisonAxis), deckData.primaryColor, pptx, slideSpec.escolaNome);
       /** Uma coluna: um mini-gráfico por linha, largura total (chunk = 1 em `buildSlideSpec`). */
+      const gridTopPx = p19ChartAreaTopPxAfterTitle(slideSpec.escolaNome ? 1 : 0);
+      const gridLeft = P19_CONTENT.x + P19_TITLE_TEXT_OFFSET_X_PX;
+      const gridW = P19_CONTENT.w - P19_TITLE_TEXT_OFFSET_X_PX;
+      const gridPad = 8;
+      const boxWpx = gridW - gridPad * 2;
+      const boxXpx = gridLeft + gridPad;
+      const innerPadPx = 8;
+      const innerWpx = boxWpx - innerPadPx * 2;
+      const rowGapPx = 10;
+      const n = Math.max(1, slideSpec.charts.length);
+      const boxHPx = Math.max(
+        148,
+        (P19_PAGE.height - gridTopPx - P19_SLIDE_FOOTER_RESERVE_PX - Math.max(0, n - 1) * rowGapPx) / n
+      );
+      const titleLabFs = P19_PROFICIENCY_DISC_CARD_TITLE_PX;
+      const titleLabLh = p19PdfLineHeightPx(titleLabFs);
+      slideSpec.charts.forEach((entry, idx) => {
+        const boxYpx = gridTopPx + idx * (boxHPx + rowGapPx);
+        const titleWrapped = wrapTextBySpacesForPptx(
+          entry.title,
+          approxMaxCharsForWidth((innerWpx / P19_PAGE.width) * 13.333, p19PxToPtForPptx(titleLabFs))
+        );
+        const titleLineCount = Math.max(1, titleWrapped.split("\n").filter((l) => l.length > 0).length);
+        const titleTopPx = boxYpx + 16;
+        slide.addText(titleWrapped, {
+          x: p19PxToSlideInX(boxXpx + innerPadPx),
+          y: p19PxToSlideInY(titleTopPx),
+          w: p19PxToSlideInX(innerWpx),
+          h: Math.min(0.72, (titleLineCount * titleLabLh / P19_PAGE.height) * 7.5 + 0.08),
+          fontSize: p19PxToPtForPptx(titleLabFs),
+          bold: true,
+          color: "0F172A",
+          wrap: true,
+        });
+        const chartInnerTopPx = titleTopPx + titleLineCount * titleLabLh + 4;
+        const innerHPx = Math.max(80, boxYpx + boxHPx - chartInnerTopPx - 8);
+        drawPdfAlignedBarChart(
+          slide,
+          entry.chart,
+          p19RectPxToSlideInches({ x: boxXpx + innerPadPx, y: chartInnerTopPx, w: boxWpx - 16, h: innerHPx }),
+          pptx
+        );
+      });
+      break;
+    }
+    case "grades-by-discipline-chart": {
+      drawTitle(slide, presentationTitleGradesByDiscipline(deckData.comparisonAxis), deckData.primaryColor, pptx, slideSpec.escolaNome);
       const gridTopPx = p19ChartAreaTopPxAfterTitle(slideSpec.escolaNome ? 1 : 0);
       const gridLeft = P19_CONTENT.x + P19_TITLE_TEXT_OFFSET_X_PX;
       const gridW = P19_CONTENT.w - P19_TITLE_TEXT_OFFSET_X_PX;
