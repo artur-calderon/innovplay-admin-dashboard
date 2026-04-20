@@ -23,6 +23,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -55,22 +56,41 @@ import {
 } from "@/components/ui/form";
 
 // Schema de validação
-const classSchema = z.object({
-  nameType: z.enum(['letter', 'number', 'custom'], {
+const classSchema = z
+  .object({
+  nameType: z.enum(['letter', 'number', 'custom', 'lines'], {
     required_error: "Selecione um tipo de nomenclatura",
   }),
   customName: z.string().optional(),
   selectedLetters: z.array(z.string()).optional(),
   selectedNumbers: z.array(z.string()).optional(),
   educationStageId: z.string().min(1, "Selecione um curso"),
-  gradeId: z.string().min(1, "Selecione uma série"),
+  /** Uma série (obrigatória se `batchGradeIds` estiver vazio). */
+  gradeId: z.string().optional(),
+  /** Várias séries: combina com letras/números/lista (exceto nome completo por linha e nome personalizado único). */
+  batchGradeIds: z.array(z.string()).default([]),
   description: z.string().optional(),
   capacity: z.string().optional(),
   shift: z.enum(['morning', 'afternoon', 'evening', 'full'], {
     required_error: "Selecione um turno",
   }),
   room: z.string().optional(),
-});
+  /** Modo `lines`: texto com uma turma por linha (lote). */
+  batchLines: z.string().optional(),
+  /** Se true, cada linha é o nome completo; se false, prefixa com o nome da série. */
+  linesAreFullNames: z.boolean().optional(),
+})
+  .superRefine((data, ctx) => {
+    const batch = data.batchGradeIds ?? [];
+    const single = (data.gradeId ?? "").trim();
+    if (batch.length === 0 && !single) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Selecione uma série ou marque uma ou mais séries em lote",
+        path: ["gradeId"],
+      });
+    }
+  });
 
 type ClassFormValues = z.infer<typeof classSchema>;
 
@@ -95,11 +115,72 @@ interface CreateClassFormProps {
 }
 
 interface ClassPreview {
+  /** Nome exibido no preview (série + sufixo, quando aplicável). */
   name: string;
+  /** Valor enviado em `POST /classes` no campo `name` (só letra, número, sufixo ou nome completo por linha). */
+  apiName: string;
   grade: string;
+  /** `grade_id` enviado na API para esta turma. */
+  gradeId: string;
   shift: string;
   capacity?: string;
   room?: string;
+}
+
+interface ClassCreatePayload {
+  name: string;
+  school_id: string;
+  grade_id: string;
+  description?: string;
+  capacity?: number;
+  shift: string;
+  room?: string;
+}
+
+/** Cria várias turmas via `POST /classes`, reportando sucessos e falhas parciais. */
+async function createClassesInBatch(
+  previews: ClassPreview[],
+  data: ClassFormValues,
+  schoolId: string
+): Promise<{ fulfilled: number; rejected: number; firstError?: string }> {
+  const payloads: ClassCreatePayload[] = previews.map((classPreview) => ({
+    name: classPreview.apiName,
+    school_id: schoolId,
+    grade_id: classPreview.gradeId,
+    description: data.description?.trim() ? data.description.trim() : undefined,
+    capacity: (() => {
+      if (!data.capacity?.trim()) return undefined;
+      const n = parseInt(data.capacity, 10);
+      return Number.isFinite(n) ? n : undefined;
+    })(),
+    shift: data.shift,
+    room: data.room?.trim() ? data.room.trim() : undefined,
+  }));
+
+  const results = await Promise.allSettled(
+    payloads.map((body) => api.post("/classes", body))
+  );
+
+  let fulfilled = 0;
+  let rejected = 0;
+  let firstError: string | undefined;
+
+  for (const r of results) {
+    if (r.status === "fulfilled") {
+      fulfilled += 1;
+    } else {
+      rejected += 1;
+      if (!firstError) {
+        const reason = r.reason as { response?: { data?: { error?: string; message?: string } } };
+        firstError =
+          reason?.response?.data?.error ||
+          reason?.response?.data?.message ||
+          (r.reason instanceof Error ? r.reason.message : undefined);
+      }
+    }
+  }
+
+  return { fulfilled, rejected, firstError };
 }
 
 export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSelector, availableSchools }: CreateClassFormProps) {
@@ -125,10 +206,13 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
       customName: "",
       educationStageId: "",
       gradeId: "",
+      batchGradeIds: [],
       description: "",
       capacity: "",
       shift: 'morning',
       room: "",
+      batchLines: "",
+      linesAreFullNames: false,
     },
   });
 
@@ -141,6 +225,9 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
   const shift = form.watch("shift");
   const capacity = form.watch("capacity");
   const room = form.watch("room");
+  const batchLines = form.watch("batchLines") || "";
+  const linesAreFullNames = form.watch("linesAreFullNames") ?? false;
+  const batchGradeIds = form.watch("batchGradeIds") ?? [];
 
   // Opções de letras e números
   const letters = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i));
@@ -226,39 +313,110 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
     fetchGrades();
   }, [selectedStage, toast]);
 
+  const { setValue } = form;
+
+  /** Ao mudar o curso, limpa a seleção de séries em lote (séries pertencem ao curso). */
+  useEffect(() => {
+    setValue("batchGradeIds", []);
+  }, [selectedStage, setValue]);
+
   // Gerar preview das turmas
   useEffect(() => {
     const generatePreview = () => {
-      const selectedGradeObj = grades.find(g => g.id === selectedGrade);
-      if (!selectedGradeObj) return;
-
       const shiftObj = shifts.find(s => s.value === shift);
-      const shiftLabel = shiftObj?.label || '';
+      const shiftLabel = shiftObj?.label || "";
+
+      const resolveGradeTargets = (): Grade[] => {
+        if (nameType === "lines" && linesAreFullNames) {
+          const g = grades.find((x) => x.id === selectedGrade);
+          return g ? [g] : [];
+        }
+        if (nameType === "custom") {
+          if (batchGradeIds.length > 0) {
+            const list = batchGradeIds
+              .map((id) => grades.find((x) => x.id === id))
+              .filter((g): g is Grade => Boolean(g));
+            return [...list].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+          }
+          const g = grades.find((x) => x.id === selectedGrade);
+          return g ? [g] : [];
+        }
+        if (batchGradeIds.length > 0) {
+          const list = batchGradeIds
+            .map((id) => grades.find((x) => x.id === id))
+            .filter((g): g is Grade => Boolean(g));
+          return [...list].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+        }
+        const g = grades.find((x) => x.id === selectedGrade);
+        return g ? [g] : [];
+      };
+
+      const gradeTargets = resolveGradeTargets();
+      if (gradeTargets.length === 0) {
+        setClassesToCreate([]);
+        return;
+      }
 
       let classNames: string[] = [];
 
-      if (nameType === 'letter') {
+      if (nameType === "letter") {
         classNames = selectedLetters;
-      } else if (nameType === 'number') {
+      } else if (nameType === "number") {
         classNames = selectedNumbers;
-      } else if (nameType === 'custom' && customName) {
+      } else if (nameType === "custom" && customName) {
         classNames = [customName];
+      } else if (nameType === "lines") {
+        classNames = batchLines
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean);
       }
 
-      const previews: ClassPreview[] = classNames.map(name => ({
-        name: `${selectedGradeObj.name} ${name}`,
-        grade: selectedGradeObj.name,
-        shift: shiftLabel,
-        capacity: capacity || undefined,
-        room: room || undefined,
-      }));
+      if (classNames.length === 0) {
+        setClassesToCreate([]);
+        return;
+      }
+
+      const previews: ClassPreview[] = [];
+      for (const gradeObj of gradeTargets) {
+        for (const suffix of classNames) {
+          const apiName = suffix.trim();
+          if (!apiName) continue;
+          const displayName =
+            nameType === "lines" && linesAreFullNames
+              ? apiName
+              : `${gradeObj.name} ${apiName}`;
+          previews.push({
+            name: displayName,
+            apiName,
+            grade: gradeObj.name,
+            gradeId: gradeObj.id,
+            shift: shiftLabel,
+            capacity: capacity || undefined,
+            room: room || undefined,
+          });
+        }
+      }
 
       setClassesToCreate(previews);
     };
 
     generatePreview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedGrade, selectedLetters, selectedNumbers, customName, nameType, grades, shift, capacity, room]);
+  }, [
+    selectedGrade,
+    selectedLetters,
+    selectedNumbers,
+    customName,
+    nameType,
+    grades,
+    shift,
+    capacity,
+    room,
+    batchLines,
+    linesAreFullNames,
+    batchGradeIds,
+  ]);
 
   const handleLetterToggle = (letter: string) => {
     const current = selectedLetters;
@@ -309,35 +467,39 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
 
     setIsSubmitting(true);
     try {
-      const promises = classesToCreate.map(async (classPreview) => {
-        const classData = {
-          name: nameType === 'custom' ? data.customName : 
-                nameType === 'letter' ? classPreview.name.split(' ').pop() :
-                classPreview.name.split(' ').pop(),
-          school_id: currentSchoolId,
-          grade_id: data.gradeId,
-          description: data.description || undefined,
-          capacity: data.capacity ? parseInt(data.capacity) : undefined,
-          shift: data.shift,
-          room: data.room || undefined,
-        };
+      const { fulfilled, rejected, firstError } = await createClassesInBatch(
+        classesToCreate,
+        data,
+        currentSchoolId
+      );
 
-        return api.post("/classes", classData);
-      });
-
-      await Promise.all(promises);
-
-      toast({
-        title: "Sucesso! 🎉",
-        description: `${classesToCreate.length} turma(s) criada(s) com sucesso`,
-      });
-
-      // Reset form
-      form.reset();
-      setOpen(false);
-      onSuccess?.();
+      if (fulfilled > 0 && rejected === 0) {
+        toast({
+          title: "Sucesso",
+          description: `${fulfilled} turma(s) criada(s) com sucesso.`,
+        });
+        form.reset();
+        setOpen(false);
+        onSuccess?.();
+      } else if (fulfilled > 0 && rejected > 0) {
+        toast({
+          title: "Criação parcial",
+          description: `${fulfilled} turma(s) criada(s). ${rejected} falha(s).${firstError ? ` Ex.: ${firstError}` : ""}`,
+        });
+        form.reset();
+        setOpen(false);
+        onSuccess?.();
+      } else {
+        toast({
+          title: "Erro",
+          description: firstError || "Não foi possível criar as turmas.",
+          variant: "destructive",
+        });
+      }
     } catch (error: unknown) {
-      const errorMessage = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || "Erro ao criar turma(s)";
+      const errorMessage =
+        (error as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+        "Erro ao criar turma(s)";
       toast({
         title: "Erro",
         description: errorMessage,
@@ -488,6 +650,75 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                       />
                     </div>
 
+                    {grades.length > 0 && (
+                      <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <Label className="text-base">Séries em lote (opcional)</Label>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Marque várias séries para repetir as mesmas turmas (letras, números, lista ou nome personalizado) em cada uma.
+                              Se nenhuma estiver marcada, usa só a série selecionada no campo &quot;Série&quot; acima.
+                              Não se aplica à lista com &quot;nome completo&quot; por linha (usa só a série do campo Série).
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2 shrink-0">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setValue(
+                                  "batchGradeIds",
+                                  grades.filter((g) => g.id).map((g) => g.id)
+                                )
+                              }
+                            >
+                              Marcar todas
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setValue("batchGradeIds", [])}
+                            >
+                              Limpar lote
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                          {grades
+                            .filter((g) => g.id && g.name)
+                            .map((g) => (
+                              <div key={g.id} className="flex items-center gap-2 rounded-md border border-border/60 bg-background px-2 py-1.5">
+                                <Checkbox
+                                  id={`batch-grade-${g.id}`}
+                                  checked={batchGradeIds.includes(g.id)}
+                                  onCheckedChange={(checked) => {
+                                    const cur = form.getValues("batchGradeIds") ?? [];
+                                    if (checked === true) {
+                                      if (!cur.includes(g.id)) {
+                                        setValue("batchGradeIds", [...cur, g.id]);
+                                      }
+                                    } else {
+                                      setValue(
+                                        "batchGradeIds",
+                                        cur.filter((id) => id !== g.id)
+                                      );
+                                    }
+                                  }}
+                                />
+                                <Label
+                                  htmlFor={`batch-grade-${g.id}`}
+                                  className="cursor-pointer text-sm font-normal leading-tight"
+                                >
+                                  {g.name}
+                                </Label>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
                     <FormField
                       control={form.control}
                       name="shift"
@@ -623,6 +854,12 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                                 <RadioGroupItem value="custom" id="custom" />
                                 <Label htmlFor="custom" className="font-medium">
                                   Nome Personalizado
+                                </Label>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="lines" id="lines" />
+                                <Label htmlFor="lines" className="font-medium">
+                                  Lista em lote (uma turma por linha)
                                 </Label>
                               </div>
                             </RadioGroup>
@@ -791,6 +1028,54 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                     </CardContent>
                   </Card>
                 )}
+
+                {nameType === "lines" && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Criação em lote por linhas</CardTitle>
+                      <CardDescription>
+                        Informe uma turma por linha. Com &quot;nome completo&quot; desligado, cada linha vira sufixo após o nome da série (igual às letras/números).
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="batchLines"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Lista de turmas</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                {...field}
+                                placeholder={"A\nB\nC"}
+                                rows={10}
+                                className="min-h-[160px] font-mono text-sm"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="linesAreFullNames"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                            <div className="space-y-0.5 pr-4">
+                              <FormLabel className="text-base">Cada linha é o nome completo da turma</FormLabel>
+                              <FormDescription>
+                                Desligado: o nome da série escolhida no passo Básico será prefixado em cada linha.
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch checked={Boolean(field.value)} onCheckedChange={field.onChange} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
               </TabsContent>
 
               <TabsContent
@@ -820,18 +1105,21 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                       <div className="grid gap-3 sm:gap-4">
                         {classesToCreate.map((classPreview, index) => (
                           <div 
-                            key={index}
+                            key={`${classPreview.gradeId}-${classPreview.apiName}-${index}`}
                             className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 text-card-foreground transition-shadow hover:bg-muted/40 hover:shadow-md sm:flex-row sm:items-center sm:justify-between sm:p-4"
                           >
                             <div className="flex min-w-0 flex-1 items-center gap-3">
                               <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground sm:h-10 sm:w-10">
-                                {classPreview.name.split(' ').pop()}
+                                {(classPreview.apiName || "").trim().slice(0, 1).toUpperCase() || "—"}
                               </div>
                               <div className="min-w-0 flex-1">
                                 <h4 className="truncate text-sm font-semibold sm:text-base">
                                   {classPreview.name}
                                 </h4>
                                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:gap-4 sm:text-sm">
+                                  <Badge variant="outline" className="text-xs font-normal">
+                                    {classPreview.grade}
+                                  </Badge>
                                   <span className="flex items-center gap-1">
                                     {getShiftIcon(shift)} {classPreview.shift}
                                   </span>

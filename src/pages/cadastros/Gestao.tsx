@@ -95,6 +95,19 @@ function getApiErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Respostas da API de alunos podem vir como array direto ou embrulhadas em `data` / `alunos`. */
+function normalizeStudentsArrayResponse(data: unknown): unknown[] {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === "object") {
+    const d = data as Record<string, unknown>;
+    for (const key of ["data", "alunos", "students"] as const) {
+      const v = d[key];
+      if (Array.isArray(v)) return v;
+    }
+  }
+  return [];
+}
+
 interface Class {
   id: string;
   name: string;
@@ -162,6 +175,11 @@ export default function Gestao() {
   /** Mantido sincronizado com o município do subdomínio / tenant (evita ReferenceError em HMR antigo). */
   const [, setDomainCityId] = useState<string>("");
   const [isExportingUsersReport, setIsExportingUsersReport] = useState(false);
+  const [selectedUserIdsForBatchDelete, setSelectedUserIdsForBatchDelete] = useState<Set<string>>(
+    () => new Set()
+  );
+  /** Contagem de alunos por escola (`GET /students/school/:id`). */
+  const [schoolStudentCounts, setSchoolStudentCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (tabParam === "turmas") setActiveTab("turmas");
@@ -169,6 +187,49 @@ export default function Gestao() {
   }, [tabParam]);
 
   const { toast } = useToast();
+
+  const toggleUserSelectionForBatchDelete = useCallback((userId: string) => {
+    setSelectedUserIdsForBatchDelete((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }, []);
+
+  const selectManyUsersForBatchDelete = useCallback((userIds: string[]) => {
+    setSelectedUserIdsForBatchDelete((prev) => {
+      const next = new Set(prev);
+      for (const id of userIds) next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearUserSelectionForBatchDelete = useCallback(() => {
+    setSelectedUserIdsForBatchDelete(new Set());
+  }, []);
+
+  const deleteUsersInBatch = useCallback(async (userIds: string[]) => {
+    if (user.role !== "admin") return;
+    const ids = userIds.map(String).filter(Boolean);
+    if (ids.length === 0) return;
+
+    try {
+      await Promise.all(ids.map((id) => api.delete(`/users/${id}`)));
+      toast({
+        title: "Sucesso",
+        description: ids.length === 1 ? "Usuário excluído com sucesso." : "Usuários excluídos com sucesso.",
+      });
+      clearUserSelectionForBatchDelete();
+    } catch (error: unknown) {
+      console.error("Erro ao excluir usuários em lote:", error);
+      const msg =
+        (error as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.error ||
+        (error as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.message ||
+        "Erro ao excluir usuários.";
+      toast({ title: "Erro", description: msg, variant: "destructive" });
+    }
+  }, [user.role, toast, clearUserSelectionForBatchDelete]);
 
   // Buscar cidades com slug para detectar município do subdomínio
   useEffect(() => {
@@ -269,7 +330,26 @@ export default function Gestao() {
     setIsLoading(true);
     try {
       const response = await api.get("/school");
-      setInstituicoes(response.data);
+      const list: Instituicao[] = Array.isArray(response.data) ? response.data : [];
+      setInstituicoes(list);
+
+      const counts: Record<string, number> = {};
+      const chunkSize = 8;
+      for (let i = 0; i < list.length; i += chunkSize) {
+        const slice = list.slice(i, i + chunkSize);
+        const partial = await Promise.all(
+          slice.map(async (inst) => {
+            try {
+              const res = await api.get(`/students/school/${inst.id}`);
+              return [inst.id, normalizeStudentsArrayResponse(res.data).length] as const;
+            } catch {
+              return [inst.id, 0] as const;
+            }
+          })
+        );
+        for (const [id, n] of partial) counts[id] = n;
+      }
+      setSchoolStudentCounts(counts);
     } catch (error) {
       console.error("Erro ao buscar instituições:", error);
       toast({
@@ -277,6 +357,7 @@ export default function Gestao() {
         description: "Erro ao carregar instituições",
         variant: "destructive",
       });
+      setSchoolStudentCounts({});
     } finally {
       setIsLoading(false);
     }
@@ -808,6 +889,15 @@ export default function Gestao() {
                             Domínio: {instituicao.domain}
                           </p>
                         )}
+                        <p className="text-xs md:text-sm text-muted-foreground flex items-center gap-1.5 pt-0.5">
+                          <Users className="h-3.5 w-3.5 shrink-0 text-primary/80" aria-hidden />
+                          <span>
+                            Alunos:{" "}
+                            <span className="font-medium text-foreground tabular-nums">
+                              {schoolStudentCounts[instituicao.id] ?? "—"}
+                            </span>
+                          </span>
+                        </p>
                       </div>
                       <div className="flex flex-wrap gap-1 md:gap-2">
                         <Button 
@@ -855,6 +945,7 @@ export default function Gestao() {
                       <TableHead>Instituição</TableHead>
                       <TableHead>Cidade</TableHead>
                       <TableHead>Domínio</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Alunos</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -871,6 +962,9 @@ export default function Gestao() {
                           {instituicao.city?.name ? `${instituicao.city.name} - ${instituicao.city.state}` : "-"}
                         </TableCell>
                         <TableCell>{instituicao.domain || "-"}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {schoolStudentCounts[instituicao.id] ?? "—"}
+                        </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
                                                          <Button 
@@ -977,6 +1071,11 @@ export default function Gestao() {
             selectedCityId={selectedUsersCityId}
             onCityChange={setSelectedUsersCityId}
             isAdmin={user.role === "admin"}
+            selectedUserIdsForBatchDelete={selectedUserIdsForBatchDelete}
+            onToggleUserForBatchDelete={toggleUserSelectionForBatchDelete}
+            onSelectManyUsersForBatchDelete={selectManyUsersForBatchDelete}
+            onClearUsersForBatchDelete={clearUserSelectionForBatchDelete}
+            onDeleteUsersInBatch={deleteUsersInBatch}
           />
         </TabsContent>
       </Tabs>

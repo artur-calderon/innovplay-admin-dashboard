@@ -2,6 +2,7 @@ import type { RelatorioCompleto } from "@/types/evaluation-results";
 import type { NovaRespostaAPI } from "@/services/evaluation/evaluationResultsApi";
 import type {
   BuildDeckDataArgs,
+  NotaByDisciplineByTurmaRow,
   NotaPorDisciplinaDeck,
   NotaPorCategoriaDeck,
   NiveisBySeriesRow,
@@ -107,13 +108,38 @@ function pickAlunosParticipantes(
   return 0;
 }
 
+/**
+ * Cartão-resposta (`/answer-sheets/resultados-agregados`): proficiência geral exibida deve ser
+ * `estatisticas_gerais.media_proficiencia_geral` (e por escola via `avaliacoes` no município), não médias do relatório PDF.
+ */
+function applyAnswerSheetCanonicalProficiencyGeral(
+  mode: Presentation19Mode,
+  comparisonAxis: PresentationComparisonAxis,
+  nova: NovaRespostaAPI | null,
+  current: ProficiencyGeneralByTurmaRow[]
+): ProficiencyGeneralByTurmaRow[] {
+  if (mode !== "answer_sheet" || !nova?.estatisticas_gerais) return current;
+
+  const byEscola = proficiencyGeralPorEscolaFromNovaAvaliacoes(nova);
+  const geralNova = buildProficiencyGeneralByTurmaFromNova(nova);
+
+  if (comparisonAxis === "escola") {
+    if (byEscola.length > 0) return byEscola;
+    if (geralNova.length > 0) return geralNova;
+    return current;
+  }
+
+  if (geralNova.length > 0) return geralNova;
+  return current;
+}
+
 function buildNotasFromNova(nova: NovaRespostaAPI | null): { geral: number | null; porDisciplina: NotaPorDisciplinaDeck[] } {
   if (!nova?.estatisticas_gerais && !(nova?.resultados_por_disciplina && nova.resultados_por_disciplina.length > 0)) {
     return { geral: null, porDisciplina: [] };
   }
   const eg = nova.estatisticas_gerais;
   const geralRaw = eg?.media_nota_geral;
-  const geral = geralRaw != null && Number.isFinite(Number(geralRaw)) ? clampToNumber(geralRaw, NaN) : null;
+  let geral = geralRaw != null && Number.isFinite(Number(geralRaw)) ? clampToNumber(geralRaw, NaN) : null;
 
   const porDisciplina = (nova.resultados_por_disciplina ?? [])
     .map((d) => ({
@@ -121,6 +147,13 @@ function buildNotasFromNova(nova: NovaRespostaAPI | null): { geral: number | nul
       mediaNota: clampToNumber(d.media_nota, 0),
     }))
     .filter((d) => d.disciplina.length > 0);
+
+  // Se o backend não envia média geral mas envia por disciplina, usa a média aritmética **só** dos dados da nova resposta
+  // (evita misturar com `buildNotasFromRelatorio`, que pode divergir do endpoint de avaliações/cartão-resposta).
+  if (!Number.isFinite(geral as number) && porDisciplina.length > 0) {
+    const medias = porDisciplina.map((d) => d.mediaNota).filter((m) => Number.isFinite(m));
+    geral = medias.length > 0 ? medias.reduce((a, b) => a + b, 0) / medias.length : null;
+  }
 
   return { geral: Number.isFinite(geral as number) ? (geral as number) : null, porDisciplina };
 }
@@ -426,6 +459,216 @@ function buildProficiencyByDisciplineByTurmaFromNova(novaRespostaAgregados: Nova
     .filter((d): d is ProficiencyByDisciplineByTurmaRow => Boolean(d));
 }
 
+function buildNotasByDisciplineByTurma(relatorio: Partial<RelatorioCompleto> | null): NotaByDisciplineByTurmaRow[] {
+  const ng = relatorio?.nota_geral?.por_disciplina;
+  if (!ng) return [];
+  const geralKey = findGeralKey(ng) ?? "GERAL";
+
+  return Object.entries(ng as AnyRecord)
+    .filter(([k]) => normalizeText(k).toLowerCase() !== normalizeText(geralKey).toLowerCase())
+    .map(([disciplina, dadosDisc]) => {
+      const porTurma = (dadosDisc as AnyRecord)?.por_turma as Array<{ turma: string; nota: number }>;
+      const valuesByTurma = (porTurma ?? []).map((r) => ({
+        turma: String(r.turma ?? "").trim(),
+        mediaNota: clampToNumber(r.nota, 0),
+      }));
+      return { disciplina, valuesByTurma };
+    })
+    .filter((d) => d.valuesByTurma.length > 0);
+}
+
+function buildNotasByDisciplineByTurmaFromNova(nova: NovaRespostaAPI | null): NotaByDisciplineByTurmaRow[] {
+  const disciplinas = nova?.resultados_por_disciplina ?? [];
+  return disciplinas
+    .map((d) => {
+      const disciplina = String(d.disciplina ?? "").trim();
+      const media = clampToNumber(d.media_nota, NaN);
+      if (!disciplina || !Number.isFinite(media)) return null;
+      return {
+        disciplina,
+        valuesByTurma: [{ turma: "GERAL", mediaNota: media }],
+      };
+    })
+    .filter((x): x is NotaByDisciplineByTurmaRow => Boolean(x));
+}
+
+function buildNotasByDisciplinePorCategoria(
+  relatorio: Partial<RelatorioCompleto> | null,
+  axis: "escola" | "serie" | "turma",
+  serieFilterLabel?: string
+): NotaByDisciplineByTurmaRow[] {
+  const ng = relatorio?.nota_geral?.por_disciplina;
+  if (!ng) return [];
+  const geralKey = findGeralKey(ng) ?? "GERAL";
+
+  return Object.entries(ng as AnyRecord)
+    .filter(([k]) => normalizeText(k).toLowerCase() !== normalizeText(geralKey).toLowerCase())
+    .map(([disciplina, dadosDisc]) => {
+      const porTurma = (dadosDisc as AnyRecord)?.por_turma as Array<{ turma: string; nota: number; serie?: string }>;
+      const porEscola = (dadosDisc as AnyRecord)?.por_escola as Array<{ escola: string; nota?: number; media?: number }>;
+      if (axis === "escola" && porEscola?.length) {
+        return {
+          disciplina,
+          valuesByTurma: porEscola.map((r) => ({
+            turma: String(r.escola ?? "").trim(),
+            mediaNota: clampToNumber(r.nota ?? r.media, 0),
+          })),
+        };
+      }
+      const rows = (porTurma ?? []).filter((r) => {
+        if (axis === "turma" && serieFilterLabel) {
+          const s = String(r.serie ?? "").trim() || extractSerieFromTurma(r.turma);
+          return normKey(s) === normKey(serieFilterLabel);
+        }
+        return true;
+      });
+      const valuesByTurma =
+        axis === "serie"
+          ? (() => {
+              const m = new Map<string, { sum: number; n: number }>();
+              for (const r of rows) {
+                const lab = extractSerieFromTurma(r.turma);
+                if (!isValidSerieLabel(lab)) continue;
+                const cur = m.get(lab) ?? { sum: 0, n: 0 };
+                cur.sum += clampToNumber(r.nota, 0);
+                cur.n += 1;
+                m.set(lab, cur);
+              }
+              return Array.from(m.entries()).map(([turma, v]) => ({
+                turma,
+                mediaNota: v.n > 0 ? v.sum / v.n : 0,
+              }));
+            })()
+          : rows.map((r) => ({
+              turma: String(r.turma ?? "").trim(),
+              mediaNota: clampToNumber(r.nota, 0),
+            }));
+      return { disciplina, valuesByTurma };
+    })
+    .filter((d) => d.valuesByTurma.length > 0);
+}
+
+function notasByDisciplinePorEscolaFromNovaAvaliacoes(nova: NovaRespostaAPI | null): NotaByDisciplineByTurmaRow[] {
+  const g = nova?.nivel_granularidade;
+  const av = nova?.resultados_detalhados?.avaliacoes;
+  if (g !== "municipio" || !av?.length) return [];
+
+  const byDisc = new Map<string, Array<{ turma: string; mediaNota: number }>>();
+  for (const a of av) {
+    const escola = String(a.escola ?? "").trim();
+    if (!escola) continue;
+    const mds = a.medias_por_disciplina;
+    if (mds?.length) {
+      for (const md of mds) {
+        const disciplina = String(md.disciplina ?? "").trim();
+        if (!disciplina) continue;
+        const n = clampToNumber(md.media_nota, NaN);
+        if (!Number.isFinite(n)) continue;
+        const arr = byDisc.get(disciplina) ?? [];
+        arr.push({ turma: escola, mediaNota: n });
+        byDisc.set(disciplina, arr);
+      }
+    } else {
+      const n = clampToNumber(a.media_nota, NaN);
+      if (!Number.isFinite(n)) continue;
+      const disciplina = "Geral";
+      const arr = byDisc.get(disciplina) ?? [];
+      arr.push({ turma: escola, mediaNota: n });
+      byDisc.set(disciplina, arr);
+    }
+  }
+
+  return Array.from(byDisc.entries())
+    .map(([disciplina, valuesByTurma]) => ({
+      disciplina,
+      valuesByTurma: valuesByTurma.sort((x, y) => x.turma.localeCompare(y.turma, "pt-BR", { sensitivity: "base" })),
+    }))
+    .filter((d) => d.valuesByTurma.length > 0)
+    .sort((a, b) => a.disciplina.localeCompare(b.disciplina, "pt-BR", { sensitivity: "base" }));
+}
+
+function notasByDisciplinePorSerieFromNovaAvaliacoes(nova: NovaRespostaAPI | null): NotaByDisciplineByTurmaRow[] {
+  const av = nova?.resultados_detalhados?.avaliacoes;
+  if (!av?.length) return [];
+  const byDisc = new Map<string, Map<string, { sum: number; n: number }>>();
+  for (const a of av) {
+    const serieRaw = String(a.serie ?? "").trim();
+    const serie = serieRaw || extractSerieFromTurma(String(a.turma ?? ""));
+    if (!isValidSerieLabel(serie)) continue;
+    const mds = a.medias_por_disciplina;
+    if (!mds?.length) continue;
+    for (const md of mds) {
+      const disciplina = String(md.disciplina ?? "").trim();
+      if (!disciplina) continue;
+      const n = clampToNumber(md.media_nota, NaN);
+      if (!Number.isFinite(n)) continue;
+      const dm = byDisc.get(disciplina) ?? new Map();
+      const cur = dm.get(serie) ?? { sum: 0, n: 0 };
+      cur.sum += n;
+      cur.n += 1;
+      dm.set(serie, cur);
+      byDisc.set(disciplina, dm);
+    }
+  }
+  if (byDisc.size === 0) return [];
+  return Array.from(byDisc.entries())
+    .map(([disciplina, turmaMap]) => ({
+      disciplina,
+      valuesByTurma: Array.from(turmaMap.entries())
+        .map(([tt, v]) => ({ turma: tt, mediaNota: v.n > 0 ? v.sum / v.n : 0 }))
+        .sort((x, y) => x.turma.localeCompare(y.turma, "pt-BR", { sensitivity: "base" })),
+    }))
+    .filter((d) => d.valuesByTurma.length > 0)
+    .sort((a, b) => a.disciplina.localeCompare(b.disciplina, "pt-BR", { sensitivity: "base" }));
+}
+
+function notasByDisciplinePorTurmaFromNovaAvaliacoes(nova: NovaRespostaAPI | null): NotaByDisciplineByTurmaRow[] {
+  const av = nova?.resultados_detalhados?.avaliacoes;
+  if (!av?.length) return [];
+  const byDisc = new Map<string, Map<string, { sum: number; n: number }>>();
+  for (const a of av) {
+    const turma = String(a.turma ?? "").trim();
+    if (!turma) continue;
+    const mds = a.medias_por_disciplina;
+    if (!mds?.length) continue;
+    for (const md of mds) {
+      const disciplina = String(md.disciplina ?? "").trim();
+      if (!disciplina) continue;
+      const n = clampToNumber(md.media_nota, NaN);
+      if (!Number.isFinite(n)) continue;
+      const dm = byDisc.get(disciplina) ?? new Map();
+      const cur = dm.get(turma) ?? { sum: 0, n: 0 };
+      cur.sum += n;
+      cur.n += 1;
+      dm.set(turma, cur);
+      byDisc.set(disciplina, dm);
+    }
+  }
+  if (byDisc.size === 0) return [];
+  return Array.from(byDisc.entries())
+    .map(([disciplina, turmaMap]) => ({
+      disciplina,
+      valuesByTurma: Array.from(turmaMap.entries())
+        .map(([tt, v]) => ({ turma: tt, mediaNota: v.n > 0 ? v.sum / v.n : 0 }))
+        .sort((x, y) => x.turma.localeCompare(y.turma, "pt-BR", { sensitivity: "base" })),
+    }))
+    .filter((d) => d.valuesByTurma.length > 0)
+    .sort((a, b) => a.disciplina.localeCompare(b.disciplina, "pt-BR", { sensitivity: "base" }));
+}
+
+function applyTurmaAllowToNotasByDiscipline(
+  rows: NotaByDisciplineByTurmaRow[],
+  turmaAllow: Set<string>
+): NotaByDisciplineByTurmaRow[] {
+  if (turmaAllow.size === 0) return rows;
+  return rows
+    .map((d) => ({
+      ...d,
+      valuesByTurma: d.valuesByTurma.filter((v) => turmaAllow.has(String(v.turma ?? "").trim())),
+    }))
+    .filter((d) => d.valuesByTurma.length > 0);
+}
+
 function warnIfProficiencyOutOfRange(
   serieHint: string,
   profGeral: ProficiencyGeneralByTurmaRow[],
@@ -495,8 +738,9 @@ function flattenQuestions(relatorio: Partial<RelatorioCompleto> | null): SlideQu
     for (const q of qs) {
       const questao = clampToNumber(q.numero_questao ?? q.numero, 0);
       const percentualAcertos = clampToNumber(q.percentual ?? 0, 0);
-      const habilidade = String(q.codigo ?? q.descricao ?? "Habilidade");
-      questoesFlat.push({ questao, habilidade, percentualAcertos });
+      const habilidade = String(q.codigo ?? "").trim() || "—";
+      const habilidadeDescricao = String(q.descricao ?? "").trim() || undefined;
+      questoesFlat.push({ questao, habilidade, habilidadeDescricao, percentualAcertos });
     }
   } else if (habilidades && habilidades.length > 0) {
     for (const hab of habilidades) {
@@ -504,8 +748,9 @@ function flattenQuestions(relatorio: Partial<RelatorioCompleto> | null): SlideQu
       for (const q of qs) {
         const questao = clampToNumber(q.numero_questao ?? q.numero, 0);
         const percentualAcertos = clampToNumber(q.percentual ?? 0, 0);
-        const habilidade = String(q.codigo ?? hab.descricao ?? "Habilidade");
-        questoesFlat.push({ questao, habilidade, percentualAcertos });
+        const habilidade = String(q.codigo ?? hab.codigo ?? "").trim() || "—";
+        const habilidadeDescricao = String(q.descricao ?? hab.descricao ?? "").trim() || undefined;
+        questoesFlat.push({ questao, habilidade, habilidadeDescricao, percentualAcertos });
       }
     }
   }
@@ -516,41 +761,54 @@ function flattenQuestions(relatorio: Partial<RelatorioCompleto> | null): SlideQu
   }));
 }
 
-/** Número da questão → código/descrição da habilidade (metadados em `tabela_detalhada.disciplinas[].questoes`). */
-function buildQuestaoNumeroToHabilidadeMap(novaRespostaAgregados: NovaRespostaAPI | null): Map<number, string> {
-  const map = new Map<number, string>();
+/** Número da questão → metadados da habilidade (metadados em `tabela_detalhada.disciplinas[].questoes`). */
+function buildQuestaoNumeroToHabilidadeMetaMap(
+  novaRespostaAgregados: NovaRespostaAPI | null
+): Map<number, { codigo?: string; descricao?: string }> {
+  const map = new Map<number, { codigo?: string; descricao?: string }>();
   const disciplinas = novaRespostaAgregados?.tabela_detalhada?.disciplinas ?? [];
   for (const disc of disciplinas) {
-    const qs = (disc as { questoes?: Array<{ numero?: number; habilidade?: string; codigo_habilidade?: string }> }).questoes ?? [];
+    const qs =
+      (disc as {
+        questoes?: Array<{ numero?: number; habilidade?: string; codigo_habilidade?: string }>;
+      }).questoes ?? [];
     for (const q of qs) {
       const num = clampToNumber(q.numero, 0);
       if (num <= 0) continue;
-      const hab = String(q.codigo_habilidade ?? q.habilidade ?? "").trim();
-      if (!hab) continue;
-      if (!map.has(num)) map.set(num, hab);
+      const codigo = String(q.codigo_habilidade ?? "").trim() || undefined;
+      const descricao = String(q.habilidade ?? "").trim() || undefined;
+      if (!codigo && !descricao) continue;
+      if (!map.has(num)) map.set(num, { codigo, descricao });
     }
   }
   return map;
 }
 
-/** Mapa questão → habilidade a partir da tabela geral já montada (ex.: `acertos_por_habilidade` do relatório). */
-function buildQuestaoHabilidadeMapFromGeralRows(geral: SlideQuestionRow[]): Map<number, string> {
-  const map = new Map<number, string>();
+/** Mapa questão → metadados a partir da tabela geral já montada (ex.: `acertos_por_habilidade` do relatório). */
+function buildQuestaoMetaMapFromGeralRows(
+  geral: SlideQuestionRow[]
+): Map<number, { codigo?: string; descricao?: string }> {
+  const map = new Map<number, { codigo?: string; descricao?: string }>();
   for (const r of geral) {
     const q = clampToNumber(r.questao, 0);
     if (q <= 0) continue;
-    const hab = String(r.habilidade ?? "").trim();
-    if (!hab || hab === "—") continue;
-    map.set(q, hab);
+    const codigo = String(r.habilidade ?? "").trim() || undefined;
+    const descricao = String(r.habilidadeDescricao ?? "").trim() || undefined;
+    if (!codigo && !descricao) continue;
+    map.set(q, { codigo, descricao });
   }
   return map;
 }
 
-/** União: metadados da nova resposta + habilidades da tabela geral (prioridade à geral quando ambas existem). */
-function mergeHabilidadeMaps(novaMap: Map<number, string>, geralMap: Map<number, string>): Map<number, string> {
+/** União: metadados da nova resposta + tabela geral (prioriza o que existir na geral quando ambas existem). */
+function mergeHabilidadeMetaMaps(
+  novaMap: Map<number, { codigo?: string; descricao?: string }>,
+  geralMap: Map<number, { codigo?: string; descricao?: string }>
+): Map<number, { codigo?: string; descricao?: string }> {
   const out = new Map(novaMap);
-  for (const [q, hab] of geralMap) {
-    out.set(q, hab);
+  for (const [q, meta] of geralMap) {
+    const cur = out.get(q) ?? {};
+    out.set(q, { ...cur, ...meta });
   }
   return out;
 }
@@ -563,7 +821,7 @@ function flattenQuestionsFromNova(novaRespostaAgregados: NovaRespostaAPI | null)
   }>;
   if (alunos.length === 0) return [];
 
-  const habMap = buildQuestaoNumeroToHabilidadeMap(novaRespostaAgregados);
+  const habMetaMap = buildQuestaoNumeroToHabilidadeMetaMap(novaRespostaAgregados);
 
   const byQuestao = new Map<number, { total: number; acertos: number }>();
   for (const aluno of alunos) {
@@ -581,7 +839,8 @@ function flattenQuestionsFromNova(novaRespostaAgregados: NovaRespostaAPI | null)
     .sort((a, b) => a[0] - b[0])
     .map(([questao, v]) => ({
       questao,
-      habilidade: habMap.get(questao)?.trim() || "—",
+      habilidade: habMetaMap.get(questao)?.codigo?.trim() || "—",
+      habilidadeDescricao: habMetaMap.get(questao)?.descricao?.trim() || undefined,
       percentualAcertos: v.total > 0 ? Math.round((v.acertos / v.total) * 1000) / 10 : 0,
     }));
 }
@@ -589,7 +848,7 @@ function flattenQuestionsFromNova(novaRespostaAgregados: NovaRespostaAPI | null)
 /** % de acerto por questão, uma entrada por turma (alunos da tabela detalhada). */
 function buildQuestoesPorTurmaFromNova(
   novaRespostaAgregados: NovaRespostaAPI | null,
-  habilidadePorQuestao: Map<number, string>
+  habilidadePorQuestao: Map<number, { codigo?: string; descricao?: string }>
 ): Array<{ turma: string; serieTurma: string; questoes: SlideQuestionRow[] }> {
   if (!novaRespostaAgregados) return [];
 
@@ -631,7 +890,8 @@ function buildQuestoesPorTurmaFromNova(
       .sort((a, b) => a[0] - b[0])
       .map(([questao, v]) => ({
         questao,
-        habilidade: habMap.get(questao)?.trim() || "—",
+        habilidade: habMap.get(questao)?.codigo?.trim() || "—",
+        habilidadeDescricao: habMap.get(questao)?.descricao?.trim() || undefined,
         percentualAcertos: v.total > 0 ? Math.round((v.acertos / v.total) * 1000) / 10 : 0,
       }));
     if (questoes.length > 0) out.push({ turma, serieTurma, questoes });
@@ -642,7 +902,7 @@ function buildQuestoesPorTurmaFromNova(
 /** % de acerto por questão, agregado por série (município — sem blocos por turma). */
 function buildQuestoesPorSerieFromNova(
   novaRespostaAgregados: NovaRespostaAPI | null,
-  habilidadePorQuestao: Map<number, string>
+  habilidadePorQuestao: Map<number, { codigo?: string; descricao?: string }>
 ): Array<{ serie: string; questoes: SlideQuestionRow[] }> {
   if (!novaRespostaAgregados) return [];
 
@@ -683,7 +943,8 @@ function buildQuestoesPorSerieFromNova(
       .sort((a, b) => a[0] - b[0])
       .map(([questao, v]) => ({
         questao,
-        habilidade: habMap.get(questao)?.trim() || "—",
+        habilidade: habMap.get(questao)?.codigo?.trim() || "—",
+        habilidadeDescricao: habMap.get(questao)?.descricao?.trim() || undefined,
         percentualAcertos: v.total > 0 ? Math.round((v.acertos / v.total) * 1000) / 10 : 0,
       }));
     if (questoes.length > 0) out.push({ serie, questoes });
@@ -763,6 +1024,74 @@ function normKey(s?: string | null): string {
   return normalizeText(String(s ?? "").trim())
     .replace(/\s+/g, " ")
     .toLowerCase();
+}
+
+function findResultadoPorDisciplinaNova(
+  rows: NonNullable<NovaRespostaAPI["resultados_por_disciplina"]>,
+  disciplina: string
+): (NonNullable<NovaRespostaAPI["resultados_por_disciplina"]>[number]) | undefined {
+  const d = String(disciplina ?? "").trim();
+  if (!d || !rows.length) return undefined;
+  const exact = rows.find((r) => String(r.disciplina ?? "").trim() === d);
+  if (exact) return exact;
+  const dk = normKey(d);
+  return rows.find((r) => normKey(String(r.disciplina ?? "")) === dk);
+}
+
+/**
+ * No recorte município + comparação por escola, acrescenta linha GERAL por disciplina a partir de
+ * `resultados_por_disciplina` (mesma API do cartão-resposta), para não recalcular média municipal no front.
+ */
+function appendMunicipalGeralPorDisciplinaFromNova(
+  comparisonAxis: PresentationComparisonAxis,
+  nova: NovaRespostaAPI | null,
+  profRows: ProficiencyByDisciplineByTurmaRow[],
+  notaRows: NotaByDisciplineByTurmaRow[]
+): {
+  prof: ProficiencyByDisciplineByTurmaRow[];
+  nota: NotaByDisciplineByTurmaRow[];
+} {
+  if (comparisonAxis !== "escola" || nova?.nivel_granularidade !== "municipio") {
+    return { prof: profRows, nota: notaRows };
+  }
+  const res = nova.resultados_por_disciplina ?? [];
+  if (res.length === 0) return { prof: profRows, nota: notaRows };
+
+  const mergeProf = profRows.map((d) => {
+    const m = findResultadoPorDisciplinaNova(res, d.disciplina);
+    if (!m) return d;
+    const p = clampToNumber(m.media_proficiencia, NaN);
+    if (!Number.isFinite(p)) return d;
+    if (d.valuesByTurma.some((v) => v.turma === "GERAL")) return d;
+    return { ...d, valuesByTurma: [...d.valuesByTurma, { turma: "GERAL", proficiencia: p }] };
+  });
+
+  const mergeNota = notaRows.map((d) => {
+    const m = findResultadoPorDisciplinaNova(res, d.disciplina);
+    if (!m) return d;
+    const n = clampToNumber(m.media_nota, NaN);
+    if (!Number.isFinite(n)) return d;
+    if (d.valuesByTurma.some((v) => v.turma === "GERAL")) return d;
+    return { ...d, valuesByTurma: [...d.valuesByTurma, { turma: "GERAL", mediaNota: n }] };
+  });
+
+  return { prof: mergeProf, nota: mergeNota };
+}
+
+function municipalEstatisticasGeraisMunicipio(nova: NovaRespostaAPI | null): {
+  mediaProficienciaMunicipalAgregados: number | null;
+  mediaNotaMunicipalAgregados: number | null;
+} {
+  if (!nova?.estatisticas_gerais || nova.nivel_granularidade !== "municipio") {
+    return { mediaProficienciaMunicipalAgregados: null, mediaNotaMunicipalAgregados: null };
+  }
+  const eg = nova.estatisticas_gerais;
+  const prof = clampToNumber(eg.media_proficiencia_geral, NaN);
+  const nota = clampToNumber(eg.media_nota_geral, NaN);
+  return {
+    mediaProficienciaMunicipalAgregados: Number.isFinite(prof) ? prof : null,
+    mediaNotaMunicipalAgregados: Number.isFinite(nota) ? nota : null,
+  };
 }
 
 function inferSerieForTurmaFromNova(nova: NovaRespostaAPI | null, turmaLabel: string): string {
@@ -1048,6 +1377,172 @@ function buildNotasPorCategoriaFromRelatorio(
     .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
 }
 
+/**
+ * Mesma lista usada na tela de resultados (GET evaluation-results/avaliacoes): priorizar estes agregados
+ * em relação ao RelatorioCompleto quando existirem.
+ */
+function proficiencyGeralPorEscolaFromNovaAvaliacoes(nova: NovaRespostaAPI | null): ProficiencyGeneralByTurmaRow[] {
+  const g = nova?.nivel_granularidade;
+  const av = nova?.resultados_detalhados?.avaliacoes;
+  if (g !== "municipio" || !av?.length) return [];
+  return av
+    .map((a) => ({
+      label: String(a.escola ?? "").trim(),
+      proficiencia: clampToNumber(a.media_proficiencia, 0),
+    }))
+    .filter((r) => r.label.length > 0)
+    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+}
+
+function proficiencyByDisciplinePorEscolaFromNovaAvaliacoes(nova: NovaRespostaAPI | null): ProficiencyByDisciplineByTurmaRow[] {
+  const g = nova?.nivel_granularidade;
+  const av = nova?.resultados_detalhados?.avaliacoes;
+  if (g !== "municipio" || !av?.length) return [];
+
+  const byDisc = new Map<string, Array<{ turma: string; proficiencia: number }>>();
+  for (const a of av) {
+    const escola = String(a.escola ?? "").trim();
+    if (!escola) continue;
+    const mds = a.medias_por_disciplina;
+    if (mds?.length) {
+      for (const md of mds) {
+        const disciplina = String(md.disciplina ?? "").trim();
+        if (!disciplina) continue;
+        const p = clampToNumber(md.media_proficiencia, NaN);
+        if (!Number.isFinite(p)) continue;
+        const arr = byDisc.get(disciplina) ?? [];
+        arr.push({ turma: escola, proficiencia: p });
+        byDisc.set(disciplina, arr);
+      }
+    } else {
+      const p = clampToNumber(a.media_proficiencia, NaN);
+      if (!Number.isFinite(p)) continue;
+      const disciplina = "Geral";
+      const arr = byDisc.get(disciplina) ?? [];
+      arr.push({ turma: escola, proficiencia: p });
+      byDisc.set(disciplina, arr);
+    }
+  }
+
+  return Array.from(byDisc.entries())
+    .map(([disciplina, valuesByTurma]) => ({
+      disciplina,
+      valuesByTurma: valuesByTurma.sort((x, y) =>
+        x.turma.localeCompare(y.turma, "pt-BR", { sensitivity: "base" })
+      ),
+    }))
+    .filter((d) => d.valuesByTurma.length > 0)
+    .sort((a, b) => a.disciplina.localeCompare(b.disciplina, "pt-BR", { sensitivity: "base" }));
+}
+
+function notasPorCategoriaEscolaFromNovaAvaliacoes(nova: NovaRespostaAPI | null): NotaPorCategoriaDeck[] {
+  const g = nova?.nivel_granularidade;
+  const av = nova?.resultados_detalhados?.avaliacoes;
+  if (g !== "municipio" || !av?.length) return [];
+  return av
+    .map((a) => ({
+      label: String(a.escola ?? "").trim(),
+      mediaNota: clampToNumber(a.media_nota, 0),
+    }))
+    .filter((r) => r.label.length > 0)
+    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+}
+
+/** Uma linha por série quando `avaliacoes` traz `serie` (ou dá para inferir). */
+function proficiencyGeralPorSerieFromNovaAvaliacoes(nova: NovaRespostaAPI | null): ProficiencyGeneralByTurmaRow[] {
+  const av = nova?.resultados_detalhados?.avaliacoes;
+  if (!av?.length) return [];
+
+  const map = new Map<string, { sum: number; n: number }>();
+  for (const a of av) {
+    const serieRaw = String(a.serie ?? "").trim();
+    const serie = serieRaw || extractSerieFromTurma(String(a.turma ?? ""));
+    if (!isValidSerieLabel(serie)) continue;
+    const p = clampToNumber(a.media_proficiencia, NaN);
+    if (!Number.isFinite(p)) continue;
+    const cur = map.get(serie) ?? { sum: 0, n: 0 };
+    cur.sum += p;
+    cur.n += 1;
+    map.set(serie, cur);
+  }
+
+  if (map.size === 0) return [];
+
+  return Array.from(map.entries())
+    .map(([label, v]) => ({ label, proficiencia: v.n > 0 ? v.sum / v.n : 0 }))
+    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+}
+
+/** Uma linha por turma quando `avaliacoes` lista turmas com média agregada (mesma base da API). */
+function proficiencyGeralPorTurmaFromNovaAvaliacoes(nova: NovaRespostaAPI | null): ProficiencyGeneralByTurmaRow[] {
+  const av = nova?.resultados_detalhados?.avaliacoes;
+  if (!av?.length) return [];
+  const map = new Map<string, { sum: number; n: number }>();
+  for (const a of av) {
+    const turma = String(a.turma ?? "").trim();
+    if (!turma) continue;
+    const p = clampToNumber(a.media_proficiencia, NaN);
+    if (!Number.isFinite(p)) continue;
+    const cur = map.get(turma) ?? { sum: 0, n: 0 };
+    cur.sum += p;
+    cur.n += 1;
+    map.set(turma, cur);
+  }
+  if (map.size === 0) return [];
+  return Array.from(map.entries())
+    .map(([label, v]) => ({ label, proficiencia: v.n > 0 ? v.sum / v.n : 0 }))
+    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+}
+
+function notasPorCategoriaFromNovaAvaliacoesSerie(nova: NovaRespostaAPI | null): NotaPorCategoriaDeck[] {
+  const av = nova?.resultados_detalhados?.avaliacoes;
+  if (!av?.length) return [];
+  const map = new Map<string, { sum: number; n: number }>();
+  for (const a of av) {
+    const serieRaw = String(a.serie ?? "").trim();
+    const serie = serieRaw || extractSerieFromTurma(String(a.turma ?? ""));
+    if (!isValidSerieLabel(serie)) continue;
+    const n = clampToNumber(a.media_nota, NaN);
+    if (!Number.isFinite(n)) continue;
+    const cur = map.get(serie) ?? { sum: 0, n: 0 };
+    cur.sum += n;
+    cur.n += 1;
+    map.set(serie, cur);
+  }
+  if (map.size === 0) return [];
+  return Array.from(map.entries())
+    .map(([label, v]) => ({ label, mediaNota: v.n > 0 ? v.sum / v.n : 0 }))
+    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+}
+
+function notasPorCategoriaFromNovaAvaliacoesTurma(nova: NovaRespostaAPI | null): NotaPorCategoriaDeck[] {
+  const av = nova?.resultados_detalhados?.avaliacoes;
+  if (!av?.length) return [];
+  const map = new Map<string, { sum: number; n: number }>();
+  for (const a of av) {
+    const turma = String(a.turma ?? "").trim();
+    if (!turma) continue;
+    const n = clampToNumber(a.media_nota, NaN);
+    if (!Number.isFinite(n)) continue;
+    const cur = map.get(turma) ?? { sum: 0, n: 0 };
+    cur.sum += n;
+    cur.n += 1;
+    map.set(turma, cur);
+  }
+  if (map.size === 0) return [];
+  return Array.from(map.entries())
+    .map(([label, v]) => ({ label, mediaNota: v.n > 0 ? v.sum / v.n : 0 }))
+    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+}
+
+function proficiencySerieOuGeralFromNovaEstatisticas(nova: NovaRespostaAPI | null): ProficiencyGeneralByTurmaRow[] {
+  const media = clampToNumber(nova?.estatisticas_gerais?.media_proficiencia_geral, NaN);
+  if (!Number.isFinite(media)) return [];
+  const serieRaw = String(nova?.estatisticas_gerais?.serie ?? "").trim();
+  const label = isValidSerieLabel(serieRaw) ? serieRaw : "GERAL";
+  return [{ label, proficiencia: media }];
+}
+
 function presenceFromNovaAvaliacoesMunicipio(nova: NovaRespostaAPI | null): PresenceBySeriesRow[] {
   const g = nova?.nivel_granularidade;
   const av = nova?.resultados_detalhados?.avaliacoes;
@@ -1098,6 +1593,7 @@ function buildMetricsForAxis(
   niveisPorSerie: NiveisBySeriesRow[];
   proficienciaGeralPorTurma: ProficiencyGeneralByTurmaRow[];
   proficienciaPorDisciplinaPorTurma: ProficiencyByDisciplineByTurmaRow[];
+  notasPorDisciplinaPorTurma: NotaByDisciplineByTurmaRow[];
   notasPorCategoria: NotaPorCategoriaDeck[];
 } {
   if (axis === "escola") {
@@ -1116,20 +1612,37 @@ function buildMetricsForAxis(
       niveis = groupNiveisFromRelatorio(relatorio, series.length ? series : ["GERAL"]);
     }
 
-    let profGeral = buildProficiencyGeneralPorEscola(relatorio);
+    let profGeral = proficiencyGeralPorEscolaFromNovaAvaliacoes(nova);
     if (profGeral.length === 0) {
       const fromNova = buildProficiencyGeneralByTurmaFromNova(nova);
-      profGeral = fromNova.length > 0 ? fromNova : buildProficiencyGeneralPorSerieFromRelatorio(relatorio);
+      profGeral = fromNova.length > 0 ? fromNova : buildProficiencyGeneralPorEscola(relatorio);
+    }
+    if (profGeral.length === 0) {
+      profGeral = buildProficiencyGeneralPorSerieFromRelatorio(relatorio);
     }
     if (profGeral.length === 0) profGeral = buildProficiencyGeneralByTurma(relatorio);
 
-    let profDisc = buildProficiencyByDisciplinePorCategoria(relatorio, "escola");
+    let profDisc = proficiencyByDisciplinePorEscolaFromNovaAvaliacoes(nova);
     if (profDisc.length === 0) profDisc = buildProficiencyByDisciplineByTurmaFromNova(nova);
+    if (profDisc.length === 0) profDisc = buildProficiencyByDisciplinePorCategoria(relatorio, "escola");
     if (profDisc.length === 0) profDisc = buildProficiencyByDisciplineByTurma(relatorio);
 
-    const notasCat = buildNotasPorCategoriaFromRelatorio(relatorio, "escola");
+    let notasCat = notasPorCategoriaEscolaFromNovaAvaliacoes(nova);
+    if (notasCat.length === 0) notasCat = buildNotasPorCategoriaFromRelatorio(relatorio, "escola");
 
-    return { presencaPorSerie: presenca, niveisPorSerie: niveis, proficienciaGeralPorTurma: profGeral, proficienciaPorDisciplinaPorTurma: profDisc, notasPorCategoria: notasCat };
+    let notasDisc = notasByDisciplinePorEscolaFromNovaAvaliacoes(nova);
+    if (notasDisc.length === 0) notasDisc = buildNotasByDisciplineByTurmaFromNova(nova);
+    if (notasDisc.length === 0) notasDisc = buildNotasByDisciplinePorCategoria(relatorio, "escola");
+    if (notasDisc.length === 0) notasDisc = buildNotasByDisciplineByTurma(relatorio);
+
+    return {
+      presencaPorSerie: presenca,
+      niveisPorSerie: niveis,
+      proficienciaGeralPorTurma: profGeral,
+      proficienciaPorDisciplinaPorTurma: profDisc,
+      notasPorDisciplinaPorTurma: notasDisc,
+      notasPorCategoria: notasCat,
+    };
   }
 
   if (axis === "serie") {
@@ -1139,21 +1652,30 @@ function buildMetricsForAxis(
     let niveis = buildLevelsBySeries(relatorio, presenca);
     if (niveis.length === 0) niveis = groupNiveisFromNova(nova, presenca[0]?.label ?? "GERAL");
 
-    let profGeral = buildProficiencyGeneralPorSerieFromRelatorio(relatorio);
+    let profGeral = proficiencyGeralPorSerieFromNovaAvaliacoes(nova);
+    if (profGeral.length === 0) profGeral = proficiencySerieOuGeralFromNovaEstatisticas(nova);
+    if (profGeral.length === 0) profGeral = buildProficiencyGeneralPorSerieFromRelatorio(relatorio);
     if (profGeral.length === 0) profGeral = buildProficiencyGeneralByTurmaFromNova(nova);
     if (profGeral.length === 0) profGeral = buildProficiencyGeneralByTurma(relatorio);
 
-    let profDisc = buildProficiencyByDisciplinePorCategoria(relatorio, "serie");
-    if (profDisc.length === 0) profDisc = buildProficiencyByDisciplineByTurmaFromNova(nova);
+    let profDisc = buildProficiencyByDisciplineByTurmaFromNova(nova);
+    if (profDisc.length === 0) profDisc = buildProficiencyByDisciplinePorCategoria(relatorio, "serie");
     if (profDisc.length === 0) profDisc = buildProficiencyByDisciplineByTurma(relatorio);
 
-    const notasCat = buildNotasPorCategoriaFromRelatorio(relatorio, "serie");
+    let notasCat = notasPorCategoriaFromNovaAvaliacoesSerie(nova);
+    if (notasCat.length === 0) notasCat = buildNotasPorCategoriaFromRelatorio(relatorio, "serie");
+
+    let notasDisc = notasByDisciplinePorSerieFromNovaAvaliacoes(nova);
+    if (notasDisc.length === 0) notasDisc = buildNotasByDisciplineByTurmaFromNova(nova);
+    if (notasDisc.length === 0) notasDisc = buildNotasByDisciplinePorCategoria(relatorio, "serie");
+    if (notasDisc.length === 0) notasDisc = buildNotasByDisciplineByTurma(relatorio);
 
     return {
       presencaPorSerie: presenca,
       niveisPorSerie: niveis,
       proficienciaGeralPorTurma: profGeral,
       proficienciaPorDisciplinaPorTurma: profDisc,
+      notasPorDisciplinaPorTurma: notasDisc,
       notasPorCategoria: notasCat,
     };
   }
@@ -1169,45 +1691,85 @@ function buildMetricsForAxis(
     const niveis = applyTurmaAllow(
       turmaAllow.size > 0 ? groupNiveisPorTurmaDireto(relatorio, undefined) : groupNiveisPorTurmaDireto(relatorio, serieFilterLabel)
     );
-    let profGeral = (() => {
-      const prof = relatorio?.proficiencia?.por_disciplina;
-      if (!prof) return [] as ProficiencyGeneralByTurmaRow[];
-      const geralKey = findGeralKey(prof) ?? "GERAL";
-      const geral = (prof as AnyRecord)[geralKey] as { por_turma?: Array<{ turma: string; proficiencia: number; serie?: string }> };
-      const rows = (geral?.por_turma ?? []).filter((r) => {
-        if (turmaAllow.size > 0) return turmaAllow.has(String(r.turma ?? "").trim());
-        if (!serieFilterLabel) return true;
-        const s = String(r.serie ?? "").trim() || extractSerieFromTurma(r.turma);
-        return normKey(s) === normKey(serieFilterLabel);
-      });
-      return rows
-        .map((r) => ({ label: String(r.turma ?? "").trim(), proficiencia: clampToNumber(r.proficiencia, 0) }))
-        .filter((r) => r.label.length > 0)
-        .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
-    })();
-    if (profGeral.length === 0) profGeral = buildProficiencyGeneralByTurmaFromNova(nova);
-    if (profGeral.length === 0) profGeral = buildProficiencyGeneralByTurma(relatorio);
+    let profGeral = applyTurmaAllow(proficiencyGeralPorTurmaFromNovaAvaliacoes(nova));
+    if (profGeral.length === 0) {
+      profGeral = (() => {
+        const prof = relatorio?.proficiencia?.por_disciplina;
+        if (!prof) return [] as ProficiencyGeneralByTurmaRow[];
+        const geralKey = findGeralKey(prof) ?? "GERAL";
+        const geral = (prof as AnyRecord)[geralKey] as { por_turma?: Array<{ turma: string; proficiencia: number; serie?: string }> };
+        const rows = (geral?.por_turma ?? []).filter((r) => {
+          if (turmaAllow.size > 0) return turmaAllow.has(String(r.turma ?? "").trim());
+          if (!serieFilterLabel) return true;
+          const s = String(r.serie ?? "").trim() || extractSerieFromTurma(r.turma);
+          return normKey(s) === normKey(serieFilterLabel);
+        });
+        return rows
+          .map((r) => ({ label: String(r.turma ?? "").trim(), proficiencia: clampToNumber(r.proficiencia, 0) }))
+          .filter((r) => r.label.length > 0)
+          .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+      })();
+    }
+    if (profGeral.length === 0) {
+      const fromNova = buildProficiencyGeneralByTurmaFromNova(nova);
+      if (fromNova.length > 0) {
+        if (turmaAllow.size === 0) profGeral = fromNova;
+        else {
+          const matched = applyTurmaAllow(fromNova);
+          profGeral = matched.length > 0 ? matched : [];
+        }
+      }
+    }
+    if (profGeral.length === 0) profGeral = applyTurmaAllow(buildProficiencyGeneralByTurma(relatorio));
 
-    let profDisc =
-      turmaAllow.size > 0
-        ? buildProficiencyByDisciplinePorCategoria(relatorio, "turma", undefined).map((d) => ({
-            ...d,
-            valuesByTurma: d.valuesByTurma.filter((v) => turmaAllow.has(String(v.turma ?? "").trim())),
-          }))
-        : buildProficiencyByDisciplinePorCategoria(relatorio, "turma", serieFilterLabel);
-    if (profDisc.length === 0) profDisc = buildProficiencyByDisciplineByTurmaFromNova(nova);
+    let profDisc = buildProficiencyByDisciplineByTurmaFromNova(nova);
+    if (profDisc.length === 0) {
+      profDisc =
+        turmaAllow.size > 0
+          ? buildProficiencyByDisciplinePorCategoria(relatorio, "turma", undefined).map((d) => ({
+              ...d,
+              valuesByTurma: d.valuesByTurma.filter((v) => turmaAllow.has(String(v.turma ?? "").trim())),
+            }))
+          : buildProficiencyByDisciplinePorCategoria(relatorio, "turma", serieFilterLabel);
+    }
     if (profDisc.length === 0) profDisc = buildProficiencyByDisciplineByTurma(relatorio);
 
-    const notasCat =
-      turmaAllow.size > 0
-        ? buildNotasPorCategoriaFromRelatorio(relatorio, "turma", undefined).filter((r) => turmaAllow.has(String(r.label ?? "").trim()))
-        : buildNotasPorCategoriaFromRelatorio(relatorio, "turma", serieFilterLabel);
+    let notasCat = applyTurmaAllow(notasPorCategoriaFromNovaAvaliacoesTurma(nova));
+    if (notasCat.length === 0) {
+      notasCat =
+        turmaAllow.size > 0
+          ? buildNotasPorCategoriaFromRelatorio(relatorio, "turma", undefined).filter((r) => turmaAllow.has(String(r.label ?? "").trim()))
+          : buildNotasPorCategoriaFromRelatorio(relatorio, "turma", serieFilterLabel);
+    }
+
+    let notasDisc = applyTurmaAllowToNotasByDiscipline(notasByDisciplinePorTurmaFromNovaAvaliacoes(nova), turmaAllow);
+    if (notasDisc.length === 0) {
+      const fromNova = buildNotasByDisciplineByTurmaFromNova(nova);
+      if (fromNova.length > 0) {
+        if (turmaAllow.size === 0) notasDisc = fromNova;
+        else {
+          const matched = applyTurmaAllowToNotasByDiscipline(fromNova, turmaAllow);
+          notasDisc = matched.length > 0 ? matched : [];
+        }
+      }
+    }
+    if (notasDisc.length === 0) {
+      notasDisc =
+        turmaAllow.size > 0
+          ? buildNotasByDisciplinePorCategoria(relatorio, "turma", undefined).map((d) => ({
+              ...d,
+              valuesByTurma: d.valuesByTurma.filter((v) => turmaAllow.has(String(v.turma ?? "").trim())),
+            }))
+          : buildNotasByDisciplinePorCategoria(relatorio, "turma", serieFilterLabel);
+    }
+    if (notasDisc.length === 0) notasDisc = applyTurmaAllowToNotasByDiscipline(buildNotasByDisciplineByTurma(relatorio), turmaAllow);
 
     return {
       presencaPorSerie: presenca,
       niveisPorSerie: niveis,
       proficienciaGeralPorTurma: profGeral,
       proficienciaPorDisciplinaPorTurma: profDisc,
+      notasPorDisciplinaPorTurma: notasDisc,
       notasPorCategoria: notasCat,
     };
   }
@@ -1240,6 +1802,17 @@ function buildLevelGuideDescriptions(_serieNome?: string): Array<{ label: string
   }));
 }
 
+function cloneMediaMunicipalPorDisciplinaMap(
+  src: Record<string, number> | undefined | null
+): Record<string, number> | null {
+  if (!src || typeof src !== "object") return null;
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(src)) {
+    if (v != null && Number.isFinite(Number(v))) out[k] = Number(v);
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): Presentation19DeckData {
   const {
     mode,
@@ -1252,6 +1825,9 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
     novaRespostaSerieAgregados,
     primaryColor,
     logoDataUrl,
+    coverSubtitle,
+    footerText,
+    closingMessage,
   } = args;
 
   const municipioNome =
@@ -1382,6 +1958,12 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
 
   let proficienciaGeralPorTurma = metrics.proficienciaGeralPorTurma;
   let proficienciaPorDisciplinaPorTurma = metrics.proficienciaPorDisciplinaPorTurma;
+  proficienciaGeralPorTurma = applyAnswerSheetCanonicalProficiencyGeral(
+    mode,
+    comparisonAxis,
+    novaRespostaAgregados,
+    proficienciaGeralPorTurma
+  );
   if (proficienciaGeralPorTurma.length === 0) {
     const fromNova = buildProficiencyGeneralByTurmaFromNova(novaRespostaAgregados);
     proficienciaGeralPorTurma = fromNova.length > 0 ? fromNova : buildProficiencyGeneralByTurma(relatorioDetalhado);
@@ -1392,10 +1974,34 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
       fromNova.length > 0 ? fromNova : buildProficiencyByDisciplineByTurma(relatorioDetalhado);
   }
 
+  let notasPorDisciplinaPorTurma = metrics.notasPorDisciplinaPorTurma;
+  if (notasPorDisciplinaPorTurma.length === 0) {
+    const fromNova = buildNotasByDisciplineByTurmaFromNova(novaRespostaAgregados);
+    notasPorDisciplinaPorTurma = fromNova.length > 0 ? fromNova : buildNotasByDisciplineByTurma(relatorioDetalhado);
+  }
+
+  const municipalDiscMerged = appendMunicipalGeralPorDisciplinaFromNova(
+    comparisonAxis,
+    novaRespostaAgregados,
+    proficienciaPorDisciplinaPorTurma,
+    notasPorDisciplinaPorTurma
+  );
+  proficienciaPorDisciplinaPorTurma = municipalDiscMerged.prof;
+  notasPorDisciplinaPorTurma = municipalDiscMerged.nota;
+
   const notasNova = buildNotasFromNova(novaRespostaAgregados);
   const notasRel = buildNotasFromRelatorio(relatorioDetalhado);
   const notasPorDisciplina = notasNova.porDisciplina.length > 0 ? notasNova.porDisciplina : notasRel.porDisciplina;
-  const mediaNotaGeral = notasNova.geral ?? notasRel.geral;
+  /**
+   * Média geral: no cartão-resposta só `buildNotasFromNova` (GET resultados-agregados / campos espelhados na NovaResposta).
+   * Modo avaliações: mantém regra que evita misturar disciplinas da API com média geral recalculada no cliente a partir do PDF.
+   */
+  const mediaNotaGeral =
+    mode === "answer_sheet"
+      ? notasNova.geral
+      : notasNova.porDisciplina.length > 0
+        ? notasNova.geral
+        : notasNova.geral ?? notasRel.geral;
 
   let notasPorCategoria = metrics.notasPorCategoria;
   if (notasPorCategoria.length === 0 && comparisonAxis !== "aluno") {
@@ -1405,9 +2011,9 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
   const questoesTabelaGeralBase = flattenQuestions(relatorioDetalhado);
   const questoesTabelaGeral =
     questoesTabelaGeralBase.length > 0 ? questoesTabelaGeralBase : flattenQuestionsFromNova(novaRespostaAgregados);
-  const habilidadePorQuestaoTurma = mergeHabilidadeMaps(
-    buildQuestaoNumeroToHabilidadeMap(novaRespostaAgregados),
-    buildQuestaoHabilidadeMapFromGeralRows(questoesTabelaGeral)
+  const habilidadePorQuestaoTurma = mergeHabilidadeMetaMaps(
+    buildQuestaoNumeroToHabilidadeMetaMap(novaRespostaAgregados),
+    buildQuestaoMetaMapFromGeralRows(questoesTabelaGeral)
   );
   const questoesPorTurma = buildQuestoesPorTurmaFromNova(novaRespostaAgregados, habilidadePorQuestaoTurma);
   const questoesPorSerieFromNova = buildQuestoesPorSerieFromNova(novaRespostaAgregados, habilidadePorQuestaoTurma);
@@ -1448,6 +2054,9 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
 
   const alunosDetalhados: AlunoPresentationRow[] = [];
 
+  const { mediaProficienciaMunicipalAgregados, mediaNotaMunicipalAgregados } =
+    municipalEstatisticasGeraisMunicipio(novaRespostaAgregados);
+
   warnIfProficiencyOutOfRange(serieFinal, proficienciaGeralPorTurma, proficienciaPorDisciplinaPorTurma);
 
   // Pós-processamento do escopo TURMA selecionada:
@@ -1457,6 +2066,7 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
   let niveisFinal = levelsPorSerie;
   let profGeralFinal = proficienciaGeralPorTurma;
   let profDiscFinal = proficienciaPorDisciplinaPorTurma;
+  let notasPorDisciplinaPorTurmaFinal = notasPorDisciplinaPorTurma;
   let notasDiscFinal = notasPorDisciplina;
   let mediaNotaFinal = mediaNotaGeral;
   let notasCatFinal = notasPorCategoria;
@@ -1595,6 +2205,29 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
         ],
       }));
 
+      const serieNotaByDisc = new Map<string, number>();
+      for (const d of novaRespostaSerieAgregados.resultados_por_disciplina ?? []) {
+        const nome = String(d.disciplina ?? "").trim();
+        if (!nome) continue;
+        serieNotaByDisc.set(nome, clampToNumber(d.media_nota, 0));
+      }
+      const turmaNotaByDisc = new Map<string, number>();
+      for (const d of novaRespostaAgregados.resultados_por_disciplina ?? []) {
+        const nome = String(d.disciplina ?? "").trim();
+        if (!nome) continue;
+        turmaNotaByDisc.set(nome, clampToNumber(d.media_nota, 0));
+      }
+      const allDiscNota = Array.from(new Set([...serieNotaByDisc.keys(), ...turmaNotaByDisc.keys()])).sort((a, b) =>
+        a.localeCompare(b, "pt-BR", { sensitivity: "base" })
+      );
+      notasPorDisciplinaPorTurmaFinal = allDiscNota.map((disciplina) => ({
+        disciplina,
+        valuesByTurma: [
+          { turma: selectedTurmaEffective, mediaNota: turmaNotaByDisc.get(disciplina) ?? 0 },
+          { turma: TURMA_COMPARE_GERAL_LABEL, mediaNota: serieNotaByDisc.get(disciplina) ?? 0 },
+        ],
+      }));
+
       const nSerie = clampToNumber(novaRespostaSerieAgregados.estatisticas_gerais.media_nota_geral, 0);
       const nTurma = clampToNumber(novaRespostaAgregados.estatisticas_gerais.media_nota_geral, 0);
       notasDiscFinal = [];
@@ -1685,6 +2318,7 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
   // removendo linhas por disciplina do gráfico/tabela.
   if (selectedSchoolId && !selectedTurmaEffective) {
     notasDiscFinal = [];
+    notasPorDisciplinaPorTurmaFinal = [];
   }
 
   return {
@@ -1707,9 +2341,21 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
     proficienciaGeralPorTurma: profGeralFinal,
     proficienciaPorDisciplinaPorTurma: profDiscFinal,
 
+    notasPorDisciplinaPorTurma: notasPorDisciplinaPorTurmaFinal,
+
     mediaNotaGeral: mediaNotaFinal,
     notasPorDisciplina: notasDiscFinal,
     notasPorCategoria: notasCatFinal,
+
+    proficienciaMediaMunicipalPorDisciplinaRelatorio: cloneMediaMunicipalPorDisciplinaMap(
+      relatorioDetalhado?.proficiencia?.media_municipal_por_disciplina as Record<string, number> | undefined
+    ),
+    notaMediaMunicipalPorDisciplinaRelatorio: cloneMediaMunicipalPorDisciplinaMap(
+      relatorioDetalhado?.nota_geral?.media_municipal_por_disciplina as Record<string, number> | undefined
+    ),
+
+    mediaProficienciaMunicipalAgregados,
+    mediaNotaMunicipalAgregados,
 
     alunosDetalhados,
 
@@ -1721,6 +2367,9 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
 
     primaryColor,
     logoDataUrl,
+    coverSubtitle: coverSubtitle?.trim() || undefined,
+    footerText: footerText?.trim() || undefined,
+    closingMessage: (closingMessage?.trim() || "Obrigado!!").trim(),
     serieNomeCapas,
     turmaNomeCapas,
   };

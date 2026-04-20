@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import type { Presentation19DeckData } from "@/types/presentation19-slides";
 import type { ExportChart, Presentation19ExportSpec, Presentation19SlideSpec } from "@/types/presentation19-export-spec";
 import {
   presentationSectionGrades,
@@ -13,6 +14,7 @@ import {
   presentationTitleChartGrades,
   presentationTitleChartLevels,
   presentationTitleChartPresence,
+  presentationTitleGradesByDiscipline,
   presentationTitleProficiencyByDiscipline,
   presentationTitleProficiencyGeneralChart,
   presentationTitleTableGrades,
@@ -29,9 +31,13 @@ import {
   P19_CHART_CATEGORY_LABEL_PX,
   P19_CHART_H_BAR_LABEL_PX,
   P19_CHART_H_BAR_VALUE_PX,
+  P19_CHART_SUBTITLE_GRADES,
+  P19_CHART_SUBTITLE_PRESENCE,
+  P19_CHART_SUBTITLE_PROFICIENCY,
   P19_CONTENT,
   P19_COVER_MAIN_LABEL_PX,
   P19_COVER_MAIN_TITLE_PX,
+  P19_COVER_SUBTITLE_FONT_PX,
   P19_COVER_MAIN_VALUE_PX,
   P19_COVER_SCHOOL_LIST_LARGE_PX,
   P19_COVER_SCHOOL_LIST_SMALL_PX,
@@ -48,9 +54,11 @@ import {
   P19_SEGMENT_FIELD_LABEL_PX,
   P19_SEGMENT_FIELD_VALUE_PX,
   P19_SECTION_TAGLINE_PX,
+  P19_SECTION_TITLE_TAGLINE_GAP_PX,
   P19_SUBTITLE_FONT_PX,
   P19_TABLE_CELL_FONT_PX,
   P19_TABLE_CELL_PADDING_PX,
+  P19_TABLE_QUESTIONS_DESC_FONT_PX,
   P19_THANK_YOU_FONT_PX,
   P19_TITLE_ACCENT_H_PX,
   P19_TITLE_ACCENT_W_PX,
@@ -58,6 +66,32 @@ import {
   P19_TITLE_TEXT_OFFSET_X_PX,
   p19PdfLineHeightPx,
 } from "@/utils/reports/presentation19/presentation19ExportTypography";
+import {
+  P19_CHART_AREA_MIN_HEIGHT_PX,
+  P19_ESCOLA_SUBTITLE_TO_TABLE_GAP_PX,
+  P19_CHART_H_BAR_BAR_THICKNESS_MAX_PX,
+  P19_CHART_H_BAR_BOTTOM_PAD_PX,
+  P19_CHART_H_BAR_TOP_PAD_PX,
+  P19_CHART_INNER_HORIZONTAL_PAD_PX,
+  P19_CHART_V_BAR_TOP_PAD_PX,
+  P19_DECK_LOGO_H_PX,
+  P19_DECK_LOGO_RIGHT_MARGIN_PX,
+  P19_DECK_LOGO_TOP_PX,
+  P19_DECK_LOGO_W_PX,
+  P19_LEVELS_GUIDE_CARD_BORDER_RGB,
+  P19_LEVELS_GUIDE_CARD_FILL_RGB,
+  P19_LEVELS_GUIDE_CARD_RADIUS_PX,
+  P19_LEVELS_GUIDE_FIRST_ROW_TOP_PX,
+  P19_LEVELS_GUIDE_ROW_STRIDE_PX,
+  P19_QUESTIONS_PAGE_INDICATOR_RIGHT_PAD_PX,
+  P19_SECTION_CENTER_VERTICAL_OFFSET_PX,
+  P19_SLIDE_FOOTER_RESERVE_PX,
+  P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX,
+  P19_SUBTITLE_TO_CHART_GAP_PX,
+  P19_TITLE_TO_ACCURACY_CHART_GAP_PX,
+  P19_TITLE_TO_BODY_GAP_PX,
+  P19_TITLE_TO_SUBTITLE_GAP_PX,
+} from "@/utils/reports/presentation19/presentation19Layout";
 
 type RenderPdfArgs = {
   spec: Presentation19ExportSpec;
@@ -67,15 +101,51 @@ type RenderPdfArgs = {
 const page = P19_PAGE;
 const content = P19_CONTENT;
 
-function formatBarValueLabel(value: number): string {
+function formatBarValueLabel(value: number, serieLabel?: string): string {
   if (!Number.isFinite(value)) return "0,0";
-  return Number(value).toFixed(1).replace(".", ",");
+  const wantsPct = String(serieLabel ?? "").includes("%");
+  const isInt = Math.abs(value - Math.round(value)) < 1e-9;
+  if (!wantsPct && isInt) return String(Math.round(value));
+  const base = Number(value).toFixed(1).replace(".", ",");
+  return wantsPct ? `${base}%` : base;
 }
 
 function drawFrame(doc: jsPDF, primaryColor: string): void {
   // Fundo totalmente branco.
   doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, page.width, page.height, "F");
+}
+
+function drawDeckFooter(doc: jsPDF, deckData: Presentation19DeckData): void {
+  const raw = deckData.footerText?.trim();
+  if (!raw) return;
+  doc.setFont("helvetica", "normal");
+  const fs = 9;
+  doc.setFontSize(fs);
+  doc.setTextColor(82, 82, 91);
+  const maxW = page.width - 96;
+  const lines = doc.splitTextToSize(raw, maxW);
+  const lineH = p19PdfLineHeightPx(fs);
+  let y = page.height - 22 - (lines.length - 1) * lineH;
+  lines.forEach((ln) => {
+    doc.text(ln, page.width / 2, y, { align: "center" });
+    y += lineH;
+  });
+}
+
+function drawDeckLogo(doc: jsPDF, deckData: Presentation19DeckData): void {
+  const url = deckData.logoDataUrl?.trim();
+  if (!url || !url.startsWith("data:image")) return;
+  const fmt: "PNG" | "JPEG" | "JPG" = url.includes("image/png") ? "PNG" : "JPEG";
+  const logoW = P19_DECK_LOGO_W_PX;
+  const logoH = P19_DECK_LOGO_H_PX;
+  const x = page.width - P19_DECK_LOGO_RIGHT_MARGIN_PX - logoW;
+  const y = P19_DECK_LOGO_TOP_PX;
+  try {
+    doc.addImage(url, fmt, x, y, logoW, logoH, undefined, "FAST");
+  } catch {
+    /* formato não suportado ou imagem inválida */
+  }
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -142,7 +212,7 @@ function drawWrappedSlideTitle(doc: jsPDF, title: string, primaryColor: string, 
   const accentH = Math.max(P19_TITLE_ACCENT_H_PX, blockBottom - accentTop + 10);
   doc.setFillColor(rgb.r, rgb.g, rgb.b);
   doc.roundedRect(content.x, accentTop, P19_TITLE_ACCENT_W_PX, accentH, 6, 6, "F");
-  doc.setTextColor(24, 24, 27);
+  doc.setTextColor(15, 23, 42);
   let y = firstLineBaselineY;
   lines.forEach((ln) => {
     doc.text(ln, content.x + P19_TITLE_TEXT_OFFSET_X_PX, y);
@@ -169,8 +239,8 @@ function drawWrappedSubtitle(doc: jsPDF, text: string, firstLineBaselineY: numbe
 /** Barras horizontais (categoria no eixo Y, valores crescendo para a direita). */
 function drawHorizontalBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: number; w: number; h: number }): void {
   const { x, y, w, h } = area;
-  const topPad = 8;
-  const bottomPad = 18;
+  const topPad = P19_CHART_H_BAR_TOP_PAD_PX;
+  const bottomPad = P19_CHART_H_BAR_BOTTOM_PAD_PX;
   const leftLabelW = P19_HORIZONTAL_CHART_LABEL_WIDTH_PX;
   const plotTop = y + topPad;
   const plotBottom = y + h - bottomPad;
@@ -198,7 +268,7 @@ function drawHorizontalBarChart(doc: jsPDF, chart: ExportChart, area: { x: numbe
     const value = Number(row[serie.key] ?? 0);
     const barW = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaW;
     const rowCenterY = plotTop + (idx + 0.5) * rowH;
-    const barThickness = Math.min(34, rowH * 0.55);
+    const barThickness = Math.min(P19_CHART_H_BAR_BAR_THICKNESS_MAX_PX, rowH * 0.55);
     const barY = rowCenterY - barThickness / 2;
     const barColor = String(row.color ?? palette[idx % palette.length] ?? serie.color);
     const rgb = hexToRgb(barColor);
@@ -236,7 +306,7 @@ function drawHorizontalBarChart(doc: jsPDF, chart: ExportChart, area: { x: numbe
     doc.setFont("helvetica", "bold");
     doc.setTextColor(15, 23, 42);
     doc.setFontSize(P19_CHART_H_BAR_VALUE_PX);
-    const valStr = formatBarValueLabel(value);
+    const valStr = formatBarValueLabel(value, serie.label);
     doc.setFontSize(P19_CHART_H_BAR_VALUE_PX);
     const valW = doc.getTextWidth(valStr);
     let valX = baselineX + barW + 4;
@@ -254,9 +324,9 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
   }
 
   const { x, y, w, h } = area;
-  const barsStartX = x + 8;
-  const barsW = w - 16;
-  const topPad = 6;
+  const barsStartX = x + P19_CHART_INNER_HORIZONTAL_PAD_PX;
+  const barsW = w - P19_CHART_INNER_HORIZONTAL_PAD_PX * 2;
+  const topPad = P19_CHART_V_BAR_TOP_PAD_PX;
   const colWidth = barsW / Math.max(1, chart.data.length);
   const innerW = Math.max(8, colWidth - 36);
 
@@ -315,7 +385,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
         doc.roundedRect(barX, barY, seriesW, barH, 4, 4, "F");
         doc.setTextColor(15, 23, 42);
         doc.setFontSize(P19_CHART_BAR_VALUE_TOP_PX);
-        doc.text(formatBarValueLabel(value), barX + seriesW / 2, barY - 1, { align: "center" });
+        doc.text(formatBarValueLabel(value, serie.label), barX + seriesW / 2, barY - 1, { align: "center" });
       });
     } else if (hasMultipleSeries && isStacked) {
       const singleW = Math.max(14, Math.min(34, innerW * 0.7));
@@ -334,7 +404,12 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
       });
       doc.setTextColor(15, 23, 42);
       doc.setFontSize(P19_CHART_BAR_VALUE_TOP_PX + 1);
-      doc.text(formatBarValueLabel(total), singleX + singleW / 2, currentTop - 1, { align: "center" });
+      doc.text(
+        formatBarValueLabel(total, chart.valueKeys[0]?.label),
+        singleX + singleW / 2,
+        currentTop - 1,
+        { align: "center" }
+      );
     } else {
       const serie = chart.valueKeys[0];
       const value = Number(row[serie.key] ?? 0);
@@ -348,7 +423,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
       doc.roundedRect(singleX, barY, singleW, barH, 6, 6, "F");
       doc.setTextColor(15, 23, 42);
       doc.setFontSize(P19_CHART_BAR_VALUE_TOP_PX);
-      doc.text(formatBarValueLabel(value), singleX + singleW / 2, barY - 1, { align: "center" });
+      doc.text(formatBarValueLabel(value, serie.label), singleX + singleW / 2, barY - 1, { align: "center" });
     }
   });
 
@@ -381,13 +456,13 @@ function drawCenteredSectionBlock(
   doc.setTextColor(...Object.values(hexToRgb(primaryColor)));
   const titleLines = doc.splitTextToSize(title, maxW);
   const titleLineH = p19PdfLineHeightPx(titleFs);
-  let y = page.height / 2 - 40 - (titleLines.length * titleLineH) / 2;
+  let y = page.height / 2 - P19_SECTION_CENTER_VERTICAL_OFFSET_PX - (titleLines.length * titleLineH) / 2;
   titleLines.forEach((ln) => {
     doc.text(ln, page.width / 2, y, { align: "center" });
     y += titleLineH;
   });
   if (tagline && tagline.trim()) {
-    y += 12;
+    y += P19_SECTION_TITLE_TAGLINE_GAP_PX;
     const tagFs = P19_SECTION_TAGLINE_PX;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(tagFs);
@@ -403,15 +478,15 @@ function drawCenteredSectionBlock(
 
 function slideLevelsGuidePdf(doc: jsPDF, spec: Presentation19ExportSpec): void {
   const guide = spec.deckData.levelGuide;
-  const rowH = 128;
+  const rowH = P19_LEVELS_GUIDE_ROW_STRIDE_PX;
   guide.forEach((lvl, idx) => {
     const bx = content.x;
-    const y = 138 + idx * rowH;
+    const y = P19_LEVELS_GUIDE_FIRST_ROW_TOP_PX + idx * rowH;
     const w = content.w;
     const h = rowH - 10;
-    doc.setDrawColor(228, 228, 231);
-    doc.setFillColor(248, 250, 252);
-    doc.roundedRect(bx, y, w, h, 10, 10, "FD");
+    doc.setDrawColor(...P19_LEVELS_GUIDE_CARD_BORDER_RGB);
+    doc.setFillColor(...P19_LEVELS_GUIDE_CARD_FILL_RGB);
+    doc.roundedRect(bx, y, w, h, P19_LEVELS_GUIDE_CARD_RADIUS_PX, P19_LEVELS_GUIDE_CARD_RADIUS_PX, "FD");
     const rgb = hexToRgb(lvl.color);
     doc.setFillColor(rgb.r, rgb.g, rgb.b);
     doc.rect(bx, y, 8, h, "F");
@@ -449,23 +524,48 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         doc.text(ln, content.x, ty);
         ty += titleLh;
       });
+      if (deckData.coverSubtitle?.trim()) {
+        ty += 10;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(P19_COVER_SUBTITLE_FONT_PX);
+        doc.setTextColor(51, 65, 85);
+        const subLines = doc.splitTextToSize(deckData.coverSubtitle.trim(), content.w - 20);
+        const subLh = p19PdfLineHeightPx(P19_COVER_SUBTITLE_FONT_PX);
+        subLines.forEach((ln) => {
+          doc.text(ln, content.x, ty);
+          ty += subLh;
+        });
+      }
+      const cardTop = Math.max(470, ty + 28);
       doc.setFillColor(248, 250, 252);
-      doc.roundedRect(content.x, 470, content.w, 150, 14, 14, "F");
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(content.x, cardTop, content.w, 150, 14, 14, "FD");
+      const colGap = 32;
+      const colW = (content.w - 48 - colGap) / 2;
+      const leftX = content.x + 24;
+      const rightX = leftX + colW + colGap;
       doc.setTextColor(82, 82, 91);
-      doc.setFontSize(P19_COVER_MAIN_LABEL_PX);
-      doc.text("MUNICÍPIO", content.x + 24, 510);
-      doc.setTextColor(24, 24, 27);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(P19_COVER_MAIN_VALUE_PX);
-      doc.text(deckData.municipioNome || "N/A", content.x + 24, 545);
-      doc.setTextColor(82, 82, 91);
-      doc.setFont("helvetica", "normal");
       doc.setFontSize(P19_COVER_MAIN_LABEL_PX);
-      doc.text("SÉRIE", content.x + 24, 580);
-      doc.setTextColor(24, 24, 27);
-      doc.setFont("helvetica", "bold");
+      const labelY = cardTop + 40;
+      const valueY = cardTop + 75;
+      doc.text("MUNICÍPIO", leftX, labelY);
+      doc.text("SÉRIE", rightX, labelY);
+      doc.setTextColor(15, 23, 42);
       doc.setFontSize(P19_COVER_MAIN_VALUE_PX);
-      doc.text(deckData.serie || "N/A", content.x + 24, 615);
+      const munLines = doc.splitTextToSize(deckData.municipioNome || "N/A", colW);
+      const serLines = doc.splitTextToSize(deckData.serie || "N/A", colW);
+      const valLh = p19PdfLineHeightPx(P19_COVER_MAIN_VALUE_PX);
+      let my = valueY;
+      munLines.forEach((ln) => {
+        doc.text(ln, leftX, my);
+        my += valLh;
+      });
+      let sy = valueY;
+      serLines.forEach((ln) => {
+        doc.text(ln, rightX, sy);
+        sy += valLh;
+      });
       break;
     }
     case "cover-school": {
@@ -485,35 +585,50 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         doc.setTextColor(82, 82, 91);
         doc.setFontSize(P19_COVER_SCHOOL_MULTI_HEADER_PX);
         doc.text("ESCOLAS PARTICIPANTES", page.width / 2, 180, { align: "center" });
-        doc.setTextColor(24, 24, 27);
-        const maxW = content.w - 32;
+        doc.setTextColor(15, 23, 42);
+        const twoCols = escolas.length > 10;
+        const colGap = 36;
+        const maxW = twoCols ? (content.w - 32 - colGap) / 2 : content.w - 32;
         const fs = escolas.length > 14 ? P19_COVER_SCHOOL_LIST_SMALL_PX : P19_COVER_SCHOOL_LIST_LARGE_PX;
         doc.setFontSize(fs);
-        const x = content.x + 16;
-        let y = 220;
+        const xLeft = content.x + 16;
+        const xRight = xLeft + maxW + colGap;
+        let yLeft = 220;
+        let yRight = 220;
         const lh = p19PdfLineHeightPx(fs);
-        for (const s of escolas) {
+        const mid = Math.ceil(escolas.length / 2);
+        const colA = twoCols ? escolas.slice(0, mid) : escolas;
+        const colB = twoCols ? escolas.slice(mid) : [];
+        for (const s of colA) {
           const name = String(s || "—").trim() || "—";
           const lines = splitTextToSizeBySpaces(doc, `• ${name}`, maxW);
-          doc.text(lines, x, y);
-          y += lines.length * lh + Math.max(4, lh * 0.25);
+          doc.text(lines, xLeft, yLeft);
+          yLeft += lines.length * lh + Math.max(4, lh * 0.25);
+        }
+        for (const s of colB) {
+          const name = String(s || "—").trim() || "—";
+          const lines = splitTextToSizeBySpaces(doc, `• ${name}`, maxW);
+          doc.text(lines, xRight, yRight);
+          yRight += lines.length * lh + Math.max(4, lh * 0.25);
         }
       }
       break;
     }
     case "metric-total-students":
       doc.setFont("helvetica", "bold");
+      doc.setTextColor(82, 82, 91);
       doc.setFontSize(P19_METRIC_HEADER_PX);
       doc.text("MÉTRICA GERAL", page.width / 2, 280, { align: "center" });
       doc.setTextColor(...Object.values(hexToRgb(deckData.primaryColor)));
       doc.setFontSize(P19_METRIC_NUMBER_PX);
       doc.text(Math.round(deckData.totalAlunosParticiparam).toLocaleString("pt-BR"), page.width / 2, 380, { align: "center" });
-      doc.setTextColor(24, 24, 27);
+      doc.setTextColor(51, 65, 85);
+      doc.setFont("helvetica", "normal");
       doc.setFontSize(P19_METRIC_HEADER_PX);
       doc.text("Alunos que realizaram a avaliação", page.width / 2, 440, { align: "center" });
       break;
     case "cover-segment": {
-      drawWrappedSlideTitle(doc, "CAPA DE SEGMENTO", deckData.primaryColor, 100, content.w - P19_TITLE_TEXT_OFFSET_X_PX);
+      drawWrappedSlideTitle(doc, "CAPA DE SEGMENTO", deckData.primaryColor, P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX, content.w - P19_TITLE_TEXT_OFFSET_X_PX);
       doc.setFillColor(248, 250, 252);
       doc.roundedRect(content.x, 160, content.w, 440, 14, 14, "F");
       doc.setFont("helvetica", "bold");
@@ -570,8 +685,8 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
           ? presentationTitleTablePresence(deckData.comparisonAxis)
           : presentationTitleTableGrades(deckData.comparisonAxis);
       const titleMaxW = content.w - P19_TITLE_TEXT_OFFSET_X_PX;
-      let yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, 100, titleMaxW);
-      const tableStartY = yAfter + 16;
+      let yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX, titleMaxW);
+      const tableStartY = yAfter + P19_TITLE_TO_BODY_GAP_PX;
       autoTable(doc, {
         startY: tableStartY,
         margin: { left: content.x, right: content.x },
@@ -579,7 +694,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         body: slide.table.rows,
         styles: {
           fontSize: P19_TABLE_CELL_FONT_PX,
-          lineColor: [203, 213, 225],
+          lineColor: [226, 232, 240],
           lineWidth: 1,
           cellPadding: P19_TABLE_CELL_PADDING_PX,
           fillColor: [252, 252, 253],
@@ -587,6 +702,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         },
         headStyles: { fillColor: [226, 232, 240], textColor: [51, 65, 85], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [241, 245, 249] },
+        columnStyles: Object.fromEntries(slide.table.columns.map((_, i) => [i, { halign: i === 0 ? "left" : "center" }])),
       });
       break;
     }
@@ -600,16 +716,30 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
               ? `TABELA DE QUESTÕES — TURMA ${slide.questionsSubsection.turmaNome}`
               : "TABELA DE QUESTÕES";
       const pageInfo = slide.questionsPage;
-      const titleMaxW = pageInfo != null && pageInfo.total > 1 ? content.w - 160 : content.w - P19_TITLE_TEXT_OFFSET_X_PX;
-      let yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, 100, titleMaxW);
+      const titleMaxW =
+        pageInfo != null && pageInfo.total > 1
+          ? content.w - P19_QUESTIONS_PAGE_INDICATOR_RIGHT_PAD_PX
+          : content.w - P19_TITLE_TEXT_OFFSET_X_PX;
+      let yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX, titleMaxW);
       if (pageInfo != null && pageInfo.total > 1) {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(P19_PAGE_INDICATOR_FONT_PX);
         doc.setTextColor(82, 82, 91);
-        doc.text(`Página ${pageInfo.current}/${pageInfo.total}`, content.x + content.w, 100, { align: "right" });
+        doc.text(`Página ${pageInfo.current}/${pageInfo.total}`, content.x + content.w, P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX, { align: "right" });
       }
-      const tableStartY = yAfter + 16;
+      const tableStartY = yAfter + P19_TITLE_TO_BODY_GAP_PX;
       const levels = slide.questionRowLevels;
+      const qCols = slide.table.columns.length;
+      const qW = content.w;
+      const qWidths =
+        qCols === 4
+          ? {
+              0: { cellWidth: qW * 0.09, halign: "center" as const },
+              1: { cellWidth: qW * 0.16, halign: "left" as const },
+              2: { cellWidth: qW * 0.58, halign: "left" as const },
+              3: { cellWidth: qW * 0.12, halign: "center" as const },
+            }
+          : undefined;
       autoTable(doc, {
         startY: tableStartY,
         margin: { left: content.x, right: content.x },
@@ -617,15 +747,20 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         body: slide.table.rows,
         styles: {
           fontSize: P19_TABLE_CELL_FONT_PX,
-          lineColor: [203, 213, 225],
+          lineColor: [226, 232, 240],
           lineWidth: 1,
           cellPadding: P19_TABLE_CELL_PADDING_PX,
           fillColor: [252, 252, 253],
           textColor: [15, 23, 42],
+          overflow: "linebreak",
         },
         headStyles: { fillColor: [226, 232, 240], textColor: [51, 65, 85], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [241, 245, 249] },
+        columnStyles: qWidths,
         didParseCell: (data) => {
+          if (data.section === "body" && data.column.index === 2) {
+            data.cell.styles.fontSize = P19_TABLE_QUESTIONS_DESC_FONT_PX;
+          }
           if (!levels?.length || data.section !== "body") return;
           const lvl = levels[data.row.index];
           if (!lvl) return;
@@ -637,13 +772,45 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       });
       break;
     }
+    case "questions-accuracy-chart": {
+      const pageInfo = slide.accuracyPage;
+      const titleMaxW =
+        pageInfo != null && pageInfo.total > 1
+          ? content.w - P19_QUESTIONS_PAGE_INDICATOR_RIGHT_PAD_PX
+          : content.w - P19_TITLE_TEXT_OFFSET_X_PX;
+      let yb = drawWrappedSlideTitle(
+        doc,
+        "PORCENTAGEM DE ACERTOS",
+        deckData.primaryColor,
+        P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX,
+        titleMaxW
+      );
+      if (pageInfo != null && pageInfo.total > 1) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(P19_PAGE_INDICATOR_FONT_PX);
+        doc.setTextColor(82, 82, 91);
+        doc.text(`Página ${pageInfo.current}/${pageInfo.total}`, content.x + content.w, P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX, { align: "right" });
+      }
+      const chartY = yb + P19_TITLE_TO_ACCURACY_CHART_GAP_PX;
+      const chartH = page.height - chartY - P19_SLIDE_FOOTER_RESERVE_PX;
+      const inset = P19_TITLE_TEXT_OFFSET_X_PX;
+      drawBarChart(doc, slide.chart, {
+        x: content.x + inset,
+        y: chartY,
+        w: content.w - inset * 2,
+        h: Math.max(P19_CHART_AREA_MIN_HEIGHT_PX, chartH),
+      });
+      break;
+    }
     case "levels-table": {
       const titleText = niveisAprendizagemTituloPorEixo(deckData.comparisonAxis);
       const titleMaxW = content.w - P19_TITLE_TEXT_OFFSET_X_PX;
-      let yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, 100, titleMaxW);
-      let tableStartY = yAfter + 16;
+      let yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX, titleMaxW);
+      let tableStartY = yAfter + P19_TITLE_TO_BODY_GAP_PX;
       if (slide.escolaNome) {
-        tableStartY = drawWrappedSubtitle(doc, slide.escolaNome, yAfter + 10, content.w - P19_TITLE_TEXT_OFFSET_X_PX) + 14;
+        tableStartY =
+          drawWrappedSubtitle(doc, slide.escolaNome, yAfter + P19_TITLE_TO_SUBTITLE_GAP_PX, content.w - P19_TITLE_TEXT_OFFSET_X_PX) +
+          P19_ESCOLA_SUBTITLE_TO_TABLE_GAP_PX;
       }
       autoTable(doc, {
         startY: tableStartY,
@@ -652,7 +819,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         body: slide.table.rows,
         styles: {
           fontSize: P19_TABLE_CELL_FONT_PX,
-          lineColor: [203, 213, 225],
+          lineColor: [226, 232, 240],
           lineWidth: 1,
           cellPadding: P19_TABLE_CELL_PADDING_PX,
           fillColor: [252, 252, 253],
@@ -660,6 +827,9 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         },
         headStyles: { fillColor: [226, 232, 240], textColor: [51, 65, 85], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [241, 245, 249] },
+        columnStyles: Object.fromEntries(
+          slide.table.columns.map((_, i) => [i, { halign: i === 0 ? ("left" as const) : ("center" as const) }])
+        ),
         didParseCell: (data) => {
           if (data.section === "head" && data.column.index >= 1 && data.column.index <= 4) {
             const hx = P19_LEVELS_TABLE_LEVEL_HEADER_BG_HEX[data.column.index - 1];
@@ -679,15 +849,30 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       break;
     }
     case "presence-chart": {
-      drawWrappedSlideTitle(doc, presentationTitleChartPresence(deckData.comparisonAxis), deckData.primaryColor, 100, content.w - P19_TITLE_TEXT_OFFSET_X_PX);
-      drawBarChart(doc, slide.chart, { x: content.x, y: 150, w: content.w, h: 470 });
+      const titleMaxW = content.w - P19_TITLE_TEXT_OFFSET_X_PX;
+      let yb = drawWrappedSlideTitle(
+        doc,
+        presentationTitleChartPresence(deckData.comparisonAxis),
+        deckData.primaryColor,
+        P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX,
+        titleMaxW
+      );
+      const chartY =
+        drawWrappedSubtitle(doc, P19_CHART_SUBTITLE_PRESENCE, yb + P19_TITLE_TO_SUBTITLE_GAP_PX, titleMaxW) + P19_SUBTITLE_TO_CHART_GAP_PX;
+      const chartH = page.height - chartY - P19_SLIDE_FOOTER_RESERVE_PX;
+      drawBarChart(doc, slide.chart, {
+        x: content.x,
+        y: chartY,
+        w: content.w,
+        h: Math.max(P19_CHART_AREA_MIN_HEIGHT_PX, chartH),
+      });
       break;
     }
     case "section-levels":
       drawCenteredSectionBlock(doc, presentationSectionLevels(deckData.comparisonAxis), presentationSectionLevelsTagline(deckData.comparisonAxis), deckData.primaryColor);
       break;
     case "levels-guide":
-      drawWrappedSlideTitle(doc, "GUIA DE NÍVEIS DE APRENDIZAGEM", deckData.primaryColor, 100, content.w - P19_TITLE_TEXT_OFFSET_X_PX);
+      drawWrappedSlideTitle(doc, "GUIA DE NÍVEIS DE APRENDIZAGEM", deckData.primaryColor, P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX, content.w - P19_TITLE_TEXT_OFFSET_X_PX);
       slideLevelsGuidePdf(doc, spec);
       break;
     case "levels-chart": {
@@ -695,20 +880,22 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         doc,
         presentationTitleChartLevels(deckData.comparisonAxis),
         deckData.primaryColor,
-        100,
+        P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX,
         content.w - P19_TITLE_TEXT_OFFSET_X_PX
       );
-      let chartY = 150;
+      let chartY = yb + P19_TITLE_TO_BODY_GAP_PX;
       if (slide.escolaNome) {
-        chartY = drawWrappedSubtitle(doc, slide.escolaNome, yb + 10, content.w - P19_TITLE_TEXT_OFFSET_X_PX) + 12;
+        chartY =
+          drawWrappedSubtitle(doc, slide.escolaNome, yb + P19_TITLE_TO_SUBTITLE_GAP_PX, content.w - P19_TITLE_TEXT_OFFSET_X_PX) +
+          P19_SUBTITLE_TO_CHART_GAP_PX;
       }
-      const chartH = page.height - chartY - 40;
+      const chartH = page.height - chartY - P19_SLIDE_FOOTER_RESERVE_PX;
       const inset = P19_TITLE_TEXT_OFFSET_X_PX;
       drawBarChart(doc, slide.chart, {
         x: content.x + inset,
         y: chartY,
         w: content.w - inset * 2,
-        h: Math.max(200, chartH),
+        h: Math.max(P19_CHART_AREA_MIN_HEIGHT_PX, chartH),
       });
       break;
     }
@@ -725,20 +912,23 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         doc,
         presentationTitleProficiencyGeneralChart(deckData.comparisonAxis),
         deckData.primaryColor,
-        100,
+        P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX,
         content.w - P19_TITLE_TEXT_OFFSET_X_PX
       );
-      let chartY = 150;
-      if (slide.escolaNome) {
-        chartY = drawWrappedSubtitle(doc, slide.escolaNome, yb + 10, content.w - P19_TITLE_TEXT_OFFSET_X_PX) + 12;
+      let chartY = yb + P19_TITLE_TO_BODY_GAP_PX;
+      const profSub = [slide.escolaNome, P19_CHART_SUBTITLE_PROFICIENCY].filter(Boolean).join(" • ");
+      if (profSub.trim()) {
+        chartY =
+          drawWrappedSubtitle(doc, profSub, yb + P19_TITLE_TO_SUBTITLE_GAP_PX, content.w - P19_TITLE_TEXT_OFFSET_X_PX) +
+          P19_SUBTITLE_TO_CHART_GAP_PX;
       }
-      const chartH = page.height - chartY - 40;
+      const chartH = page.height - chartY - P19_SLIDE_FOOTER_RESERVE_PX;
       const profInset = P19_TITLE_TEXT_OFFSET_X_PX;
       drawBarChart(doc, slide.chart, {
         x: content.x + profInset,
         y: chartY,
         w: content.w - profInset,
-        h: Math.max(200, chartH),
+        h: Math.max(P19_CHART_AREA_MIN_HEIGHT_PX, chartH),
       });
       break;
     }
@@ -747,24 +937,78 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         doc,
         presentationTitleProficiencyByDiscipline(deckData.comparisonAxis),
         deckData.primaryColor,
-        100,
+        P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX,
         content.w - P19_TITLE_TEXT_OFFSET_X_PX
       );
-      let gridTop = 150;
+      let gridTop = yb + P19_TITLE_TO_BODY_GAP_PX;
       if (slide.escolaNome) {
-        gridTop = drawWrappedSubtitle(doc, slide.escolaNome, yb + 10, content.w - P19_TITLE_TEXT_OFFSET_X_PX) + 12;
+        gridTop =
+          drawWrappedSubtitle(doc, slide.escolaNome, yb + P19_TITLE_TO_SUBTITLE_GAP_PX, content.w - P19_TITLE_TEXT_OFFSET_X_PX) +
+          P19_SUBTITLE_TO_CHART_GAP_PX;
       }
       const profInset = P19_TITLE_TEXT_OFFSET_X_PX;
       const gridLeft = content.x + profInset;
       const gridW = content.w - profInset;
       const gridPad = 8;
-      const boxW = (gridW - gridPad * 3) / 2;
+      /** Uma coluna: um gráfico por linha, largura total. */
+      const boxW = gridW - gridPad * 2;
+      const footerReserve = P19_SLIDE_FOOTER_RESERVE_PX;
+      const rowGap = 10;
+      const nCharts = slide.charts.length;
+      const boxH = Math.max(
+        120,
+        (page.height - gridTop - footerReserve - Math.max(0, nCharts - 1) * rowGap) / Math.max(1, nCharts)
+      );
       slide.charts.forEach((entry, idx) => {
-        const row = Math.floor(idx / 2);
-        const col = idx % 2;
-        const boxX = gridLeft + gridPad + col * (boxW + gridPad);
-        const boxY = gridTop + row * 250;
-        const boxH = 220;
+        const boxX = gridLeft + gridPad;
+        const boxY = gridTop + idx * (boxH + rowGap);
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(212, 212, 216);
+        doc.roundedRect(boxX, boxY, boxW, boxH, 10, 10, "FD");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(P19_CHART_H_BAR_LABEL_PX + 2);
+        const tlines = doc.splitTextToSize(entry.title, boxW - 16);
+        const tlh = p19PdfLineHeightPx(P19_CHART_H_BAR_LABEL_PX + 2);
+        let tty = boxY + 16;
+        tlines.forEach((ln) => {
+          doc.text(ln, boxX + 8, tty);
+          tty += tlh;
+        });
+        const chartInnerTop = tty + 4;
+        const innerH = Math.max(80, boxY + boxH - chartInnerTop - 8);
+        drawBarChart(doc, entry.chart, { x: boxX + 8, y: chartInnerTop, w: boxW - 16, h: innerH });
+      });
+      break;
+    }
+    case "grades-by-discipline-chart": {
+      let yb = drawWrappedSlideTitle(
+        doc,
+        presentationTitleGradesByDiscipline(deckData.comparisonAxis),
+        deckData.primaryColor,
+        P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX,
+        content.w - P19_TITLE_TEXT_OFFSET_X_PX
+      );
+      let gridTop = yb + P19_TITLE_TO_BODY_GAP_PX;
+      if (slide.escolaNome) {
+        gridTop =
+          drawWrappedSubtitle(doc, slide.escolaNome, yb + P19_TITLE_TO_SUBTITLE_GAP_PX, content.w - P19_TITLE_TEXT_OFFSET_X_PX) +
+          P19_SUBTITLE_TO_CHART_GAP_PX;
+      }
+      const profInset = P19_TITLE_TEXT_OFFSET_X_PX;
+      const gridLeft = content.x + profInset;
+      const gridW = content.w - profInset;
+      const gridPad = 8;
+      const boxW = gridW - gridPad * 2;
+      const footerReserve = P19_SLIDE_FOOTER_RESERVE_PX;
+      const rowGap = 10;
+      const nCharts = slide.charts.length;
+      const boxH = Math.max(
+        120,
+        (page.height - gridTop - footerReserve - Math.max(0, nCharts - 1) * rowGap) / Math.max(1, nCharts)
+      );
+      slide.charts.forEach((entry, idx) => {
+        const boxX = gridLeft + gridPad;
+        const boxY = gridTop + idx * (boxH + rowGap);
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(212, 212, 216);
         doc.roundedRect(boxX, boxY, boxW, boxH, 10, 10, "FD");
@@ -796,15 +1040,23 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         doc,
         presentationTitleChartGrades(deckData.comparisonAxis),
         deckData.primaryColor,
-        100,
+        P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX,
         content.w - P19_TITLE_TEXT_OFFSET_X_PX
       );
-      let chartY = 150;
-      if (slide.escolaNome) {
-        chartY = drawWrappedSubtitle(doc, slide.escolaNome, yb + 10, content.w - P19_TITLE_TEXT_OFFSET_X_PX) + 12;
+      let chartY = yb + P19_TITLE_TO_BODY_GAP_PX;
+      const gradesSub = [slide.escolaNome, P19_CHART_SUBTITLE_GRADES].filter(Boolean).join(" • ");
+      if (gradesSub.trim()) {
+        chartY =
+          drawWrappedSubtitle(doc, gradesSub, yb + P19_TITLE_TO_SUBTITLE_GAP_PX, content.w - P19_TITLE_TEXT_OFFSET_X_PX) +
+          P19_SUBTITLE_TO_CHART_GAP_PX;
       }
-      const chartH = page.height - chartY - 40;
-      drawBarChart(doc, slide.chart, { x: content.x, y: chartY, w: content.w, h: Math.max(200, chartH) });
+      const chartH = page.height - chartY - P19_SLIDE_FOOTER_RESERVE_PX;
+      drawBarChart(doc, slide.chart, {
+        x: content.x,
+        y: chartY,
+        w: content.w,
+        h: Math.max(P19_CHART_AREA_MIN_HEIGHT_PX, chartH),
+      });
       break;
     }
     case "section-questions":
@@ -856,9 +1108,11 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       doc.setFont("helvetica", "bold");
       doc.setFontSize(P19_THANK_YOU_FONT_PX);
       doc.setTextColor(...Object.values(hexToRgb(deckData.primaryColor)));
-      doc.text("Obrigado!!", page.width / 2, page.height / 2, { align: "center" });
+      doc.text(deckData.closingMessage || "Obrigado!!", page.width / 2, page.height / 2, { align: "center" });
       break;
   }
+  drawDeckFooter(doc, deckData);
+  drawDeckLogo(doc, deckData);
 }
 
 export async function renderPdfFromSlideSpec(args: RenderPdfArgs): Promise<void> {

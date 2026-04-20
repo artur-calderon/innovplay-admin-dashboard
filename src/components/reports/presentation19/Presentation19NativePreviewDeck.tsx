@@ -1,7 +1,7 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { buildSlideSpec } from "@/utils/reports/presentation19/buildSlideSpec";
-import type { ExportChart, Presentation19SlideSpec } from "@/types/presentation19-export-spec";
+import type { ExportChart, Presentation19ExportSpec, Presentation19SlideSpec } from "@/types/presentation19-export-spec";
 import type { Presentation19DeckData } from "@/types/presentation19-slides";
 import {
   presentationSectionGrades,
@@ -15,6 +15,7 @@ import {
   presentationTitleChartGrades,
   presentationTitleChartLevels,
   presentationTitleChartPresence,
+  presentationTitleGradesByDiscipline,
   presentationTitleProficiencyByDiscipline,
   presentationTitleProficiencyGeneralChart,
   presentationTitleTableGrades,
@@ -27,6 +28,9 @@ import {
 } from "@/utils/reports/presentation19/presentationScope";
 import { P19_QUESTION_NUM_LEVEL_STYLE } from "@/utils/reports/presentation19/questionAcertoLevel";
 import {
+  P19_CHART_AXIS_TICK_PX,
+  P19_CHART_BAR_VALUE_TOP_PX,
+  P19_CHART_CATEGORY_LABEL_PX,
   P19_CHART_REF_H_PX,
   P19_CONTENT,
   P19_COVER_MAIN_LABEL_PX,
@@ -40,25 +44,38 @@ import {
   P19_HORIZONTAL_CHART_LABEL_WIDTH_PX,
   P19_LEVELS_GUIDE_DESC_PX,
   P19_LEVELS_GUIDE_TITLE_PX,
+  P19_CHART_SUBTITLE_GRADES,
+  P19_CHART_SUBTITLE_PRESENCE,
+  P19_CHART_SUBTITLE_PROFICIENCY,
   P19_METRIC_HEADER_PX,
   P19_METRIC_NUMBER_PX,
   P19_PAGE,
   P19_PAGE_INDICATOR_FONT_PX,
   P19_SEGMENT_FIELD_LABEL_PX,
   P19_SEGMENT_FIELD_VALUE_PX,
+  P19_BORDER_NEUTRAL,
+  P19_BORDER_SOFT,
+  P19_SURFACE_CARD,
   P19_TABLE_CELL_FONT_PX,
   P19_TABLE_CELL_PADDING_PX,
+  P19_TABLE_QUESTIONS_DESC_FONT_PX,
+  P19_TEXT_BASE,
+  P19_TEXT_MUTED,
+  P19_TEXT_STRONG,
   P19_TITLE_ACCENT_H_PX,
   P19_TITLE_ACCENT_W_PX,
   P19_TITLE_FONT_PX,
   P19_TITLE_SUBTITLE_GAP_PX,
   P19_TITLE_TEXT_OFFSET_X_PX,
   P19_SUBTITLE_FONT_PX,
+  P19_PROFICIENCY_DISC_CARD_TITLE_PX,
   P19_THANK_YOU_FONT_PX,
 } from "@/utils/reports/presentation19/presentation19ExportTypography";
 
 type Props = {
   deckData: Presentation19DeckData;
+  /** Se a página já montou com `useMemo(buildSlideSpec)`, evita recalcular o spec a cada render. */
+  spec?: Presentation19ExportSpec | null;
 };
 
 export type Presentation19NativePreviewDeckHandle = {
@@ -112,18 +129,51 @@ function rgbCss(hex: string): string {
 
 function Title({ text, primaryColor, subtitle }: { text: string; primaryColor: string; subtitle?: string }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: subtitle ? P19_TITLE_SUBTITLE_GAP_PX : 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ width: P19_TITLE_ACCENT_W_PX, height: P19_TITLE_ACCENT_H_PX, borderRadius: 999, background: primaryColor }} />
-        <h2 style={{ margin: 0, fontSize: P19_TITLE_FONT_PX, fontWeight: 800, color: "#0F172A", letterSpacing: 0.2 }}>{text}</h2>
+    <div style={{ display: "flex", flexDirection: "column", gap: subtitle ? P19_TITLE_SUBTITLE_GAP_PX : 0, maxWidth: "100%" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, minWidth: 0 }}>
+        <div
+          style={{
+            width: P19_TITLE_ACCENT_W_PX,
+            height: P19_TITLE_ACCENT_H_PX,
+            borderRadius: 999,
+            background: primaryColor,
+            flexShrink: 0,
+            marginTop: 4,
+          }}
+        />
+        <h2
+          style={{
+            margin: 0,
+            fontSize: P19_TITLE_FONT_PX,
+            fontWeight: 800,
+            color: P19_TEXT_STRONG,
+            letterSpacing: 0.2,
+            lineHeight: 1.2,
+            flex: 1,
+            minWidth: 0,
+          }}
+        >
+          {text}
+        </h2>
       </div>
       {subtitle ? (
-        <div style={{ paddingLeft: P19_TITLE_TEXT_OFFSET_X_PX, fontSize: P19_SUBTITLE_FONT_PX, fontWeight: 700, color: "#52525B" }}>
+        <div style={{ paddingLeft: P19_TITLE_TEXT_OFFSET_X_PX, fontSize: P19_SUBTITLE_FONT_PX, fontWeight: 700, color: P19_TEXT_MUTED, lineHeight: 1.25 }}>
           {subtitle}
         </div>
       ) : null}
     </div>
   );
+}
+
+function tableCellTextAlign(slideKind: Presentation19SlideSpec["kind"], colIdx: number): "left" | "center" | "right" {
+  if (slideKind === "presence-table") return colIdx === 0 ? "left" : "center";
+  if (slideKind === "grades-table") return colIdx === 0 ? "left" : "center";
+  if (slideKind === "levels-table") return colIdx === 0 ? "left" : "center";
+  if (slideKind === "questions-table") {
+    if (colIdx === 0 || colIdx === 3) return "center";
+    return "left";
+  }
+  return "left";
 }
 
 function HorizontalBarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: ExportChart; height?: number }) {
@@ -144,11 +194,11 @@ function HorizontalBarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { cha
   return (
     <div
       style={{
-        border: "1px solid #CBD5E1",
+        border: `1px solid ${P19_BORDER_SOFT}`,
         borderRadius: 12,
         background: "transparent",
         height,
-        padding: "12px 16px 10px",
+        padding: "8px 12px 8px",
         boxSizing: "border-box",
         display: "flex",
         flexDirection: "column",
@@ -167,7 +217,7 @@ function HorizontalBarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { cha
                   flexShrink: 0,
                   fontSize: 12,
                   fontWeight: 600,
-                  color: "#334155",
+                  color: P19_TEXT_BASE,
                   textAlign: "right",
                   lineHeight: 1.2,
                 }}
@@ -186,8 +236,14 @@ function HorizontalBarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { cha
                     borderRadius: "0 8px 8px 0",
                   }}
                 />
-                <span style={{ marginLeft: 6, fontSize: 14, fontWeight: 800, color: "#0F172A", whiteSpace: "nowrap" }}>
-                  {Number(value).toFixed(1).replace(".", ",")}
+                <span style={{ marginLeft: 6, fontSize: 14, fontWeight: 800, color: P19_TEXT_STRONG, whiteSpace: "nowrap" }}>
+                  {(() => {
+                    const wantsPct = String(serie.label ?? "").includes("%");
+                    const isInt = Math.abs(Number(value) - Math.round(Number(value))) < 1e-9;
+                    if (!wantsPct && isInt) return String(Math.round(Number(value)));
+                    const base = Number(value).toFixed(1).replace(".", ",");
+                    return wantsPct ? `${base}%` : base;
+                  })()}
                 </span>
               </div>
             </div>
@@ -245,11 +301,11 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
   return (
     <div
       style={{
-        border: "1px solid #CBD5E1",
+        border: `1px solid ${P19_BORDER_SOFT}`,
         borderRadius: 12,
         background: "transparent",
         height,
-        padding: "12px 14px 8px",
+        padding: "8px 12px 6px",
         display: "flex",
         flexDirection: "column",
         boxSizing: "border-box",
@@ -344,7 +400,7 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                               left: "50%",
                               transform: "translateX(-50%)",
                               bottom: `calc(${stackFrac * 100}% + 3px)`,
-                              fontSize: 9,
+                              fontSize: P19_CHART_AXIS_TICK_PX,
                               fontWeight: 700,
                               color: "#0F172A",
                               lineHeight: 1,
@@ -420,7 +476,7 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                                 left: "50%",
                                 transform: "translateX(-50%)",
                                 bottom: `calc(${q * 100}% + 1px)`,
-                                fontSize: 16,
+                                fontSize: P19_CHART_BAR_VALUE_TOP_PX,
                                 fontWeight: 900,
                                 color: "#0F172A",
                                 whiteSpace: "nowrap",
@@ -442,7 +498,10 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                   const value = Number(row[serie.key] ?? 0);
                   const q = ratioOf(value);
                   const rowColor = String(row.color ?? palette[idx % palette.length] ?? serie.color);
-                  const labelText = Number(value).toFixed(1).replace(".", ",");
+                  const wantsPct = String(serie.label ?? "").includes("%");
+                  const isInt = Math.abs(Number(value) - Math.round(Number(value))) < 1e-9;
+                  const baseText = !wantsPct && isInt ? String(Math.round(Number(value))) : Number(value).toFixed(1).replace(".", ",");
+                  const labelText = wantsPct ? `${baseText}%` : baseText;
                   const growBar = value > 0 ? Math.max(1e-6, q) : 0;
                   const growTop = value > 0 ? Math.max(1e-6, 1 - q) : 1;
                   return (
@@ -487,7 +546,7 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                             left: "50%",
                             transform: "translateX(-50%)",
                             bottom: `calc(${q * 100}% + 1px)`,
-                            fontSize: 16,
+                            fontSize: P19_CHART_BAR_VALUE_TOP_PX,
                             fontWeight: 900,
                             color: "#0F172A",
                             whiteSpace: "nowrap",
@@ -522,8 +581,8 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
             style={{
               flex: 1,
               minWidth: 0,
-              fontSize: 10,
-              color: "#334155",
+              fontSize: P19_CHART_CATEGORY_LABEL_PX,
+              color: P19_TEXT_BASE,
               textAlign: "center",
               fontWeight: 600,
               lineHeight: 1.2,
@@ -539,7 +598,14 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
   );
 }
 
-function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec; deckData: Presentation19DeckData }) {
+const NativeSlideFrame = memo(function NativeSlideFrame({
+  slide,
+  deckData,
+}: {
+  slide: Presentation19SlideSpec;
+  deckData: Presentation19DeckData;
+}) {
+  const footerH = deckData.footerText?.trim() ? 28 : 0;
   return (
     <div
             data-slide-frame
@@ -548,22 +614,94 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
               height: page.height,
               borderRadius: 16,
               overflow: "hidden",
-              border: "1px solid #CBD5E1",
+              border: `1px solid ${P19_BORDER_SOFT}`,
               background: "#FFFFFF",
-              color: "#0F172A",
+              color: P19_TEXT_STRONG,
               position: "relative",
             }}
           >
-            <div style={{ position: "absolute", left: content.x, top: content.y, width: content.w, height: content.h, color: "#0F172A" }}>
+            {deckData.logoDataUrl ? (
+              <img
+                src={deckData.logoDataUrl}
+                alt=""
+                crossOrigin="anonymous"
+                style={{
+                  position: "absolute",
+                  top: 18,
+                  right: 24,
+                  width: 86,
+                  height: "auto",
+                  maxHeight: 72,
+                  objectFit: "contain",
+                  zIndex: 2,
+                  pointerEvents: "none",
+                }}
+              />
+            ) : null}
+            <div
+              style={{
+                position: "absolute",
+                left: content.x,
+                top: content.y,
+                width: content.w,
+                height: content.h - footerH,
+                color: P19_TEXT_STRONG,
+            }}
+            >
               {slide.kind === "cover-main" && (
                 <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                  <h1 style={{ margin: "80px 0 0", color: rgbCss(deckData.primaryColor), fontSize: P19_COVER_MAIN_TITLE_PX, fontWeight: 900 }}>{deckData.avaliacaoNome}</h1>
-                  <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 16, padding: 24 }}>
-                    <div style={{ color: "#52525B", fontSize: P19_COVER_MAIN_LABEL_PX, fontWeight: 700 }}>MUNICÍPIO</div>
-                    <div style={{ color: "#18181B", fontSize: P19_COVER_MAIN_VALUE_PX, fontWeight: 900 }}>{deckData.municipioNome}</div>
-                    <div style={{ height: 14 }} />
-                    <div style={{ color: "#52525B", fontSize: P19_COVER_MAIN_LABEL_PX, fontWeight: 700 }}>SÉRIE</div>
-                    <div style={{ color: "#18181B", fontSize: P19_COVER_MAIN_VALUE_PX, fontWeight: 900 }}>{deckData.serie}</div>
+                  <div style={{ minHeight: 0 }}>
+                    <h1
+                      style={{
+                        margin: "72px 0 0",
+                        color: rgbCss(deckData.primaryColor),
+                        fontSize: P19_COVER_MAIN_TITLE_PX,
+                        fontWeight: 900,
+                        lineHeight: 1.15,
+                        maxWidth: "100%",
+                      }}
+                    >
+                      {deckData.avaliacaoNome}
+                    </h1>
+                    {deckData.coverSubtitle?.trim() ? (
+                      <div
+                        style={{
+                          marginTop: 14,
+                          fontSize: 15,
+                          fontWeight: 700,
+                          color: P19_TEXT_BASE,
+                          lineHeight: 1.35,
+                          maxWidth: 920,
+                        }}
+                      >
+                        {deckData.coverSubtitle.trim()}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div
+                    style={{
+                      background: P19_SURFACE_CARD,
+                      border: `1px solid ${P19_BORDER_SOFT}`,
+                      borderRadius: 16,
+                      padding: 24,
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "12px 32px",
+                      alignContent: "start",
+                    }}
+                  >
+                    <div>
+                      <div style={{ color: P19_TEXT_MUTED, fontSize: P19_COVER_MAIN_LABEL_PX, fontWeight: 700 }}>MUNICÍPIO</div>
+                      <div style={{ color: P19_TEXT_STRONG, fontSize: P19_COVER_MAIN_VALUE_PX, fontWeight: 900, marginTop: 6, lineHeight: 1.2, wordBreak: "break-word" }}>
+                        {deckData.municipioNome}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ color: P19_TEXT_MUTED, fontSize: P19_COVER_MAIN_LABEL_PX, fontWeight: 700 }}>SÉRIE</div>
+                      <div style={{ color: P19_TEXT_STRONG, fontSize: P19_COVER_MAIN_VALUE_PX, fontWeight: 900, marginTop: 6, lineHeight: 1.2, wordBreak: "break-word" }}>
+                        {deckData.serie}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -585,13 +723,13 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                     </div>
                   ) : (
                     <>
-                      <div style={{ fontSize: P19_COVER_SCHOOL_MULTI_HEADER_PX, fontWeight: 900, color: "#52525B", marginBottom: 14 }}>
+                      <div style={{ fontSize: P19_COVER_SCHOOL_MULTI_HEADER_PX, fontWeight: 900, color: P19_TEXT_MUTED, marginBottom: 14 }}>
                         ESCOLAS PARTICIPANTES
                       </div>
                       <ul
                         style={{
                           margin: 0,
-                          paddingLeft: 22,
+                          paddingLeft: deckData.escolasParticipantes.length > 10 ? 18 : 22,
                           fontSize: deckData.escolasParticipantes.length > 14 ? P19_COVER_SCHOOL_LIST_SMALL_PX : P19_COVER_SCHOOL_LIST_LARGE_PX,
                           fontWeight: 900,
                           lineHeight: 1.45,
@@ -600,10 +738,14 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                           width: "100%",
                           maxWidth: 920,
                           fontFamily: "Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+                          columnCount: deckData.escolasParticipantes.length > 10 ? 2 : 1,
+                          columnGap: 40,
                         }}
                       >
                         {deckData.escolasParticipantes.map((nome) => (
-                          <li key={nome}>{nome}</li>
+                          <li key={nome} style={{ breakInside: "avoid" }}>
+                            {nome}
+                          </li>
                         ))}
                       </ul>
                     </>
@@ -611,25 +753,27 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                 </div>
               )}
               {slide.kind === "metric-total-students" && (
-                <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14 }}>
-                  <div style={{ fontSize: P19_METRIC_HEADER_PX, fontWeight: 900 }}>MÉTRICA GERAL</div>
-                  <div style={{ fontSize: P19_METRIC_NUMBER_PX, fontWeight: 900, color: rgbCss(deckData.primaryColor) }}>
+                <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18 }}>
+                  <div style={{ fontSize: P19_METRIC_HEADER_PX, fontWeight: 800, color: P19_TEXT_MUTED, letterSpacing: 0.4 }}>MÉTRICA GERAL</div>
+                  <div style={{ fontSize: P19_METRIC_NUMBER_PX, fontWeight: 900, color: rgbCss(deckData.primaryColor), lineHeight: 1.05 }}>
                     {Math.round(deckData.totalAlunosParticiparam).toLocaleString("pt-BR")}
                   </div>
-                  <div style={{ fontSize: P19_METRIC_HEADER_PX, fontWeight: 900 }}>Alunos que realizaram a avaliação</div>
+                  <div style={{ fontSize: P19_METRIC_HEADER_PX, fontWeight: 600, color: P19_TEXT_BASE, textAlign: "center", maxWidth: 720, lineHeight: 1.25 }}>
+                    Alunos que realizaram a avaliação
+                  </div>
                 </div>
               )}
               {slide.kind === "cover-segment" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
                   <Title text="CAPA DE SEGMENTO" primaryColor={deckData.primaryColor} />
-                  <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 16, padding: 24 }}>
-                    <div style={{ fontSize: P19_SEGMENT_FIELD_LABEL_PX, fontWeight: 700, color: "#52525B" }}>CURSO</div>
-                    <div style={{ fontSize: P19_SEGMENT_FIELD_VALUE_PX, fontWeight: 900 }}>{deckData.curso}</div>
-                    <div style={{ marginTop: 24, fontSize: P19_SEGMENT_FIELD_LABEL_PX, fontWeight: 700, color: "#52525B" }}>SÉRIE</div>
-                    <div style={{ fontSize: P19_SEGMENT_FIELD_VALUE_PX, fontWeight: 900 }}>{deckData.serie}</div>
+                  <div style={{ background: P19_SURFACE_CARD, border: `1px solid ${P19_BORDER_SOFT}`, borderRadius: 16, padding: 24 }}>
+                    <div style={{ fontSize: P19_SEGMENT_FIELD_LABEL_PX, fontWeight: 700, color: P19_TEXT_MUTED }}>CURSO</div>
+                    <div style={{ fontSize: P19_SEGMENT_FIELD_VALUE_PX, fontWeight: 900, color: P19_TEXT_STRONG }}>{deckData.curso}</div>
+                    <div style={{ marginTop: 24, fontSize: P19_SEGMENT_FIELD_LABEL_PX, fontWeight: 700, color: P19_TEXT_MUTED }}>SÉRIE</div>
+                    <div style={{ fontSize: P19_SEGMENT_FIELD_VALUE_PX, fontWeight: 900, color: P19_TEXT_STRONG }}>{deckData.serie}</div>
                     {deckData.comparisonAxis !== "escola" ? (
                       <>
-                        <div style={{ marginTop: 24, fontSize: P19_SEGMENT_FIELD_LABEL_PX, fontWeight: 700, color: "#52525B" }}>
+                        <div style={{ marginTop: 24, fontSize: P19_SEGMENT_FIELD_LABEL_PX, fontWeight: 700, color: P19_TEXT_MUTED }}>
                           {deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA"}
                         </div>
                         {deckData.turmasParticipantesCapa.length > 8 ? (
@@ -700,7 +844,16 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                         </div>
                       )}
                   </div>
-                  <table style={{ width: "100%", borderCollapse: "collapse", background: "#FCFCFD", border: "1px solid #CBD5E1", borderRadius: 12, overflow: "hidden" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      background: "#FCFCFD",
+                      border: `1px solid ${P19_BORDER_SOFT}`,
+                      borderRadius: 12,
+                      overflow: "hidden",
+                    }}
+                  >
                     <thead>
                       <tr>
                         {slide.table.columns.map((c, cIdx) => {
@@ -710,13 +863,13 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                                   background: `#${P19_LEVELS_TABLE_LEVEL_HEADER_BG_HEX[cIdx - 1]}`,
                                   color: "#F8FAFC",
                                 }
-                              : { background: "#E2E8F0", color: "#334155" };
+                              : { background: P19_BORDER_SOFT, color: P19_TEXT_BASE };
                           return (
                             <th
                               key={`${c}-${cIdx}`}
                               style={{
-                                border: "1px solid #CBD5E1",
-                                textAlign: "left",
+                                border: `1px solid ${P19_BORDER_SOFT}`,
+                                textAlign: tableCellTextAlign(slide.kind, cIdx),
                                 padding: P19_TABLE_CELL_PADDING_PX,
                                 fontSize: P19_TABLE_CELL_FONT_PX,
                                 ...levelHdr,
@@ -754,11 +907,13 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                             <td
                               key={cIdx}
                               style={{
-                                border: "1px solid #CBD5E1",
+                                border: `1px solid ${P19_BORDER_SOFT}`,
                                 padding: P19_TABLE_CELL_PADDING_PX,
-                                fontSize: P19_TABLE_CELL_FONT_PX,
+                                fontSize:
+                                  slide.kind === "questions-table" && cIdx === 2 ? P19_TABLE_QUESTIONS_DESC_FONT_PX : P19_TABLE_CELL_FONT_PX,
+                                textAlign: tableCellTextAlign(slide.kind, cIdx),
                                 background: questionRowStyle?.bg ?? rowBg,
-                                color: questionRowStyle?.color ?? "#0F172A",
+                                color: questionRowStyle?.color ?? P19_TEXT_STRONG,
                                 fontWeight: isTotalRow ? 800 : questionRowStyle ? 700 : undefined,
                               }}
                             >
@@ -775,7 +930,11 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
               )}
               {slide.kind === "presence-chart" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                  <Title text={presentationTitleChartPresence(deckData.comparisonAxis)} primaryColor={deckData.primaryColor} />
+                  <Title
+                    text={presentationTitleChartPresence(deckData.comparisonAxis)}
+                    subtitle={P19_CHART_SUBTITLE_PRESENCE}
+                    primaryColor={deckData.primaryColor}
+                  />
                   <BarChartPreview chart={slide.chart} />
                 </div>
               )}
@@ -815,16 +974,16 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                       <div
                         key={idx}
                         style={{
-                          border: "1px solid #E4E4E7",
+                          border: `1px solid ${P19_BORDER_NEUTRAL}`,
                           borderRadius: 12,
                           padding: "16px 18px",
-                          background: "#F8FAFC",
+                          background: P19_SURFACE_CARD,
                           borderLeftWidth: 6,
                           borderLeftColor: lvl.color,
                         }}
                       >
                         <div style={{ fontSize: P19_LEVELS_GUIDE_TITLE_PX, fontWeight: 900, color: lvl.color, letterSpacing: 0.3 }}>{lvl.label}</div>
-                        <div style={{ marginTop: 10, fontSize: P19_LEVELS_GUIDE_DESC_PX, color: "#3F3F46", lineHeight: 1.5, maxWidth: 980 }}>
+                        <div style={{ marginTop: 10, fontSize: P19_LEVELS_GUIDE_DESC_PX, color: P19_TEXT_BASE, lineHeight: 1.55, maxWidth: 980 }}>
                           {lvl.description}
                         </div>
                       </div>
@@ -845,10 +1004,66 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                 <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                   <Title
                     text={presentationTitleChartGrades(deckData.comparisonAxis)}
-                    subtitle={slide.escolaNome}
+                    subtitle={[slide.escolaNome, P19_CHART_SUBTITLE_GRADES].filter(Boolean).join(" • ")}
                     primaryColor={deckData.primaryColor}
                   />
                   <BarChartPreview chart={slide.chart} />
+                </div>
+              )}
+              {slide.kind === "grades-by-discipline-chart" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <Title
+                    text={presentationTitleGradesByDiscipline(deckData.comparisonAxis)}
+                    subtitle={slide.escolaNome}
+                    primaryColor={deckData.primaryColor}
+                  />
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr",
+                      gap: 14,
+                      width: "100%",
+                      boxSizing: "border-box",
+                      paddingLeft: P19_TITLE_TEXT_OFFSET_X_PX,
+                    }}
+                  >
+                    {slide.charts.map((entry, chartIdx) => (
+                      <div
+                        key={`${entry.title}-${chartIdx}`}
+                        style={{
+                          border: `1px solid ${P19_BORDER_NEUTRAL}`,
+                          borderRadius: 12,
+                          padding: 10,
+                          background: P19_SURFACE_CARD,
+                          display: "flex",
+                          flexDirection: "column",
+                          minHeight: 0,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: P19_PROFICIENCY_DISC_CARD_TITLE_PX,
+                            fontWeight: 900,
+                            color: P19_TEXT_STRONG,
+                            marginBottom: 8,
+                            lineHeight: 1.2,
+                            wordBreak: "break-word",
+                            minHeight: 44,
+                            maxHeight: 44,
+                            overflow: "hidden",
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical" as const,
+                          }}
+                        >
+                          {entry.title}
+                        </div>
+                        <div style={{ flex: 1, minHeight: 0 }}>
+                          <BarChartPreview chart={entry.chart} height={380} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               {slide.kind === "section-proficiency" && (
@@ -864,7 +1079,7 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                 <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                   <Title
                     text={presentationTitleProficiencyGeneralChart(deckData.comparisonAxis)}
-                    subtitle={slide.escolaNome}
+                    subtitle={[slide.escolaNome, P19_CHART_SUBTITLE_PROFICIENCY].filter(Boolean).join(" • ")}
                     primaryColor={deckData.primaryColor}
                   />
                   <div
@@ -888,28 +1103,47 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 12,
+                      gridTemplateColumns: "1fr",
+                      gap: 14,
                       width: "100%",
                       boxSizing: "border-box",
                       paddingLeft: P19_TITLE_TEXT_OFFSET_X_PX,
                     }}
                   >
-                    {slide.charts.map((entry) => (
-                      <div key={entry.title} style={{ border: "1px solid #D4D4D8", borderRadius: 12, padding: 8, background: "#F8FAFC" }}>
+                    {slide.charts.map((entry, chartIdx) => (
+                      <div
+                        key={`${entry.title}-${chartIdx}`}
+                        style={{
+                          border: `1px solid ${P19_BORDER_NEUTRAL}`,
+                          borderRadius: 12,
+                          padding: 10,
+                          background: P19_SURFACE_CARD,
+                          display: "flex",
+                          flexDirection: "column",
+                          minHeight: 0,
+                        }}
+                      >
                         <div
                           style={{
-                            fontSize: 12,
+                            fontSize: P19_PROFICIENCY_DISC_CARD_TITLE_PX,
                             fontWeight: 900,
-                            color: "#3F3F46",
-                            marginBottom: 6,
-                            lineHeight: 1.15,
+                            color: P19_TEXT_STRONG,
+                            marginBottom: 8,
+                            lineHeight: 1.2,
                             wordBreak: "break-word",
+                            minHeight: 44,
+                            maxHeight: 44,
+                            overflow: "hidden",
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical" as const,
                           }}
                         >
                           {entry.title}
                         </div>
-                        <BarChartPreview chart={entry.chart} height={200} />
+                        <div style={{ flex: 1, minHeight: 0 }}>
+                          <BarChartPreview chart={entry.chart} height={380} />
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -922,6 +1156,21 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                     subtitle={presentationSectionQuestionsTagline()}
                     primaryColor={deckData.primaryColor}
                   />
+                </div>
+              )}
+              {slide.kind === "questions-accuracy-chart" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+                      <Title text="PORCENTAGEM DE ACERTOS" primaryColor={deckData.primaryColor} />
+                    </div>
+                    {slide.accuracyPage != null && slide.accuracyPage.total > 1 && (
+                      <div style={{ fontSize: P19_PAGE_INDICATOR_FONT_PX, fontWeight: 700, color: P19_TEXT_MUTED, flexShrink: 0 }}>
+                        Página {slide.accuracyPage.current}/{slide.accuracyPage.total}
+                      </div>
+                    )}
+                  </div>
+                  <BarChartPreview chart={slide.chart} />
                 </div>
               )}
               {slide.kind === "dynamic-series-cover" && (
@@ -954,18 +1203,47 @@ function NativeSlideFrame({ slide, deckData }: { slide: Presentation19SlideSpec;
                 </div>
               )}
               {slide.kind === "thank-you" && (
-                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: P19_THANK_YOU_FONT_PX, fontWeight: 900, color: rgbCss(deckData.primaryColor) }}>
-                  Obrigado!!
+                <div
+                  style={{
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: P19_THANK_YOU_FONT_PX,
+                    fontWeight: 900,
+                    color: rgbCss(deckData.primaryColor),
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  {deckData.closingMessage ?? "Obrigado!!"}
                 </div>
               )}
             </div>
+            {deckData.footerText?.trim() ? (
+              <div
+                style={{
+                  position: "absolute",
+                  left: 32,
+                  right: 32,
+                  bottom: 10,
+                  textAlign: "center",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: P19_TEXT_MUTED,
+                  lineHeight: 1.35,
+                  zIndex: 1,
+                }}
+              >
+                {deckData.footerText.trim()}
+              </div>
+            ) : null}
           </div>
   );
-}
+});
 
 export const Presentation19NativePreviewDeck = forwardRef<Presentation19NativePreviewDeckHandle, Props>(
-  function Presentation19NativePreviewDeck({ deckData }, ref) {
-  const spec = buildSlideSpec(deckData);
+  function Presentation19NativePreviewDeck({ deckData, spec: specProp }, ref) {
+  const spec = useMemo(() => specProp ?? buildSlideSpec(deckData), [deckData, specProp]);
   const total = spec.slides.length;
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
   const [fsIndex, setFsIndex] = useState(0);
@@ -1059,7 +1337,14 @@ export const Presentation19NativePreviewDeck = forwardRef<Presentation19NativePr
     <>
       <div data-presentation19-native-root style={{ display: "flex", flexDirection: "column", gap: 24 }}>
         {spec.slides.map((slide) => (
-          <div key={slide.index} data-slide-index={slide.index}>
+          <div
+            key={`${slide.kind}-${slide.index}`}
+            data-slide-index={slide.index}
+            style={{
+              contentVisibility: "auto",
+              containIntrinsicSize: `${page.height}px`,
+            }}
+          >
             <NativeSlideFrame slide={slide} deckData={deckData} />
           </div>
         ))}

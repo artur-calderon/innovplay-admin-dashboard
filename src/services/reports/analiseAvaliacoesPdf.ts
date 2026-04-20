@@ -40,6 +40,7 @@ const NIVEL_CHART_FILL: [number, number, number][] = [
 
 const MARGIN = 15;
 const PARECER_NIVEL_ACCENT = [37, 99, 235] as [number, number, number];
+const TOP_BAND_H = 18;
 
 function tableFinalY(doc: import("jspdf").jsPDF, fallback: number): number {
   const ly = (doc as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
@@ -63,10 +64,43 @@ function stripHtml(html: unknown): string {
     .trim();
 }
 
+type TurmaRowLike = {
+  turma?: unknown;
+  serie?: unknown;
+  serie_nome?: unknown;
+  grade?: unknown;
+  ano?: unknown;
+};
+
+function formatTurmaLabel(row: TurmaRowLike): string {
+  const turma = typeof row?.turma === "string" ? row.turma.trim() : "";
+  const serie =
+    (typeof row?.serie === "string" && row.serie.trim()) ||
+    (typeof row?.serie_nome === "string" && row.serie_nome.trim()) ||
+    (typeof row?.grade === "string" && row.grade.trim()) ||
+    (typeof row?.ano === "string" && row.ano.trim()) ||
+    "";
+
+  if (!serie) return turma || "—";
+  if (!turma) return serie;
+  if (turma.toLowerCase().includes(serie.toLowerCase())) return turma;
+  return `${serie} ${turma}`.trim();
+}
+
 function classificarAcertoPct(p: number): string {
   if (p <= 50) return "Revisar e Reavaliar";
   if (p <= 80) return "Reavaliar";
   return "Concluído";
+}
+
+function drawTopBand(doc: import("jspdf").jsPDF, pageWidth: number, title: string): void {
+  doc.setFillColor(...COLORS.primary);
+  doc.rect(0, 0, pageWidth, TOP_BAND_H, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(...COLORS.white);
+  const t = String(title || "").trim();
+  if (t) doc.text(t.toUpperCase(), pageWidth / 2, 11.5, { align: "center" });
 }
 
 /** Mesma ordem do frontend: GERAL primeiro, depois por menor número de questão. */
@@ -345,6 +379,10 @@ function addHeading(
     doc.addPage();
     y = MARGIN;
   }
+  if (y <= MARGIN + 1) {
+    drawTopBand(doc, pageWidth, title);
+    return TOP_BAND_H + 12;
+  }
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
   doc.setTextColor(...COLORS.primary);
@@ -363,6 +401,10 @@ function addHeadingWrapped(
   pageWidth: number,
   pageHeight: number
 ): number {
+  if (y <= MARGIN + 1) {
+    drawTopBand(doc, pageWidth, title);
+    return TOP_BAND_H + 12;
+  }
   const maxW = pageWidth - 2 * MARGIN;
   let fs = 11;
   let lines: string[] = [];
@@ -503,9 +545,26 @@ function niveisDisciplineSortKeys(keys: string[]): string[] {
 }
 
 function buildNiveisEscolaTableRows(
-  block: NivelAprendizagemDisciplina
+  block: NivelAprendizagemDisciplina,
+  opts?: { preferTurma?: boolean }
 ): { rows: (string | number)[][]; firstColHeader: string } {
+  const preferTurma = !!opts?.preferTurma;
   const pe = block.por_escola;
+  const pt = block.por_turma;
+
+  if (preferTurma && Array.isArray(pt) && pt.length > 0) {
+    return {
+      firstColHeader: "TURMA",
+      rows: pt.map((t) => [
+        formatTurmaLabel(t as unknown as TurmaRowLike).toUpperCase(),
+        t.abaixo_do_basico ?? "—",
+        t.basico ?? "—",
+        t.adequado ?? "—",
+        t.avancado ?? "—",
+      ]),
+    };
+  }
+
   if (Array.isArray(pe) && pe.length > 0) {
     return {
       firstColHeader: "ESCOLA",
@@ -518,12 +577,11 @@ function buildNiveisEscolaTableRows(
       ]),
     };
   }
-  const pt = block.por_turma;
   if (Array.isArray(pt) && pt.length > 0) {
     return {
       firstColHeader: "TURMA",
       rows: pt.map((t) => [
-        String(t.turma ?? "—").toUpperCase(),
+        formatTurmaLabel(t as unknown as TurmaRowLike).toUpperCase(),
         t.abaixo_do_basico ?? "—",
         t.basico ?? "—",
         t.adequado ?? "—",
@@ -584,11 +642,12 @@ function renderNiveisParecerIaPage(
 
   doc.setFillColor(...COLORS.bgLight);
   doc.rect(0, 0, pageWidth, pageHeight, "F");
+  drawTopBand(doc, pageWidth, "PARECER TÉCNICO");
   doc.setDrawColor(...PARECER_NIVEL_ACCENT);
   doc.setLineWidth(0.8);
   doc.line(contentLeft, MARGIN, contentLeft, pageHeight - MARGIN);
 
-  let y = MARGIN + 4;
+  let y = TOP_BAND_H + 10;
   const discLabel = discKey.trim().toUpperCase() === "GERAL" ? "GERAL" : discKey.toUpperCase();
   const mainTitle = `PARECER TÉCNICO: NÍVEIS DE APRENDIZAGEM EM ${discLabel} (${tituloAvaliacao})`;
   doc.setFont("helvetica", "bold");
@@ -810,11 +869,12 @@ function renderParecerProfOuNotaPage(
   const maxW = pageWidth - textLeft - MARGIN;
   doc.setFillColor(...COLORS.bgLight);
   doc.rect(0, 0, pageWidth, pageHeight, "F");
+  drawTopBand(doc, pageWidth, "PARECER TÉCNICO");
   doc.setDrawColor(...PARECER_NIVEL_ACCENT);
   doc.setLineWidth(0.8);
   doc.line(contentLeft, MARGIN, contentLeft, pageHeight - MARGIN);
 
-  let y = MARGIN + 4;
+  let y = TOP_BAND_H + 10;
   const sub = kind === "prof" ? "PROFICIÊNCIA" : "NOTAS";
   const mainTitle = `PARECER TÉCNICO: ${sub} (${tituloAvaliacao})`;
   doc.setFont("helvetica", "bold");
@@ -1130,11 +1190,12 @@ function renderAcertosHabilidadeParecerPage(
   const maxW = pageWidth - textLeft - MARGIN;
   doc.setFillColor(...COLORS.bgLight);
   doc.rect(0, 0, pageWidth, pageHeight, "F");
+  drawTopBand(doc, pageWidth, "PARECER TÉCNICO");
   doc.setDrawColor(...PARECER_NIVEL_ACCENT);
   doc.setLineWidth(0.8);
   doc.line(contentLeft, MARGIN, contentLeft, pageHeight - MARGIN);
 
-  let y = MARGIN + 4;
+  let y = TOP_BAND_H + 10;
   const lab = discKey.toUpperCase();
   const mainTitle = `PARECER TÉCNICO: ACERTOS POR HABILIDADE — ${lab} (${tituloAvaliacao})`;
   doc.setFont("helvetica", "bold");
@@ -1246,7 +1307,8 @@ function renderAcertosHabilidadeParecerPage(
   }
 }
 
-function buildProficienciaConsolidada(prof: Proficiencia | undefined) {
+function buildProficienciaConsolidada(prof: Proficiencia | undefined, opts?: { preferTurma?: boolean }) {
+  const preferTurma = !!opts?.preferTurma;
   const porDisc = prof?.por_disciplina;
   if (!porDisc) return null;
   const discKeys = Object.keys(porDisc)
@@ -1265,7 +1327,7 @@ function buildProficienciaConsolidada(prof: Proficiencia | undefined) {
 
   let firstColHeader = "ESCOLA";
   const labelSet = new Set<string>();
-  if (hasEscola) {
+  if (!preferTurma && hasEscola) {
     firstColHeader = "ESCOLA";
     for (const d of discKeys) {
       for (const r of porDisc[d]?.por_escola ?? []) {
@@ -1277,7 +1339,7 @@ function buildProficienciaConsolidada(prof: Proficiencia | undefined) {
     firstColHeader = "TURMA";
     for (const d of discKeys) {
       for (const r of porDisc[d]?.por_turma ?? []) {
-        const lab = String((r as { turma?: string }).turma ?? "").trim().toUpperCase();
+        const lab = formatTurmaLabel(r as unknown as TurmaRowLike).trim().toUpperCase();
         if (lab) labelSet.add(lab);
       }
     }
@@ -1287,7 +1349,7 @@ function buildProficienciaConsolidada(prof: Proficiencia | undefined) {
   if (labels.length === 0) labels = ["CONSOLIDADO"];
 
   const getProf = (disc: string, lab: string): number | null => {
-    if (hasEscola) {
+    if (!preferTurma && hasEscola) {
       const row = porDisc[disc]?.por_escola?.find(
         (r) => String((r as { escola?: string }).escola ?? "").trim().toUpperCase() === lab
       );
@@ -1295,7 +1357,7 @@ function buildProficienciaConsolidada(prof: Proficiencia | undefined) {
     }
     if (hasTurma) {
       const row = porDisc[disc]?.por_turma?.find(
-        (r) => String((r as { turma?: string }).turma ?? "").trim().toUpperCase() === lab
+        (r) => formatTurmaLabel(r as unknown as TurmaRowLike).trim().toUpperCase() === lab
       );
       return row ? numOrNull((row as { proficiencia?: number }).proficiencia) : null;
     }
@@ -1374,7 +1436,8 @@ function buildProficienciaConsolidada(prof: Proficiencia | undefined) {
   return { discKeys, firstColHeader, body, foot, chartBars, chartTitle: "Proficiência Geral (MUNICIPAL GERAL)" };
 }
 
-function buildNotasConsolidada(ng: NotaGeral | undefined) {
+function buildNotasConsolidada(ng: NotaGeral | undefined, opts?: { preferTurma?: boolean }) {
+  const preferTurma = !!opts?.preferTurma;
   const porDisc = ng?.por_disciplina;
   if (!porDisc) return null;
   const discKeys = Object.keys(porDisc)
@@ -1393,7 +1456,7 @@ function buildNotasConsolidada(ng: NotaGeral | undefined) {
 
   let firstColHeader = "ESCOLA";
   const labelSet = new Set<string>();
-  if (hasEscola) {
+  if (!preferTurma && hasEscola) {
     firstColHeader = "ESCOLA";
     for (const d of discKeys) {
       for (const r of porDisc[d]?.por_escola ?? []) {
@@ -1405,7 +1468,7 @@ function buildNotasConsolidada(ng: NotaGeral | undefined) {
     firstColHeader = "TURMA";
     for (const d of discKeys) {
       for (const r of porDisc[d]?.por_turma ?? []) {
-        const lab = String((r as { turma?: string }).turma ?? "").trim().toUpperCase();
+        const lab = formatTurmaLabel(r as unknown as TurmaRowLike).trim().toUpperCase();
         if (lab) labelSet.add(lab);
       }
     }
@@ -1415,7 +1478,7 @@ function buildNotasConsolidada(ng: NotaGeral | undefined) {
   if (labels.length === 0) labels = ["CONSOLIDADO"];
 
   const getNota = (disc: string, lab: string): number | null => {
-    if (hasEscola) {
+    if (!preferTurma && hasEscola) {
       const row = porDisc[disc]?.por_escola?.find(
         (r) => String((r as { escola?: string }).escola ?? "").trim().toUpperCase() === lab
       );
@@ -1423,7 +1486,7 @@ function buildNotasConsolidada(ng: NotaGeral | undefined) {
     }
     if (hasTurma) {
       const row = porDisc[disc]?.por_turma?.find(
-        (r) => String((r as { turma?: string }).turma ?? "").trim().toUpperCase() === lab
+        (r) => formatTurmaLabel(r as unknown as TurmaRowLike).trim().toUpperCase() === lab
       );
       return row ? numOrNull((row as { nota?: number }).nota) : null;
     }
@@ -1531,6 +1594,7 @@ export async function generateRelatorioOrganizadoPdf(data: RelatorioCompleto): P
   const uf = String(meta.uf ?? "ALAGOAS");
   const dataGeracao = String(meta.data_geracao ?? new Date().toLocaleString("pt-BR"));
   const scopeType = String(meta.scope_type ?? ext.escopo?.tipo ?? "");
+  const preferTurmaTables = scopeType === "school";
   const cityId = (meta.municipio_id as string | undefined) || (ext.escopo?.city_id as string | null) || null;
 
   let logoDataUrl = "";
@@ -1708,13 +1772,22 @@ export async function generateRelatorioOrganizadoPdf(data: RelatorioCompleto): P
   }
   y += bandH + 8;
 
-  const bodyParticipacao: (string | number)[][] = (Array.isArray(porEscolas) ? porEscolas : []).map((e) => [
-    String(e.escola ?? "—"),
-    e.matriculados ?? "—",
-    e.avaliados ?? "—",
-    fmtPctTable(e.percentual),
-    e.faltosos ?? "—",
-  ]);
+  const porTurmas = data.total_alunos?.por_turma;
+  const bodyParticipacao: (string | number)[][] = preferTurmaTables
+    ? (Array.isArray(porTurmas) ? porTurmas : []).map((t) => [
+        formatTurmaLabel(t as unknown as TurmaRowLike).toUpperCase(),
+        (t as { matriculados?: number }).matriculados ?? "—",
+        (t as { avaliados?: number }).avaliados ?? "—",
+        fmtPctTable((t as { percentual?: number }).percentual),
+        (t as { faltosos?: number }).faltosos ?? "—",
+      ])
+    : (Array.isArray(porEscolas) ? porEscolas : []).map((e) => [
+        String(e.escola ?? "—"),
+        e.matriculados ?? "—",
+        e.avaliados ?? "—",
+        fmtPctTable(e.percentual),
+        e.faltosos ?? "—",
+      ]);
   if (bodyParticipacao.length === 0 && tg) {
     bodyParticipacao.push([
       "—",
@@ -1737,7 +1810,7 @@ export async function generateRelatorioOrganizadoPdf(data: RelatorioCompleto): P
   autoTable(doc, {
     startY: y,
     margin: { left: MARGIN, right: MARGIN },
-    head: [["ESCOLA", "MATRICULADOS", "AVALIADOS", "PERCENTUAL", "FALTOSOS"]],
+    head: [[preferTurmaTables ? "TURMA" : "ESCOLA", "MATRICULADOS", "AVALIADOS", "PERCENTUAL", "FALTOSOS"]],
     body: bodyParticipacao,
     foot: footParticipacao,
     showFoot: "lastPage",
@@ -1761,6 +1834,8 @@ export async function generateRelatorioOrganizadoPdf(data: RelatorioCompleto): P
       textColor: COLORS.textDark,
       fontStyle: "bold",
       lineColor: COLORS.borderLight,
+      halign: "center",
+      valign: "middle",
     },
     columnStyles: {
       0: { cellWidth: 78, halign: "left", fontStyle: "normal" },
@@ -1775,8 +1850,8 @@ export async function generateRelatorioOrganizadoPdf(data: RelatorioCompleto): P
           hookData.cell.styles.halign = "left";
         }
       }
-      if (hookData.section === "foot" && hookData.column.index === 0) {
-        hookData.cell.styles.halign = "left";
+      if (hookData.section === "foot") {
+        hookData.cell.styles.halign = hookData.column.index === 0 ? "left" : "center";
       }
     },
   });
@@ -1819,7 +1894,7 @@ export async function generateRelatorioOrganizadoPdf(data: RelatorioCompleto): P
       }
       isFirstNivelBlock = false;
 
-      const { rows, firstColHeader } = buildNiveisEscolaTableRows(block);
+      const { rows, firstColHeader } = buildNiveisEscolaTableRows(block, { preferTurma: preferTurmaTables });
       const bodyRows = rows.length > 0 ? rows : [["—", "—", "—", "—", "—"]];
       const discSubtitle =
         discKey.trim().toUpperCase() === "GERAL" ? "GERAL" : discKey.toUpperCase();
@@ -1869,6 +1944,8 @@ export async function generateRelatorioOrganizadoPdf(data: RelatorioCompleto): P
           textColor: COLORS.textDark,
           fontStyle: "bold",
           lineColor: COLORS.borderLight,
+          halign: "center",
+          valign: "middle",
         },
         columnStyles: {
           0: { cellWidth: 75, halign: "left" },
@@ -1886,8 +1963,8 @@ export async function generateRelatorioOrganizadoPdf(data: RelatorioCompleto): P
             }
             if (idx === 0) hookData.cell.styles.halign = "left";
           }
-          if (hookData.section === "foot" && hookData.column.index === 0) {
-            hookData.cell.styles.halign = "left";
+          if (hookData.section === "foot") {
+            hookData.cell.styles.halign = hookData.column.index === 0 ? "left" : "center";
           }
         },
       });
@@ -1913,7 +1990,7 @@ export async function generateRelatorioOrganizadoPdf(data: RelatorioCompleto): P
     y = MARGIN;
   }
 
-  const profCons = buildProficienciaConsolidada(data.proficiencia);
+  const profCons = buildProficienciaConsolidada(data.proficiencia, { preferTurma: preferTurmaTables });
   if (profCons) {
     doc.addPage();
     pageWidth = doc.internal.pageSize.getWidth();
@@ -1964,13 +2041,15 @@ export async function generateRelatorioOrganizadoPdf(data: RelatorioCompleto): P
         textColor: COLORS.textDark,
         fontStyle: "bold",
         lineColor: COLORS.borderLight,
+        halign: "center",
+        valign: "middle",
       },
       didParseCell: (hookData) => {
         if (hookData.section === "head" && hookData.column.index === 0) {
           hookData.cell.styles.halign = "left";
         }
-        if (hookData.section === "foot" && hookData.column.index === 0) {
-          hookData.cell.styles.halign = "left";
+        if (hookData.section === "foot") {
+          hookData.cell.styles.halign = hookData.column.index === 0 ? "left" : "center";
         }
       },
     });
@@ -2001,7 +2080,7 @@ export async function generateRelatorioOrganizadoPdf(data: RelatorioCompleto): P
     y = MARGIN;
   }
 
-  const notaCons = buildNotasConsolidada(data.nota_geral);
+  const notaCons = buildNotasConsolidada(data.nota_geral, { preferTurma: preferTurmaTables });
   if (notaCons) {
     if (!profCons) {
       doc.addPage();
@@ -2054,13 +2133,15 @@ export async function generateRelatorioOrganizadoPdf(data: RelatorioCompleto): P
         textColor: COLORS.textDark,
         fontStyle: "bold",
         lineColor: COLORS.borderLight,
+        halign: "center",
+        valign: "middle",
       },
       didParseCell: (hookData) => {
         if (hookData.section === "head" && hookData.column.index === 0) {
           hookData.cell.styles.halign = "left";
         }
-        if (hookData.section === "foot" && hookData.column.index === 0) {
-          hookData.cell.styles.halign = "left";
+        if (hookData.section === "foot") {
+          hookData.cell.styles.halign = hookData.column.index === 0 ? "left" : "center";
         }
       },
     });

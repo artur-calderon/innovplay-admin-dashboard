@@ -455,8 +455,8 @@ export function ManageClassModal({
                 {classData.name}
               </span>
             </DialogTitle>
-            <DialogDescription className="text-sm sm:text-base text-muted-foreground mt-2">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
+            <DialogDescription asChild>
+              <div className="text-sm sm:text-base text-muted-foreground mt-2 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
                 <span>Visualize e gerencie professores e alunos da turma</span>
                 {classData.grade && (
                   <span className="flex items-center gap-1">

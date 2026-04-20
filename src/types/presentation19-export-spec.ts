@@ -52,6 +52,12 @@ export type Presentation19SlideSpec =
     }
   | { index: number; kind: "section-grades" }
   | { index: number; kind: "grades-table"; table: ExportTable }
+  | {
+      index: number;
+      kind: "grades-by-discipline-chart";
+      charts: Array<{ title: string; chart: ExportChart }>;
+      escolaNome?: string;
+    }
   | { index: number; kind: "grades-chart"; chart: ExportChart; escolaNome?: string }
   | { index: number; kind: "section-questions" }
   | { index: number; kind: "dynamic-series-cover" }
@@ -76,6 +82,15 @@ export type Presentation19SlideSpec =
       kind: "questions-turma-cover";
       serieLabel: string;
       turmaNome: string;
+    }
+  | {
+      index: number;
+      kind: "questions-accuracy-chart";
+      chart: ExportChart;
+      /** @deprecated Reservado; subtítulo removido do layout. */
+      scopeLabel?: string;
+      /** Quando há mais de um slide de gráfico de acertos (máx. 9 barras por página). */
+      accuracyPage?: { current: number; total: number };
     }
   | { index: number; kind: "thank-you" };
 
