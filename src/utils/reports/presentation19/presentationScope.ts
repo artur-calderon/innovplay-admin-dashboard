@@ -152,6 +152,11 @@ export function presentationTitleProficiencyByDiscipline(axis: PresentationCompa
   return `PROFICIÊNCIA POR DISCIPLINA — ${presentationScopeSuffixUpper(axis)}`;
 }
 
+/** Gráficos de nota média por disciplina (uma disciplina por slide/bloco). */
+export function presentationTitleGradesByDiscipline(axis: PresentationComparisonAxis): string {
+  return `NOTA POR DISCIPLINA — ${presentationScopeSuffixUpper(axis)}`;
+}
+
 export function presentationSectionLevels(axis: PresentationComparisonAxis): string {
   return `NÍVEIS DE APRENDIZAGEM — ${presentationScopeSuffixUpper(axis)}`;
 }

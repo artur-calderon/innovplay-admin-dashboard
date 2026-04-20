@@ -281,6 +281,13 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
 
   const gradesChartData = useMemo(() => {
     const rows: Array<{ escopo: string; nota: number; fill: string }> = [];
+    const notaMunicipalOficialGeral = (() => {
+      const mm = deckData.notaMediaMunicipalPorDisciplinaRelatorio;
+      if (!mm) return null;
+      if (mm.GERAL != null && Number.isFinite(Number(mm.GERAL))) return Number(mm.GERAL);
+      const e = Object.entries(mm).find(([k]) => k.trim().toUpperCase() === "GERAL");
+      return e != null && Number.isFinite(Number(e[1])) ? Number(e[1]) : null;
+    })();
     if (multiSchool) {
       const sortedSchools = [...deckData.niveisPorSerie].sort((a, b) =>
         a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" })
@@ -294,8 +301,9 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
           fill: disciplinePalette[idx % disciplinePalette.length],
         });
       });
-      if (deckData.mediaNotaGeral != null && Number.isFinite(deckData.mediaNotaGeral)) {
-        rows.push({ escopo: "Média municipal", nota: deckData.mediaNotaGeral, fill: deckData.primaryColor });
+      const notaBarraMunicipal = notaMunicipalOficialGeral ?? deckData.mediaNotaGeral;
+      if (notaBarraMunicipal != null && Number.isFinite(notaBarraMunicipal)) {
+        rows.push({ escopo: "Média municipal", nota: notaBarraMunicipal, fill: deckData.primaryColor });
       }
     } else {
       if (deckData.mediaNotaGeral != null && Number.isFinite(deckData.mediaNotaGeral)) {
@@ -317,6 +325,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
   }, [
     multiSchool,
     deckData.mediaNotaGeral,
+    deckData.notaMediaMunicipalPorDisciplinaRelatorio,
     deckData.niveisPorSerie,
     deckData.notasPorCategoria,
     deckData.notasPorDisciplina,
@@ -867,8 +876,17 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                 rows={(() => {
                   const out: Array<Array<string | number>> = [];
                   const medLabel = multiSchool ? "Média municipal" : "Média geral";
-                  if (deckData.mediaNotaGeral != null && Number.isFinite(deckData.mediaNotaGeral)) {
-                    out.push([medLabel, deckData.mediaNotaGeral.toFixed(1).replace(".", ",")]);
+                  const mm = deckData.notaMediaMunicipalPorDisciplinaRelatorio;
+                  const notaMunGeral =
+                    multiSchool && mm
+                      ? (() => {
+                          if (mm.GERAL != null && Number.isFinite(Number(mm.GERAL))) return Number(mm.GERAL);
+                          const e = Object.entries(mm).find(([k]) => k.trim().toUpperCase() === "GERAL");
+                          return e != null && Number.isFinite(Number(e[1])) ? Number(e[1]) : null;
+                        })() ?? deckData.mediaNotaGeral
+                      : deckData.mediaNotaGeral;
+                  if (notaMunGeral != null && Number.isFinite(notaMunGeral)) {
+                    out.push([medLabel, notaMunGeral.toFixed(1).replace(".", ",")]);
                   }
                   if (!multiSchool) {
                     for (const d of deckData.notasPorDisciplina) {

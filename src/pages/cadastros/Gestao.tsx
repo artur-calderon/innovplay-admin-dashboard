@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PlusCircle, Search, Trash2, Building, Loader2, GraduationCap, Settings, School, Users } from "lucide-react";
+import { PlusCircle, Search, Trash2, Building, Loader2, GraduationCap, Settings, School, Users, FileDown } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -37,8 +37,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Turmas from "@/pages/cadastros/Turmas";
-import { InstituicaoUsersTab } from "../../components/schools/InstituicaoUsersTab";
+import { InstituicaoUsersTab } from "@/components/schools/InstituicaoUsersTab";
 import { getUserHierarchyContext } from "@/utils/userHierarchy";
+import {
+  generateUsersMunicipioCountsPdf,
+  type UsersCountsReportResponse,
+} from "@/utils/reports/usersMunicipioCountsPdf";
 
 interface City {
   id: string;
@@ -170,6 +174,7 @@ export default function Gestao() {
   const [citiesWithSlug, setCitiesWithSlug] = useState<CityWithSlug[]>([]);
   /** Mantido sincronizado com o município do subdomínio / tenant (evita ReferenceError em HMR antigo). */
   const [, setDomainCityId] = useState<string>("");
+  const [isExportingUsersReport, setIsExportingUsersReport] = useState(false);
   const [selectedUserIdsForBatchDelete, setSelectedUserIdsForBatchDelete] = useState<Set<string>>(
     () => new Set()
   );
@@ -587,6 +592,47 @@ export default function Gestao() {
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   })();
 
+  const handleExportUsersMunicipioReport = useCallback(async () => {
+    const effectiveCityId =
+      user.role === "tecadm" ? (user.tenant_id ?? "") : (selectedUsersCityId ?? "");
+
+    if (!effectiveCityId) {
+      toast({
+        title: "Município não definido",
+        description: "Selecione um município para exportar o relatório.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const cityFromList =
+      (citiesWithSlug.length ? citiesWithSlug : availableCities).find((c) => c.id === effectiveCityId) ??
+      null;
+    const cityName = cityFromList?.name ?? "Município";
+
+    setIsExportingUsersReport(true);
+    try {
+      const res = await api.get<UsersCountsReportResponse>("/reports/users/counts", {
+        meta: { cityId: effectiveCityId },
+      });
+      await generateUsersMunicipioCountsPdf({
+        cityId: effectiveCityId,
+        cityName,
+        report: res.data ?? {},
+      });
+      toast({ title: "Relatório exportado", description: "PDF gerado com sucesso." });
+    } catch (error) {
+      console.error("Erro ao exportar relatório de usuários:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível gerar o relatório de usuários.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExportingUsersReport(false);
+    }
+  }, [user.role, user.tenant_id, selectedUsersCityId, toast, citiesWithSlug, availableCities]);
+
   const availableSchools: Instituicao[] = instituicoes
     .filter((i) => (selectedState === 'ALL' || i.city?.state === selectedState))
     .filter((i) => (selectedCityId === 'ALL' || i.city_id === selectedCityId))
@@ -991,6 +1037,30 @@ export default function Gestao() {
         </TabsContent>
 
         <TabsContent value="usuarios" className="mt-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <p className="text-muted-foreground text-sm">
+              Exporte um PDF com os quantitativos de usuários do município selecionado.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleExportUsersMunicipioReport}
+              disabled={isExportingUsersReport}
+              className="sm:w-auto w-full"
+            >
+              {isExportingUsersReport ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Gerando PDF...
+                </>
+              ) : (
+                <>
+                  <FileDown className="h-4 w-4 mr-2" />
+                  Exportar relatório (PDF)
+                </>
+              )}
+            </Button>
+          </div>
           <InstituicaoUsersTab
             cityId={
               user.role === "tecadm"

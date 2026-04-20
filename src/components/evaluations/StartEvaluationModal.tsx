@@ -311,10 +311,25 @@ export default function StartEvaluationModal({
       
       form.reset();
       onClose();
-    } catch (error) {
+    } catch (error: unknown) {
+      const apiError = error as {
+        message?: string;
+        response?: {
+          status?: number;
+          data?: { error?: string; classes_nao_vinculadas?: string[] };
+        };
+      };
+
+      const backendMsg = apiError.response?.data?.error;
+      const classesNaoVinculadas = apiError.response?.data?.classes_nao_vinculadas ?? [];
+      const description =
+        backendMsg && classesNaoVinculadas.length > 0
+          ? `${backendMsg}. Turmas: ${classesNaoVinculadas.join(", ")}`
+          : backendMsg || apiError.message || ERROR_MESSAGES.EVALUATION_APPLY_FAILED;
+
       toast({
         title: ERROR_MESSAGES.EVALUATION_APPLY_FAILED,
-        description: ERROR_MESSAGES.EVALUATION_APPLY_FAILED,
+        description,
         variant: "destructive",
       });
     } finally {
