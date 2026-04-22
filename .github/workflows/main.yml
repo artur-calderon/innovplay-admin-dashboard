@@ -54,12 +54,7 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
-            - name: Get Version
-              run: |
-                  VERSION=$(cat VERSION)
-                  echo "VERSION=${VERSION}" >> $GITHUB_ENV
-
             - name: Deploy
               run: |
-                  VERSION=v${{ env.VERSION }} docker compose -f docker-compose.dev.yml pull
-                  VERSION=v${{ env.VERSION }} docker compose -f docker-compose.dev.yml up -d
+                  docker compose -f docker-compose.dev.yml pull
+                  docker compose -f docker-compose.dev.yml up -d
