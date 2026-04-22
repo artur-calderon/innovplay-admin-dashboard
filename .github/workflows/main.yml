@@ -1,0 +1,36 @@
+name: Frontend Pipeline
+
+on:
+    pull_request:
+        branches:
+            - dev
+    push:
+        branches:
+            - dev
+    workflow_dispatch:
+
+jobs:
+    build:
+        runs-on: [self-hosted, vps-artur]
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Login Docker Hub
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
+                  password: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
+
+            - name: Build And Push
+              run: |
+                  docker build -t afirmeplay/afirmeplay-frontend:${{ github.sha }} .
+                  docker build -t afirmeplay/afirmeplay-frontend:latest .
+                  docker push afirmeplay/afirmeplay-frontend:${{ github.sha }}
+                  docker push afirmeplay/afirmeplay-frontend:latest
+
+            - name: Deploy
+              run: |
+                  docker compose pull
+                  docker compose -f docker-compose.dev.yml up -d
