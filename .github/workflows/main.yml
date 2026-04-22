@@ -32,5 +32,5 @@ jobs:
 
             - name: Deploy
               run: |
-                  docker compose pull -f docker-compose.dev.yml
+                  docker compose -f docker-compose.dev.yml pull
                   docker compose -f docker-compose.dev.yml up -d
