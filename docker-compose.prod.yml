@@ -5,7 +5,7 @@ services:
     environment:
       - VITE_API_BASE_URL=$VITE_API_BASE_URL
       - SUBDOMAIN_MODE=$SUBDOMAIN_MODE
-      - API_CONTAINER=$API_CONTAINER
+      - API_CONTAINER=afirmeplay_api_prod
     ports:
       - "8081:80"
     networks:
