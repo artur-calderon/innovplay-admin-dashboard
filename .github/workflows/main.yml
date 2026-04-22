@@ -23,7 +23,7 @@ jobs:
               run: |
                   export COMPOSE_PROJECT_NAME=afirmeplay_front_prod # Isso faz com que o docker compose separe os containers de produção dos de desenvolvimento
                   export VERSION=v$(cat VERSION)
-                  export API_CONTAINER=${{ secrets.API_CONTAINER_DEV }}
+                  export API_CONTAINER=${{ secrets.API_CONTAINER_PROD }}
                   export VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}
 
                   docker compose -f docker-compose.prod.yml pull
