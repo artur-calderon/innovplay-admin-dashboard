@@ -43,4 +43,4 @@ RUN apk add --no-cache gettext
 COPY --from=build /app/dist /usr/share/nginx/html
 
 COPY nginx.conf.template /etc/nginx/nginx.conf.template
-CMD envsubst '$API_CONTAINER' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'
+CMD envsubst '$API_CONTAINER' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;
