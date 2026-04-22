@@ -7,7 +7,7 @@ on:
 
 jobs:
     build:
-        runs-on: self-hosted
+        runs-on: [self-hosted, vps-artur]
 
         steps:
             - name: Checkout
@@ -20,7 +20,6 @@ jobs:
                   password: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
 
             - name: Build And Push
-              if: steps.changes.outputs.changed == 'true'
               run: |
                   docker build -t afirmeplay/afirmeplay-frontend:${{ github.sha }} .
                   docker build -t afirmeplay/afirmeplay-frontend:latest .
