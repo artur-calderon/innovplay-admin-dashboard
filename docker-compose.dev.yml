@@ -3,8 +3,8 @@ services:
     image: afirmeplay/afirmeplay-frontend:${VERSION}
     container_name: afirmeplay_front_dev
     environment:
-      - VITE_API_BASE_URL=$VITE_API_BASE_URL
-      - API_CONTAINER=$API_CONTAINER_DEV
+      - API_CONTAINER=${API_CONTAINER}
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL}
     ports:
       - "8080:80"
     networks:
