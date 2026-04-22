@@ -1,9 +1,6 @@
 name: Frontend Pipeline
 
 on:
-    pull_request:
-        branches:
-            - dev
     push:
         branches:
             - dev
@@ -17,20 +14,52 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
+            - name: Get Version
+              run: |
+                  VERSION=$(cat VERSION)
+                  echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+            - name: Build Images
+              run: |
+                  docker build -t afirmeplay/afirmeplay-frontend:v${{ env.VERSION }} .
+                  docker build -t afirmeplay/afirmeplay-frontend:latest .
+
+    push:
+        runs-on: [self-hosted, vps-artur]
+        needs: [build]
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
             - name: Login Docker Hub
               uses: docker/login-action@v3
               with:
                   username: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
                   password: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
 
-            - name: Build And Push
+            - name: Get Version
               run: |
-                  docker build -t afirmeplay/afirmeplay-frontend:${{ github.sha }} .
-                  docker build -t afirmeplay/afirmeplay-frontend:latest .
-                  docker push afirmeplay/afirmeplay-frontend:${{ github.sha }}
+                  VERSION=$(cat VERSION)
+                  echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+            - name: Push Images
+              run: |
+                  docker push afirmeplay/afirmeplay-frontend:v${{ env.VERSION }}
                   docker push afirmeplay/afirmeplay-frontend:latest
+
+    deploy:
+        runs-on: [self-hosted, vps-artur]
+        needs: [push]
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Get Version
+              run: |
+                  VERSION=$(cat VERSION)
+                  echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
             - name: Deploy
               run: |
-                  docker compose -f docker-compose.dev.yml pull
-                  docker compose -f docker-compose.dev.yml up -d
+                  VERSION=v${{ env.VERSION }} docker compose -f docker-compose.dev.yml pull
+                  VERSION=v${{ env.VERSION }} docker compose -f docker-compose.dev.yml up -d
