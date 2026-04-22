@@ -59,8 +59,7 @@ jobs:
                   VERSION=$(cat VERSION)
                   echo "VERSION=${VERSION}" >> $GITHUB_ENV
                   echo "VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}" >> $GITHUB_ENV
-                  echo "SUBDOMAIN_MODE=${{ secrets.SUBDOMAIN_MODE }}" >> $GITHUB_ENV
-                  echo "API_CONTAINER=${{ secrets.API_CONTAINER }}" >> $GITHUB_ENV
+                  echo "API_CONTAINER=${{ secrets.API_CONTAINER_DEV}}" >> $GITHUB_ENV
 
             - name: Deploy
               run: |
