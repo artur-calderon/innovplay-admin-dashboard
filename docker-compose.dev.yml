@@ -8,10 +8,11 @@ services:
     ports:
       - "8001:80/tcp"
     networks:
-      - dev
+      - afirmeplay_network_dev
     restart: unless-stopped
 
 
 networks:
-  dev:
-    driver: bridge
+  afirmeplay_network_dev:
+    name: afirmeplay_network_dev
+    external: true
