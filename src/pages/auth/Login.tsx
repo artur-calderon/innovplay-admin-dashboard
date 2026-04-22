@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { User, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 
-import LOGO_WHITE from "/AFIRME PLAY LOGO branco.png"
+import LOGO_WHITE from "/AFIRME-PLAY-LOGO-branco.png"
 
 export default function Login() {
   const [matricula, setMatricula] = useState("");
@@ -185,7 +185,7 @@ export default function Login() {
               <img 
                 src={LOGO_WHITE} 
                 alt="Logo" 
-                className="relative w-[300px] max-w-full h-auto drop-shadow-2xl" 
+                className="relative w-[300px] max-w-full h-auto drop-shadow-2xl rounded-2xl" 
               />
             </div>
             <p className={`text-lg md:text-xl text-white/90 font-medium tracking-wide mt-6 transition-opacity duration-300 ${

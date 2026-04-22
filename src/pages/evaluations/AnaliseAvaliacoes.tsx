@@ -29,13 +29,13 @@ import { ptBR } from "date-fns/locale";
 import { EvaluationResultsApiService, REPORT_ENTITY_TYPE_ANSWER_SHEET } from "@/services/evaluation/evaluationResultsApi";
 import { RelatorioCompleto } from "@/types/evaluation-results";
 import { useAuth } from "@/context/authContext";
-import { api } from "@/lib/api";
 import { BarChartComponent, DonutChartComponent } from "@/components/ui/charts";
 import { FilterComponentAnalise } from "@/components/filters";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext, cityIdQueryParamForAdmin } from "@/utils/userHierarchy";
 import { normalizeRelatorioCompletoForAnaliseUI } from "@/utils/report/relatorioCompletoNormalize";
+import { generateRelatorioOrganizadoPdf } from "@/services/reports/analiseAvaliacoesPdf";
 
 // Interfaces para os dados da API
 interface EvaluationResult {
@@ -126,13 +126,37 @@ const formatDecimal = (value?: number | null) => {
   });
 };
 
+type TurmaRowLike = {
+  turma?: unknown;
+  serie?: unknown;
+  serie_nome?: unknown;
+  grade?: unknown;
+  ano?: unknown;
+};
+
+const formatTurmaLabel = (row: TurmaRowLike) => {
+  const turma = typeof row?.turma === "string" ? row.turma.trim() : "";
+  const serie =
+    (typeof row?.serie === "string" && row.serie.trim()) ||
+    (typeof row?.serie_nome === "string" && row.serie_nome.trim()) ||
+    (typeof row?.grade === "string" && row.grade.trim()) ||
+    (typeof row?.ano === "string" && row.ano.trim()) ||
+    "";
+
+  if (!serie) return turma;
+  if (!turma) return serie;
+  // Evita duplicar se a API já mandar algo como "9º Ano 9º A"
+  if (turma.toLowerCase().includes(serie.toLowerCase())) return turma;
+  return `${serie} ${turma}`.trim();
+};
+
 export default function AnaliseAvaliacoes() {
   const { autoLogin, user } = useAuth();
   const [apiData, setApiData] = useState<RelatorioCompleto | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
-  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [isGeneratingOrganizedPdf, setIsGeneratingOrganizedPdf] = useState(false);
   const [isProcessingReport, setIsProcessingReport] = useState(false);
   const [processingTime, setProcessingTime] = useState(0);
   const { toast } = useToast();
@@ -143,6 +167,7 @@ export default function AnaliseAvaliacoes() {
   const [selectedMunicipality, setSelectedMunicipality] = useState<string>('all');
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [selectedEvaluation, setSelectedEvaluation] = useState<string>('all');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
   const [reportAnswerSheet, setReportAnswerSheet] = useState(false);
 
   // Estados para hierarquia do usuário
@@ -315,99 +340,45 @@ export default function AnaliseAvaliacoes() {
 
 
 
-  // Função para baixar relatório PDF
-  const downloadReport = async () => {
-    if (!selectedEvaluation || !apiData) return;
-    
-    // Validar acesso baseado na hierarquia
+  const downloadOrganizedPdfLocal = async () => {
+    if (!apiData) return;
     if (userHierarchyContext && user?.role) {
-      const validation = validateReportAccess(user.role, {
-        state: selectedState,
-        municipality: selectedMunicipality,
-        school: selectedSchool,
-        evaluation: selectedEvaluation
-      }, userHierarchyContext);
-
+      const validation = validateReportAccess(
+        user.role,
+        {
+          state: selectedState,
+          municipality: selectedMunicipality,
+          school: selectedSchool,
+          evaluation: selectedEvaluation,
+        } as unknown as { state?: string; municipality?: string; school?: string; grade?: string; class?: string },
+        userHierarchyContext
+      );
       if (!validation.isValid) {
         toast({
-          title: "Acesso Negado",
+          title: "Acesso negado",
           description: validation.reason || "Você não tem permissão para gerar este relatório.",
-          variant: "destructive"
+          variant: "destructive",
         });
         return;
       }
     }
-    
     try {
-      setIsGeneratingReport(true);
-      
-      // Determinar qual tipo de relatório gerar baseado na seleção da escola
-      let apiUrl: string;
-      if (selectedSchool === 'all') {
-        // Município inteiro: `city_id` na query só para admin (demais: tenant no JWT)
-        const pdfMunicipal = new URLSearchParams();
-        if (adminCityIdQuery) {
-          pdfMunicipal.append('city_id', adminCityIdQuery);
-        }
-        const municipalQs = pdfMunicipal.toString();
-        apiUrl = `/reports/relatorio-pdf/${selectedEvaluation}${municipalQs ? `?${municipalQs}` : ''}`;
-      } else {
-        // Relatório para escola específica
-        apiUrl = `/reports/relatorio-pdf/${selectedEvaluation}?school_id=${selectedSchool}`;
-        if (adminCityIdQuery) {
-          apiUrl += `&city_id=${encodeURIComponent(adminCityIdQuery)}`;
-        }
-      }
-      if (reportAnswerSheet) {
-        apiUrl += `&report_entity_type=${REPORT_ENTITY_TYPE_ANSWER_SHEET}`;
-      }
-      
-      // Buscar o relatório PDF diretamente do backend (admin: enviar contexto de cidade)
-      const pdfConfig = selectedMunicipality !== 'all'
-        ? { responseType: 'blob' as const, timeout: 120000, meta: { cityId: selectedMunicipality } }
-        : { responseType: 'blob' as const, timeout: 120000 };
-      const response = await api.get(apiUrl, pdfConfig);
-      
-      // Criar URL do blob
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const blobUrl = window.URL.createObjectURL(blob);
-      
-      // Criar link de download
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      
-      // Definir nome do arquivo
-      const evaluationName = apiData?.avaliacao?.titulo || 'avaliacao';
-      const sanitizedName = evaluationName.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_').toLowerCase();
-      
-      // Determinar o tipo de relatório para o nome do arquivo
-      const reportType = selectedSchool === 'all' ? 'municipio' : 'escola';
-      const fileName = `relatorio_${reportType}_${sanitizedName}_${new Date().toISOString().split('T')[0]}.pdf`;
-      link.download = fileName;
-      
-      // Simular clique para download
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      // Limpar URL do blob
-      window.URL.revokeObjectURL(blobUrl);
-      
-      const reportTypeLabel = selectedSchool === 'all' ? 'municipal' : 'da escola';
+      setIsGeneratingOrganizedPdf(true);
+      const normalized = normalizeRelatorioCompletoForAnaliseUI(apiData);
+      await generateRelatorioOrganizadoPdf(normalized);
       toast({
-        title: "Relatório Baixado com Sucesso",
-        description: `O relatório PDF ${reportTypeLabel} foi salvo no seu dispositivo.`,
+        title: "Relatório baixado",
+        description: "O PDF Análise das avaliações foi salvo no seu dispositivo.",
       });
-      
-    } catch (error) {
-      console.error("Erro ao baixar relatório:", error);
+    } catch (e) {
+      console.error(e);
       toast({
-        title: "Erro ao Baixar Relatório",
-        description: "Não foi possível baixar o relatório. Tente novamente.",
+        title: "Erro ao gerar PDF",
+        description: "Não foi possível gerar o relatório no navegador. Tente novamente.",
         variant: "destructive",
       });
     } finally {
-      setIsGeneratingReport(false);
+      setIsGeneratingOrganizedPdf(false);
     }
   };
 
@@ -431,7 +402,7 @@ export default function AnaliseAvaliacoes() {
           const reportOptions = {
             ...options,
             ...(adminCityIdQuery ? { adminCityIdQuery } : {}),
-            ...(reportAnswerSheet ? { reportEntityType: REPORT_ENTITY_TYPE_ANSWER_SHEET as const } : {}),
+            ...(reportAnswerSheet ? { reportEntityType: REPORT_ENTITY_TYPE_ANSWER_SHEET } : {}),
           };
           
           // ✅ NOVO: Verificar status antes de buscar (para mostrar feedback visual)
@@ -537,7 +508,7 @@ export default function AnaliseAvaliacoes() {
     };
 
     loadData();
-  }, [allRequiredFiltersSelected, selectedState, selectedMunicipality, selectedSchool, selectedEvaluation, reportAnswerSheet, adminCityIdQuery, toast]);
+  }, [allRequiredFiltersSelected, selectedState, selectedMunicipality, selectedSchool, selectedEvaluation, selectedPeriod, reportAnswerSheet, adminCityIdQuery, toast]);
 
   if (isLoading) {
     return (
@@ -555,7 +526,7 @@ export default function AnaliseAvaliacoes() {
         <div className="space-y-1.5">
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
             <BarChart3 className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
-            Análise das Avaliações
+            Análise das avaliações
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base">
             Análise detalhada das avaliações do seu município
@@ -626,6 +597,11 @@ export default function AnaliseAvaliacoes() {
         fallbackSchools={fallbackSchools}
         // Prop para ordenação personalizada: Avaliação antes de Escola
         loadSchoolsAfterEvaluation={true}
+        selectedPeriod={selectedPeriod}
+        onPeriodChange={(p) => {
+          setSelectedPeriod(p);
+          setApiData(null);
+        }}
       />
 
       {/* Mensagem quando não há filtros suficientes */}
@@ -682,29 +658,30 @@ export default function AnaliseAvaliacoes() {
           {/* Informações da Avaliação */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
                   Informações da Avaliação
                 </CardTitle>
-                                 <Button 
-                   onClick={downloadReport}
-                   disabled={isGeneratingReport}
-                   className="flex items-center gap-2"
-                   variant="outline"
-                 >
-                   {isGeneratingReport ? (
-                     <>
-                       <RefreshCw className="h-4 w-4 animate-spin" />
-                       Baixando Relatório...
-                     </>
-                   ) : (
-                     <>
-                       <Download className="h-4 w-4" />
-                       Baixar Relatório
-                     </>
-                   )}
-                 </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    onClick={downloadOrganizedPdfLocal}
+                    disabled={isGeneratingOrganizedPdf}
+                    className="flex items-center gap-2"
+                  >
+                    {isGeneratingOrganizedPdf ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        Baixando relatório...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4" />
+                        Baixar relatório
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -762,7 +739,9 @@ export default function AnaliseAvaliacoes() {
                         ))
                       : apiData.total_alunos.por_turma?.map((turma, index: number) => (
                           <tr key={index} className="hover:bg-muted transition-colors">
-                            <td className="border border-border px-4 py-2">{turma.turma}</td>
+                            <td className="border border-border px-4 py-2">
+                              {formatTurmaLabel(turma as unknown as TurmaRowLike) || String((turma as { turma?: string }).turma ?? "")}
+                            </td>
                             <td className="border border-border px-4 py-2 text-center">{turma.matriculados}</td>
                             <td className="border border-border px-4 py-2 text-center">{turma.avaliados}</td>
                             <td className="border border-border px-4 py-2 text-center">{turma.percentual}%</td>
@@ -825,7 +804,9 @@ export default function AnaliseAvaliacoes() {
                                ))
                              : dadosDisciplina.por_turma?.map((turma, index: number) => (
                                  <tr key={index} className="hover:bg-muted transition-colors">
-                                   <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
+                                   <td className="border border-border px-4 py-2 font-medium">
+                                     {formatTurmaLabel(turma as unknown as TurmaRowLike) || String((turma as { turma?: string }).turma ?? "")}
+                                   </td>
                                    <td className="border border-border px-4 py-2 text-center bg-red-50 dark:bg-red-950/20">{turma.abaixo_do_basico}</td>
                                    <td className="border border-border px-4 py-2 text-center bg-yellow-50 dark:bg-yellow-950/20">{turma.basico}</td>
                                   <td className="border border-border px-4 py-2 text-center bg-green-50 dark:bg-green-700/25 text-green-900 dark:text-green-200">{turma.adequado}</td>
@@ -910,7 +891,9 @@ export default function AnaliseAvaliacoes() {
                                ))
                              : dadosDisciplina.por_turma?.map((turma, index: number) => (
                                  <tr key={index} className="hover:bg-muted transition-colors">
-                                   <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
+                                   <td className="border border-border px-4 py-2 font-medium">
+                                     {formatTurmaLabel(turma as unknown as TurmaRowLike) || String((turma as { turma?: string }).turma ?? "")}
+                                   </td>
                                    <td className="border border-border px-4 py-2 text-center">{formatDecimal(turma.proficiencia ?? (turma as { media?: number }).media)}</td>
                                  </tr>
                                ))}
@@ -968,7 +951,9 @@ export default function AnaliseAvaliacoes() {
                                ))
                              : dadosDisciplina.por_turma?.map((turma, index: number) => (
                                  <tr key={index} className="hover:bg-muted transition-colors">
-                                   <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
+                                   <td className="border border-border px-4 py-2 font-medium">
+                                     {formatTurmaLabel(turma as unknown as TurmaRowLike) || String((turma as { turma?: string }).turma ?? "")}
+                                   </td>
                                    <td className="border border-border px-4 py-2 text-center">{formatDecimal(turma.nota ?? (turma as { media?: number }).media)}</td>
                                  </tr>
                                ))}
@@ -1005,8 +990,8 @@ export default function AnaliseAvaliacoes() {
                     .sort(([aKey, aVal], [bKey, bVal]) => {
                       if (aKey === 'GERAL') return -1;
                       if (bKey === 'GERAL') return 1;
-                      const aMin = Math.min(...(aVal.questoes?.map((q) => q.numero_questao) ?? [Infinity]));
-                      const bMin = Math.min(...(bVal.questoes?.map((q) => q.numero_questao) ?? [Infinity]));
+                      const aMin = Math.min(...(((aVal as any)?.questoes?.map((q: any) => q.numero_questao) ?? [Infinity]) as number[]));
+                      const bMin = Math.min(...(((bVal as any)?.questoes?.map((q: any) => q.numero_questao) ?? [Infinity]) as number[]));
                       return aMin - bMin;
                     })
                     .map(([disciplina, dadosDisciplina]) => (
@@ -1017,7 +1002,7 @@ export default function AnaliseAvaliacoes() {
                       
                       {/* Grid de questões */}
                       <div className="grid grid-cols-13 gap-0 border border-border">
-                        {dadosDisciplina.questoes && dadosDisciplina.questoes.length > 0 ? dadosDisciplina.questoes.map((questao, index: number) => (
+                        {(dadosDisciplina as any)?.questoes && (dadosDisciplina as any).questoes.length > 0 ? (dadosDisciplina as any).questoes.map((questao: any, index: number) => (
                           <div key={index} className="flex flex-col">
                             {/* Header da questão */}
                             <div className="bg-blue-600 dark:bg-blue-700 text-white text-center py-2 px-1 text-sm font-medium border-r border-border last:border-r-0">

@@ -2,6 +2,18 @@ import React, { useState } from 'react';
 import { CheckCircle2, Target, Gauge, Award, Users, Coins } from 'lucide-react';
 import { QuestionData, VisibleFields } from '../../../types/results-table';
 
+/** Tooltip da coluna de habilidade: evita exibir só "?" quando a API manda placeholder. */
+function skillColumnTooltipTitle(habilidade: string | undefined, codigo: string | undefined): string {
+  const h = (habilidade ?? '').trim();
+  const c = (codigo ?? '').trim();
+  const primary = h || c;
+  if (!primary) return '';
+  if (/^[\?\uFF1F]$/.test(primary) || primary === '—' || primary === '-') {
+    return c && !/^[\?\uFF1F]$/.test(c) && c !== '—' && c !== '-' ? c : '';
+  }
+  return primary;
+}
+
 // Interface para questões da tabela_detalhada
 interface TabelaDetalhadaQuestao {
   numero: number;
@@ -149,13 +161,16 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
           </div>
         </th>
         {processedQuestions.map((questao, index) => (
-          <th key={questao.question_id} className="border border-border p-1 text-center font-semibold hover:bg-muted transition-colors">
+          <th
+            key={`${questao.disciplina_id}-${questao.question_id}-${index}`}
+            className="border border-border p-1 text-center font-semibold hover:bg-muted transition-colors"
+          >
             <div className="text-xs font-bold text-foreground">Q{questao.numero}</div>
             <div className="text-xs text-muted-foreground mt-1">{questao.disciplina}</div>
             {visibleFields.habilidade && (
               <div 
                 className="text-xs font-semibold text-blue-600 dark:text-blue-400 cursor-help hover:bg-blue-100 dark:hover:bg-blue-950/30 rounded px-1 py-0.5 transition-colors mt-1" 
-                title={questao.habilidade}
+                title={skillColumnTooltipTitle(questao.habilidade, questao.codigo_habilidade)}
                 onMouseEnter={() => setHoveredSkill(questao.habilidade)}
                 onMouseLeave={() => setHoveredSkill(null)}
               >

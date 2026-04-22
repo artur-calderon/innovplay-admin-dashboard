@@ -458,12 +458,25 @@ export default function ViewEvaluation({
 
       let errorMessage: string = ERROR_MESSAGES.EVALUATION_APPLY_FAILED;
 
-      const apiError = error as { response?: { status?: number; data?: { error?: string } } };
+      const apiError = error as {
+        response?: {
+          status?: number;
+          data?: { error?: string; classes_nao_vinculadas?: string[] };
+        };
+      };
       
       if (apiError.response?.status === 404) {
         errorMessage = ERROR_MESSAGES.EVALUATION_NOT_FOUND;
       } else if (apiError.response?.status === 403) {
-        errorMessage = ERROR_MESSAGES.FORBIDDEN;
+        const classesNaoVinculadas = apiError.response.data?.classes_nao_vinculadas ?? [];
+        const backendMsg = apiError.response.data?.error;
+        if (backendMsg && classesNaoVinculadas.length > 0) {
+          errorMessage = `${backendMsg}. Turmas: ${classesNaoVinculadas.join(", ")}`;
+        } else if (backendMsg) {
+          errorMessage = backendMsg;
+        } else {
+          errorMessage = ERROR_MESSAGES.FORBIDDEN;
+        }
       } else if (apiError.response?.status === 400) {
         errorMessage = apiError.response.data?.error || ERROR_MESSAGES.EVALUATION_INVALID_DATA;
       } else if (apiError.response?.data?.error) {

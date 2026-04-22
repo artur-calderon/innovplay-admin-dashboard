@@ -1197,13 +1197,27 @@ export function ReadyEvaluations({
       });
 
     } catch (error: unknown) {
-      const apiError = error as { response?: { status?: number; data?: { error?: string } } };
+      const apiError = error as {
+        response?: {
+          status?: number;
+          data?: { error?: string; classes_nao_vinculadas?: string[] };
+        };
+      };
       let errorMessage = "Erro ao aplicar avaliação. Tente novamente.";
 
       if (apiError.response?.status === 404) {
         errorMessage = "Avaliação não encontrada";
       } else if (apiError.response?.status === 403) {
-        errorMessage = "Sem permissão para aplicar esta avaliação";
+        // Quando o usuário é professor, o backend pode retornar quais turmas não têm vínculo
+        const classesNaoVinculadas = apiError.response.data?.classes_nao_vinculadas ?? [];
+        const backendMsg = apiError.response.data?.error;
+        if (backendMsg && classesNaoVinculadas.length > 0) {
+          errorMessage = `${backendMsg}. Turmas: ${classesNaoVinculadas.join(", ")}`;
+        } else if (backendMsg) {
+          errorMessage = backendMsg;
+        } else {
+          errorMessage = "Sem permissão para aplicar esta avaliação";
+        }
       } else if (apiError.response?.status === 400) {
         errorMessage = apiError.response.data?.error || "Dados inválidos para aplicação";
       } else if (apiError.response?.data?.error) {

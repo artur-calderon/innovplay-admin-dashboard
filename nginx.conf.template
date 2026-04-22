@@ -9,11 +9,13 @@ http {
         listen 80;
         server_name _;
 
+        client_max_body_size 10m;
+
         root /usr/share/nginx/html;
         index index.html;
 
         location /api/ {
-            proxy_pass http://$API_CONTAINER:5000/;
+            proxy_pass http://${API_CONTAINER}:5000/;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;

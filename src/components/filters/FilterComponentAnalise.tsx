@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from "react";
+import { ResultsPeriodMonthYearPicker } from "./ResultsPeriodMonthYearPicker";
+import { normalizeResultsPeriodYm } from "@/utils/resultsPeriod";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +72,11 @@ interface FilterComponentAnaliseProps {
    * sem alterar a lógica de carregamento (efeitos) baseada em `loadSchoolsAfterEvaluation`.
    */
   displayEvaluationFirst?: boolean;
+  /** `all` ou `YYYY-MM` (mês de aplicação online / correção cartão). */
+  selectedPeriod?: string;
+  onPeriodChange?: (period: string) => void;
+  /** Conteúdo extra no mesmo card (ex.: Série / Turma), abaixo da grade principal. */
+  extraFilters?: ReactNode;
 }
 
 export function FilterComponentAnalise({
@@ -95,8 +102,17 @@ export function FilterComponentAnalise({
   reportEntityType,
   adminCityIdQuery,
   displayEvaluationFirst = false,
+  selectedPeriod = "all",
+  onPeriodChange = () => {},
+  extraFilters,
 }: FilterComponentAnaliseProps) {
   const { toast } = useToast();
+  const periodoForApi = useMemo(() => {
+    if (selectedPeriod === "all") return undefined;
+    const n = normalizeResultsPeriodYm(selectedPeriod);
+    return n === "all" ? undefined : n;
+  }, [selectedPeriod]);
+
   const isAnswerSheetReport = reportEntityType === REPORT_ENTITY_TYPE_ANSWER_SHEET;
   const evaluationFilterLabel = isAnswerSheetReport ? "Cartão resposta" : "Avaliações";
   const evaluationPlaceholder = isAnswerSheetReport
@@ -172,11 +188,25 @@ export function FilterComponentAnalise({
     onEvaluationChangeRef.current = onEvaluationChange;
   }, [onEvaluationChange]);
 
+  const periodResetInitRef = useRef(false);
+  useEffect(() => {
+    if (!periodResetInitRef.current) {
+      periodResetInitRef.current = true;
+      return;
+    }
+    onEvaluationChangeRef.current("all");
+    onSchoolChangeRef.current("all");
+  }, [selectedPeriod]);
+
   // Carregar filtros iniciais
   const loadInitialFilters = useCallback(async () => {
     try {
       onLoadingChange(true);
-      const statesData = await EvaluationResultsApiService.getFilterStates(reportEntityType, adminCityIdQuery);
+      const statesData = await EvaluationResultsApiService.getFilterStates(
+        reportEntityType,
+        adminCityIdQuery,
+        periodoForApi
+      );
       setStates(statesData.map(state => ({
         id: state.id,
         name: state.nome,
@@ -191,7 +221,7 @@ export function FilterComponentAnalise({
     } finally {
       onLoadingChange(false);
     }
-  }, [toast, onLoadingChange, reportEntityType, adminCityIdQuery]);
+  }, [toast, onLoadingChange, reportEntityType, adminCityIdQuery, periodoForApi]);
 
   useEffect(() => {
     loadInitialFilters();
@@ -206,7 +236,8 @@ export function FilterComponentAnalise({
           const municipalitiesData = await EvaluationResultsApiService.getFilterMunicipalities(
             selectedState,
             reportEntityType,
-            adminCityIdQuery
+            adminCityIdQuery,
+            periodoForApi
           );
           const formattedMunicipalities = municipalitiesData.map(municipality => ({
             id: municipality.id,
@@ -246,7 +277,7 @@ export function FilterComponentAnalise({
     };
 
     loadMunicipalities();
-  }, [selectedState, canSelectMunicipality, reportEntityType, adminCityIdQuery]);
+  }, [selectedState, canSelectMunicipality, reportEntityType, adminCityIdQuery, periodoForApi]);
 
   // Carregar escolas quando `loadSchoolsAfterEvaluation=true` (modo dependente de avaliação)
   useEffect(() => {
@@ -265,6 +296,7 @@ export function FilterComponentAnalise({
               avaliacao: selectedEvaluation,
               ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
               ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+              ...(periodoForApi ? { periodo: periodoForApi } : {}),
             }),
             20000,
             'Tempo esgotado ao carregar escolas.'
@@ -339,6 +371,7 @@ export function FilterComponentAnalise({
     loadSchoolsAfterEvaluation,
     reportEntityType,
     adminCityIdQuery,
+    periodoForApi,
     onLoadingChange,
   ]);
 
@@ -358,6 +391,7 @@ export function FilterComponentAnalise({
               estado: selectedState,
               ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
               ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+              ...(periodoForApi ? { periodo: periodoForApi } : {}),
             }),
             20000,
             'Tempo esgotado ao carregar escolas.'
@@ -435,6 +469,7 @@ export function FilterComponentAnalise({
     loadSchoolsAfterEvaluation,
     reportEntityType,
     adminCityIdQuery,
+    periodoForApi,
     onLoadingChange,
   ]);
 
@@ -453,6 +488,7 @@ export function FilterComponentAnalise({
               municipio: selectedMunicipality,
               ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
               ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+              ...(periodoForApi ? { periodo: periodoForApi } : {}),
               }),
               20000,
               "Tempo esgotado ao carregar avaliações."
@@ -494,6 +530,7 @@ export function FilterComponentAnalise({
             escola: selectedSchool !== 'all' ? selectedSchool : undefined,
             ...(reportEntityType ? { report_entity_type: reportEntityType } : {}),
             ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+            ...(periodoForApi ? { periodo: periodoForApi } : {}),
             }),
             20000,
             "Tempo esgotado ao carregar avaliações."
@@ -524,7 +561,7 @@ export function FilterComponentAnalise({
     };
 
     loadEvaluations();
-  }, [selectedState, selectedMunicipality, selectedSchool, mustSelectSpecificSchool, loadSchoolsAfterEvaluation, reportEntityType, adminCityIdQuery]);
+  }, [selectedState, selectedMunicipality, selectedSchool, mustSelectSpecificSchool, loadSchoolsAfterEvaluation, reportEntityType, adminCityIdQuery, periodoForApi]);
 
   return (
     <Card className="overflow-visible">
@@ -535,7 +572,7 @@ export function FilterComponentAnalise({
         </CardTitle>
       </CardHeader>
       <CardContent className="overflow-visible">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 w-full min-w-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 w-full min-w-0">
           {/* Estado */}
           <div className="space-y-2">
             <label className="text-sm font-medium flex items-center gap-2">
@@ -589,6 +626,12 @@ export function FilterComponentAnalise({
               </SelectContent>
             </Select>
           </div>
+
+          <ResultsPeriodMonthYearPicker
+            value={selectedPeriod}
+            onChange={onPeriodChange}
+            disabled={isLoadingFilters || selectedMunicipality === "all"}
+          />
 
           {/* Renderizar Avaliação antes de Escola quando uiEvaluationFirst for true */}
           {uiEvaluationFirst ? (
@@ -713,6 +756,14 @@ export function FilterComponentAnalise({
             </>
           )}
         </div>
+
+        {extraFilters != null && extraFilters !== false && (
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 w-full min-w-0">
+              {extraFilters}
+            </div>
+          </div>
+        )}
 
         {/* Informação sobre filtros */}
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">

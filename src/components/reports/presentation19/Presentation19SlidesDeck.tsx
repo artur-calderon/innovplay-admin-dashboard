@@ -11,10 +11,30 @@ import {
   Legend,
   ReferenceLine,
 } from "recharts";
-import type { Presentation19DeckData, NiveisBySeriesRow } from "@/types/presentation19-slides";
+import type { Presentation19DeckData, NiveisBySeriesRow, SlideQuestionRow } from "@/types/presentation19-slides";
+import {
+  comparisonColumnLabel,
+  presentationSectionGrades,
+  presentationSectionGradesTagline,
+  presentationSectionLevels,
+  presentationSectionLevelsTagline,
+  presentationSectionProficiency,
+  presentationSectionProficiencyTagline,
+  presentationSectionQuestionsTagline,
+  presentationSectionQuestionsTitle,
+  presentationTitleChartGrades,
+  presentationTitleChartLevels,
+  presentationTitleChartPresence,
+  presentationTitleProficiencyByDiscipline,
+  presentationTitleProficiencyGeneralChart,
+  presentationTitleTableGrades,
+  presentationTitleTableLevels,
+  presentationTitleTablePresence,
+  presentationQuestionsTurmaCoverLine,
+} from "@/utils/reports/presentation19/presentationScope";
 import { getProficiencyTableInfo } from "@/components/evaluations/results/utils/proficiency";
 import { getSubjectPaletteIndex } from "@/utils/competition/competitionSubjectColors";
-import { chunkPresentation19QuestionTableRows } from "@/utils/reports/presentation19/questionsTablePagination";
+import { chunkPresentation19SlideQuestionRows } from "@/utils/reports/presentation19/questionsTablePagination";
 
 type SlideFrameProps = {
   children: React.ReactNode;
@@ -63,18 +83,6 @@ function SlideFrame({ children, primaryColor, logoDataUrl }: SlideFrameProps) {
         boxShadow: "0 18px 50px rgba(2,6,23,0.12)",
       }}
     >
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none",
-          backgroundImage: `
-            repeating-linear-gradient(90deg, rgba(15,23,42,0.06) 0 1px, transparent 1px 56px),
-            repeating-linear-gradient(0deg, rgba(15,23,42,0.05) 0 1px, transparent 1px 56px)
-          `,
-        }}
-      />
-
       <div
         style={{
           position: "absolute",
@@ -176,6 +184,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
 
   const presenceRows = deckData.presencaPorSerie;
   const niveisRows = deckData.niveisPorSerie;
+  const multiSchool = deckData.comparisonAxis === "escola" && deckData.niveisPorSerie.length > 1;
 
   const levelsChartData = useMemo(() => {
     const totals = niveisRows.reduce(
@@ -218,7 +227,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
 
   const presenceChartData = useMemo(() => {
     return presenceRows.map((r) => ({
-      serie: r.serie,
+      label: r.label,
       total_presentes: Math.max(0, Math.round(Number(r.totalPresentes ?? 0))),
     }));
   }, [presenceRows]);
@@ -233,7 +242,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
     const maxOutras = getProficiencyTableInfo(deckData.serie, "Português").maxProficiency;
     const axisMax = Math.max(maxMath, maxOutras);
     return deckData.proficienciaGeralPorTurma.map((r) => ({
-      turma: r.turma,
+      label: r.label,
       proficiencia: clampToRange(r.proficiencia, 0, axisMax),
     }));
   }, [deckData.proficienciaGeralPorTurma, deckData.serie]);
@@ -270,6 +279,65 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
     []
   );
 
+  const gradesChartData = useMemo(() => {
+    const rows: Array<{ escopo: string; nota: number; fill: string }> = [];
+    const notaMunicipalOficialGeral = (() => {
+      const mm = deckData.notaMediaMunicipalPorDisciplinaRelatorio;
+      if (!mm) return null;
+      if (mm.GERAL != null && Number.isFinite(Number(mm.GERAL))) return Number(mm.GERAL);
+      const e = Object.entries(mm).find(([k]) => k.trim().toUpperCase() === "GERAL");
+      return e != null && Number.isFinite(Number(e[1])) ? Number(e[1]) : null;
+    })();
+    if (multiSchool) {
+      const sortedSchools = [...deckData.niveisPorSerie].sort((a, b) =>
+        a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" })
+      );
+      sortedSchools.forEach((row, idx) => {
+        const cat = deckData.notasPorCategoria.find((c) => c.label === row.label);
+        if (!cat) return;
+        rows.push({
+          escopo: row.label,
+          nota: cat.mediaNota,
+          fill: disciplinePalette[idx % disciplinePalette.length],
+        });
+      });
+      const notaBarraMunicipal = notaMunicipalOficialGeral ?? deckData.mediaNotaGeral;
+      if (notaBarraMunicipal != null && Number.isFinite(notaBarraMunicipal)) {
+        rows.push({ escopo: "Média municipal", nota: notaBarraMunicipal, fill: deckData.primaryColor });
+      }
+    } else {
+      if (deckData.mediaNotaGeral != null && Number.isFinite(deckData.mediaNotaGeral)) {
+        rows.push({ escopo: "Média geral", nota: deckData.mediaNotaGeral, fill: deckData.primaryColor });
+      }
+      deckData.notasPorDisciplina.forEach((d, idx) => {
+        rows.push({ escopo: d.disciplina, nota: d.mediaNota, fill: disciplinePalette[idx % disciplinePalette.length] });
+      });
+      deckData.notasPorCategoria.forEach((c, idx) => {
+        rows.push({
+          escopo: c.label,
+          nota: c.mediaNota,
+          fill: disciplinePalette[(idx + deckData.notasPorDisciplina.length) % disciplinePalette.length],
+        });
+      });
+    }
+    if (rows.length === 0) rows.push({ escopo: "Sem dados", nota: 0, fill: "#94a3b8" });
+    return rows;
+  }, [
+    multiSchool,
+    deckData.mediaNotaGeral,
+    deckData.notaMediaMunicipalPorDisciplinaRelatorio,
+    deckData.niveisPorSerie,
+    deckData.notasPorCategoria,
+    deckData.notasPorDisciplina,
+    deckData.primaryColor,
+    disciplinePalette,
+  ]);
+
+  const gradesAxisMax = useMemo(() => {
+    const raw = Math.max(10, ...gradesChartData.map((r) => Number(r.nota || 0)));
+    return Math.ceil(raw / 5) * 5;
+  }, [gradesChartData]);
+
   const levelGuide = deckData.levelGuide ?? [
     { label: "AVANÇADO", description: "", color: fixedLevelColors.avancado },
     { label: "ADEQUADO", description: "", color: fixedLevelColors.adequado },
@@ -277,13 +345,52 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
     { label: "ABAIXO DO BÁSICO", description: "", color: fixedLevelColors.abaixo },
   ];
 
-  const questoesChunks = useMemo(
-    () => chunkPresentation19QuestionTableRows(deckData.questoesTabela ?? []),
-    [deckData.questoesTabela]
-  );
+  type QuestoesSlideEntry =
+    | { kind: "cover"; serieLabel: string; turmaNome: string }
+    | { kind: "table"; chunk: SlideQuestionRow[]; titulo: string; page: string };
 
-  const firstQuestionsSlideIndex = 18;
-  const thanksSlideIndex = firstQuestionsSlideIndex + questoesChunks.length;
+  const questoesSlides = useMemo((): QuestoesSlideEntry[] => {
+    const out: QuestoesSlideEntry[] = [];
+    const geralPages = chunkPresentation19SlideQuestionRows(deckData.questoesTabelaGeral ?? []);
+    geralPages.forEach((chunk, i) => {
+      out.push({
+        kind: "table",
+        chunk,
+        titulo: "Geral",
+        page: geralPages.length > 1 ? `${i + 1}/${geralPages.length}` : "",
+      });
+    });
+    for (const bloco of deckData.questoesPorSerie ?? []) {
+      const serieLabel = String(bloco.serie ?? "").trim() || "—";
+      out.push({ kind: "cover", serieLabel, turmaNome: "Geral da série" });
+      const seriePages = chunkPresentation19SlideQuestionRows(bloco.questoes);
+      seriePages.forEach((chunk, i) => {
+        out.push({
+          kind: "table",
+          chunk,
+          titulo: `Geral da série — ${serieLabel}`,
+          page: seriePages.length > 1 ? `${i + 1}/${seriePages.length}` : "",
+        });
+      });
+    }
+    for (const bloco of deckData.questoesPorTurma ?? []) {
+      const serieLabel = String(bloco.serieTurma ?? deckData.serie ?? "").trim() || "—";
+      out.push({ kind: "cover", serieLabel, turmaNome: bloco.turma });
+      const turmaPages = chunkPresentation19SlideQuestionRows(bloco.questoes);
+      turmaPages.forEach((chunk, i) => {
+        out.push({
+          kind: "table",
+          chunk,
+          titulo: bloco.turma,
+          page: turmaPages.length > 1 ? `${i + 1}/${turmaPages.length}` : "",
+        });
+      });
+    }
+    return out;
+  }, [deckData.questoesTabelaGeral, deckData.questoesPorSerie, deckData.questoesPorTurma, deckData.serie]);
+
+  const firstQuestionsSlideIndex = 20;
+  const thanksSlideIndex = firstQuestionsSlideIndex + questoesSlides.length;
 
   return (
     <div data-presentation19-root className="space-y-6">
@@ -322,22 +429,19 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
       <div data-slide-index={2}>
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
           <div className="h-full flex flex-col">
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-4xl font-black text-zinc-900">
-                  {deckData.escolasParticipantes.length <= 1
-                    ? deckData.escolasParticipantes[0] ?? "N/A"
-                    : deckData.escolasParticipantes[0]}
-                  {deckData.escolasParticipantes.length > 1 && (
-                    <span className="text-zinc-600 font-bold"> +{deckData.escolasParticipantes.length - 1}</span>
-                  )}
-                </div>
-
-                {deckData.escolasParticipantes.length > 1 && (
-                  <div className="mt-6 text-sm text-zinc-600">
-                    Participantes: {deckData.escolasParticipantes.slice(0, 6).join(", ")}
-                    {deckData.escolasParticipantes.length > 6 ? "..." : ""}
-                  </div>
+            <div className="flex-1 flex items-center justify-center min-h-0">
+              <div className="text-center w-full max-w-4xl px-2">
+                {deckData.escolasParticipantes.length <= 1 ? (
+                  <div className="text-4xl font-black text-zinc-900">{deckData.escolasParticipantes[0] ?? "N/A"}</div>
+                ) : (
+                  <>
+                    <div className="text-lg font-extrabold text-zinc-500 tracking-tight mb-3">ESCOLAS PARTICIPANTES</div>
+                    <ul className="text-left list-disc pl-6 space-y-1.5 text-xl font-black text-zinc-900 max-h-[min(360px,55vh)] overflow-y-auto">
+                      {deckData.escolasParticipantes.map((nome) => (
+                        <li key={nome}>{nome}</li>
+                      ))}
+                    </ul>
+                  </>
                 )}
               </div>
             </div>
@@ -380,10 +484,26 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                   <div className="text-sm text-zinc-500 font-semibold">SÉRIE</div>
                   <div className="text-3xl font-black">{deckData.serie}</div>
                 </div>
-                <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-6">
-                  <div className="text-sm text-zinc-500 font-semibold">TURMA</div>
-                  <div className="text-3xl font-black">{deckData.turma}</div>
-                </div>
+                {deckData.comparisonAxis !== "escola" ? (
+                  <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-6">
+                    <div className="text-sm text-zinc-500 font-semibold">
+                      {deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA"}
+                    </div>
+                    {deckData.turmasParticipantesCapa.length > 8 ? (
+                      <ul className="mt-2 list-disc pl-5 text-lg font-black space-y-1 max-h-64 overflow-y-auto">
+                        {deckData.turmasParticipantesCapa.map((t) => (
+                          <li key={t}>{t}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div
+                        className={`font-black mt-1 ${deckData.turma.length > 120 ? "text-lg leading-snug" : "text-3xl"}`}
+                      >
+                        {deckData.turma}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -398,11 +518,14 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
       <div data-slide-index={5}>
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
           <div className="h-full flex flex-col">
-            <SlideTitle title="TABELA DE PRESENÇA" primaryColor={deckData.primaryColor} />
+            <SlideTitle
+              title={presentationTitleTablePresence(deckData.comparisonAxis)}
+              primaryColor={deckData.primaryColor}
+            />
             <div className="mt-6 flex-1">
               <SimpleTable
                 columns={[
-                  "Série",
+                  comparisonColumnLabel(deckData.comparisonAxis),
                   "Total de Alunos",
                   "Total de Presentes",
                   "Presença Média (%)",
@@ -410,7 +533,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                 ]}
                 rows={presenceRows.map((r) => [
                   <span key="s" className="font-semibold">
-                    {r.serie}
+                    {r.label}
                   </span>,
                   r.totalAlunos,
                   r.totalPresentes,
@@ -428,11 +551,14 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
       <div data-slide-index={6}>
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
           <div className="h-full flex flex-col">
-            <SlideTitle title="GRÁFICO DE PRESENÇA" primaryColor={deckData.primaryColor} />
+            <SlideTitle
+              title={presentationTitleChartPresence(deckData.comparisonAxis)}
+              primaryColor={deckData.primaryColor}
+            />
             <div className="mt-6 flex-1">
               <BarChart width={980} height={520} data={presenceChartData} margin={P19_BAR_MARGIN}>
                 <CartesianGrid stroke="#94a3b8" strokeOpacity={0.55} strokeDasharray="3 3" />
-                <XAxis dataKey="serie" interval={0} {...p19XAxisProps(12)} />
+                <XAxis dataKey="label" interval={0} {...p19XAxisProps(12)} />
                 <YAxis
                   width={52}
                   domain={[0, presenceAxisMax]}
@@ -469,9 +595,9 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
-              <SlideTitle title="NÍVEIS DE APRENDIZAGEM" primaryColor={deckData.primaryColor} />
+              <SlideTitle title={presentationSectionLevels(deckData.comparisonAxis)} primaryColor={deckData.primaryColor} />
               <div className="mt-6 text-zinc-600 text-xl font-semibold">
-                Distribuição de alunos por nível e série
+                {presentationSectionLevelsTagline(deckData.comparisonAxis)}
               </div>
             </div>
           </div>
@@ -504,18 +630,23 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
       <div data-slide-index={9}>
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
           <div className="h-full flex flex-col">
-            <SlideTitle title="GRÁFICO DE NÍVEIS" primaryColor={deckData.primaryColor} />
-            <div className="mt-6 flex-1">
+            <SlideTitle title={presentationTitleChartLevels(deckData.comparisonAxis)} primaryColor={deckData.primaryColor} />
+            <div
+              className="mt-6 flex-1 min-h-0 rounded-2xl border-2 border-slate-300 bg-white p-5 shadow-xl"
+              style={{
+                boxShadow: `0 16px 40px rgba(15, 23, 42, 0.10), 0 0 0 1px ${hexToRgba(deckData.primaryColor, 0.12)}`,
+              }}
+            >
               <BarChart
-                width={980}
-                height={520}
+                width={940}
+                height={500}
                 data={levelsChartData}
                 layout="vertical"
-                margin={{ top: 16, right: 52, bottom: 40, left: 24 }}
+                margin={{ top: 10, right: 36, bottom: 34, left: 10 }}
               >
                 <CartesianGrid
-                  stroke="#94a3b8"
-                  strokeOpacity={0.55}
+                  stroke="#64748b"
+                  strokeOpacity={0.40}
                   strokeDasharray="3 3"
                   horizontal={false}
                   vertical
@@ -524,20 +655,26 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                   type="number"
                   domain={[0, levelsAxisMax]}
                   ticks={linearTicks(0, levelsAxisMax, 4)}
-                  tick={{ fontSize: 12, fill: "#334155" }}
+                  tick={{ fontSize: 12, fill: "#0f172a", fontWeight: 600 }}
                   tickLine={false}
                   tickMargin={10}
-                  axisLine={{ stroke: "#64748b" }}
+                  axisLine={{ stroke: "#475569", strokeWidth: 1.5 }}
                 />
                 <YAxis
                   type="category"
                   dataKey="nivel"
-                  width={172}
-                  tick={{ fontSize: 11, fill: "#334155" }}
+                  width={200}
+                  tick={{ fontSize: 11, fill: "#0f172a", fontWeight: 700 }}
                   tickLine={false}
                   axisLine={false}
                 />
-                <Tooltip />
+                <Tooltip
+                  contentStyle={{
+                    borderWidth: 2,
+                    borderColor: hexToRgba(deckData.primaryColor, 0.35),
+                    fontWeight: 600,
+                  }}
+                />
                 <Bar dataKey="valor" barSize={28} radius={[0, 8, 8, 0]}>
                   {levelsChartData.map((entry, idx) => (
                     <Cell key={`cell-${idx}`} fill={entry.color} />
@@ -559,18 +696,26 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
       <div data-slide-index={10}>
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
           <div className="h-full flex flex-col">
-            <SlideTitle title="TABELA DE NÍVEIS" primaryColor={deckData.primaryColor} />
+            <SlideTitle title={presentationTitleTableLevels(deckData.comparisonAxis)} primaryColor={deckData.primaryColor} />
             <div className="mt-6 flex-1">
               <SimpleTable
-                columns={["Série", "Abaixo do Básico", "Básico", "Adequado", "Avançado"]}
+                columns={[
+                  comparisonColumnLabel(deckData.comparisonAxis),
+                  "Abaixo do Básico",
+                  "Básico",
+                  "Adequado",
+                  "Avançado",
+                  "Total",
+                ]}
                 rows={niveisRows.map((r) => [
                   <span key="s" className="font-semibold">
-                    {r.serie}
+                    {r.label}
                   </span>,
                   r.abaixoDoBasico,
                   r.basico,
                   r.adequado,
                   r.avancado,
+                  r.total,
                 ])}
                 accentColor={deckData.primaryColor}
               />
@@ -584,9 +729,9 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
-              <SlideTitle title="PROFICIÊNCIAS" primaryColor={deckData.primaryColor} />
+              <SlideTitle title={presentationSectionProficiency(deckData.comparisonAxis)} primaryColor={deckData.primaryColor} />
               <div className="mt-6 text-zinc-600 text-xl font-semibold">
-                Proficiência geral e por disciplina
+                {presentationSectionProficiencyTagline(deckData.comparisonAxis)}
               </div>
             </div>
           </div>
@@ -597,11 +742,14 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
       <div data-slide-index={12}>
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
           <div className="h-full flex flex-col">
-            <SlideTitle title="PROFICIÊNCIA GERAL POR TURMA" primaryColor={deckData.primaryColor} />
+            <SlideTitle
+              title={presentationTitleProficiencyGeneralChart(deckData.comparisonAxis)}
+              primaryColor={deckData.primaryColor}
+            />
             <div className="mt-6 flex-1">
               <BarChart width={980} height={520} data={profGeneralData} margin={P19_BAR_MARGIN}>
                 <CartesianGrid stroke="#94a3b8" strokeOpacity={0.55} strokeDasharray="3 3" />
-                <XAxis dataKey="turma" interval={0} {...p19XAxisProps(12)} />
+                <XAxis dataKey="label" interval={0} {...p19XAxisProps(12)} />
                 <YAxis
                   width={52}
                   domain={[0, generalProfAxisMax]}
@@ -628,7 +776,10 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
       <div data-slide-index={13}>
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
           <div className="h-full flex flex-col">
-            <SlideTitle title="PROFICIÊNCIA POR DISCIPLINA POR TURMA" primaryColor={deckData.primaryColor} />
+            <SlideTitle
+              title={presentationTitleProficiencyByDiscipline(deckData.comparisonAxis)}
+              primaryColor={deckData.primaryColor}
+            />
             <div className="mt-4 flex-1 grid grid-cols-2 gap-3">
               {profByDiscSeparate.map((disc) => {
                 const paletteIndex = getSubjectPaletteIndex(disc.disciplina, disc.disciplina);
@@ -705,61 +856,10 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
       {/* Slide 14 */}
       <div data-slide-index={14}>
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
-          <div className="h-full flex flex-col">
-            <SlideTitle title="TABELA DE PROJEÇÃO" primaryColor={deckData.primaryColor} />
-            <div className="mt-6 flex-1">
-              <div className="rounded-2xl overflow-hidden border border-zinc-300">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="bg-zinc-100">
-                      <th
-                        colSpan={2}
-                        className="border-b border-zinc-300 px-3 py-2 text-left text-sm font-extrabold text-zinc-700"
-                      >
-                        Bloco Disciplina
-                      </th>
-                      <th
-                        colSpan={2}
-                        className="border-b border-l-2 border-zinc-400 px-3 py-2 text-left text-sm font-extrabold text-zinc-700"
-                      >
-                        Bloco Geral
-                      </th>
-                    </tr>
-                    <tr className="bg-zinc-50">
-                      <th className="border-b border-zinc-300 px-3 py-2 text-left text-sm font-semibold text-zinc-700">
-                        Proficiência da Disciplina
-                      </th>
-                      <th className="border-b border-zinc-300 px-3 py-2 text-left text-sm font-semibold text-zinc-700">
-                        Projeção +20% (teto)
-                      </th>
-                      <th className="border-b border-l-2 border-zinc-400 px-3 py-2 text-left text-sm font-semibold text-zinc-700">
-                        Proficiência Geral
-                      </th>
-                      <th className="border-b border-zinc-300 px-3 py-2 text-left text-sm font-semibold text-zinc-700">
-                        Projeção Geral +20% (teto)
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {deckData.projeccaoTabela.map((r, idx) => (
-                      <tr key={`${r.disciplina}-${idx}`} className={idx % 2 === 0 ? "bg-white" : "bg-zinc-50/60"}>
-                        <td className="border-b border-zinc-300 px-3 py-2 text-sm text-zinc-800">
-                          {r.disciplina}: {r.proficienciaDisciplina.toFixed(1)}
-                        </td>
-                        <td className="border-b border-zinc-300 px-3 py-2 text-sm text-zinc-800 font-semibold">
-                          {r.projPlus20Disciplina.toFixed(1)}
-                        </td>
-                        <td className="border-b border-l-2 border-zinc-400 px-3 py-2 text-sm text-zinc-800">
-                          {r.proficienciaGeral.toFixed(1)}
-                        </td>
-                        <td className="border-b border-zinc-300 px-3 py-2 text-sm text-zinc-800 font-semibold">
-                          {r.projPlus20Geral.toFixed(1)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          <div className="h-full flex flex-col items-center justify-center text-center gap-4">
+            <SlideTitle title={presentationSectionGrades(deckData.comparisonAxis)} primaryColor={deckData.primaryColor} />
+            <div className="text-zinc-600 text-xl font-semibold max-w-3xl">
+              {presentationSectionGradesTagline(deckData.comparisonAxis)}
             </div>
           </div>
         </SlideFrame>
@@ -768,12 +868,39 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
       {/* Slide 15 */}
       <div data-slide-index={15}>
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center">
-              <SlideTitle title="QUESTÕES" primaryColor={deckData.primaryColor} />
-              <div className="mt-6 text-zinc-600 text-xl font-semibold">
-                Análise por habilidade e percentual de acerto
-              </div>
+          <div className="h-full flex flex-col">
+            <SlideTitle title={presentationTitleTableGrades(deckData.comparisonAxis)} primaryColor={deckData.primaryColor} />
+            <div className="mt-6 flex-1">
+              <SimpleTable
+                columns={["Escopo", "Média da nota"]}
+                rows={(() => {
+                  const out: Array<Array<string | number>> = [];
+                  const medLabel = multiSchool ? "Média municipal" : "Média geral";
+                  const mm = deckData.notaMediaMunicipalPorDisciplinaRelatorio;
+                  const notaMunGeral =
+                    multiSchool && mm
+                      ? (() => {
+                          if (mm.GERAL != null && Number.isFinite(Number(mm.GERAL))) return Number(mm.GERAL);
+                          const e = Object.entries(mm).find(([k]) => k.trim().toUpperCase() === "GERAL");
+                          return e != null && Number.isFinite(Number(e[1])) ? Number(e[1]) : null;
+                        })() ?? deckData.mediaNotaGeral
+                      : deckData.mediaNotaGeral;
+                  if (notaMunGeral != null && Number.isFinite(notaMunGeral)) {
+                    out.push([medLabel, notaMunGeral.toFixed(1).replace(".", ",")]);
+                  }
+                  if (!multiSchool) {
+                    for (const d of deckData.notasPorDisciplina) {
+                      out.push([d.disciplina, Number(d.mediaNota).toFixed(1).replace(".", ",")]);
+                    }
+                  }
+                  for (const c of deckData.notasPorCategoria) {
+                    out.push([c.label, Number(c.mediaNota).toFixed(1).replace(".", ",")]);
+                  }
+                  if (out.length === 0) out.push(["—", "Sem dados de nota"]);
+                  return out;
+                })()}
+                accentColor={deckData.primaryColor}
+              />
             </div>
           </div>
         </SlideFrame>
@@ -781,6 +908,54 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
 
       {/* Slide 16 */}
       <div data-slide-index={16}>
+        <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
+          <div className="h-full flex flex-col">
+            <SlideTitle title={presentationTitleChartGrades(deckData.comparisonAxis)} primaryColor={deckData.primaryColor} />
+            <div className="mt-6 flex-1">
+              <BarChart width={980} height={520} data={gradesChartData} margin={P19_BAR_MARGIN}>
+                <CartesianGrid stroke="#94a3b8" strokeOpacity={0.55} strokeDasharray="3 3" />
+                <XAxis dataKey="escopo" interval={0} {...p19XAxisProps(12)} />
+                <YAxis
+                  width={52}
+                  domain={[0, gradesAxisMax]}
+                  ticks={linearTicks(0, gradesAxisMax, 4)}
+                  padding={{ top: 0, bottom: 0 }}
+                  tick={{ fontSize: 12, fill: "#334155" }}
+                />
+                <Tooltip wrapperStyle={{ borderRadius: 10, overflow: "hidden" }} />
+                <Bar dataKey="nota" radius={[8, 8, 0, 0]}>
+                  {gradesChartData.map((entry, idx) => (
+                    <Cell key={`grade-${idx}`} fill={entry.fill} />
+                  ))}
+                  <LabelList
+                    dataKey="nota"
+                    position="top"
+                    formatter={(v: number) => Number(v).toFixed(1).replace(".", ",")}
+                    style={{ fontSize: 11, fill: "#0f172a", fontWeight: 700 }}
+                  />
+                </Bar>
+              </BarChart>
+            </div>
+          </div>
+        </SlideFrame>
+      </div>
+
+      {/* Slide 17 */}
+      <div data-slide-index={17}>
+        <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center">
+              <SlideTitle title={presentationSectionQuestionsTitle()} primaryColor={deckData.primaryColor} />
+              <div className="mt-6 text-zinc-600 text-xl font-semibold">
+                {presentationSectionQuestionsTagline()}
+              </div>
+            </div>
+          </div>
+        </SlideFrame>
+      </div>
+
+      {/* Slide 18 */}
+      <div data-slide-index={18}>
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
@@ -792,8 +967,8 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
         </SlideFrame>
       </div>
 
-      {/* Slide 17 */}
-      <div data-slide-index={17}>
+      {/* Slide 19 */}
+      <div data-slide-index={19}>
         <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
@@ -805,31 +980,46 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
         </SlideFrame>
       </div>
 
-      {/* Slide 18+ (15 questões por página; da 16ª em diante nova página) */}
-      {questoesChunks.map((questoesPage, pageIdx) => (
-        <div key={`questions-page-${pageIdx}`} data-slide-index={firstQuestionsSlideIndex + pageIdx}>
+      {/* Slide 20+ (15 questões por página): Geral, depois capa + páginas por turma */}
+      {questoesSlides.map((slide, pageIdx) => (
+        <div
+          key={slide.kind === "cover" ? `questions-cover-${slide.turmaNome}-${pageIdx}` : `questions-${slide.titulo}-${pageIdx}`}
+          data-slide-index={firstQuestionsSlideIndex + pageIdx}
+        >
           <SlideFrame primaryColor={deckData.primaryColor} logoDataUrl={deckData.logoDataUrl}>
-            <div className="h-full flex flex-col">
-              <div className="flex items-center justify-between">
-                <SlideTitle title="TABELA DE QUESTÕES" primaryColor={deckData.primaryColor} />
-                {questoesChunks.length > 1 && (
-                  <div className="text-sm font-semibold text-zinc-600">
-                    Página {pageIdx + 1}/{questoesChunks.length}
-                  </div>
-                )}
+            {slide.kind === "cover" ? (
+              <div className="h-full flex items-center justify-center px-10 text-center">
+                <div
+                  className="max-w-5xl text-3xl sm:text-4xl font-black leading-snug break-words"
+                  style={{ color: deckData.primaryColor }}
+                >
+                  {presentationQuestionsTurmaCoverLine(slide.serieLabel, slide.turmaNome)}
+                </div>
               </div>
-              <div className="mt-6 flex-1">
-                <SimpleTable
-                  columns={["Questão", "Habilidade", "% Acertos"]}
-                  rows={questoesPage.map((q) => [
-                    q.questao,
-                    q.habilidade,
-                    `${q.percentualAcertos.toFixed(1).replace(".", ",")}%`,
-                  ])}
-                  accentColor={deckData.primaryColor}
-                />
+            ) : (
+              <div className="h-full flex flex-col">
+                <div className="flex items-center justify-between gap-2">
+                  <SlideTitle
+                    title={`TABELA DE QUESTÕES — ${slide.titulo === "Geral" ? "Geral" : `Turma ${slide.titulo}`}`}
+                    primaryColor={deckData.primaryColor}
+                  />
+                  {slide.page !== "" && (
+                    <div className="text-sm font-semibold text-zinc-600 shrink-0">Página {slide.page}</div>
+                  )}
+                </div>
+                <div className="mt-6 flex-1">
+                  <SimpleTable
+                    columns={["Questão", "Habilidade", "% Acertos"]}
+                    rows={slide.chunk.map((q) => [
+                      q.questao,
+                      q.habilidade,
+                      `${q.percentualAcertos.toFixed(1).replace(".", ",")}%`,
+                    ])}
+                    accentColor={deckData.primaryColor}
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </SlideFrame>
         </div>
       ))}

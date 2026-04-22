@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
+import { urlToPngAsset } from "@/utils/pdfCityBranding";
 import { 
   FileText, 
   FileSpreadsheet, 
@@ -289,8 +290,7 @@ export function DetailedEvaluationReport({ evaluationId, onBack }: DetailedEvalu
           <h1 style="color: #1f2937; margin-bottom: 10px;">Relatório Detalhado da Avaliação</h1>
           <h2 style="color: #374151; margin-bottom: 5px;">${reportData.evaluation.title}</h2>
           <p style="color: #6b7280; margin: 0;">
-            ${reportData.evaluation.subject} • ${reportData.evaluation.totalQuestions} questões • 
-            Gerado em ${new Date().toLocaleDateString('pt-BR')}
+            ${reportData.evaluation.subject} • ${reportData.evaluation.totalQuestions} questões
           </p>
         </div>
         
@@ -426,16 +426,122 @@ export function DetailedEvaluationReport({ evaluationId, onBack }: DetailedEvalu
       let heightLeft = imgHeight;
       
       let position = 0;
-      
-      // Adicionar primeira página
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+
+      const COLORS = {
+        primary: [124, 62, 237] as [number, number, number],
+        textDark: [31, 41, 55] as [number, number, number],
+        textGray: [107, 114, 128] as [number, number, number],
+        borderLight: [229, 231, 235] as [number, number, number],
+        bgLight: [250, 250, 250] as [number, number, number],
+        white: [255, 255, 255] as [number, number, number],
+      };
+
+      const logoAsset = await urlToPngAsset('/LOGO-1.png');
+      const icoAsset = await urlToPngAsset('/AFIRME-PLAY-ico.png');
+
+      const drawCover = () => {
+        const pageW = pdf.internal.pageSize.getWidth();
+        const pageH = pdf.internal.pageSize.getHeight();
+        const centerX = pageW / 2;
+        const margin = 15;
+        const BAND_H = 58;
+
+        pdf.setFillColor(...COLORS.white);
+        pdf.rect(0, 0, pageW, pageH, 'F');
+        pdf.setFillColor(...COLORS.primary);
+        pdf.rect(0, 0, pageW, BAND_H, 'F');
+
+        let logoBottom = 0;
+        if (logoAsset?.dataUrl && logoAsset.iw > 0 && logoAsset.ih > 0) {
+          const desiredW = 38;
+          const desiredH = (logoAsset.ih * desiredW) / logoAsset.iw;
+          pdf.addImage(logoAsset.dataUrl, 'PNG', centerX - desiredW / 2, 7, desiredW, desiredH);
+          logoBottom = 7 + desiredH;
+        } else {
+          pdf.setFontSize(18);
+          pdf.setTextColor(...COLORS.white);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text('AFIRME PLAY', centerX, 22, { align: 'center' });
+          logoBottom = 28;
+        }
+
+        const titleY = Math.max(logoBottom + 5, BAND_H - 17);
+        pdf.setTextColor(...COLORS.white);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(17);
+        pdf.text('RELATÓRIO DETALHADO', centerX, titleY, { align: 'center' });
+        pdf.setFontSize(11);
+        pdf.text(String(reportData.evaluation.title || '').toUpperCase(), centerX, titleY + 8, { align: 'center' });
+
+        let y = BAND_H + 18;
+        const cardW = pageW - 40;
+        const cardX = (pageW - cardW) / 2;
+        const cardH = 60;
+        const ACCENT_W = 4;
+        pdf.setFillColor(...COLORS.bgLight);
+        pdf.rect(cardX, y, cardW, cardH, 'F');
+        pdf.setFillColor(...COLORS.primary);
+        pdf.rect(cardX, y, ACCENT_W, cardH, 'F');
+        pdf.setDrawColor(...COLORS.borderLight);
+        pdf.setLineWidth(0.4);
+        pdf.rect(cardX, y, cardW, cardH, 'S');
+
+        let cy = y + 12;
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(10);
+        pdf.setTextColor(...COLORS.primary);
+        pdf.text('INFORMAÇÕES', cardX + ACCENT_W + (cardW - ACCENT_W) / 2, cy, { align: 'center' });
+        cy += 6;
+        pdf.setDrawColor(...COLORS.borderLight);
+        pdf.setLineWidth(0.3);
+        pdf.line(cardX + ACCENT_W + 4, cy, cardX + cardW - 4, cy);
+        cy += 10;
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9);
+        pdf.setTextColor(...COLORS.textDark);
+        const generatedAt = new Date().toLocaleDateString('pt-BR');
+        pdf.text(`Disciplina: ${reportData.evaluation.subject}`, cardX + ACCENT_W + 10, cy);
+        cy += 7;
+        pdf.text(`Questões: ${reportData.evaluation.totalQuestions}`, cardX + ACCENT_W + 10, cy);
+      };
+
+      const drawInternalHeader = (title: string) => {
+        const pageW = pdf.internal.pageSize.getWidth();
+        const margin = 15;
+        const BAND_H = 20;
+        pdf.setFillColor(...COLORS.primary);
+        pdf.rect(0, 0, pageW, BAND_H, 'F');
+        if (icoAsset?.dataUrl && icoAsset.iw > 0 && icoAsset.ih > 0) {
+          const icoH = 14;
+          const icoW = (icoAsset.iw * icoH) / icoAsset.ih;
+          pdf.addImage(icoAsset.dataUrl, 'PNG', margin, (BAND_H - icoH) / 2, icoW, icoH);
+        } else {
+          pdf.setFontSize(8);
+          pdf.setTextColor(...COLORS.white);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text('AFIRME PLAY', margin, BAND_H / 2 + 2);
+        }
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(11);
+        pdf.setTextColor(...COLORS.white);
+        pdf.text(title, pageW - margin, BAND_H / 2 + 2, { align: 'right' });
+      };
+
+      // Capa
+      drawCover();
+      pdf.addPage();
+
+      // Conteúdo recortado
+      drawInternalHeader('RELATÓRIO DETALHADO');
+      const headerOffset = 20;
+      pdf.addImage(imgData, 'PNG', 0, position + headerOffset, imgWidth, imgHeight);
       heightLeft -= pageHeight;
-      
-      // Adicionar páginas adicionais se necessário
       while (heightLeft >= 0) {
         position = heightLeft - imgHeight;
         pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        drawInternalHeader('RELATÓRIO DETALHADO');
+        pdf.addImage(imgData, 'PNG', 0, position + headerOffset, imgWidth, imgHeight);
         heightLeft -= pageHeight;
       }
       

@@ -8,12 +8,14 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { ClipboardList, Filter, Loader2, Printer } from 'lucide-react';
 import { api } from '@/lib/api';
-import { DashboardApiService } from '@/services/dashboardApi';
 import { FormFiltersApiService } from '@/services/formFiltersApi';
+import { EvaluationResultsApiService, REPORT_ENTITY_TYPE_ANSWER_SHEET } from '@/services/evaluation/evaluationResultsApi';
 import {
   getListaFrequencia,
   getListaFrequenciaPorAvaliacao,
   getListaFrequenciaPorAvaliacaoTodasTurmas,
+  getListaFrequenciaPorGabarito,
+  getListaFrequenciaPorGabaritoTodasTurmas,
 } from '@/services/listaFrequenciaApi';
 import type {
   ListaFrequenciaResponse,
@@ -110,17 +112,21 @@ export default function ListaFrequencia() {
   const [error, setError] = useState<string | null>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
-  const [modoLista, setModoLista] = useState<'turma' | 'avaliacao'>('turma');
+  const [modoLista, setModoLista] = useState<'turma' | 'avaliacao' | 'cartao_resposta'>('turma');
   const [avaliacoes, setAvaliacoes] = useState<{ id: string; titulo: string }[]>([]);
   const [selectedAvaliacaoId, setSelectedAvaliacaoId] = useState('all');
   const [isLoadingAvaliacoes, setIsLoadingAvaliacoes] = useState(false);
-  /** Turmas vinculadas à avaliação selecionada (GET /test/:id/classes). No modo avaliação, o dropdown usa esta lista para mostrar todas as turmas da série aplicadas. */
+  /** Turmas vinculadas à avaliação/cartão selecionado (GET /test/:id/classes ou opções cartão resposta). */
   const [turmasAvaliacao, setTurmasAvaliacao] = useState<{ id: string; name: string }[]>([]);
   const [isLoadingTurmasAvaliacao, setIsLoadingTurmasAvaliacao] = useState(false);
   /** Só exibir ausência (A) quando a prova já tiver expirado. Por turma = null (não aplicável). */
   const [provaExpirada, setProvaExpirada] = useState<boolean | null>(null);
   /** Nome da avaliação customizado para impressão/PDF (editável antes de imprimir). */
   const [nomeAvaliacaoImpressao, setNomeAvaliacaoImpressao] = useState('');
+
+  const isModoAplicada = modoLista === 'avaliacao' || modoLista === 'cartao_resposta';
+  const tipoListaAplicada = modoLista === 'cartao_resposta' ? 'prova_fisica' : 'avaliacao';
+  const labelItemAplicado = modoLista === 'cartao_resposta' ? 'Cartão resposta' : 'Avaliação';
 
   // Carregar estados
   useEffect(() => {
@@ -292,22 +298,33 @@ export default function ListaFrequencia() {
   }, [selectedSerie, selectedSchool, selectedMunicipio, selectedEstado]);
 
   useEffect(() => {
-    if (modoLista !== 'avaliacao') return;
-    // Só carrega avaliações após selecionar escola e série
-    if (!selectedSchool || selectedSchool === 'all' || !selectedSerie || selectedSerie === 'all') {
+    if (!isModoAplicada) return;
+    // Só carrega opções após selecionar contexto completo (estado/município/escola/série)
+    if (
+      !selectedEstado ||
+      selectedEstado === 'all' ||
+      !selectedMunicipio ||
+      selectedMunicipio === 'all' ||
+      !selectedSchool ||
+      selectedSchool === 'all' ||
+      !selectedSerie ||
+      selectedSerie === 'all'
+    ) {
       setAvaliacoes([]);
       setSelectedAvaliacaoId('all');
       return;
     }
     let cancelled = false;
     setIsLoadingAvaliacoes(true);
-    DashboardApiService.getAvaliacoesRecentes(50)
-      .then((data) => {
-        if (cancelled || !data?.avaliacoes) return;
-        // Filtra avaliações por escola/série se possível (aqui carregamos todas; idealmente o backend filtraria)
-        setAvaliacoes(
-          data.avaliacoes.map((a) => ({ id: a.avaliacao_id, titulo: a.titulo || a.avaliacao_id }))
-        );
+    EvaluationResultsApiService.getFilterEvaluations({
+      estado: selectedEstado,
+      municipio: selectedMunicipio,
+      escola: selectedSchool,
+      ...(modoLista === 'cartao_resposta' ? { report_entity_type: REPORT_ENTITY_TYPE_ANSWER_SHEET } : {}),
+    })
+      .then((items) => {
+        if (cancelled) return;
+        setAvaliacoes((items ?? []).map((a) => ({ id: a.id, titulo: a.titulo || a.id })));
       })
       .catch(() => {
         if (!cancelled) setAvaliacoes([]);
@@ -318,14 +335,59 @@ export default function ListaFrequencia() {
     return () => {
       cancelled = true;
     };
-  }, [modoLista, selectedSchool, selectedSerie]);
+  }, [isModoAplicada, modoLista, selectedEstado, selectedMunicipio, selectedSchool, selectedSerie]);
 
-  // No modo avaliação: ao selecionar uma avaliação, carregar as turmas vinculadas a ela (todas as turmas da série aplicadas)
+  // Modo avaliação: turmas via GET /test/:id/classes. Modo cartão resposta: turmas via filtros de gabarito (answer_sheet).
   useEffect(() => {
-    if (modoLista !== 'avaliacao' || !selectedAvaliacaoId || selectedAvaliacaoId === 'all') {
+    if (!isModoAplicada || !selectedAvaliacaoId || selectedAvaliacaoId === 'all') {
       setTurmasAvaliacao([]);
       setSelectedTurma('all');
       return;
+    }
+    if (modoLista === 'cartao_resposta') {
+      if (
+        !selectedEstado ||
+        selectedEstado === 'all' ||
+        !selectedMunicipio ||
+        selectedMunicipio === 'all' ||
+        !selectedSchool ||
+        selectedSchool === 'all' ||
+        !selectedSerie ||
+        selectedSerie === 'all'
+      ) {
+        setTurmasAvaliacao([]);
+        setSelectedTurma('all');
+        return;
+      }
+      let cancelled = false;
+      setIsLoadingTurmasAvaliacao(true);
+      EvaluationResultsApiService.getFilterClassesByEvaluation({
+        estado: selectedEstado,
+        municipio: selectedMunicipio,
+        avaliacao: selectedAvaliacaoId,
+        escola: selectedSchool,
+        serie: selectedSerie,
+        report_entity_type: REPORT_ENTITY_TYPE_ANSWER_SHEET,
+      })
+        .then((list) => {
+          if (cancelled) return;
+          const mapped = (list ?? []).map((t) => ({
+            id: t.id,
+            name: t.nome || t.id,
+          }));
+          setTurmasAvaliacao(mapped);
+          const stillExists = selectedTurma === 'all' || mapped.some((x) => x.id === selectedTurma);
+          if (!stillExists) setSelectedTurma('all');
+        })
+        .catch(() => {
+          if (!cancelled) setTurmasAvaliacao([]);
+        })
+        .finally(() => {
+          if (!cancelled) setIsLoadingTurmasAvaliacao(false);
+        });
+      return () => {
+        cancelled = true;
+      };
     }
     let cancelled = false;
     setIsLoadingTurmasAvaliacao(true);
@@ -357,12 +419,24 @@ export default function ListaFrequencia() {
     return () => {
       cancelled = true;
     };
-  }, [modoLista, selectedAvaliacaoId]);
+  }, [
+    isModoAplicada,
+    modoLista,
+    selectedAvaliacaoId,
+    selectedEstado,
+    selectedMunicipio,
+    selectedSchool,
+    selectedSerie,
+  ]);
 
-  // Quando a lista é por avaliação, verificar se a prova já expirou (para exibir ou não ausência)
+  // Por avaliação online: expiração da prova. Por cartão resposta: P/A já vêm dos resultados — exibir coluna A normalmente.
   useEffect(() => {
-    if (modoLista !== 'avaliacao') {
+    if (!isModoAplicada) {
       setProvaExpirada(null);
+      return;
+    }
+    if (modoLista === 'cartao_resposta') {
+      setProvaExpirada(true);
       return;
     }
     if (!data?.length || !selectedAvaliacaoId || selectedAvaliacaoId === 'all') {
@@ -389,7 +463,7 @@ export default function ListaFrequencia() {
       }
     })();
     return () => { cancelled = true; };
-  }, [modoLista, data, selectedAvaliacaoId]);
+  }, [isModoAplicada, modoLista, data, selectedAvaliacaoId]);
 
   // Preencher o nome da avaliação para impressão quando a lista for carregada
   useEffect(() => {
@@ -404,22 +478,44 @@ export default function ListaFrequencia() {
     setError(null);
     setIsLoadingLista(true);
     try {
-      if (modoLista === 'avaliacao') {
+      if (isModoAplicada) {
         if (!selectedAvaliacaoId || selectedAvaliacaoId === 'all') {
-          setError('Selecione a avaliação.');
-          toast({ title: 'Aviso', description: 'Selecione a avaliação.', variant: 'destructive' });
+          setError(`Selecione o(a) ${labelItemAplicado.toLowerCase()}.`);
+          toast({ title: 'Aviso', description: `Selecione o(a) ${labelItemAplicado.toLowerCase()}.`, variant: 'destructive' });
           return;
         }
         const classId =
           selectedTurma && selectedTurma !== 'all' ? selectedTurma : undefined;
-        if (classId) {
-          const res = await getListaFrequenciaPorAvaliacao(selectedAvaliacaoId, classId);
+        if (modoLista === 'cartao_resposta') {
+          if (!selectedMunicipio || selectedMunicipio === 'all') {
+            setError('Selecione o município.');
+            toast({ title: 'Aviso', description: 'Selecione o município para gerar a lista de cartão resposta.', variant: 'destructive' });
+            return;
+          }
+          if (classId) {
+            const res = await getListaFrequenciaPorGabarito(
+              selectedAvaliacaoId,
+              selectedMunicipio,
+              classId,
+              { tipo: tipoListaAplicada }
+            );
+            setData([res]);
+          } else {
+            const gradeId = selectedSerie && selectedSerie !== 'all' ? selectedSerie : undefined;
+            const results = await getListaFrequenciaPorGabaritoTodasTurmas(selectedAvaliacaoId, selectedMunicipio, {
+              grade_id: gradeId,
+              tipo: tipoListaAplicada,
+            });
+            setData(results.length > 0 ? results : null);
+          }
+        } else if (classId) {
+          const res = await getListaFrequenciaPorAvaliacao(selectedAvaliacaoId, classId, { tipo: tipoListaAplicada });
           setData([res]);
         } else {
-          // Todas as turmas: uma única chamada GET /lista-frequencia/?test_id=... (resposta { turmas: [...] })
           const gradeId = selectedSerie && selectedSerie !== 'all' ? selectedSerie : undefined;
           const results = await getListaFrequenciaPorAvaliacaoTodasTurmas(selectedAvaliacaoId, {
             grade_id: gradeId,
+            tipo: tipoListaAplicada,
           });
           setData(results.length > 0 ? results : null);
         }
@@ -453,7 +549,9 @@ export default function ListaFrequencia() {
       const ax = err as { response?: { status?: number; data?: { erro?: string } } };
       const msg =
         ax.response?.data?.erro ||
-        (ax.response?.status === 404 ? (modoLista === 'avaliacao' ? 'Avaliação ou turma não encontrada.' : 'Turma não encontrada') : 'Não foi possível carregar a lista de frequência.') ||
+        (ax.response?.status === 404
+          ? (isModoAplicada ? `${labelItemAplicado} ou turma não encontrada.` : 'Turma não encontrada')
+          : 'Não foi possível carregar a lista de frequência.') ||
         (ax.response?.status === 400 ? 'Informe a turma (class_id) quando a avaliação tiver várias turmas.' : 'Não foi possível carregar a lista de frequência.');
       setError(msg);
       setData(null);
@@ -672,7 +770,7 @@ export default function ListaFrequencia() {
             Lista de Frequência
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base">
-            Gere listas por turma (status vazios) ou por avaliação já aplicada (P/A conforme sessões).
+            Gere listas por turma (status vazios), por avaliação aplicada ou por cartão resposta (P/A conforme sessões).
           </p>
         </div>
       </div>
@@ -689,20 +787,21 @@ export default function ListaFrequencia() {
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Modo</label>
-              <Select value={modoLista} onValueChange={(v) => setModoLista(v as 'turma' | 'avaliacao')}>
+              <Select value={modoLista} onValueChange={(v) => setModoLista(v as 'turma' | 'avaliacao' | 'cartao_resposta')}>
                 <SelectTrigger className="max-w-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="turma">Por turma (Estado → Escola → Série → Turma)</SelectItem>
                   <SelectItem value="avaliacao">Por avaliação aplicada</SelectItem>
+                  <SelectItem value="cartao_resposta">Por cartão resposta</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {modoLista === 'avaliacao' && (
+            {isModoAplicada && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">Avaliação</label>
+                <label className="text-sm font-medium">{labelItemAplicado}</label>
                 <Select
                   value={selectedAvaliacaoId}
                   onValueChange={setSelectedAvaliacaoId}
@@ -721,12 +820,12 @@ export default function ListaFrequencia() {
                           ? 'Selecione a escola primeiro'
                           : !selectedSerie || selectedSerie === 'all'
                           ? 'Selecione a série primeiro'
-                          : 'Selecione a avaliação'
+                          : `Selecione o(a) ${labelItemAplicado.toLowerCase()}`
                       }
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Selecione a avaliação</SelectItem>
+                    <SelectItem value="all">{`Selecione o(a) ${labelItemAplicado.toLowerCase()}`}</SelectItem>
                     {avaliacoes.map((a) => (
                       <SelectItem key={a.id} value={a.id}>
                         {a.titulo}
@@ -823,7 +922,7 @@ export default function ListaFrequencia() {
                 value={selectedTurma}
                 onValueChange={setSelectedTurma}
                 disabled={
-                  modoLista === 'avaliacao' && turmasAvaliacao.length > 0
+                  isModoAplicada && turmasAvaliacao.length > 0
                     ? isLoadingTurmasAvaliacao
                     : !selectedSerie || selectedSerie === 'all' || isLoadingTurmas
                 }
@@ -833,7 +932,7 @@ export default function ListaFrequencia() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  {(modoLista === 'avaliacao' && turmasAvaliacao.length > 0 ? turmasAvaliacao : turmas).map((t) => (
+                  {(isModoAplicada && turmasAvaliacao.length > 0 ? turmasAvaliacao : turmas).map((t) => (
                     <SelectItem key={t.id} value={t.id}>
                       {t.name}
                     </SelectItem>
@@ -847,7 +946,7 @@ export default function ListaFrequencia() {
               onClick={handleGerarLista}
               disabled={
                 isLoadingLista ||
-                (modoLista === 'avaliacao'
+                (isModoAplicada
                   ? !selectedAvaliacaoId || selectedAvaliacaoId === 'all'
                   : !selectedSchool || selectedSchool === 'all')
               }
@@ -865,7 +964,7 @@ export default function ListaFrequencia() {
           <p className="text-sm text-muted-foreground mt-3">
             {modoLista === 'turma'
               ? 'Hierarquia: Estado → Município → Escola → Série → Turma. Selecione a escola para gerar por turma, por série ou pela escola inteira.'
-              : 'Selecione Escola e Série primeiro, depois escolha a Avaliação. Se houver várias turmas, escolha a turma específica.'}
+              : `Selecione Escola e Série primeiro, depois escolha o(a) ${labelItemAplicado}. Se houver várias turmas, escolha a turma específica.`}
           </p>
           </div>
         </CardContent>
