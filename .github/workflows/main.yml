@@ -3,30 +3,12 @@ name: Frontend Pipeline
 on:
     push:
         branches:
-            - dev
+            - main
     workflow_dispatch:
 
 jobs:
-    build:
+    deploy:
         runs-on: [self-hosted, vps-artur]
-
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
-
-            - name: Get Version
-              run: |
-                  VERSION=$(cat VERSION)
-                  echo "VERSION=${VERSION}" >> $GITHUB_ENV
-
-            - name: Build Images
-              run: |
-                  docker build -t afirmeplay/afirmeplay-frontend:v${{ env.VERSION }} .
-                  docker build -t afirmeplay/afirmeplay-frontend:latest .
-
-    push:
-        runs-on: [self-hosted, vps-artur]
-        needs: [build]
         steps:
             - name: Checkout
               uses: actions/checkout@v4
@@ -42,24 +24,7 @@ jobs:
                   VERSION=$(cat VERSION)
                   echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
-            - name: Push Images
-              run: |
-                  docker push afirmeplay/afirmeplay-frontend:v${{ env.VERSION }}
-                  docker push afirmeplay/afirmeplay-frontend:latest
-
-    deploy:
-        runs-on: [self-hosted, vps-artur]
-        needs: [push]
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
-
-            - name: Get Version
-              run: |
-                  VERSION=$(cat VERSION)
-                  echo "VERSION=${VERSION}" >> $GITHUB_ENV
-
             - name: Deploy
               run: |
-                  VERSION=v${{ env.VERSION }} docker compose -f docker-compose.dev.yml pull
-                  VERSION=v${{ env.VERSION }} docker compose -f docker-compose.dev.yml up -d
+                  VERSION=v${{ env.VERSION }} docker compose -f docker-compose.prod.yml pull
+                  VERSION=v${{ env.VERSION }} docker compose -f docker-compose.prod.yml up -d
