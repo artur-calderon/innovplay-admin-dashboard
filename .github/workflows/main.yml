@@ -54,7 +54,15 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
+            - name: Get Version
+              run: |
+                  VERSION=$(cat VERSION)
+                  echo "VERSION=${VERSION}" >> $GITHUB_ENV
+                  echo "VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}" >> $GITHUB_ENV
+                  echo "SUBDOMAIN_MODE=${{ secrets.SUBDOMAIN_MODE }}" >> $GITHUB_ENV
+                  echo "API_CONTAINER=${{ secrets.API_CONTAINER }}" >> $GITHUB_ENV
+
             - name: Deploy
               run: |
-                  docker compose -f docker-compose.dev.yml pull
-                  docker compose -f docker-compose.dev.yml up -d
+                  VERSION=v${{ env.VERSION }} docker compose -f docker-compose.dev.yml pull
+                  VERSION=v${{ env.VERSION }} docker compose -f docker-compose.dev.yml up -d
