@@ -90,6 +90,7 @@ interface Teacher {
   birth_date?: string;
   role?: string;
   class_id?: string;
+  user_id?: string;
 }
 
 interface Student {
@@ -131,6 +132,9 @@ export default function SchoolDetails() {
   const [showLinkTeacherModal, setShowLinkTeacherModal] = useState(false);
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
   const [showPasswordReportModal, setShowPasswordReportModal] = useState(false);
+  const [currentTeacherUserId, setCurrentTeacherUserId] = useState<string | null>(null);
+  const [showStudentsDialog, setShowStudentsDialog] = useState(false);
+  const [studentsDialogClass, setStudentsDialogClass] = useState<Class | null>(null);
   
   // Estados para gerenciamento de turmas
   const [showDeleteClassDialog, setShowDeleteClassDialog] = useState(false);
@@ -182,6 +186,32 @@ export default function SchoolDetails() {
     fetchSchool();
   }, [id, navigate, toast]);
 
+  // Para professor: descobrir teacher.user_id via /school-teacher e comparar com user.id
+  useEffect(() => {
+    const fetchCurrentTeacherUserId = async () => {
+      if (!user?.id) return;
+      if (String(user.role).toLowerCase() !== "professor") {
+        setCurrentTeacherUserId(null);
+        return;
+      }
+
+      try {
+        const resp = await api.get("/school-teacher");
+        const vinculos = resp.data?.vinculos ?? resp.data?.data ?? resp.data ?? [];
+        const list: any[] = Array.isArray(vinculos) ? vinculos : [];
+
+        // Pode vir como vinculo.professor (teacher) ou vinculo.teacher/professor
+        const found = list.find((v) => v?.professor?.user_id === user.id || v?.teacher?.user_id === user.id);
+        const userIdCandidate: unknown = found?.professor?.user_id ?? found?.teacher?.user_id;
+        setCurrentTeacherUserId(userIdCandidate ? String(userIdCandidate) : null);
+      } catch {
+        setCurrentTeacherUserId(null);
+      }
+    };
+
+    fetchCurrentTeacherUserId();
+  }, [user?.id, user.role]);
+
   // Carregar turmas da escola
   useEffect(() => {
     const fetchClasses = async () => {
@@ -222,12 +252,14 @@ export default function SchoolDetails() {
           
           if (teachersResponse.data && teachersResponse.data.professores) {
             classTeachers = teachersResponse.data.professores.map((item: any) => ({
+              // id é usado como key local, mas guardamos user_id separado para comparação
               id: item.professor?.id || item.usuario?.id,
               name: item.professor?.name || item.usuario?.name,
               email: item.professor?.email || item.usuario?.email,
               registration: item.professor?.registration || item.usuario?.registration,
               role: item.usuario?.role || 'professor',
               class_id: classItem.id,
+              user_id: item.usuario?.id,
               vinculo_id: item.teacher_class?.id || item.vinculo_turma?.teacher_class_id
             }));
           }
@@ -317,28 +349,35 @@ export default function SchoolDetails() {
 
       try {
         const response = await api.get(`/managers/school/${id}`);
-        if (response.data && response.data.managers) {
-          const schoolDirectors = response.data.managers.filter((manager: any) =>
-            manager.user?.role === 'diretor'
-          );
-          const schoolCoordinators = response.data.managers.filter((manager: any) =>
-            manager.user?.role === 'coordenador'
-          );
-          const directorsData = schoolDirectors.map((manager: any) => ({
-            id: manager.user.id,
-            name: manager.user.name,
-            email: manager.user.email,
-            registration: manager.user.registration,
-            role: manager.user.role
-          }));
+        const managers = response.data?.managers;
+        if (Array.isArray(managers)) {
+          const getRole = (m: any) => String(m?.user?.role ?? m?.manager?.role ?? "").toLowerCase();
+          const getUser = (m: any) => m?.user ?? m?.manager ?? {};
+
+          const schoolDirectors = managers.filter((m: any) => getRole(m) === "diretor");
+          const schoolCoordinators = managers.filter((m: any) => getRole(m) === "coordenador");
+
+          const directorsData = schoolDirectors.map((m: any) => {
+            const u = getUser(m);
+            return ({
+              id: u.id,
+              name: u.name,
+              email: u.email,
+              registration: u.registration,
+              role: u.role
+            });
+          });
           
-          const coordinatorsData = schoolCoordinators.map((manager: any) => ({
-            id: manager.user.id,
-            name: manager.user.name,
-            email: manager.user.email,
-            registration: manager.user.registration,
-            role: manager.user.role
-          }));
+          const coordinatorsData = schoolCoordinators.map((m: any) => {
+            const u = getUser(m);
+            return ({
+              id: u.id,
+              name: u.name,
+              email: u.email,
+              registration: u.registration,
+              role: u.role
+            });
+          });
           
           setDirectors(directorsData);
           setCoordinators(coordinatorsData);
@@ -1006,45 +1045,63 @@ export default function SchoolDetails() {
                               </div>
                             )}
                           </div>
-                          {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
-                            <div className="flex gap-2 flex-wrap">
-                              <Button 
-                                variant="outline" 
+                          <div className="flex gap-2 flex-wrap">
+                          {String(user.role).toLowerCase() === "professor" &&
+                            (classTeachers[classItem.id] || []).some((t) => t?.user_id && t.user_id === user.id) && (
+                              <Button
+                                variant="outline"
                                 size="sm"
                                 onClick={() => {
-                                  setSelectedClass(classItem);
-                                  setShowManageClassModal(true);
+                                  setStudentsDialogClass(classItem);
+                                  setShowStudentsDialog(true);
                                 }}
+                                title="Visualizar alunos desta turma"
                               >
-                                <Pencil className="h-4 w-4 mr-2" />
-                                Gerenciar
+                                <Eye className="h-4 w-4 mr-2" />
+                                Ver alunos
                               </Button>
-                              
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => handleOpenMoveClassDialog(classItem)}
-                                title="Mover turma para outra escola"
-                              >
-                                <MoveRight className="h-4 w-4 mr-2" />
-                                Mover
-                              </Button>
-                              
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => {
-                                  setClassToDelete(classItem);
-                                  setShowDeleteClassDialog(true);
-                                }}
-                                className="text-red-600 hover:text-red-700"
-                                title="Excluir turma"
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Excluir
-                              </Button>
-                            </div>
-                          )}
+                            )}
+
+                            {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
+                              <>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedClass(classItem);
+                                    setShowManageClassModal(true);
+                                  }}
+                                >
+                                  <Pencil className="h-4 w-4 mr-2" />
+                                  Gerenciar
+                                </Button>
+                                
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => handleOpenMoveClassDialog(classItem)}
+                                  title="Mover turma para outra escola"
+                                >
+                                  <MoveRight className="h-4 w-4 mr-2" />
+                                  Mover
+                                </Button>
+                                
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => {
+                                    setClassToDelete(classItem);
+                                    setShowDeleteClassDialog(true);
+                                  }}
+                                  className="text-red-600 hover:text-red-700"
+                                  title="Excluir turma"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Excluir
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1342,6 +1399,44 @@ export default function SchoolDetails() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Students Dialog (somente para professor na própria turma) */}
+      <Dialog
+        open={showStudentsDialog}
+        onOpenChange={(open) => {
+          setShowStudentsDialog(open);
+          if (!open) setStudentsDialogClass(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>
+              Alunos da turma {studentsDialogClass?.name ? `"${studentsDialogClass.name}"` : ""}
+            </DialogTitle>
+            <DialogDescription>
+              Lista completa de alunos vinculados à sua turma.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="border rounded-lg p-3 max-h-[55vh] overflow-y-auto">
+            {studentsDialogClass ? (
+              (classStudents[studentsDialogClass.id] || []).length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center">Nenhum aluno vinculado</p>
+              ) : (
+                <div className="space-y-2">
+                  {(classStudents[studentsDialogClass.id] || []).map((s) => (
+                    <div key={s.id} className="text-sm text-foreground">
+                      {s.name}
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              <p className="text-sm text-muted-foreground text-center">Selecione uma turma.</p>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
