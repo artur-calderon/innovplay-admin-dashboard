@@ -908,7 +908,16 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
     };
   }, [apiData, geralAlunos]);
 
-  const tituloGabarito = apiData?.resultados_detalhados?.gabaritos?.[0]?.titulo ?? (gabarito !== 'all' ? norm(gabaritos.find((g) => g.id === gabarito) ?? { id: gabarito }) : null) ?? 'Cartão Resposta';
+  const isMunicipioScope =
+    apiData?.estatisticas_gerais?.tipo === 'municipio' || apiData?.nivel_granularidade === 'municipio';
+  const tituloGabaritoFromFilters =
+    gabarito !== 'all' ? norm(gabaritos.find((g) => g.id === gabarito) ?? { id: gabarito }) : null;
+  const tituloGabaritoFromApi = apiData?.resultados_detalhados?.gabaritos?.[0]?.titulo ?? null;
+  const tituloGabarito = (
+    isMunicipioScope
+      ? (tituloGabaritoFromFilters ?? tituloGabaritoFromApi)
+      : (tituloGabaritoFromApi ?? tituloGabaritoFromFilters)
+  ) ?? 'Cartão Resposta';
   const hasNoData = !apiData?.resultados_detalhados?.gabaritos?.length && !geralAlunos.length && !disciplinasTabela.length;
   const totalQuestionsForCards = geralAlunos.find((a) => (a.total_questoes_geral ?? 0) > 0)?.total_questoes_geral ?? 0;
   const derivedSubjects = useMemo(() => [tituloGabarito].filter(Boolean), [tituloGabarito]);
@@ -1320,7 +1329,10 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
             <CardHeader>
               <CardTitle className="text-lg">Informações do Cartão Resposta</CardTitle>
               <CardDescription>
-                {tituloGabarito} · {apiData.estatisticas_gerais.escola || apiData.estatisticas_gerais.nome || 'Escopo selecionado'}
+                {tituloGabarito} ·{' '}
+                {isMunicipioScope
+                  ? (apiData.estatisticas_gerais.municipio || apiData.estatisticas_gerais.nome || 'Município selecionado')
+                  : (apiData.estatisticas_gerais.escola || apiData.estatisticas_gerais.nome || 'Escopo selecionado')}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -1331,7 +1343,7 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
                 </div>
                 <div className="space-y-1">
                   <div className="text-sm font-medium text-muted-foreground">Escola</div>
-                  <div className="font-semibold">{apiData.estatisticas_gerais.escola || apiData.estatisticas_gerais.nome || '—'}</div>
+                  <div className="font-semibold">{apiData.estatisticas_gerais.escola || '—'}</div>
                 </div>
                 <div className="space-y-1">
                   <div className="text-sm font-medium text-muted-foreground">Município</div>
