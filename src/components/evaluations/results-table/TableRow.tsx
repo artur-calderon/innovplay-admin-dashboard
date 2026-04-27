@@ -155,7 +155,13 @@ export const TableRow: React.FC<TableRowProps> = ({
 
       {/* Total de acertos */}
       <td className="px-4 py-3 text-sm font-semibold text-center border border-border text-foreground">
-        {student.acertos}
+        {(() => {
+          const total =
+            (student.acertos ?? 0) + (student.erros ?? 0) + (student.em_branco ?? 0);
+          if (total <= 0) return student.acertos ?? 0;
+          const pct = ((student.acertos ?? 0) / total) * 100;
+          return `${student.acertos ?? 0} (${pct.toFixed(1)}%)`;
+        })()}
       </td>
 
       {/* Nota */}

@@ -1517,6 +1517,25 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
                             <tbody>
                               {geralAlunos.map((a) => {
                                 const erros = Math.max(0, (a.total_questoes_geral ?? 0) - (a.total_acertos_geral ?? 0) - (a.total_em_branco_geral ?? 0));
+                                const acertos = a.total_acertos_geral ?? 0;
+                                const emBranco = a.total_em_branco_geral ?? 0;
+                                const totalRespondidas = a.total_respondidas_geral ?? 0;
+                                const totalQDerived =
+                                  (a.total_questoes_geral ?? 0) ||
+                                  (totalRespondidas + emBranco) ||
+                                  (acertos + erros + emBranco);
+                                const pctLocal = totalQDerived > 0 ? (acertos / totalQDerived) * 100 : 0;
+                                const apiPctRaw = (a as unknown as { percentual_acertos_geral?: unknown }).percentual_acertos_geral;
+                                const apiPctNum =
+                                  typeof apiPctRaw === 'number'
+                                    ? apiPctRaw
+                                    : typeof apiPctRaw === 'string'
+                                      ? Number(apiPctRaw.replace(',', '.'))
+                                      : NaN;
+                                const pct =
+                                  Number.isFinite(apiPctNum) && apiPctNum >= 0
+                                    ? apiPctNum
+                                    : pctLocal;
                                 return (
                                   <tr key={a.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                                     <td className="py-3 px-4 font-medium">{a.nome}</td>
@@ -1537,7 +1556,7 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
                                       </Badge>
                                     </td>
                                     <td className="py-3 px-4">
-                                      {a.total_questoes_geral != null ? `${a.total_acertos_geral ?? 0} / ${erros} (${(a.percentual_acertos_geral ?? 0).toFixed(0)}%)` : '—'}
+                                      {totalQDerived > 0 ? `${acertos} / ${erros} (${pct.toFixed(0)}%)` : `${acertos} / ${erros}`}
                                     </td>
                                     <td className="py-3 px-4 text-right">
                                       <Button
