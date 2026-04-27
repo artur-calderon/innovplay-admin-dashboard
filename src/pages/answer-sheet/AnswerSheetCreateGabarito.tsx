@@ -723,10 +723,11 @@ export default function AnswerSheetCreateGabarito() {
                         {blocksByDiscipline.length < 4 && (
                           <Select
                             onValueChange={(value) => {
+                              if (value === '__reset') return;
                               const d = disciplines.find((x) => x.id === value);
                               if (d) handleAddDisciplineBlock(d.id, d.name);
                             }}
-                            value=""
+                            value="__reset"
                           >
                             <SelectTrigger className="w-full max-w-sm border-dashed">
                               <SelectValue placeholder={isLoadingDisciplines ? 'Carregando...' : '+ Adicionar outra disciplina'} />
@@ -759,10 +760,11 @@ export default function AnswerSheetCreateGabarito() {
                         ) : disciplines.length > 0 ? (
                           <Select
                             onValueChange={(value) => {
+                              if (value === '__reset') return;
                               const d = disciplines.find((x) => x.id === value);
                               if (d) handleAddDisciplineBlock(d.id, d.name);
                             }}
-                            value=""
+                            value="__reset"
                           >
                             <SelectTrigger className="w-64 border-primary/30">
                               <SelectValue placeholder="+ Adicionar disciplina para criar blocos" />
