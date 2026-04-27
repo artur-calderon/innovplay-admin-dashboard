@@ -1,0 +1,18 @@
+services:
+  app:
+    image: afirmeplay/afirmeplay-frontend:${VERSION}
+    container_name: afirmeplay_front_prod
+    environment:
+      - API_CONTAINER=${API_CONTAINER}
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL}
+    ports:
+      - "8000:80/tcp"
+    networks:
+      - afirmeplay_network_prod
+    restart: unless-stopped
+
+
+networks:
+  afirmeplay_network_prod:
+    name: afirmeplay_network_prod
+    external: true
