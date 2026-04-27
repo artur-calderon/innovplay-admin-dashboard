@@ -17,7 +17,8 @@ import {
   Search,
   BarChart3,
   BookOpen,
-  Check
+  Check,
+  FileText
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -49,6 +50,7 @@ import {
 import { DisciplineTables } from "@/components/evaluations/results/DisciplineTables";
 import { StudentCard } from "@/components/evaluations/student/StudentCard";
 import { QuestionData as TableQuestionData, DetailedReport as TableDetailedReport } from "@/types/results-table";
+import { generatePendingStudentsPdf } from "@/services/reports/pendingStudentsPdf";
 
 // Interfaces para os dados da API - Nova estrutura baseada na implementação real
 interface EvaluationResult {
@@ -1442,6 +1444,11 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
     description: string;
     source: 'database' | 'question';
   }>>>({});
+
+  // Modal: alunos pendentes (status_geral !== 'concluida')
+  const [showPendingStudentsModal, setShowPendingStudentsModal] = useState(false);
+
+  
   
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   const [isTableReady, setIsTableReady] = useState(false);
@@ -1958,6 +1965,11 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
       mediaProficiencia: s?.media_proficiencia_geral ?? 0,
     };
   }, [apiData?.estatisticas_gerais]);
+
+  const pendingStudents = useMemo(() => {
+    const geral = apiData?.tabela_detalhada?.geral?.alunos ?? [];
+    return geral.filter((a) => (a.status_geral || '').toLowerCase() !== 'concluida');
+  }, [apiData?.tabela_detalhada?.geral?.alunos]);
 
   // Disciplinas derivadas unificando múltiplas fontes
   const derivedSubjects = useMemo(() => {
@@ -2477,16 +2489,18 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
                       )}
                     </TabsList>
                   </div>
-                  <Button
-                    variant="outline"
-                    type="button"
-                    onClick={() => loadAllData()}
-                    disabled={isLoadingData}
-                    className="shrink-0 gap-2"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${isLoadingData ? 'animate-spin' : ''}`} />
-                    Atualizar
-                  </Button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      type="button"
+                      onClick={() => loadAllData()}
+                      disabled={isLoadingData}
+                      className="gap-2"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isLoadingData ? 'animate-spin' : ''}`} />
+                      Atualizar
+                    </Button>
+                  </div>
                 </div>
 
                 <TabsContent value="charts" className="space-y-6">
@@ -2778,6 +2792,116 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
           )}
         </>
       )}
+
+      {/* Modal: Alunos Pendentes */}
+      <Dialog open={showPendingStudentsModal} onOpenChange={setShowPendingStudentsModal}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-red-600" />
+              Alunos pendentes
+              {evaluationInfo?.titulo && (
+                <span className="text-sm font-normal text-muted-foreground ml-1">· {evaluationInfo.titulo}</span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto flex-1 min-h-0 py-2">
+            {pendingStudents.length > 0 ? (
+              <div className="space-y-4">
+                <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-3 h-3 bg-red-500 dark:bg-red-400 rounded-full shrink-0" />
+                    <span className="font-semibold text-red-800 dark:text-red-400">
+                      {pendingStudents.length} {pendingStudents.length === 1 ? 'aluno' : 'alunos'} pendente(s)
+                    </span>
+                  </div>
+                  <p className="text-sm text-red-700 dark:text-red-400">
+                    Estes alunos ainda não entregaram ou não tiveram a avaliação concluída.
+                  </p>
+                </div>
+                <div className="grid gap-3">
+                  {pendingStudents.map((a) => (
+                    <div
+                      key={a.id}
+                      className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-red-100 dark:bg-red-950/30 rounded-full flex items-center justify-center shrink-0">
+                          <span className="text-red-600 dark:text-red-400 font-semibold text-sm">
+                            {(a.nome || '').charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium text-foreground truncate">{a.nome}</div>
+                          <div className="text-sm text-muted-foreground truncate">
+                            {[a.escola, a.turma, a.serie].filter(Boolean).join(' · ') || '—'}
+                          </div>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="text-red-600 dark:text-red-400 border-red-300 dark:border-red-800">
+                        Pendente
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="w-16 h-16 bg-green-100 dark:bg-green-950/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Check className="h-8 w-8 text-green-600 dark:text-green-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground mb-2">Nenhum pendente</h3>
+                <p className="text-muted-foreground">
+                  Todos os alunos do escopo já têm resultado concluído.
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-between gap-2 pt-4 border-t mt-4">
+            {pendingStudents.length > 0 ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      await generatePendingStudentsPdf({
+                        title: "Alunos pendentes — Avaliação",
+                        subtitle: evaluationInfo?.titulo ? String(evaluationInfo.titulo) : undefined,
+                        students: pendingStudents.map((a) => ({
+                          nome: a.nome,
+                          escola: a.escola,
+                          turma: a.turma,
+                          serie: a.serie,
+                          statusLabel: "Pendente",
+                        })),
+                        fileName: "alunos-pendentes-avaliacao",
+                      });
+                      toast({
+                        title: "PDF gerado com sucesso!",
+                        description: "A lista de alunos pendentes foi baixada em PDF.",
+                      });
+                    } catch {
+                      toast({
+                        title: "Erro ao gerar PDF",
+                        description: "Não foi possível gerar o PDF da lista.",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  PDF
+                </Button>
+              </div>
+            ) : (
+              <span />
+            )}
+            <Button variant="outline" onClick={() => setShowPendingStudentsModal(false)}>
+              Fechar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

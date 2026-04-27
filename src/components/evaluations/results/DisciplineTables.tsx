@@ -412,7 +412,8 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                     turma: false,
                     habilidade: true, // Sempre exibir habilidades na tabela de alunos
                     questoes: true,
-                    percentualTurma: allQuestions.length <= 20,
+                    // Mostrar sempre (no modo “janelas” são poucas questões por vez)
+                    percentualTurma: true,
                     total: true,
                     nota: true,
                     proficiencia: true,
@@ -483,7 +484,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                         turma: false,
                         habilidade: true, // Sempre exibir habilidades na tabela de alunos
                         questoes: true,
-                        percentualTurma: allQuestions.length <= 20,
+                        percentualTurma: true,
                         total: true,
                         nota: true,
                         proficiencia: true,
@@ -591,7 +592,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                     turma: false,
                     habilidade: true, // Sempre exibir habilidades na tabela por disciplina
                     questoes: true,
-                    percentualTurma: disciplina.questoes.length <= 20, // ✅ NOVO: Ocultar % se muitas questões
+                    percentualTurma: true,
                     total: true,
                     nota: true,
                     proficiencia: true,
@@ -659,7 +660,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                         turma: false,
                         habilidade: true, // Sempre exibir habilidades na tabela por disciplina
                         questoes: true,
-                        percentualTurma: disciplina.questoes.length <= 20,
+                        percentualTurma: true,
                         total: true,
                         nota: true,
                         proficiencia: true,

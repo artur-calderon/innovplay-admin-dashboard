@@ -127,6 +127,17 @@ export const TableRow: React.FC<TableRowProps> = ({
             <span className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">{student.nome}</span>
             <Eye className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
+          {visibleFields.percentualAluno && (
+            <div className="mt-1 text-xs font-semibold text-amber-700 dark:text-amber-400">
+              {(() => {
+                const total =
+                  (student.acertos ?? 0) + (student.erros ?? 0) + (student.em_branco ?? 0);
+                if (total <= 0) return '0%';
+                const pct = ((student.acertos ?? 0) / total) * 100;
+                return `${pct.toFixed(1)}%`;
+              })()}
+            </div>
+          )}
         </ContextMenu>
       </td>
 

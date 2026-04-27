@@ -27,6 +27,7 @@ import {
   Trash2,
   ChevronRight,
   AlertTriangle,
+  Pencil,
 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -121,6 +122,23 @@ interface JobStatusResponse {
   error?: string;
 }
 
+type Alternative = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
+
+interface GabaritoDetailResponse {
+  id: string;
+  title?: string;
+  num_questions?: number;
+  correct_answers?: Record<string, Alternative | null> | null;
+}
+
+interface RecalculateJobStatusResponse {
+  status: 'processing' | 'completed' | 'failed';
+  message?: string;
+  progress?: { percentage?: number; current?: number; total?: number };
+  summary?: { successful_items?: number; failed_items?: number } | null;
+  items?: Array<{ id?: string; status?: string; error?: string; message?: string }>;
+}
+
 function mapPostTasksToClasses(
   tasks?: Array<{ class_id: string; class_name: string; status: string }>
 ): JobStatusClass[] {
@@ -207,6 +225,7 @@ function normalizeOptions(raw: unknown): FilterOption[] {
 export default function AnswerSheetGenerateCards() {
   const { toast } = useToast();
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recalcPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Abas
   const [activeTab, setActiveTab] = useState<'generate' | 'generated'>('generate');
@@ -221,6 +240,23 @@ export default function AnswerSheetGenerateCards() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteMode, setDeleteMode] = useState<'single' | 'multiple'>('single');
   const [gabaritoToDelete, setGabaritoToDelete] = useState<string | null>(null);
+
+  // Edição de gabarito (correct_answers)
+  const [editOpen, setEditOpen] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editGabaritoId, setEditGabaritoId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState<string>('');
+  const [editNumQuestions, setEditNumQuestions] = useState<number>(0);
+  const [editCorrectAnswers, setEditCorrectAnswers] = useState<Record<string, Alternative | null>>({});
+  const [noEditPermissionIds, setNoEditPermissionIds] = useState<Set<string>>(new Set());
+
+  const [recalcJobId, setRecalcJobId] = useState<string | null>(null);
+  const [recalcStatus, setRecalcStatus] = useState<'idle' | 'saving' | 'processing' | 'completed' | 'failed'>('idle');
+  const [recalcProgressPct, setRecalcProgressPct] = useState<number>(0);
+  const [recalcSummary, setRecalcSummary] = useState<{ successful_items?: number; failed_items?: number } | null>(null);
+  const [recalcItems, setRecalcItems] = useState<RecalculateJobStatusResponse['items']>(null);
+  const [recalcMessage, setRecalcMessage] = useState<string>('');
 
   // Filtros (escopo)
   const [selectedFilters, setSelectedFilters] = useState<SelectedFilters>({});
@@ -259,6 +295,195 @@ export default function AnswerSheetGenerateCards() {
       setIsLoadingGabaritos(false);
     }
   }, [toast]);
+
+  const stopRecalcPolling = useCallback(() => {
+    if (recalcPollingRef.current) {
+      clearInterval(recalcPollingRef.current);
+      recalcPollingRef.current = null;
+    }
+  }, []);
+
+  const resetEditDialogState = useCallback(() => {
+    stopRecalcPolling();
+    setEditOpen(false);
+    setEditLoading(false);
+    setEditSaving(false);
+    setEditGabaritoId(null);
+    setEditTitle('');
+    setEditNumQuestions(0);
+    setEditCorrectAnswers({});
+    setRecalcJobId(null);
+    setRecalcStatus('idle');
+    setRecalcProgressPct(0);
+    setRecalcSummary(null);
+    setRecalcItems(null);
+    setRecalcMessage('');
+  }, [stopRecalcPolling]);
+
+  const startRecalcPolling = useCallback(
+    (jobIdToPoll: string) => {
+      stopRecalcPolling();
+      let tick = 0;
+      let intervalMs = 1500;
+
+      recalcPollingRef.current = setInterval(async () => {
+        tick += 1;
+        // backoff simples após alguns segundos
+        if (tick === 10 && intervalMs !== 2500) {
+          stopRecalcPolling();
+          intervalMs = 2500;
+          startRecalcPolling(jobIdToPoll);
+          return;
+        }
+
+        try {
+          const res = await api.get<RecalculateJobStatusResponse>(`/answer-sheets/recalculate-jobs/${jobIdToPoll}/status`);
+          const d = res.data;
+          const pct = Number(d.progress?.percentage ?? 0);
+          setRecalcProgressPct(Number.isFinite(pct) ? pct : 0);
+          setRecalcSummary(d.summary ?? null);
+          setRecalcItems(d.items ?? null);
+          setRecalcMessage(d.message ?? '');
+
+          if (d.status === 'completed') {
+            stopRecalcPolling();
+            setRecalcStatus('completed');
+            toast({ title: 'Recalculo concluído', description: d.message || 'Resultados recalculados com sucesso.' });
+            await fetchGabaritos();
+            return;
+          }
+
+          if (d.status === 'failed') {
+            stopRecalcPolling();
+            setRecalcStatus('failed');
+            toast({ title: 'Falha no recálculo', description: d.message || 'Não foi possível recalcular.', variant: 'destructive' });
+            return;
+          }
+
+          setRecalcStatus('processing');
+        } catch (err: unknown) {
+          // se o polling falhar momentaneamente, manter como processing
+          const msg = isAxiosError(err)
+            ? (err.response?.data as { message?: string } | undefined)?.message || 'Erro ao consultar recálculo.'
+            : 'Erro ao consultar recálculo.';
+          setRecalcMessage(msg);
+        }
+      }, intervalMs);
+    },
+    [fetchGabaritos, stopRecalcPolling, toast]
+  );
+
+  const handleSaveEditedGabarito = useCallback(async () => {
+    if (!editGabaritoId) return;
+
+    try {
+      setEditSaving(true);
+      setRecalcStatus('saving');
+      setRecalcMessage('');
+
+      const payload = { correct_answers: editCorrectAnswers };
+      const res = await api.patch(`/answer-sheets/gabaritos/${editGabaritoId}`, payload, {
+        headers: { 'Content-Type': 'application/json' },
+        validateStatus: (s) => s < 500,
+      });
+
+      if (res.status === 403) {
+        setNoEditPermissionIds((prev) => new Set([...Array.from(prev), editGabaritoId]));
+        toast({ title: 'Sem permissão', description: 'Você não tem permissão para editar este gabarito.', variant: 'destructive' });
+        resetEditDialogState();
+        return;
+      }
+
+      if (res.status === 404) {
+        toast({ title: 'Não encontrado', description: 'Gabarito inexistente.', variant: 'destructive' });
+        resetEditDialogState();
+        return;
+      }
+
+      if (res.status === 400) {
+        const msg = (res.data as { message?: string } | undefined)?.message || 'Payload inválido.';
+        toast({ title: 'Erro ao salvar', description: msg, variant: 'destructive' });
+        setRecalcStatus('idle');
+        return;
+      }
+
+      if (res.status !== 202) {
+        toast({ title: 'Resposta inesperada', description: 'Não foi possível iniciar o recálculo.', variant: 'destructive' });
+        setRecalcStatus('idle');
+        return;
+      }
+
+      const data = res.data as { job_id?: string; polling_url?: string; status?: string; message?: string };
+      const nextJobId = (data.job_id ?? '').trim();
+      if (!nextJobId) {
+        toast({ title: 'Erro', description: 'job_id não retornou do servidor.', variant: 'destructive' });
+        setRecalcStatus('idle');
+        return;
+      }
+
+      setRecalcJobId(nextJobId);
+      setRecalcStatus('processing');
+      setRecalcProgressPct(0);
+      setRecalcSummary(null);
+      setRecalcItems(null);
+      setRecalcMessage(data.message ?? '');
+
+      startRecalcPolling(nextJobId);
+    } catch (err: unknown) {
+      const msg = isAxiosError(err)
+        ? (err.response?.data as { message?: string } | undefined)?.message || 'Não foi possível salvar o gabarito.'
+        : 'Não foi possível salvar o gabarito.';
+      toast({ title: 'Erro', description: msg, variant: 'destructive' });
+      setRecalcStatus('idle');
+    } finally {
+      setEditSaving(false);
+    }
+  }, [editCorrectAnswers, editGabaritoId, resetEditDialogState, startRecalcPolling, toast]);
+
+  const openEditDialogForGabarito = useCallback(
+    async (g: Gabarito) => {
+      if (noEditPermissionIds.has(g.id)) return;
+
+      setEditOpen(true);
+      setEditLoading(true);
+      setEditGabaritoId(g.id);
+      setEditTitle(g.title);
+      setEditNumQuestions(g.num_questions ?? 0);
+      setEditCorrectAnswers({});
+      setRecalcJobId(null);
+      setRecalcStatus('idle');
+      setRecalcProgressPct(0);
+      setRecalcSummary(null);
+      setRecalcItems(null);
+      setRecalcMessage('');
+
+      try {
+        const res = await api.get<GabaritoDetailResponse>(`/answer-sheets/gabarito/${g.id}`);
+        const numQuestions = Number(res.data?.num_questions ?? g.num_questions ?? 0) || 0;
+        const raw = (res.data?.correct_answers ?? {}) as Record<string, Alternative | null>;
+
+        const normalized: Record<string, Alternative | null> = {};
+        for (let i = 1; i <= numQuestions; i++) {
+          const k = String(i);
+          const v = raw[k];
+          normalized[k] = v ?? null;
+        }
+
+        setEditTitle(res.data?.title ?? g.title);
+        setEditNumQuestions(numQuestions);
+        setEditCorrectAnswers(normalized);
+      } catch (err: unknown) {
+        const msg = isAxiosError(err)
+          ? (err.response?.data as { message?: string } | undefined)?.message || 'Não foi possível carregar o gabarito.'
+          : 'Não foi possível carregar o gabarito.';
+        toast({ title: 'Erro', description: msg, variant: 'destructive' });
+        resetEditDialogState();
+      } finally {
+        setEditLoading(false);
+      }
+    },
+    [noEditPermissionIds, resetEditDialogState, toast]
+  );
 
   useEffect(() => {
     fetchGabaritos();
@@ -1484,6 +1709,14 @@ export default function AnswerSheetGenerateCards() {
                             </div>
                           </div>
                           <div className="flex flex-col gap-2 shrink-0">
+                            <Button
+                              variant="outline"
+                              onClick={() => openEditDialogForGabarito(gabarito)}
+                              disabled={isDeleting || isBusyDownloadingForGabarito(gabarito.id) || noEditPermissionIds.has(gabarito.id)}
+                            >
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Editar gabarito
+                            </Button>
                             {!hasGenerationsList && (
                             <Button
                               onClick={() =>
@@ -1530,6 +1763,146 @@ export default function AnswerSheetGenerateCards() {
               )}
             </CardContent>
           </Card>
+
+          <Dialog open={editOpen} onOpenChange={(v) => (v ? setEditOpen(true) : resetEditDialogState())}>
+            <DialogContent className="max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>Editar gabarito</DialogTitle>
+                <DialogDescription>
+                  {editTitle ? (
+                    <>
+                      <span className="font-medium text-foreground">{editTitle}</span>
+                      {editNumQuestions ? <> · {editNumQuestions} questões</> : null}
+                    </>
+                  ) : (
+                    'Edite as respostas corretas do cartão resposta.'
+                  )}
+                </DialogDescription>
+              </DialogHeader>
+
+              {editLoading ? (
+                <div className="space-y-3 py-2">
+                  <Skeleton className="h-6 w-1/2" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {recalcStatus === 'saving' && (
+                    <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Salvando…
+                    </div>
+                  )}
+                  {recalcStatus === 'processing' && (
+                    <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                      <div className="text-sm text-muted-foreground flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Recalculando resultados…
+                      </div>
+                      <Progress value={recalcProgressPct} />
+                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        <span>{Math.round(recalcProgressPct)}%</span>
+                        {recalcSummary ? (
+                          <>
+                            <span>·</span>
+                            <span>Sucesso: {recalcSummary.successful_items ?? 0}</span>
+                            <span>·</span>
+                            <span>Falhas: {recalcSummary.failed_items ?? 0}</span>
+                          </>
+                        ) : null}
+                      </div>
+                      {recalcMessage ? <div className="text-xs text-muted-foreground">{recalcMessage}</div> : null}
+                    </div>
+                  )}
+                  {recalcStatus === 'completed' && (
+                    <div className="rounded-lg border border-green-200 bg-green-50/60 p-3 text-sm text-green-800 dark:border-green-900/40 dark:bg-green-950/20 dark:text-green-200">
+                      Recalculo concluído.
+                    </div>
+                  )}
+                  {recalcStatus === 'failed' && (
+                    <div className="rounded-lg border border-red-200 bg-red-50/60 p-3 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-200">
+                      Falha ao recalcular. {recalcMessage || 'Tente novamente.'}
+                    </div>
+                  )}
+
+                  <ScrollArea className="h-[50vh] pr-3">
+                    <div className="grid gap-3">
+                      {Array.from({ length: editNumQuestions }, (_, i) => i + 1).map((n) => {
+                        const key = String(n);
+                        const value = editCorrectAnswers[key] ?? null;
+                        const selectValue = value ?? '';
+                        return (
+                          <div key={key} className="flex items-center gap-3 rounded-lg border bg-card p-3">
+                            <div className="w-16 shrink-0 text-sm font-semibold text-foreground">Q{n}</div>
+                            <div className="flex-1">
+                              <Select
+                                value={selectValue}
+                                onValueChange={(v) => {
+                                  const next = v === '' ? null : (v as Alternative);
+                                  setEditCorrectAnswers((prev) => ({ ...prev, [key]: next }));
+                                }}
+                                disabled={editSaving || recalcStatus === 'processing' || recalcStatus === 'saving'}
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder="Limpar" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="">Limpar</SelectItem>
+                                  {(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] as Alternative[]).map((alt) => (
+                                    <SelectItem key={alt} value={alt}>
+                                      {alt}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+
+                  {Array.isArray(recalcItems) && recalcItems.some((it) => (it.status ?? '').toLowerCase() === 'error') ? (
+                    <div className="rounded-lg border border-red-200 bg-red-50/60 p-3 dark:border-red-900/40 dark:bg-red-950/20">
+                      <div className="text-sm font-semibold text-red-800 dark:text-red-200">Falhas</div>
+                      <ul className="mt-2 space-y-1 text-xs text-red-800 dark:text-red-200">
+                        {recalcItems
+                          .filter((it) => (it.status ?? '').toLowerCase() === 'error')
+                          .slice(0, 20)
+                          .map((it, idx) => (
+                            <li key={it.id ?? String(idx)} className="break-words">
+                              {it.id ? <span className="font-semibold">{it.id}: </span> : null}
+                              {it.error || it.message || 'Erro'}
+                            </li>
+                          ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button variant="outline" onClick={resetEditDialogState} disabled={editSaving || recalcStatus === 'processing' || recalcStatus === 'saving'}>
+                      Fechar
+                    </Button>
+                    <Button
+                      onClick={handleSaveEditedGabarito}
+                      disabled={!editGabaritoId || editSaving || editLoading || recalcStatus === 'processing' || recalcStatus === 'saving'}
+                    >
+                      {editSaving ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Salvando…
+                        </>
+                      ) : (
+                        'Salvar'
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
             <DialogContent>
