@@ -39,6 +39,7 @@ import {
 import { descricoesNiveisEscolares, aplicarSerieNaDescricao, type NivelDescricao } from "@/lib/relatorioEscolarDescricoesNiveis";
 import { api } from "@/lib/api";
 import { mapAnswerSheetResultadosAgregadosToNovaResposta, type AnswerSheetResultadosAgregadosRaw } from "@/utils/answer-sheet/mapAnswerSheetResultadosAgregadosToNovaResposta";
+import { getReportProficiencyTagClass, normalizeProficiencyLevelLabel } from "@/utils/report/reportTagStyles";
 import {
   filtrarGabaritosOpcoesSomenteComHabilidadesVinculadas,
   type GabaritoOpcaoFiltrosResults,
@@ -54,6 +55,53 @@ const normalizeText = (value: string) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+
+function readTrimmedString(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+function getNomeExibicaoAluno(aluno: unknown): string {
+  if (!aluno || typeof aluno !== "object") return "";
+  const o = aluno as Record<string, unknown>;
+  const candidates = [
+    o.nome_completo,
+    o.nomeCompleto,
+    o.full_name,
+    o.fullName,
+    o.student_name,
+    o.studentName,
+    o.nome_social,
+    o.nomeSocial,
+    o.nome,
+    o.name,
+  ]
+    .map(readTrimmedString)
+    .filter(Boolean);
+
+  if (candidates.length === 0) return "";
+  return candidates.reduce((best, cur) => (cur.length > best.length ? cur : best), candidates[0]);
+}
+
+function getAlunoClassificacaoLabel(aluno: unknown, apiData: NovaRespostaAPI | null): string {
+  if (!aluno || typeof aluno !== "object") return "Abaixo do Básico";
+  const o = aluno as Record<string, unknown>;
+
+  const raw =
+    readTrimmedString(o.classificacao) ||
+    readTrimmedString(o.classificacao_geral) ||
+    readTrimmedString(o.nivel_proficiencia) ||
+    readTrimmedString(o.nivel_proficiencia_geral);
+
+  if (raw) return normalizeProficiencyLevelLabel(raw);
+
+  const profRaw = o.proficiencia ?? o.proficiencia_geral;
+  const prof = typeof profRaw === "number" ? profRaw : Number(profRaw);
+  if (!Number.isFinite(prof)) return "Abaixo do Básico";
+
+  const serie = readTrimmedString(o.serie);
+  const lvl = getProficiencyLevelAggregadoCartaoOuRelatorio(prof, apiData, serie || undefined);
+  return normalizeProficiencyLevelLabel(getProficiencyLevelLabel(lvl));
+}
 
 /** Cartão-resposta: não exibir blocos de distribuição agregada só como "GERAL" — apenas por disciplina real. */
 const isNomeDisciplinaGeralAgregado = (nome: string | undefined) =>
@@ -1035,6 +1083,27 @@ export default function RelatorioEscolar({
     
     const curso = inferirCursoFromApiData(apiData);
 
+    const geralById = new Map<string, { nome?: string }>();
+    const geralAlunos = apiData.tabela_detalhada?.geral?.alunos ?? [];
+    for (const ga of geralAlunos) {
+      const id = alunoRowId(ga);
+      if (!id) continue;
+      geralById.set(id, { nome: getNomeExibicaoAluno(ga) || (ga.nome ?? "") });
+    }
+
+    const mergeAlunoNomeFromGeral = <T extends { id?: string; aluno_id?: string; nome?: string }>(aluno: T): T => {
+      const id = alunoRowId(aluno);
+      if (!id) return aluno;
+      const geral = geralById.get(id);
+      if (!geral) return aluno;
+      const nomeDisc = getNomeExibicaoAluno(aluno) || (aluno.nome ?? "");
+      const nomeGeral = (geral.nome ?? "").trim();
+      if (nomeGeral && nomeGeral.length > nomeDisc.trim().length) {
+        return { ...aluno, nome: nomeGeral } as T;
+      }
+      return aluno;
+    };
+
     // Processar TODAS as disciplinas que têm dados em apiData.tabela_detalhada
     if (!apiData.tabela_detalhada.disciplinas || apiData.tabela_detalhada.disciplinas.length === 0) {
       return [];
@@ -1134,7 +1203,7 @@ export default function RelatorioEscolar({
           
           if (nivel >= 0 && nivel <= maxLevel) {
             contagemPorNivel[nivel] = (contagemPorNivel[nivel] || 0) + 1;
-            (alunosPorNivel[nivel] ||= []).push(aluno);
+            (alunosPorNivel[nivel] ||= []).push(mergeAlunoNomeFromGeral(aluno));
           }
         });
 
@@ -1172,6 +1241,9 @@ export default function RelatorioEscolar({
         // Obter cor da disciplina
         const color = obterCorDisciplina(nomeDisciplina, index);
 
+        const alunosParticipantesExib = alunosParticipantes.map(mergeAlunoNomeFromGeral);
+        const alunosFaltososExib = alunosFaltosos.map(mergeAlunoNomeFromGeral);
+
         return {
           title: `Distribuição percentual dos estudantes por Nível de Proficiência - ${nomeDisciplina}`,
           color,
@@ -1181,8 +1253,8 @@ export default function RelatorioEscolar({
           ],
           bars,
           disciplinaNome: nomeDisciplina,
-          alunosParticipantes,
-          alunosFaltosos,
+          alunosParticipantes: alunosParticipantesExib,
+          alunosFaltosos: alunosFaltososExib,
           alunosPorNivel,
         };
       })
@@ -1191,7 +1263,7 @@ export default function RelatorioEscolar({
 
   const formatAlunoLine = useCallback(
     (aluno: { nome?: string; turma?: string; serie?: string; escola?: string }) => {
-      const nome = (aluno.nome ?? "").trim() || "—";
+      const nome = getNomeExibicaoAluno(aluno) || (aluno.nome ?? "").trim() || "—";
       const turma = (aluno.turma ?? "").trim();
       const serie = (aluno.serie ?? "").trim();
       const escola = (aluno.escola ?? "").trim();
@@ -3500,20 +3572,61 @@ export default function RelatorioEscolar({
               autoTable(doc, {
                 startY: yList,
                 margin: { left: margin, right: margin },
-                head: [["Nome", "Turma"]],
+                head: [["Nome", "Escola", "Série", "Turma", "Classificação"]],
                 body:
                   list.length > 0
                     ? list.map((a) => [
-                        String(a.nome ?? "—").trim() || "—",
+                        getNomeExibicaoAluno(a) || String(a.nome ?? "—").trim() || "—",
+                        String(a.escola ?? "—").trim() || "—",
+                        String(a.serie ?? "—").trim() || "—",
                         String(a.turma ?? "—").trim() || "—",
+                        getAlunoClassificacaoLabel(a, apiData),
                       ])
-                    : [["—", "—"]],
+                    : [["—", "—", "—", "—", "—"]],
                 theme: "grid",
-                styles: { fontSize: 7.5, cellPadding: 2, textColor: [31, 41, 55] },
+                styles: {
+                  fontSize: 7.5,
+                  cellPadding: 2,
+                  textColor: [31, 41, 55],
+                  overflow: "linebreak",
+                  valign: "middle",
+                },
                 headStyles: { fillColor: [243, 244, 246], textColor: [31, 41, 55], fontStyle: "bold" },
                 columnStyles: {
-                  0: { cellWidth: sectionW - 40, halign: "left" },
-                  1: { cellWidth: 40, halign: "center" },
+                  0: { cellWidth: sectionW - 104, halign: "left" },
+                  1: { cellWidth: 34, halign: "left" },
+                  2: { cellWidth: 14, halign: "center" },
+                  3: { cellWidth: 18, halign: "center" },
+                  4: { cellWidth: 38, halign: "center" },
+                },
+                didDrawCell: (data) => {
+                  if (data.section === "body" && data.column.index === 4) {
+                    const rawText = data.cell?.text;
+                    const firstText =
+                      Array.isArray(rawText)
+                        ? (rawText.find((t) => t !== undefined && t !== null && String(t).trim() !== "") ?? "")
+                        : (rawText ?? "");
+                    const textValue = (firstText === undefined || firstText === null ? "" : String(firstText)).trim();
+                    if (!textValue || textValue === "—") return;
+
+                    const [rTag, gTag, bTag] = generateClassificationColor(textValue);
+                    const pad = 1.2;
+                    const w = (data.cell?.width ?? 0) - pad * 2;
+                    const h = (data.cell?.height ?? 0) - pad * 2;
+                    if (w <= 1 || h <= 1) return;
+
+                    doc.setFillColor(rTag, gTag, bTag);
+                    doc.roundedRect((data.cell?.x ?? 0) + pad, (data.cell?.y ?? 0) + pad, w, h, 2, 2, "F");
+
+                    doc.setTextColor(255, 255, 255);
+                    doc.setFont("helvetica", "bold");
+                    doc.setFontSize(7);
+                    doc.text(textValue, (data.cell?.x ?? 0) + (data.cell?.width ?? 0) / 2, (data.cell?.y ?? 0) + (data.cell?.height ?? 0) / 2 + 2, {
+                      align: "center",
+                      maxWidth: Math.max(1, (data.cell?.width ?? 0) - 4),
+                    });
+                    doc.setTextColor(31, 41, 55);
+                  }
                 },
                 pageBreak: "auto",
               });
@@ -3545,6 +3658,8 @@ export default function RelatorioEscolar({
       });
 
     } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("Erro ao gerar PDF RelatorioEscolar", error);
       toast({
         title: "Erro ao gerar PDF",
         description: "Não foi possível criar o arquivo. Tente novamente.",
@@ -3842,10 +3957,12 @@ export default function RelatorioEscolar({
               aluno: { nome?: string; escola?: string; serie?: string; turma?: string };
               tone?: "default" | "danger";
             }) => {
-              const nome = (aluno.nome ?? "").trim() || "—";
+              const nome = getNomeExibicaoAluno(aluno) || (aluno.nome ?? "").trim() || "—";
               const turma = (aluno.turma ?? "").trim();
               const serie = (aluno.serie ?? "").trim();
               const escola = (aluno.escola ?? "").trim();
+              const classificacao = getAlunoClassificacaoLabel(aluno, apiData);
+              const showClassificacao = tone !== "danger";
               const toneCls =
                 tone === "danger"
                   ? "border-red-200 bg-red-50/60 dark:border-red-900/40 dark:bg-red-950/20"
@@ -3862,18 +3979,21 @@ export default function RelatorioEscolar({
                 <div className={cn("rounded-lg border p-3", toneCls)}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-foreground truncate">
+                      <div className="text-sm font-semibold text-foreground whitespace-normal break-words">
                         {nome}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-1.5">
-                        {turma ? (
-                          <span className={cn(tagClsBase, tagCls)}>Turma {turma}</span>
+                        {escola ? (
+                          <span className={cn(tagClsBase, tagCls)}>{escola}</span>
                         ) : null}
                         {serie ? (
                           <span className={cn(tagClsBase, tagCls)}>Série {serie}</span>
                         ) : null}
-                        {escola ? (
-                          <span className={cn(tagClsBase, tagCls)}>{escola}</span>
+                        {turma ? (
+                          <span className={cn(tagClsBase, tagCls)}>Turma {turma}</span>
+                        ) : null}
+                        {showClassificacao && classificacao ? (
+                          <span className={getReportProficiencyTagClass(classificacao)}>{classificacao}</span>
                         ) : null}
                         {!turma && !serie && !escola ? (
                           <span className={cn(tagClsBase, tagCls)}>Sem metadados</span>
