@@ -27,6 +27,7 @@ import {
   LayoutGrid,
   Table2,
   Eye,
+  FileText,
 } from 'lucide-react';
 import { format, parse } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -46,6 +47,7 @@ import { ClassStatistics } from '@/components/evaluations/results/ClassStatistic
 import { StudentCard } from '@/components/evaluations/student/StudentCard';
 import { DisciplineTables } from '@/components/evaluations/results/DisciplineTables';
 import { cn } from '@/lib/utils';
+import { generatePendingStudentsPdf } from '@/services/reports/pendingStudentsPdf';
 import {
   RESULTS_PERIOD_YEAR_MIN,
   getResultsPeriodYearMax,
@@ -1737,7 +1739,45 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
               </div>
             )}
           </div>
-          <div className="flex justify-end pt-4 border-t mt-4">
+          <div className="flex items-center justify-between gap-2 pt-4 border-t mt-4">
+            {absentStudents.length > 0 ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      await generatePendingStudentsPdf({
+                        title: 'Faltosos / Pendentes — Cartão Resposta',
+                        subtitle: tituloGabarito ? String(tituloGabarito) : undefined,
+                        students: absentStudents.map((a) => ({
+                          nome: a.nome,
+                          escola: a.escola,
+                          turma: a.turma,
+                          serie: a.serie,
+                          statusLabel: 'Pendente',
+                        })),
+                        fileName: 'faltosos-pendentes-cartao-resposta',
+                      });
+                      toast({
+                        title: 'PDF gerado com sucesso!',
+                        description: 'A lista de faltosos/pendentes foi baixada em PDF.',
+                      });
+                    } catch {
+                      toast({
+                        title: 'Erro ao gerar PDF',
+                        description: 'Não foi possível gerar o PDF da lista.',
+                        variant: 'destructive',
+                      });
+                    }
+                  }}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  PDF
+                </Button>
+              </div>
+            ) : (
+              <span />
+            )}
             <Button variant="outline" onClick={() => setShowAbsentStudentsModal(false)}>
               Fechar
             </Button>
