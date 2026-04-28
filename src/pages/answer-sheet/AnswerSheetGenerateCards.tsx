@@ -1832,7 +1832,8 @@ export default function AnswerSheetGenerateCards() {
                       {Array.from({ length: editNumQuestions }, (_, i) => i + 1).map((n) => {
                         const key = String(n);
                         const value = editCorrectAnswers[key] ?? null;
-                        const selectValue = value ?? '';
+                        const CLEAR_VALUE = '__CLEAR__';
+                        const selectValue = value ?? CLEAR_VALUE;
                         return (
                           <div key={key} className="flex items-center gap-3 rounded-lg border bg-card p-3">
                             <div className="w-16 shrink-0 text-sm font-semibold text-foreground">Q{n}</div>
@@ -1840,7 +1841,7 @@ export default function AnswerSheetGenerateCards() {
                               <Select
                                 value={selectValue}
                                 onValueChange={(v) => {
-                                  const next = v === '' ? null : (v as Alternative);
+                                  const next = v === CLEAR_VALUE ? null : (v as Alternative);
                                   setEditCorrectAnswers((prev) => ({ ...prev, [key]: next }));
                                 }}
                                 disabled={editSaving || recalcStatus === 'processing' || recalcStatus === 'saving'}
@@ -1849,7 +1850,7 @@ export default function AnswerSheetGenerateCards() {
                                   <SelectValue placeholder="Limpar" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="">Limpar</SelectItem>
+                                  <SelectItem value={CLEAR_VALUE}>Limpar</SelectItem>
                                   {(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] as Alternative[]).map((alt) => (
                                     <SelectItem key={alt} value={alt}>
                                       {alt}
