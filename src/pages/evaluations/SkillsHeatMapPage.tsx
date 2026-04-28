@@ -18,7 +18,16 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, RefreshCw, Thermometer, FileDown } from 'lucide-react';
+import {
+  Loader2,
+  RefreshCw,
+  Thermometer,
+  FileDown,
+  Sparkles,
+  Target,
+  ListChecks,
+  Lightbulb,
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
@@ -259,6 +268,515 @@ function HeatColumns({
         );
       })}
     </div>
+  );
+}
+
+function AnalysisLoadingCard() {
+  return (
+    <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/5 via-background to-primary/10">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+          Análise do mapa de habilidades
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-lg border bg-background/70 p-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            Processando análise dos resultados...
+          </div>
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div className="h-full w-1/3 animate-[pulse_1.1s_ease-in-out_infinite] rounded-full bg-primary/70" />
+          </div>
+          <div className="mt-4 space-y-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+              Consolidando resultados por faixa
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary/80" />
+              Organizando habilidades prioritárias
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary/60" />
+              Estruturando recomendações para intervenção
+            </div>
+          </div>
+          <div className="mt-4 space-y-3">
+            <div className="h-3 w-11/12 rounded bg-muted animate-pulse" />
+            <div className="h-3 w-10/12 rounded bg-muted animate-pulse" />
+            <div className="h-3 w-8/12 rounded bg-muted animate-pulse" />
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="h-16 rounded-lg bg-muted animate-pulse" />
+          <div className="h-16 rounded-lg bg-muted animate-pulse" />
+          <div className="h-16 rounded-lg bg-muted animate-pulse" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function toSectionLabel(key: string): string {
+  const map: Record<string, string> = {
+    document_title: 'Título',
+    warning: 'Aviso',
+    error: 'Mensagem',
+    details: 'Detalhes',
+    item_1: '1. Foco analítico',
+    item_2: '2. Matriz de ação por habilidade',
+    item_3: '3. Dinâmica de sala e recomposição',
+  };
+  if (map[key]) return map[key];
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (l) => l.toUpperCase());
+}
+
+function normalizeLabel(raw: string): string {
+  return raw
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeSkillText(raw: string): string {
+  return normalizeLabel(raw)
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isSkillAnalysisObject(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const keys = Object.keys(value).map((k) => normalizeLabel(k));
+  const hasSkill = keys.some((k) => k.includes('habilidade'));
+  const hasActionField = keys.some(
+    (k) =>
+      k.includes('conteudo') ||
+      k.includes('estruturante') ||
+      k.includes('dificuldade') ||
+      k.includes('como trabalhar') ||
+      k.includes('passo a passo') ||
+      k.includes('atividade')
+  );
+  return hasSkill || hasActionField;
+}
+
+function faixaTagClass(v: string): string {
+  const n = normalizeLabel(v);
+  if (n.includes('abaixo')) return 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30';
+  if (n.includes('basico')) return 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30';
+  if (n.includes('adequado')) return 'bg-lime-500/10 text-lime-700 dark:text-lime-300 border-lime-500/30';
+  if (n.includes('avancado')) return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30';
+  return 'bg-primary/10 text-primary border-primary/30';
+}
+
+function renderSkillAnalysisCard(skillObj: Record<string, unknown>, keyPrefix: string): JSX.Element {
+  const entries = Object.entries(skillObj);
+  const skillEntry = entries.find(([k]) => normalizeLabel(k).includes('habilidade'));
+  const levelEntry = entries.find(
+    ([k]) => normalizeLabel(k).includes('nivel') || normalizeLabel(k).includes('faixa')
+  );
+  const title = String(skillEntry?.[1] ?? 'Habilidade').trim() || 'Habilidade';
+  const level = String(levelEntry?.[1] ?? '').trim();
+  const detailEntries = entries.filter(([k]) => {
+    const nk = normalizeLabel(k);
+    return !nk.includes('habilidade') && !nk.includes('nivel') && !nk.includes('faixa');
+  });
+
+  return (
+    <article
+      key={keyPrefix}
+      className="rounded-xl border border-primary/20 bg-background/90 p-4 shadow-sm space-y-3"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <h4 className="text-sm font-semibold text-foreground leading-relaxed">{title}</h4>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center rounded-full border bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+            Habilidade
+          </span>
+          {level ? (
+            <span
+              className={cn(
+                'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
+                faixaTagClass(level)
+              )}
+            >
+              Nível: {level}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="grid gap-2">
+        {detailEntries.map(([k, v], index) => (
+          <div key={`${keyPrefix}-${k}-${index}`} className="rounded-lg border bg-muted/30 p-3">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {toSectionLabel(k)}
+            </p>
+            <div className="text-sm leading-relaxed text-foreground">
+              {typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+                ? String(v)
+                : renderAnalysisContent(v, `${keyPrefix}-${k}-${index}`)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function getSkillAnalysisTitle(skillObj: Record<string, unknown>): string {
+  const entries = Object.entries(skillObj);
+  const skillEntry = entries.find(([k]) => normalizeLabel(k).includes('habilidade'));
+  const title = String(skillEntry?.[1] ?? '').trim();
+  return title || 'Habilidade';
+}
+
+function extractSkillCode(title: string): string | null {
+  const head = String(title || '').split('-')[0]?.trim();
+  if (!head) return null;
+  if (/^[A-Z0-9]{4,}$/i.test(head.replace(/\s+/g, ''))) return head;
+  return null;
+}
+
+function renderSkillAnalysisDetail(
+  skillObj: Record<string, unknown>,
+  keyPrefix: string,
+  mapSkill?: SkillsMapHabilidade | null
+): JSX.Element {
+  const entries = Object.entries(skillObj);
+  const levelEntry = entries.find(
+    ([k]) => normalizeLabel(k).includes('nivel') || normalizeLabel(k).includes('faixa')
+  );
+  const level = String(levelEntry?.[1] ?? '').trim() || (mapSkill?.faixa ? FAIXA_LABELS[mapSkill.faixa] : '');
+  const title = getSkillAnalysisTitle(skillObj);
+  const codeFromTitle = extractSkillCode(title);
+  const code = (mapSkill?.codigo || '').trim() || codeFromTitle || null;
+  const detailEntries = entries.filter(([k]) => {
+    const nk = normalizeLabel(k);
+    return !nk.includes('habilidade') && !nk.includes('nivel') && !nk.includes('faixa');
+  });
+
+  return (
+    <div className="rounded-xl border border-primary/20 bg-background/90 p-4 shadow-sm space-y-3">
+      <h4 className="text-sm font-semibold leading-relaxed text-foreground">{title}</h4>
+      <div className="flex flex-wrap items-center gap-2">
+        {code ? (
+          <span className="inline-flex items-center rounded-full border bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+            {code}
+          </span>
+        ) : null}
+        <span className="inline-flex items-center rounded-full border bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+          Habilidade selecionada
+        </span>
+        {level ? (
+          <span
+            className={cn(
+              'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
+              faixaTagClass(level)
+            )}
+          >
+            Nível: {level}
+          </span>
+        ) : null}
+      </div>
+      <div className="grid gap-2">
+        {detailEntries.map(([k, v], index) => (
+          <div key={`${keyPrefix}-detail-${k}-${index}`} className="rounded-lg border bg-muted/30 p-3">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {toSectionLabel(k)}
+            </p>
+            <div className="text-sm leading-relaxed text-foreground">
+              {typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+                ? String(v)
+                : renderAnalysisContent(v, `${keyPrefix}-detail-${k}-${index}`)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function renderAnalysisContent(
+  value: unknown,
+  keyPrefix = 'analysis',
+  shouldShowSkill?: (skillObj: Record<string, unknown>) => boolean
+): JSX.Element {
+  if (value == null) {
+    return <p className="text-sm text-muted-foreground">Sem dados de análise disponíveis para este recorte.</p>;
+  }
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">{String(value)}</p>;
+  }
+
+  if (Array.isArray(value)) {
+    if (!value.length) {
+      return <p className="text-sm text-muted-foreground">Sem dados de análise disponíveis para este recorte.</p>;
+    }
+    const allPrimitive = value.every(
+      (item) => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
+    );
+    if (allPrimitive) {
+      return (
+        <ul className="list-disc space-y-1 pl-4">
+          {value.map((item, index) => (
+            <li key={`${keyPrefix}-${index}`} className="text-sm leading-relaxed text-foreground">
+              {String(item)}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    const allSkills = value.every((item) => isSkillAnalysisObject(item));
+    if (allSkills) {
+      const filteredSkills = shouldShowSkill
+        ? (value as Record<string, unknown>[]).filter((item) => shouldShowSkill(item))
+        : (value as Record<string, unknown>[]);
+      if (!filteredSkills.length) {
+        return (
+          <p className="text-sm text-muted-foreground">
+            Não há habilidades abaixo de 60% para exibir nesta análise.
+          </p>
+        );
+      }
+      return (
+        <div className="space-y-3">
+          {filteredSkills.map((item, index) => (
+            <div key={`${keyPrefix}-skill-${index}`}>
+              {renderSkillAnalysisCard(item as Record<string, unknown>, `${keyPrefix}-skill-${index}`)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return (
+      <ul className="space-y-2">
+        {value.map((item, index) => (
+          <li key={`${keyPrefix}-${index}`} className="rounded-md border bg-background/70 p-3">
+            {renderAnalysisContent(item, `${keyPrefix}-${index}`, shouldShowSkill)}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (!entries.length) {
+    return <p className="text-sm text-muted-foreground">Sem dados de análise disponíveis para este recorte.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {entries.map(([key, item]) => (
+        <details key={`${keyPrefix}-${key}`} className="group rounded-lg border bg-background/70 p-3" open>
+          <summary className="cursor-pointer list-none">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {toSectionLabel(key)}
+              </p>
+              <span className="text-[10px] text-muted-foreground transition-transform group-open:rotate-180">
+                ▼
+              </span>
+            </div>
+          </summary>
+          <div className="mt-2">{renderAnalysisContent(item, `${keyPrefix}-${key}`, shouldShowSkill)}</div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
+function AnalysisCard({
+  analysis,
+  habilidadesMapa,
+}: {
+  analysis: unknown;
+  habilidadesMapa?: SkillsMapHabilidade[];
+}) {
+  const topLevelEntries =
+    analysis && typeof analysis === 'object' && !Array.isArray(analysis)
+      ? Object.entries(analysis as Record<string, unknown>)
+      : [];
+  const hasWarning = topLevelEntries.some(([k]) => k === 'warning' || k === 'error');
+  const sectionsCount = topLevelEntries.filter(([k]) => !['document_title', 'warning', 'error'].includes(k)).length;
+  const lowSkills = (habilidadesMapa || []).filter((h) => Number(h.percentual_acertos || 0) < 60);
+  const skillTokens = new Set<string>();
+  lowSkills.forEach((h) => {
+    const code = normalizeSkillText(h.codigo || '');
+    const desc = normalizeSkillText(h.descricao || '');
+    const title = normalizeSkillText(skillDisplayTitle(h));
+    if (code) skillTokens.add(code);
+    if (desc) skillTokens.add(desc);
+    if (title) skillTokens.add(title);
+    if (code && desc) skillTokens.add(normalizeSkillText(`${code} ${desc}`));
+  });
+
+  const shouldShowSkill = useCallback(
+    (skillObj: Record<string, unknown>) => {
+      if (!skillTokens.size) return false;
+      const entries = Object.entries(skillObj);
+      const skillEntry = entries.find(([k]) => normalizeLabel(k).includes('habilidade'));
+      const label = normalizeSkillText(String(skillEntry?.[1] ?? ''));
+      if (!label) return false;
+      for (const token of skillTokens) {
+        if (token && (label.includes(token) || token.includes(label))) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [skillTokens]
+  );
+
+  const resolveMapSkillForAnalysis = useCallback(
+    (skillObj: Record<string, unknown>): SkillsMapHabilidade | null => {
+      const label = normalizeSkillText(getSkillAnalysisTitle(skillObj));
+      if (!label) return null;
+      for (const h of lowSkills) {
+        const candidates = [
+          normalizeSkillText(h.codigo || ''),
+          normalizeSkillText(h.descricao || ''),
+          normalizeSkillText(skillDisplayTitle(h)),
+          normalizeSkillText(`${h.codigo || ''} ${h.descricao || ''}`),
+        ].filter(Boolean);
+        if (candidates.some((c) => label.includes(c) || c.includes(label))) {
+          return h;
+        }
+      }
+      return null;
+    },
+    [lowSkills]
+  );
+
+  const analysisObject =
+    analysis && typeof analysis === 'object' && !Array.isArray(analysis)
+      ? (analysis as Record<string, unknown>)
+      : null;
+  const skillCandidatesRaw = Array.isArray(analysisObject?.item_2) ? analysisObject?.item_2 : [];
+  const skillCards = (skillCandidatesRaw as unknown[])
+    .filter((x): x is Record<string, unknown> => isSkillAnalysisObject(x))
+    .filter((x) => shouldShowSkill(x));
+  const [selectedSkillIdx, setSelectedSkillIdx] = useState(0);
+  const selectedSkill = skillCards[selectedSkillIdx] ?? null;
+
+  const generalEntries = topLevelEntries.filter(([k]) => !['item_2'].includes(k));
+  const generalAnalysis: Record<string, unknown> = Object.fromEntries(generalEntries);
+
+  return (
+    <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/5 via-background to-primary/10">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          Análise do mapa de habilidades
+        </CardTitle>
+        <div className="flex flex-wrap gap-2 pt-1">
+          <span className="inline-flex items-center gap-1 rounded-full border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground">
+            <Target className="h-3.5 w-3.5 text-primary" />
+            Priorização por desempenho
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground">
+            <ListChecks className="h-3.5 w-3.5 text-primary" />
+            {sectionsCount || 0} seções
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground">
+            <Lightbulb className="h-3.5 w-3.5 text-primary" />
+            Recomendações aplicáveis
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {hasWarning && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+            Alguns pontos desta análise podem depender do volume/qualidade dos dados no recorte atual.
+          </div>
+        )}
+
+        {Object.keys(generalAnalysis).length > 0 ? (
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Visão geral
+            </p>
+            {renderAnalysisContent(generalAnalysis, 'analysis-general', shouldShowSkill)}
+          </div>
+        ) : null}
+
+        {skillCards.length > 0 ? (
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Habilidades priorizadas (&lt; 60%)
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {skillCards.map((skillObj, idx) => {
+                const title = getSkillAnalysisTitle(skillObj);
+                const mapSkill = resolveMapSkillForAnalysis(skillObj);
+                const faixa = mapSkill?.faixa ?? 'basico';
+                const skillCode = (mapSkill?.codigo || '').trim() || extractSkillCode(title) || '';
+                const isSelected = idx === selectedSkillIdx;
+                return (
+                  <button
+                    key={`skill-card-${idx}-${title}`}
+                    type="button"
+                    onClick={() => setSelectedSkillIdx(idx)}
+                    className={cn(
+                      'rounded-lg border p-3 text-left transition shadow-sm',
+                      CARD_BG[faixa],
+                      isSelected
+                        ? 'ring-2 ring-primary/60'
+                        : 'opacity-95 hover:opacity-100'
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold leading-snug line-clamp-2">{title}</p>
+                      <span className="inline-flex items-center rounded-full border border-current/20 bg-black/10 px-2 py-0.5 text-[10px] font-medium">
+                        Habilidade
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {skillCode ? (
+                        <span className="inline-flex items-center rounded-full border border-current/20 bg-black/10 px-2 py-0.5 text-[10px] font-semibold">
+                          {skillCode}
+                        </span>
+                      ) : null}
+                      <span className="inline-flex items-center rounded-full border border-current/20 bg-black/10 px-2 py-0.5 text-[10px] font-medium">
+                        {FAIXA_LABELS[faixa]}
+                      </span>
+                      {mapSkill ? (
+                        <span className="inline-flex items-center rounded-full border border-current/20 bg-black/10 px-2 py-0.5 text-[10px] font-medium">
+                          {mapSkill.percentual_acertos.toFixed(1)}%
+                        </span>
+                      ) : null}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {selectedSkill ? (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Detalhamento específico
+                </p>
+                {renderSkillAnalysisDetail(
+                  selectedSkill,
+                  `selected-skill-${selectedSkillIdx}`,
+                  resolveMapSkillForAnalysis(selectedSkill)
+                )}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Não há habilidades abaixo de 60% para exibir nesta análise.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1101,6 +1619,10 @@ export default function SkillsHeatMapPage() {
               </CardContent>
             </Card>
           )}
+          {loadingMap && canLoadOnlineMap && !mapOnline && <AnalysisLoadingCard />}
+          {mapOnline && (
+            <AnalysisCard analysis={mapOnline.analise_ia} habilidadesMapa={mapOnline.habilidades} />
+          )}
         </TabsContent>
 
         <TabsContent value="cartao" className="space-y-4">
@@ -1230,6 +1752,10 @@ export default function SkillsHeatMapPage() {
                 )}
               </CardContent>
             </Card>
+          )}
+          {loadingMap && canLoadCartaoMap && !mapCartao && <AnalysisLoadingCard />}
+          {mapCartao && (
+            <AnalysisCard analysis={mapCartao.analise_ia} habilidadesMapa={mapCartao.habilidades} />
           )}
         </TabsContent>
       </Tabs>

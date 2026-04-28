@@ -34,6 +34,7 @@ export interface SkillsMapResponse {
   disciplinas_disponiveis: DisciplinaOpcao[];
   habilidades: SkillsMapHabilidade[];
   por_faixa: Record<SkillsMapFaixa, SkillsMapHabilidade[]>;
+  analise_ia?: unknown;
   filtros_aplicados?: Record<string, string | undefined>;
   /** Alunos matriculados no recorte (turma/escopo), antes de excluir faltosos. */
   total_alunos_escopo_turma?: number;
