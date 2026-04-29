@@ -8,7 +8,12 @@ on:
 
 jobs:
     deploy:
-        runs-on: [self-hosted, vps-afirme]
+        strategy:
+            matrix:
+                server: [vps-afirme, vps-limoeiro]
+        runs-on:
+            - self-hosted
+            - ${{ matrix.server }}
         steps:
             - name: Checkout
               uses: actions/checkout@v4
