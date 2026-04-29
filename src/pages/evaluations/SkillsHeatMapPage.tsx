@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -29,8 +27,6 @@ import {
   Target,
   ListChecks,
   Lightbulb,
-  Search,
-  ArrowUpRight,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -69,7 +65,7 @@ const FAIXA_LABELS: Record<(typeof FAIXA_ORDER)[number], string> = {
 
 const CARD_BG: Record<(typeof FAIXA_ORDER)[number], string> = {
   abaixo_do_basico: 'bg-gradient-to-br from-red-600/90 to-orange-500/90 text-white',
-  basico: 'bg-gradient-to-br from-yellow-400 to-yellow-300 text-yellow-950',
+  basico: 'bg-gradient-to-br from-amber-400 to-yellow-300 text-amber-950',
   adequado: 'bg-gradient-to-br from-lime-400 to-emerald-300 text-emerald-950',
   avancado: 'bg-gradient-to-br from-emerald-700 to-green-600 text-white',
 };
@@ -341,8 +337,6 @@ function toSectionLabel(key: string): string {
 
 function normalizeLabel(raw: string): string {
   return raw
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
     .replace(/_/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -375,98 +369,63 @@ function isSkillAnalysisObject(value: unknown): value is Record<string, unknown>
 function faixaTagClass(v: string): string {
   const n = normalizeLabel(v);
   if (n.includes('abaixo')) return 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30';
-  if (n.includes('basico')) return 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300 border-yellow-500/30';
+  if (n.includes('basico')) return 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30';
   if (n.includes('adequado')) return 'bg-lime-500/10 text-lime-700 dark:text-lime-300 border-lime-500/30';
   if (n.includes('avancado')) return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30';
   return 'bg-primary/10 text-primary border-primary/30';
 }
 
-function isImprovementStepKey(key: string): boolean {
-  const nk = normalizeLabel(key);
-  return (
-    nk.includes('passo') ||
-    nk.includes('como trabalhar') ||
-    nk.includes('melhor') ||
-    nk.includes('atividade') ||
-    nk.includes('interven') ||
-    nk.includes('estrateg') ||
-    nk.includes('recomenda') ||
-    nk.includes('plano de acao')
-  );
-}
-
-function sortSkillDetailEntries(entries: Array<[string, unknown]>): Array<[string, unknown]> {
-  return [...entries].sort(([a], [b]) => {
-    const aPriority = isImprovementStepKey(a) ? 0 : 1;
-    const bPriority = isImprovementStepKey(b) ? 0 : 1;
-    if (aPriority !== bPriority) return aPriority - bPriority;
-    return a.localeCompare(b, 'pt-BR');
-  });
-}
-
-function renderSkillAnalysisCard(
-  skillObj: Record<string, unknown>,
-  keyPrefix: string,
-  options?: {
-    mapSkill?: SkillsMapHabilidade | null;
-    onOpenSkillAnalysis?: (skillObj: Record<string, unknown>) => void;
-  }
-): JSX.Element {
+function renderSkillAnalysisCard(skillObj: Record<string, unknown>, keyPrefix: string): JSX.Element {
   const entries = Object.entries(skillObj);
   const skillEntry = entries.find(([k]) => normalizeLabel(k).includes('habilidade'));
   const levelEntry = entries.find(
     ([k]) => normalizeLabel(k).includes('nivel') || normalizeLabel(k).includes('faixa')
   );
   const title = String(skillEntry?.[1] ?? 'Habilidade').trim() || 'Habilidade';
-  const level =
-    String(levelEntry?.[1] ?? '').trim() ||
-    (options?.mapSkill?.faixa ? FAIXA_LABELS[options.mapSkill.faixa] : '');
-  const codeFromTitle = extractSkillCode(title);
-  const code = (options?.mapSkill?.codigo || '').trim() || codeFromTitle || null;
-  const normalizedLevel = normalizeLabel(level);
-  const levelCardTone = normalizedLevel.includes('abaixo')
-    ? 'border-red-500/35 bg-red-500/10'
-    : normalizedLevel.includes('basico')
-      ? 'border-yellow-500/35 bg-yellow-500/10'
-      : normalizedLevel.includes('adequado')
-        ? 'border-lime-500/35 bg-lime-500/10'
-        : normalizedLevel.includes('avancado')
-          ? 'border-emerald-500/35 bg-emerald-500/10'
-          : 'border-primary/20 bg-background/90';
+  const level = String(levelEntry?.[1] ?? '').trim();
+  const detailEntries = entries.filter(([k]) => {
+    const nk = normalizeLabel(k);
+    return !nk.includes('habilidade') && !nk.includes('nivel') && !nk.includes('faixa');
+  });
 
   return (
     <article
       key={keyPrefix}
-      className={cn('rounded-xl border p-4 shadow-sm space-y-3 transition hover:shadow-md', levelCardTone)}
+      className="rounded-xl border border-primary/20 bg-background/90 p-4 shadow-sm space-y-3"
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <h4 className="text-sm font-semibold text-foreground leading-relaxed">{title}</h4>
         <div className="flex flex-wrap items-center gap-2">
-          {code ? <Badge className="font-mono text-[11px]">{code}</Badge> : null}
+          <span className="inline-flex items-center rounded-full border bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+            Habilidade
+          </span>
           {level ? (
-            <Badge className={cn('border px-2 py-0.5 text-[11px] font-semibold', faixaTagClass(level))}>
+            <span
+              className={cn(
+                'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
+                faixaTagClass(level)
+              )}
+            >
               Nível: {level}
-            </Badge>
+            </span>
           ) : null}
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Clique para visualizar como trabalhar esta habilidade e os próximos passos no modal.
-      </p>
-      {options?.onOpenSkillAnalysis ? (
-        <div className="flex justify-end">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => options.onOpenSkillAnalysis?.(skillObj)}
-            className="gap-1.5"
-          >
-            Ver plano de melhoria
-            <ArrowUpRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      ) : null}
+      <div className="grid gap-2">
+        {detailEntries.map(([k, v], index) => (
+          <div key={`${keyPrefix}-${k}-${index}`} className="rounded-lg border bg-muted/30 p-3">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {toSectionLabel(k)}
+            </p>
+            <div className="text-sm leading-relaxed text-foreground">
+              {typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+                ? String(v)
+                : renderAnalysisContent(v, `${keyPrefix}-${k}-${index}`)}
+            </div>
+          </div>
+        ))}
+      </div>
     </article>
   );
 }
@@ -502,7 +461,6 @@ function renderSkillAnalysisDetail(
     const nk = normalizeLabel(k);
     return !nk.includes('habilidade') && !nk.includes('nivel') && !nk.includes('faixa');
   });
-  const sortedDetailEntries = sortSkillDetailEntries(detailEntries);
 
   return (
     <div className="rounded-xl border border-primary/20 bg-background/90 p-4 shadow-sm space-y-3">
@@ -528,7 +486,7 @@ function renderSkillAnalysisDetail(
         ) : null}
       </div>
       <div className="grid gap-2">
-        {sortedDetailEntries.map(([k, v], index) => (
+        {detailEntries.map(([k, v], index) => (
           <div key={`${keyPrefix}-detail-${k}-${index}`} className="rounded-lg border bg-muted/30 p-3">
             <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               {toSectionLabel(k)}
@@ -536,13 +494,7 @@ function renderSkillAnalysisDetail(
             <div className="text-sm leading-relaxed text-foreground">
               {typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
                 ? String(v)
-                : renderAnalysisContent(
-                    v,
-                    `${keyPrefix}-detail-${k}-${index}`,
-                    undefined,
-                    undefined,
-                    isImprovementStepKey(k)
-                  )}
+                : renderAnalysisContent(v, `${keyPrefix}-detail-${k}-${index}`)}
             </div>
           </div>
         ))}
@@ -554,9 +506,7 @@ function renderSkillAnalysisDetail(
 function renderAnalysisContent(
   value: unknown,
   keyPrefix = 'analysis',
-  shouldShowSkill?: (skillObj: Record<string, unknown>) => boolean,
-  onOpenSkillAnalysis?: (skillObj: Record<string, unknown>) => void,
-  asStepList = false
+  shouldShowSkill?: (skillObj: Record<string, unknown>) => boolean
 ): JSX.Element {
   if (value == null) {
     return <p className="text-sm text-muted-foreground">Sem dados de análise disponíveis para este recorte.</p>;
@@ -575,13 +525,13 @@ function renderAnalysisContent(
     );
     if (allPrimitive) {
       return (
-        <ol className={cn(asStepList ? 'list-decimal' : 'list-disc', 'space-y-1 pl-4')}>
+        <ul className="list-disc space-y-1 pl-4">
           {value.map((item, index) => (
             <li key={`${keyPrefix}-${index}`} className="text-sm leading-relaxed text-foreground">
               {String(item)}
             </li>
           ))}
-        </ol>
+        </ul>
       );
     }
     const allSkills = value.every((item) => isSkillAnalysisObject(item));
@@ -600,9 +550,7 @@ function renderAnalysisContent(
         <div className="space-y-3">
           {filteredSkills.map((item, index) => (
             <div key={`${keyPrefix}-skill-${index}`}>
-              {renderSkillAnalysisCard(item as Record<string, unknown>, `${keyPrefix}-skill-${index}`, {
-                onOpenSkillAnalysis,
-              })}
+              {renderSkillAnalysisCard(item as Record<string, unknown>, `${keyPrefix}-skill-${index}`)}
             </div>
           ))}
         </div>
@@ -612,7 +560,7 @@ function renderAnalysisContent(
       <ul className="space-y-2">
         {value.map((item, index) => (
           <li key={`${keyPrefix}-${index}`} className="rounded-md border bg-background/70 p-3">
-            {renderAnalysisContent(item, `${keyPrefix}-${index}`, shouldShowSkill, onOpenSkillAnalysis, asStepList)}
+            {renderAnalysisContent(item, `${keyPrefix}-${index}`, shouldShowSkill)}
           </li>
         ))}
       </ul>
@@ -638,15 +586,7 @@ function renderAnalysisContent(
               </span>
             </div>
           </summary>
-          <div className="mt-2">
-            {renderAnalysisContent(
-              item,
-              `${keyPrefix}-${key}`,
-              shouldShowSkill,
-              onOpenSkillAnalysis,
-              isImprovementStepKey(key)
-            )}
-          </div>
+          <div className="mt-2">{renderAnalysisContent(item, `${keyPrefix}-${key}`, shouldShowSkill)}</div>
         </details>
       ))}
     </div>
@@ -723,32 +663,8 @@ function AnalysisCard({
   const skillCards = (skillCandidatesRaw as unknown[])
     .filter((x): x is Record<string, unknown> => isSkillAnalysisObject(x))
     .filter((x) => shouldShowSkill(x));
-  const [skillSearch, setSkillSearch] = useState('');
-  const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false);
-  const [analysisDialogSkill, setAnalysisDialogSkill] = useState<Record<string, unknown> | null>(null);
-  const [analysisDialogMapSkill, setAnalysisDialogMapSkill] = useState<SkillsMapHabilidade | null>(null);
-
-  const filteredSkillCards = useMemo(() => {
-    const q = normalizeSkillText(skillSearch);
-    if (!q) return skillCards;
-    return skillCards.filter((skillObj) => {
-      const title = getSkillAnalysisTitle(skillObj);
-      const mapSkill = resolveMapSkillForAnalysis(skillObj);
-      const code = (mapSkill?.codigo || '').trim() || extractSkillCode(title) || '';
-      const desc = (mapSkill?.descricao || '').trim();
-      const haystack = normalizeSkillText(`${title} ${code} ${desc}`);
-      return haystack.includes(q);
-    });
-  }, [resolveMapSkillForAnalysis, skillCards, skillSearch]);
-
-  const openAnalysisSkillModal = useCallback(
-    (skillObj: Record<string, unknown>) => {
-      setAnalysisDialogSkill(skillObj);
-      setAnalysisDialogMapSkill(resolveMapSkillForAnalysis(skillObj));
-      setAnalysisDialogOpen(true);
-    },
-    [resolveMapSkillForAnalysis]
-  );
+  const [selectedSkillIdx, setSelectedSkillIdx] = useState(0);
+  const selectedSkill = skillCards[selectedSkillIdx] ?? null;
 
   const generalEntries = topLevelEntries.filter(([k]) => !['item_2'].includes(k));
   const generalAnalysis: Record<string, unknown> = Object.fromEntries(generalEntries);
@@ -787,7 +703,7 @@ function AnalysisCard({
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Visão geral
             </p>
-            {renderAnalysisContent(generalAnalysis, 'analysis-general', shouldShowSkill, openAnalysisSkillModal)}
+            {renderAnalysisContent(generalAnalysis, 'analysis-general', shouldShowSkill)}
           </div>
         ) : null}
 
@@ -796,62 +712,62 @@ function AnalysisCard({
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Habilidades priorizadas (&lt; 60%)
             </p>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={skillSearch}
-                onChange={(event) => setSkillSearch(event.target.value)}
-                placeholder="Buscar por código, habilidade ou descrição..."
-                className="pl-9"
-                aria-label="Buscar habilidade priorizada"
-              />
-            </div>
             <div className="grid gap-2 sm:grid-cols-2">
-              {filteredSkillCards.map((skillObj, idx) => {
+              {skillCards.map((skillObj, idx) => {
                 const title = getSkillAnalysisTitle(skillObj);
                 const mapSkill = resolveMapSkillForAnalysis(skillObj);
                 const faixa = mapSkill?.faixa ?? 'basico';
                 const skillCode = (mapSkill?.codigo || '').trim() || extractSkillCode(title) || '';
-                const percentage = mapSkill?.percentual_acertos != null ? `${mapSkill.percentual_acertos.toFixed(1)}%` : null;
+                const isSelected = idx === selectedSkillIdx;
                 return (
                   <button
                     key={`skill-card-${idx}-${title}`}
                     type="button"
-                    onClick={() => openAnalysisSkillModal(skillObj)}
+                    onClick={() => setSelectedSkillIdx(idx)}
                     className={cn(
-                      'rounded-xl border p-3 text-left transition shadow-sm hover:shadow-md',
-                      CARD_BG[faixa]
+                      'rounded-lg border p-3 text-left transition shadow-sm',
+                      CARD_BG[faixa],
+                      isSelected
+                        ? 'ring-2 ring-primary/60'
+                        : 'opacity-95 hover:opacity-100'
                     )}
-                    aria-label={`Ver plano de melhoria da habilidade ${skillCode || title}`}
                   >
-                    <div className="flex flex-wrap items-center gap-2">
-                      {skillCode ? (
-                        <Badge className="border border-current/25 bg-black/15 px-2.5 py-1 text-xs font-semibold font-mono tracking-wide text-current">
-                          {skillCode}
-                        </Badge>
-                      ) : null}
-                      <Badge className="border border-current/25 bg-black/15 px-2.5 py-1 text-xs font-semibold text-current">
-                        {FAIXA_LABELS[faixa]}
-                      </Badge>
-                      {percentage ? (
-                        <Badge className="border border-current/25 bg-black/15 px-2.5 py-1 text-xs font-semibold tabular-nums text-current">
-                          {percentage}
-                        </Badge>
-                      ) : null}
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold leading-snug line-clamp-2">{title}</p>
+                      <span className="inline-flex items-center rounded-full border border-current/20 bg-black/10 px-2 py-0.5 text-[10px] font-medium">
+                        Habilidade
+                      </span>
                     </div>
-                    <p className="mt-2 text-sm font-semibold leading-snug line-clamp-2">{title}</p>
-                    <div className="mt-3 flex items-center justify-between text-xs font-medium text-current/90">
-                      <span>Ver plano de melhoria</span>
-                      <ArrowUpRight className="h-4 w-4" />
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {skillCode ? (
+                        <span className="inline-flex items-center rounded-full border border-current/20 bg-black/10 px-2 py-0.5 text-[10px] font-semibold">
+                          {skillCode}
+                        </span>
+                      ) : null}
+                      <span className="inline-flex items-center rounded-full border border-current/20 bg-black/10 px-2 py-0.5 text-[10px] font-medium">
+                        {FAIXA_LABELS[faixa]}
+                      </span>
+                      {mapSkill ? (
+                        <span className="inline-flex items-center rounded-full border border-current/20 bg-black/10 px-2 py-0.5 text-[10px] font-medium">
+                          {mapSkill.percentual_acertos.toFixed(1)}%
+                        </span>
+                      ) : null}
                     </div>
                   </button>
                 );
               })}
             </div>
-            {!filteredSkillCards.length ? (
-              <p className="rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                Nenhuma habilidade encontrada para este filtro.
-              </p>
+            {selectedSkill ? (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Detalhamento específico
+                </p>
+                {renderSkillAnalysisDetail(
+                  selectedSkill,
+                  `selected-skill-${selectedSkillIdx}`,
+                  resolveMapSkillForAnalysis(selectedSkill)
+                )}
+              </div>
             ) : null}
           </div>
         ) : (
@@ -860,51 +776,6 @@ function AnalysisCard({
           </p>
         )}
       </CardContent>
-      <Dialog
-        open={analysisDialogOpen}
-        onOpenChange={(open) => {
-          setAnalysisDialogOpen(open);
-          if (!open) {
-            setAnalysisDialogSkill(null);
-            setAnalysisDialogMapSkill(null);
-          }
-        }}
-      >
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden p-0">
-          <div className="flex flex-col h-full">
-            <DialogHeader className="border-b bg-muted/30 px-6 py-4">
-              <DialogTitle className="text-base leading-snug">
-                {analysisDialogSkill ? getSkillAnalysisTitle(analysisDialogSkill) : 'Plano de melhoria da habilidade'}
-              </DialogTitle>
-              <DialogDescription className="text-sm">
-                Passos e recomendações práticas para evoluir a habilidade selecionada.
-              </DialogDescription>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                {analysisDialogMapSkill?.codigo ? (
-                  <Badge className="font-mono text-xs">{analysisDialogMapSkill.codigo}</Badge>
-                ) : null}
-                {analysisDialogMapSkill?.faixa ? (
-                  <Badge className={cn('border text-xs font-semibold', faixaTagClass(FAIXA_LABELS[analysisDialogMapSkill.faixa]))}>
-                    {FAIXA_LABELS[analysisDialogMapSkill.faixa]}
-                  </Badge>
-                ) : null}
-                {analysisDialogMapSkill?.percentual_acertos != null ? (
-                  <Badge className="text-xs font-semibold tabular-nums">
-                    {analysisDialogMapSkill.percentual_acertos.toFixed(1)}%
-                  </Badge>
-                ) : null}
-              </div>
-            </DialogHeader>
-            <ScrollArea className="h-[calc(90vh-170px)] px-6 py-4">
-              {analysisDialogSkill
-                ? renderSkillAnalysisDetail(analysisDialogSkill, 'analysis-dialog-skill', analysisDialogMapSkill)
-                : (
-                  <p className="text-sm text-muted-foreground">Selecione uma habilidade para visualizar o plano de melhoria.</p>
-                )}
-            </ScrollArea>
-          </div>
-        </DialogContent>
-      </Dialog>
     </Card>
   );
 }
