@@ -158,11 +158,27 @@ function readOptionalFiniteNumber(v: unknown): number | undefined {
 const IA_ANALISE_SECTION_LABELS: Record<string, string> = {
   panorama_geral: "Panorama geral",
   reflexao_niveis: "Reflexao por niveis",
+  reflexao_niveis_habilidades: "Reflexao por niveis",
   encaminhamentos_cultura_digital: "Encaminhamentos (cultura digital)",
   metadados_entrada: "Metadados de entrada",
+  metadados_gerais: "Metadados gerais",
 };
 
-const IA_ANALISE_HIDDEN_KEYS = new Set(["warning", "error", "document_title"]);
+const IA_ANALISE_HIDDEN_KEYS = new Set([
+  "warning",
+  "error",
+  "document_title",
+  "metadados_entrada",
+  "metadados_gerais",
+]);
+
+const IA_PANORAMA_GERAL_HIDDEN_KEYS = new Set([
+  "componente_curricular",
+  "distribuicao_niveis",
+  "etapa_avaliada",
+  "media_nota",
+  "media_proficiencia",
+]);
 
 interface ClassSummaryRow {
   serie: string;
@@ -4562,9 +4578,12 @@ export default function RelatorioEscolar({
       );
     }
     if (typeof value === "object") {
-      const entries = Object.entries(value as Record<string, unknown>).filter(
-        ([k]) => !IA_ANALISE_HIDDEN_KEYS.has(k)
-      );
+      const isPanoramaGeral = normalizeText(keyPrefix).includes("panorama_geral");
+      const entries = Object.entries(value as Record<string, unknown>).filter(([k]) => {
+        if (IA_ANALISE_HIDDEN_KEYS.has(k)) return false;
+        if (isPanoramaGeral && IA_PANORAMA_GERAL_HIDDEN_KEYS.has(k)) return false;
+        return true;
+      });
       if (!entries.length) {
         return <span className="text-sm text-muted-foreground">Sem dados.</span>;
       }
@@ -4584,12 +4603,186 @@ export default function RelatorioEscolar({
     return <span className="text-sm text-muted-foreground">Sem dados.</span>;
   }, [formatAnaliseIaKey]);
 
+  const renderReflexaoNiveis = useCallback((value: unknown, keyPrefix: string) => {
+    if (!Array.isArray(value) || value.length === 0) return renderAnaliseIaValue(value, keyPrefix);
+
+    type ReflexaoNivelLegacy = {
+      nivel_identificado?: string;
+      significado_e_impacto?: string;
+      analise_habilidades?: Array<{
+        habilidade_foco?: string;
+        reflexao_pedagogica?: string;
+      }>;
+    };
+
+    type ReflexaoNivelNovo = {
+      nivel?: string;
+      descricao_desempenho?: string;
+      habilidades_analisadas?: Array<{
+        codigo?: string;
+        descricao?: string;
+        reflexao?: string;
+      }>;
+    };
+
+    const items = value as Array<ReflexaoNivelLegacy | ReflexaoNivelNovo>;
+    return (
+      <div className="space-y-3">
+        {items.map((item, idx) => {
+          const asAny = item as Record<string, unknown>;
+
+          const nivel =
+            readTrimmedString(asAny.nivel_identificado) || readTrimmedString(asAny.nivel) || "—";
+
+          const significado =
+            readTrimmedString(asAny.significado_e_impacto) || readTrimmedString(asAny.descricao_desempenho);
+
+          const analiseDireta = readTrimmedString(asAny.analise);
+          const quantidadeAlunosRaw = asAny.quantidade_alunos;
+          const quantidadeAlunos =
+            typeof quantidadeAlunosRaw === "number" && Number.isFinite(quantidadeAlunosRaw)
+              ? quantidadeAlunosRaw
+              : undefined;
+
+          const habilidadesLegacy = Array.isArray(asAny.analise_habilidades) ? asAny.analise_habilidades : null;
+          const habilidadesNovo = Array.isArray(asAny.habilidades_analisadas) ? asAny.habilidades_analisadas : null;
+
+          return (
+            <div
+              key={`${keyPrefix}-${idx}`}
+              className="rounded-lg border border-border bg-background/70 p-4 space-y-3"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Nível identificado
+                  </p>
+                  <p className="text-sm font-semibold text-foreground">{nivel}</p>
+                </div>
+                {quantidadeAlunos != null ? (
+                  <Badge variant="secondary" className="font-semibold">
+                    {quantidadeAlunos} {quantidadeAlunos === 1 ? "aluno" : "alunos"}
+                  </Badge>
+                ) : null}
+              </div>
+
+              {significado ? (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Descrição do desempenho
+                  </p>
+                  <p className="text-sm text-foreground whitespace-pre-wrap">{significado}</p>
+                </div>
+              ) : null}
+
+              {!significado && analiseDireta ? (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Análise
+                  </p>
+                  <p className="text-sm text-foreground whitespace-pre-wrap">{analiseDireta}</p>
+                </div>
+              ) : null}
+
+              {habilidadesNovo && habilidadesNovo.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Habilidades analisadas
+                  </p>
+                  <div className="space-y-2">
+                    {habilidadesNovo.map((h, hIdx) => {
+                      const codigo = readTrimmedString((h as Record<string, unknown>)?.codigo);
+                      const descricao = readTrimmedString((h as Record<string, unknown>)?.descricao);
+                      const reflexao = readTrimmedString((h as Record<string, unknown>)?.reflexao);
+                      return (
+                        <div
+                          key={`${keyPrefix}-${idx}-hab2-${hIdx}`}
+                          className="rounded-md border border-border bg-card p-3"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Código
+                            </span>
+                            <span className="text-xs font-semibold text-foreground">{codigo || "—"}</span>
+                          </div>
+                          {descricao ? (
+                            <p className="mt-2 text-sm text-foreground whitespace-pre-wrap">{descricao}</p>
+                          ) : null}
+                          {reflexao ? (
+                            <div className="mt-2 pt-2 border-t border-border/60">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                Reflexão
+                              </p>
+                              <p className="mt-1 text-sm text-foreground whitespace-pre-wrap">{reflexao}</p>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {(!habilidadesNovo || habilidadesNovo.length === 0) && habilidadesLegacy && habilidadesLegacy.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Análise de habilidades
+                  </p>
+                  <div className="space-y-2">
+                    {habilidadesLegacy.map((h, hIdx) => {
+                      const foco = readTrimmedString((h as Record<string, unknown>)?.habilidade_foco);
+                      const reflexao = readTrimmedString((h as Record<string, unknown>)?.reflexao_pedagogica);
+                      return (
+                        <div
+                          key={`${keyPrefix}-${idx}-hab-${hIdx}`}
+                          className="rounded-md border border-border bg-card p-3"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Habilidade foco
+                            </span>
+                            <span className="text-xs font-semibold text-foreground">{foco || "—"}</span>
+                          </div>
+                          {reflexao ? (
+                            <p className="mt-2 text-sm text-foreground whitespace-pre-wrap">{reflexao}</p>
+                          ) : (
+                            <p className="mt-2 text-sm text-muted-foreground">Sem descrição.</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }, [renderAnaliseIaValue]);
+
   const getAnaliseIaPorDisciplina = useCallback(
     (disciplinaNome?: string): unknown => {
       if (!aiAnaliseObject || !disciplinaNome) return null;
       const alvo = normalizeText(disciplinaNome);
 
-      const porDisciplina = aiAnaliseObject.por_disciplina;
+      // Novo formato: analises_por_disciplina.{Disciplina}
+      const analisesPorDisciplina = (aiAnaliseObject as Record<string, unknown>).analises_por_disciplina;
+      if (
+        analisesPorDisciplina &&
+        typeof analisesPorDisciplina === "object" &&
+        !Array.isArray(analisesPorDisciplina)
+      ) {
+        const entries = Object.entries(analisesPorDisciplina as Record<string, unknown>);
+        const found = entries.find(([k]) => {
+          const n = normalizeText(k);
+          return n.includes(alvo) || alvo.includes(n);
+        });
+        if (found) return found[1];
+      }
+
+      // Formato antigo: por_disciplina.{Disciplina}
+      const porDisciplina = (aiAnaliseObject as Record<string, unknown>).por_disciplina;
       if (porDisciplina && typeof porDisciplina === "object" && !Array.isArray(porDisciplina)) {
         const entries = Object.entries(porDisciplina as Record<string, unknown>);
         const found = entries.find(([k]) => {
@@ -5535,7 +5728,7 @@ export default function RelatorioEscolar({
                       <div className="border-t border-border pt-5 space-y-3">
                         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
                           <Sparkles className="h-3.5 w-3.5 text-primary" />
-                          Relatorio detalhado - {distribution.disciplinaNome ?? "Disciplina"}
+                          Análise IA - {distribution.disciplinaNome ?? "Disciplina"}
                         </p>
                         {(aiAnaliseStatus === "processing" || aiVisualLoading) && (
                           <div className="rounded-lg border bg-gradient-to-r from-primary/10 via-background to-primary/10 p-4">
