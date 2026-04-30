@@ -40,6 +40,14 @@ interface ProcessingResponse {
 
 // ===== INTERFACES PARA BACKEND REAL =====
 
+/** Item cru em `resultados_detalhados.avaliacoes` ao filtrar olimpíadas/competição na listagem. */
+type ListaAvaliacoesDetalhesItem = {
+  type?: unknown;
+  tipo?: unknown;
+  titulo?: unknown;
+  title?: unknown;
+};
+
 // ✅ NOVO: Interfaces para a nova estrutura de resposta em cascata
 interface FiltrosAplicados {
   estado: string;
@@ -209,9 +217,19 @@ export interface NovaRespostaAPI {
   tabela_detalhada?: TabelaDetalhada;
   ranking?: RankingItem[];
   opcoes_proximos_filtros: OpcoesProximosFiltros;
+  analise_ia_status?: 'processing' | 'ready' | 'error';
+  analise_ia_cache_key?: string;
+  analise_ia?: Record<string, unknown>;
 }
 
-
+/** Resposta mínima de rotas GET `.../analise-ia` (avaliações, agregados, mapa). */
+export type AnaliseIaRouteResponse = {
+  analise_ia_status?: 'processing' | 'ready' | 'error';
+  analise_ia_cache_key?: string;
+  analise_ia?: Record<string, unknown>;
+  error?: string;
+  details?: string;
+};
 
 
 
@@ -586,7 +604,7 @@ export class EvaluationResultsApiService {
 
       if (response.data?.resultados_detalhados?.avaliacoes) {
         response.data.resultados_detalhados.avaliacoes =
-          response.data.resultados_detalhados.avaliacoes.filter((evaluation: any) => {
+          response.data.resultados_detalhados.avaliacoes.filter((evaluation: ListaAvaliacoesDetalhesItem) => {
             const type = String(evaluation.type ?? evaluation.tipo ?? '').toUpperCase().trim();
             const title = String(evaluation.titulo ?? evaluation.title ?? '').toUpperCase();
             if (type === 'OLIMPIADA' || type === 'OLIMPIADAS' || type.includes('OLIMPI')) return false;
@@ -612,6 +630,7 @@ export class EvaluationResultsApiService {
       serie?: string;
       turma?: string;
       avaliacao?: string;
+      ai_analises?: boolean;
       report_entity_type?: ReportEntityTypeQuery;
       /** Somente admin: município selecionado (query). */
       city_id?: string;
@@ -635,6 +654,9 @@ export class EvaluationResultsApiService {
       // ✅ NOVO: Avaliação, Escola, Série e Turma: não enviar quando forem "all"
       if (filters.avaliacao && filters.avaliacao !== 'all') {
         params.append('avaliacao', filters.avaliacao);
+      }
+      if (filters.ai_analises) {
+        params.append('ai_analises', 'true');
       }
       if (filters.escola && filters.escola !== 'all') {
         params.append('escola', filters.escola);
@@ -666,7 +688,7 @@ export class EvaluationResultsApiService {
       // Filtrar olimpíadas e competição dos resultados (manter só AVALIACAO / SIMULADO)
       if (response.data?.resultados_detalhados?.avaliacoes) {
         response.data.resultados_detalhados.avaliacoes = 
-          response.data.resultados_detalhados.avaliacoes.filter((evaluation: any) => {
+          response.data.resultados_detalhados.avaliacoes.filter((evaluation: ListaAvaliacoesDetalhesItem) => {
             const type = String(evaluation.type ?? evaluation.tipo ?? '').toUpperCase().trim();
             const title = String(evaluation.titulo ?? evaluation.title ?? '').toUpperCase();
             if (type === 'OLIMPIADA' || type === 'OLIMPIADAS' || type.includes('OLIMPI')) return false;
@@ -709,6 +731,69 @@ export class EvaluationResultsApiService {
       }
       
       // Retornar null para manter compatibilidade, mas com logs detalhados
+      return null;
+    }
+  }
+
+  /**
+   * GET /evaluation-results/avaliacoes/analise-ia — só status/cache/resultado de IA para o mesmo recorte de filtros.
+   */
+  static async fetchAvaliacoesAnaliseIa(
+    filters: {
+      estado?: string;
+      municipio?: string;
+      escola?: string;
+      serie?: string;
+      turma?: string;
+      avaliacao?: string;
+      report_entity_type?: ReportEntityTypeQuery;
+      city_id?: string;
+      periodo?: string;
+    } = {}
+  ): Promise<AnaliseIaRouteResponse | null> {
+    try {
+      const params = new URLSearchParams();
+      if (filters.estado && filters.estado !== 'all') {
+        params.append('estado', filters.estado);
+      }
+      if (filters.municipio && filters.municipio !== 'all') {
+        params.append('municipio', filters.municipio);
+      }
+      if (filters.avaliacao && filters.avaliacao !== 'all') {
+        params.append('avaliacao', filters.avaliacao);
+      }
+      if (filters.escola && filters.escola !== 'all') {
+        params.append('escola', filters.escola);
+      }
+      if (filters.serie && filters.serie !== 'all') {
+        params.append('serie', filters.serie);
+      }
+      if (filters.turma && filters.turma !== 'all') {
+        params.append('turma', filters.turma);
+      }
+      if (filters.report_entity_type) {
+        params.append('report_entity_type', filters.report_entity_type);
+      }
+      if (filters.city_id) {
+        params.append('city_id', filters.city_id);
+      }
+      const periodoYm = filters.periodo?.trim()
+        ? normalizeResultsPeriodYm(filters.periodo)
+        : 'all';
+      if (periodoYm !== 'all') {
+        params.append('periodo', periodoYm);
+      }
+
+      const requestConfig =
+        filters.municipio && filters.municipio !== 'all'
+          ? { meta: { cityId: filters.municipio } }
+          : {};
+      const response = await api.get<AnaliseIaRouteResponse>(
+        `/evaluation-results/avaliacoes/analise-ia?${params}`,
+        requestConfig
+      );
+      return response.data ?? null;
+    } catch {
       return null;
     }
   }
