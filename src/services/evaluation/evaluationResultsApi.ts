@@ -209,6 +209,9 @@ export interface NovaRespostaAPI {
   tabela_detalhada?: TabelaDetalhada;
   ranking?: RankingItem[];
   opcoes_proximos_filtros: OpcoesProximosFiltros;
+  analise_ia_status?: 'processing' | 'ready' | 'error';
+  analise_ia_cache_key?: string;
+  analise_ia?: Record<string, unknown>;
 }
 
 
@@ -612,6 +615,7 @@ export class EvaluationResultsApiService {
       serie?: string;
       turma?: string;
       avaliacao?: string;
+      ai_analises?: boolean;
       report_entity_type?: ReportEntityTypeQuery;
       /** Somente admin: município selecionado (query). */
       city_id?: string;
@@ -635,6 +639,9 @@ export class EvaluationResultsApiService {
       // ✅ NOVO: Avaliação, Escola, Série e Turma: não enviar quando forem "all"
       if (filters.avaliacao && filters.avaliacao !== 'all') {
         params.append('avaliacao', filters.avaliacao);
+      }
+      if (filters.ai_analises) {
+        params.append('ai_analises', 'true');
       }
       if (filters.escola && filters.escola !== 'all') {
         params.append('escola', filters.escola);

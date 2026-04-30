@@ -159,6 +159,9 @@ export interface AnswerSheetResultadosAgregadosRaw {
     series?: Array<{ id: string; nome?: string; name?: string }>;
     turmas?: Array<{ id: string; nome?: string; name?: string }>;
   };
+  analise_ia_status?: 'processing' | 'ready' | 'error';
+  analise_ia_cache_key?: string;
+  analise_ia?: Record<string, unknown>;
 }
 
 const emptyDist = () => ({
@@ -377,6 +380,9 @@ export function mapAnswerSheetResultadosAgregadosToNovaResposta(
           name: t.name ?? t.nome ?? "",
         })) ?? [],
     },
+    analise_ia_status: raw.analise_ia_status,
+    analise_ia_cache_key: raw.analise_ia_cache_key,
+    analise_ia: raw.analise_ia,
   };
 
   return out;

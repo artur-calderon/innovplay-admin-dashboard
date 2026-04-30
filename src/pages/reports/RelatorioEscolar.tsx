@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Download, FileText, RefreshCw, Filter, BookOpen, LineChart, Trophy, GraduationCap } from "lucide-react";
+import { Download, FileText, RefreshCw, Filter, BookOpen, LineChart, Trophy, GraduationCap, AlertCircle, Sparkles } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -141,6 +141,15 @@ function readOptionalFiniteNumber(v: unknown): number | undefined {
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
 }
+
+const IA_ANALISE_SECTION_LABELS: Record<string, string> = {
+  panorama_geral: "Panorama geral",
+  reflexao_niveis: "Reflexao por niveis",
+  encaminhamentos_cultura_digital: "Encaminhamentos (cultura digital)",
+  metadados_entrada: "Metadados de entrada",
+};
+
+const IA_ANALISE_HIDDEN_KEYS = new Set(["warning", "error", "document_title"]);
 
 interface ClassSummaryRow {
   serie: string;
@@ -1062,6 +1071,9 @@ export default function RelatorioEscolar({
   const reportAnswerSheet = reportAnswerSheetProp || isAnswerSheetAgregados;
   const { autoLogin, user } = useAuth();
   const [apiData, setApiData] = useState<NovaRespostaAPI | null>(null);
+  const [aiRetryNonce, setAiRetryNonce] = useState(0);
+  const [aiErrorMessage, setAiErrorMessage] = useState<string | null>(null);
+  const [aiVisualLoading, setAiVisualLoading] = useState(false);
   const [relatorioCompleto, setRelatorioCompleto] = useState<RelatorioCompleto | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
@@ -1078,6 +1090,43 @@ export default function RelatorioEscolar({
   }>({ participantes: [], faltosos: [], porNivel: {} });
   const { toast } = useToast();
   const navigate = useNavigate();
+  const aiPollingTimeoutRef = useRef<number | null>(null);
+  const aiVisualLoadingTimeoutRef = useRef<number | null>(null);
+  const aiVisualLoadingMinUntilRef = useRef<number>(0);
+
+  const clearAiPollingTimeout = useCallback(() => {
+    if (aiPollingTimeoutRef.current != null) {
+      window.clearTimeout(aiPollingTimeoutRef.current);
+      aiPollingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearAiVisualLoadingTimeout = useCallback(() => {
+    if (aiVisualLoadingTimeoutRef.current != null) {
+      window.clearTimeout(aiVisualLoadingTimeoutRef.current);
+      aiVisualLoadingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const startAiVisualLoading = useCallback(() => {
+    aiVisualLoadingMinUntilRef.current = Date.now() + 6000;
+    clearAiVisualLoadingTimeout();
+    setAiVisualLoading(true);
+  }, [clearAiVisualLoadingTimeout]);
+
+  const stopAiVisualLoading = useCallback(() => {
+    const remaining = aiVisualLoadingMinUntilRef.current - Date.now();
+    if (remaining <= 0) {
+      clearAiVisualLoadingTimeout();
+      setAiVisualLoading(false);
+      return;
+    }
+    clearAiVisualLoadingTimeout();
+    aiVisualLoadingTimeoutRef.current = window.setTimeout(() => {
+      setAiVisualLoading(false);
+      aiVisualLoadingTimeoutRef.current = null;
+    }, remaining);
+  }, [clearAiVisualLoadingTimeout]);
 
   // Estados dos filtros
   const [selectedState, setSelectedState] = useState<string>('all');
@@ -1129,6 +1178,16 @@ export default function RelatorioEscolar({
   const repMunicipality = isAnswerSheetAgregados ? asMunicipio : selectedMunicipality;
   const repSchool = isAnswerSheetAgregados ? asEscola : selectedSchool;
   const repGabaritoOrEval = isAnswerSheetAgregados ? asGabarito : selectedEvaluation;
+
+  const aiAnaliseStatus = apiData?.analise_ia_status;
+  const aiAnalise = apiData?.analise_ia;
+  const aiAnaliseObject =
+    aiAnalise && typeof aiAnalise === "object" && !Array.isArray(aiAnalise)
+      ? (aiAnalise as Record<string, unknown>)
+      : null;
+  const aiAnaliseErrorDetails = readTrimmedString(aiAnaliseObject?.details);
+  const aiAnaliseErrorTitle = readTrimmedString(aiAnaliseObject?.error);
+  const hasAiAnaliseContent = !!(aiAnaliseObject && Object.keys(aiAnaliseObject).length > 0);
 
   const handleStateChange = useCallback((stateId: string) => {
     if (stateId === selectedState) return;
@@ -1653,6 +1712,12 @@ export default function RelatorioEscolar({
     if (apiData?.resultados_detalhados?.avaliacoes?.length) {
       const granularidade = apiData.nivel_granularidade;
       const avaliacoes = apiData.resultados_detalhados.avaliacoes;
+      const mediaLpGlobal = readOptionalFiniteNumber(
+        (apiData.resultados_por_disciplina ?? []).find((d) => nomeDisciplinaEhPortugues(d.disciplina))?.media_nota
+      );
+      const mediaMatGlobal = readOptionalFiniteNumber(
+        (apiData.resultados_por_disciplina ?? []).find((d) => nomeDisciplinaEhMatematica(d.disciplina))?.media_nota
+      );
 
       const rows: ClassSummaryRow[] = avaliacoes.map((avaliacao, index) => {
         const { turmaLabel, serieVal } = labelsFromAvaliacaoClassStatistics(
@@ -1685,9 +1750,11 @@ export default function RelatorioEscolar({
         );
         const mediaLP =
           lpAg ??
+          mediaLpGlobal ??
           (nomeDisciplinaEhPortugues(disciplinaDaLinha) ? mediaDisciplinaDaLinha : undefined);
         const mediaMAT =
           matAg ??
+          mediaMatGlobal ??
           (nomeDisciplinaEhMatematica(disciplinaDaLinha) ? mediaDisciplinaDaLinha : undefined);
 
         const row: ClassSummaryRow = {
@@ -1715,6 +1782,9 @@ export default function RelatorioEscolar({
           }
         } else {
           const pNum = Number(proficienciaMedia);
+          const levelFromDist = getBestProficiencyLevelFromBackendDistribution(
+            avaliacao.distribuicao_classificacao
+          );
           const levelFromMedia =
             proficienciaMedia !== undefined &&
             proficienciaMedia !== null &&
@@ -1725,10 +1795,9 @@ export default function RelatorioEscolar({
                   avaliacao.serie ?? serieVal
                 )
               : null;
-          const levelFromDist = getBestProficiencyLevelFromBackendDistribution(
-            avaliacao.distribuicao_classificacao
-          );
-          const level = levelFromMedia ?? levelFromDist;
+          // Prioriza distribuição/classificação agregada do backend para evitar divergência
+          // quando a conversão por média usa faixas de outra série/escopo.
+          const level = levelFromDist ?? levelFromMedia;
           if (level) {
             row.proficiencyLevel = level;
             row.proficiencyLabel = getProficiencyLevelLabel(level);
@@ -2828,21 +2897,29 @@ export default function RelatorioEscolar({
       return null;
     }
 
+    const ncStatsDigital = apiData.estatisticas_gerais?.nivel_classificacao;
+    const levelFromNcDigital =
+      ncStatsDigital !== undefined && ncStatsDigital !== null && String(ncStatsDigital).trim()
+        ? backendNivelProficienciaToLevel(String(ncStatsDigital).trim())
+        : null;
+    const levelFromDistDigital = getBestProficiencyLevelFromBackendDistribution(
+      apiData.estatisticas_gerais?.distribuicao_classificacao_geral
+    );
     const serieKpiDigital =
       apiData.estatisticas_gerais?.serie?.trim() ||
       inferirSerieParaDescricao(apiData) ||
       undefined;
     const pKpiDigital = proficienciaMedia != null ? Number(proficienciaMedia) : NaN;
-    const proficiencyLevel =
+    const levelFromProficienciaMediaDigital =
       !Number.isNaN(pKpiDigital)
         ? getProficiencyLevelAggregadoCartaoOuRelatorio(
             pKpiDigital,
             apiData,
             serieKpiDigital
           )
-        : getBestProficiencyLevelFromBackendDistribution(
-            apiData.estatisticas_gerais?.distribuicao_classificacao_geral
-          );
+        : null;
+    const proficiencyLevel =
+      levelFromNcDigital ?? levelFromDistDigital ?? levelFromProficienciaMediaDigital;
 
     const totalMatriculados = apiData.estatisticas_gerais?.total_alunos ?? null;
     const totalAvaliados = apiData.estatisticas_gerais?.alunos_participantes ?? null;
@@ -2863,9 +2940,12 @@ export default function RelatorioEscolar({
       mediaGeral,
       proficienciaMedia,
       proficiencyLevel,
-      proficiencyLabel: proficiencyLevel
-        ? getProficiencyLevelLabel(proficiencyLevel)
-        : null,
+      proficiencyLabel:
+        ncStatsDigital !== undefined && ncStatsDigital !== null && String(ncStatsDigital).trim()
+          ? String(ncStatsDigital).trim()
+          : proficiencyLevel
+            ? getProficiencyLevelLabel(proficiencyLevel)
+            : null,
       proficiencyColor: proficiencyLevel
         ? getProficiencyLevelColorRelatorio(proficiencyLevel)
         : null,
@@ -3966,29 +4046,36 @@ export default function RelatorioEscolar({
   // Carregar dados quando todos os filtros estiverem selecionados (avaliação / report_entity_type)
   useEffect(() => {
     if (isAnswerSheetAgregados) return;
+    let cancelled = false;
     const loadData = async () => {
       if (allRequiredFiltersSelected) {
         try {
+          clearAiPollingTimeout();
+          startAiVisualLoading();
+          setAiErrorMessage(null);
           setIsLoadingData(true);
-          
+
           // Usar getEvaluationsList como em Results.tsx para obter tabela_detalhada com alunos por disciplina
           const filters = {
             estado: selectedState,
             municipio: selectedMunicipality,
             avaliacao: selectedEvaluation !== 'all' ? selectedEvaluation : undefined,
             escola: selectedSchool !== 'all' ? selectedSchool : undefined,
+            ai_analises: true,
             ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
             ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
             ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
           };
 
-          const evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(1, 200, filters);
-          
-          // Fluxo online do Relatório Escolar usa apenas /evaluation-results/avaliacoes.
-          // Não consumir /reports/dados-json para evitar dependência de payload com análise.
-          setRelatorioCompleto(null);
-          
-          if (evaluationsResponse) {
+          const fetchWithPolling = async (attempt: number = 0): Promise<void> => {
+            const evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(1, 200, filters);
+            if (cancelled) return;
+
+            // Fluxo online do Relatório Escolar usa apenas /evaluation-results/avaliacoes.
+            // Não consumir /reports/dados-json para evitar dependência de payload com análise.
+            setRelatorioCompleto(null);
+
+            if (evaluationsResponse) {
             // ✅ NOVO: Fallback - Se disciplina está vazia quando escola específica está selecionada, buscar dados do município e filtrar
             if (evaluationsResponse.tabela_detalhada) {
               const tabela = evaluationsResponse.tabela_detalhada;
@@ -4081,23 +4168,56 @@ export default function RelatorioEscolar({
             }
 
             setApiData(evaluationsResponse);
+            if (evaluationsResponse.analise_ia_status === "processing") {
+              const delayMs = Math.min(4000, 1000 + attempt * 500);
+              setIsLoadingData(false);
+              clearAiPollingTimeout();
+              aiPollingTimeoutRef.current = window.setTimeout(() => {
+                void fetchWithPolling(attempt + 1);
+              }, delayMs);
+              return;
+            }
+            if (evaluationsResponse.analise_ia_status === "error") {
+              const responseAi = evaluationsResponse.analise_ia as Record<string, unknown> | undefined;
+              const details = readTrimmedString(responseAi?.details);
+              const title = readTrimmedString(responseAi?.error);
+              setAiErrorMessage(details || title || "Nao foi possivel gerar o relatorio detalhado. Tente novamente.");
+            } else {
+              setAiErrorMessage(null);
+            }
+            stopAiVisualLoading();
           } else {
             setApiData(null);
+            setAiErrorMessage("Nao foi possivel carregar os dados do relatorio detalhado.");
+            stopAiVisualLoading();
           }
+          };
+
+          await fetchWithPolling();
         } catch (error) {
+          if (cancelled) return;
           toast({
             title: "Erro ao carregar dados",
             description: "Não foi possível carregar os dados do relatório. Tente novamente.",
             variant: "destructive",
           });
           setApiData(null);
+          setAiErrorMessage("Nao foi possivel carregar os dados do relatorio detalhado.");
+          stopAiVisualLoading();
         } finally {
-          setIsLoadingData(false);
+          if (!cancelled) {
+            setIsLoadingData(false);
+          }
         }
       }
     };
 
     loadData();
+    return () => {
+      cancelled = true;
+      clearAiPollingTimeout();
+      clearAiVisualLoadingTimeout();
+    };
   }, [
     isAnswerSheetAgregados,
     allRequiredFiltersSelected,
@@ -4108,53 +4228,100 @@ export default function RelatorioEscolar({
     selectedPeriod,
     adminCityIdQuery,
     reportEntityTypeParam,
+    aiRetryNonce,
+    clearAiPollingTimeout,
+    clearAiVisualLoadingTimeout,
+    startAiVisualLoading,
+    stopAiVisualLoading,
     toast,
   ]);
 
   // Cartão resposta: GET /answer-sheets/resultados-agregados
   useEffect(() => {
     if (!isAnswerSheetAgregados) return;
+    let cancelled = false;
     const load = async () => {
       if (!allRequiredFiltersSelected) {
         setApiData(null);
+        setAiErrorMessage(null);
+        clearAiPollingTimeout();
         return;
       }
       try {
+        clearAiPollingTimeout();
+        startAiVisualLoading();
+        setAiErrorMessage(null);
         setIsLoadingData(true);
         setRelatorioCompleto(null);
         const params = new URLSearchParams();
         params.set('estado', asEstado);
         params.set('municipio', asMunicipio);
         params.set('gabarito', asGabarito);
+        params.set('ai_analises', 'true');
         if (asEscola !== 'all') params.set('escola', asEscola);
         if (asSerie !== 'all') params.set('serie', asSerie);
         if (asTurma !== 'all') params.set('turma', asTurma);
         if (periodoYmRelatorio) params.set('periodo', periodoYmRelatorio);
-        const res = await api.get<AnswerSheetResultadosAgregadosRaw>(
-          `/answer-sheets/resultados-agregados?${params.toString()}`
-        );
-        setApiData(
-          mapAnswerSheetResultadosAgregadosToNovaResposta(res.data, {
+
+        const fetchWithPolling = async (attempt: number = 0): Promise<void> => {
+          const res = await api.get<AnswerSheetResultadosAgregadosRaw>(
+            `/answer-sheets/resultados-agregados?${params.toString()}`
+          );
+          if (cancelled) return;
+
+          const mapped = mapAnswerSheetResultadosAgregadosToNovaResposta(res.data, {
             estado: asEstado,
             municipio: asMunicipio,
             gabarito: asGabarito,
             escola: asEscola,
             serie: asSerie,
             turma: asTurma,
-          })
-        );
+          });
+          setApiData(mapped);
+
+          if (mapped.analise_ia_status === "processing") {
+            const delayMs = Math.min(4000, 1000 + attempt * 500);
+            setIsLoadingData(false);
+            clearAiPollingTimeout();
+            aiPollingTimeoutRef.current = window.setTimeout(() => {
+              void fetchWithPolling(attempt + 1);
+            }, delayMs);
+            return;
+          }
+          if (mapped.analise_ia_status === "error") {
+            const responseAi = mapped.analise_ia as Record<string, unknown> | undefined;
+            const details = readTrimmedString(responseAi?.details);
+            const title = readTrimmedString(responseAi?.error);
+            setAiErrorMessage(details || title || "Nao foi possivel gerar o relatorio detalhado. Tente novamente.");
+          } else {
+            setAiErrorMessage(null);
+          }
+          stopAiVisualLoading();
+        };
+
+        await fetchWithPolling();
       } catch {
+        if (cancelled) return;
         toast({
           title: 'Erro ao carregar dados',
           description: 'Não foi possível carregar os resultados agregados do cartão resposta.',
           variant: 'destructive',
         });
         setApiData(null);
+        setAiErrorMessage("Nao foi possivel carregar os dados do relatorio detalhado.");
+        stopAiVisualLoading();
       } finally {
-        setIsLoadingData(false);
+        if (!cancelled) {
+          setIsLoadingData(false);
+        }
       }
     };
     void load();
+    return () => {
+      cancelled = true;
+      clearAiPollingTimeout();
+      clearAiVisualLoadingTimeout();
+    };
   }, [
     isAnswerSheetAgregados,
     allRequiredFiltersSelected,
@@ -4165,8 +4332,106 @@ export default function RelatorioEscolar({
     asSerie,
     asTurma,
     periodoYmRelatorio,
+    aiRetryNonce,
+    clearAiPollingTimeout,
+    clearAiVisualLoadingTimeout,
+    startAiVisualLoading,
+    stopAiVisualLoading,
     toast,
   ]);
+
+  const formatAnaliseIaKey = useCallback((key: string) => {
+    if (IA_ANALISE_SECTION_LABELS[key]) return IA_ANALISE_SECTION_LABELS[key];
+    return key
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  }, []);
+
+  const renderAnaliseIaValue = useCallback((value: unknown, keyPrefix: string): JSX.Element => {
+    if (value == null || value === "") {
+      return <span className="text-sm text-muted-foreground">Sem dados.</span>;
+    }
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      return <span className="text-sm text-foreground whitespace-pre-wrap">{String(value)}</span>;
+    }
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        return <span className="text-sm text-muted-foreground">Sem dados.</span>;
+      }
+      return (
+        <ul className="space-y-2">
+          {value.map((item, index) => (
+            <li key={`${keyPrefix}-${index}`} className="rounded-md border bg-background/70 p-3">
+              {renderAnaliseIaValue(item, `${keyPrefix}-${index}`)}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    if (typeof value === "object") {
+      const entries = Object.entries(value as Record<string, unknown>).filter(
+        ([k]) => !IA_ANALISE_HIDDEN_KEYS.has(k)
+      );
+      if (!entries.length) {
+        return <span className="text-sm text-muted-foreground">Sem dados.</span>;
+      }
+      return (
+        <div className="space-y-2">
+          {entries.map(([key, item]) => (
+            <div key={`${keyPrefix}-${key}`} className="rounded-md border bg-background/70 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                {formatAnaliseIaKey(key)}
+              </p>
+              {renderAnaliseIaValue(item, `${keyPrefix}-${key}`)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return <span className="text-sm text-muted-foreground">Sem dados.</span>;
+  }, [formatAnaliseIaKey]);
+
+  const getAnaliseIaPorDisciplina = useCallback(
+    (disciplinaNome?: string): unknown => {
+      if (!aiAnaliseObject || !disciplinaNome) return null;
+      const alvo = normalizeText(disciplinaNome);
+
+      const porDisciplina = aiAnaliseObject.por_disciplina;
+      if (porDisciplina && typeof porDisciplina === "object" && !Array.isArray(porDisciplina)) {
+        const entries = Object.entries(porDisciplina as Record<string, unknown>);
+        const found = entries.find(([k]) => {
+          const n = normalizeText(k);
+          return n.includes(alvo) || alvo.includes(n);
+        });
+        if (found) return found[1];
+      }
+
+      const entries = Object.entries(aiAnaliseObject).filter(([key]) => !IA_ANALISE_HIDDEN_KEYS.has(key));
+      const direct = entries.find(([key]) => {
+        const n = normalizeText(key);
+        return n.includes(alvo) || alvo.includes(n);
+      });
+      if (direct) return direct[1];
+
+      for (const [, value] of entries) {
+        if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+        const obj = value as Record<string, unknown>;
+        const disc = readTrimmedString(
+          obj.disciplina ??
+            obj.componente_curricular ??
+            obj.componenteCurricular ??
+            obj.subject
+        );
+        if (!disc) continue;
+        const n = normalizeText(disc);
+        if (n.includes(alvo) || alvo.includes(n)) return value;
+      }
+
+      return null;
+    },
+    [aiAnaliseObject]
+  );
 
   // Removido: useEffect de getTabelaDetalhada - os dados já vêm de getEvaluationsList em apiData.tabela_detalhada
 
@@ -4914,6 +5179,7 @@ export default function RelatorioEscolar({
             <div className="mt-6 space-y-6">
               {proficiencyDistributions.map(distribution => {
                 const maxValue = Math.max(...distribution.bars.map(bar => bar.value), 1);
+                const analiseDisciplina = getAnaliseIaPorDisciplina(distribution.disciplinaNome);
 
                 return (
                   <Card key={distribution.title} className="shadow-md">
@@ -5074,6 +5340,73 @@ export default function RelatorioEscolar({
                         </div>
                       </div>
 
+                      <div className="border-t border-border pt-5 space-y-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                          <Sparkles className="h-3.5 w-3.5 text-primary" />
+                          Relatorio detalhado - {distribution.disciplinaNome ?? "Disciplina"}
+                        </p>
+                        {(aiAnaliseStatus === "processing" || aiVisualLoading) && (
+                          <div className="rounded-lg border bg-gradient-to-r from-primary/10 via-background to-primary/10 p-4">
+                            <div className="flex items-center gap-3">
+                              <RefreshCw className="h-5 w-5 animate-spin text-primary" />
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">
+                                  Gerando relatorio detalhado para esta disciplina
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  A IA esta processando os dados. Esse carregamento pode levar alguns segundos.
+                                </p>
+                              </div>
+                            </div>
+                            <div className="mt-4 space-y-2">
+                              <div className="h-2 w-full animate-pulse rounded-full bg-primary/20" />
+                              <div className="h-2 w-4/5 animate-pulse rounded-full bg-primary/15" />
+                              <div className="h-2 w-3/5 animate-pulse rounded-full bg-primary/10" />
+                            </div>
+                          </div>
+                        )}
+                        {aiAnaliseStatus === "error" && !aiVisualLoading && (
+                          <div className="space-y-3 rounded-md border border-destructive/40 bg-destructive/5 p-4">
+                            <div className="flex items-start gap-2 text-sm text-destructive">
+                              <AlertCircle className="h-4 w-4 mt-0.5" />
+                              <div className="space-y-1">
+                                <span>
+                                  {aiErrorMessage || aiAnaliseErrorTitle || "Nao foi possivel gerar o relatorio detalhado para esta disciplina."}
+                                </span>
+                                {aiAnaliseErrorDetails && aiAnaliseErrorDetails !== aiErrorMessage && (
+                                  <p className="text-xs text-destructive/80">{aiAnaliseErrorDetails}</p>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                clearAiPollingTimeout();
+                                startAiVisualLoading();
+                                setAiRetryNonce((prev) => prev + 1);
+                              }}
+                            >
+                              Tentar novamente
+                            </Button>
+                          </div>
+                        )}
+                        {aiAnaliseStatus === "ready" && !aiVisualLoading && analiseDisciplina && (
+                          <div className="space-y-2">
+                            {renderAnaliseIaValue(
+                              analiseDisciplina,
+                              `analise-disciplina-${normalizeText(distribution.disciplinaNome ?? "geral")}`
+                            )}
+                          </div>
+                        )}
+                        {aiAnaliseStatus === "ready" && !aiVisualLoading && !analiseDisciplina && (
+                          <p className="text-sm text-muted-foreground">
+                            A IA nao retornou analise especifica para esta disciplina.
+                          </p>
+                        )}
+                      </div>
+
                     </CardContent>
                   </Card>
                 );
@@ -5125,6 +5458,7 @@ export default function RelatorioEscolar({
               </CardContent>
             </Card>
           ) : null}
+
         </div>
       )}
     </div>
