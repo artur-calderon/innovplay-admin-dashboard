@@ -27,7 +27,6 @@ import {
   Target,
   ListChecks,
   Lightbulb,
-  AlertCircle,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -35,16 +34,13 @@ import {
   fetchAnswerSheetFilterOptions,
   fetchEvaluationFilterOptions,
   fetchSkillsMapCartao,
-  fetchSkillsMapCartaoAnaliseIa,
   fetchSkillsMapCartaoErros,
   fetchSkillsMapOnline,
-  fetchSkillsMapOnlineAnaliseIa,
   fetchSkillsMapOnlineErros,
   type SkillsMapErrosResponse,
   type SkillsMapHabilidade,
   type SkillsMapResponse,
 } from '@/services/evaluation/skillsMapApi';
-import type { AnaliseIaRouteResponse } from '@/services/evaluation/evaluationResultsApi';
 import { ResultsPeriodMonthYearPicker } from '@/components/filters';
 import { normalizeResultsPeriodYm } from '@/utils/resultsPeriod';
 import {
@@ -354,10 +350,6 @@ function normalizeSkillText(raw: string): string {
     .trim();
 }
 
-function readTrimMessage(v: unknown): string {
-  return typeof v === 'string' ? v.trim() : '';
-}
-
 function isSkillAnalysisObject(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const keys = Object.keys(value).map((k) => normalizeLabel(k));
@@ -614,25 +606,17 @@ function AnalysisCard({
       : [];
   const hasWarning = topLevelEntries.some(([k]) => k === 'warning' || k === 'error');
   const sectionsCount = topLevelEntries.filter(([k]) => !['document_title', 'warning', 'error'].includes(k)).length;
-
-  const lowSkills = useMemo(
-    () => (habilidadesMapa || []).filter((h) => Number(h.percentual_acertos || 0) < 60),
-    [habilidadesMapa]
-  );
-
-  const skillTokens = useMemo(() => {
-    const s = new Set<string>();
-    lowSkills.forEach((h) => {
-      const code = normalizeSkillText(h.codigo || '');
-      const desc = normalizeSkillText(h.descricao || '');
-      const title = normalizeSkillText(skillDisplayTitle(h));
-      if (code) s.add(code);
-      if (desc) s.add(desc);
-      if (title) s.add(title);
-      if (code && desc) s.add(normalizeSkillText(`${code} ${desc}`));
-    });
-    return s;
-  }, [lowSkills]);
+  const lowSkills = (habilidadesMapa || []).filter((h) => Number(h.percentual_acertos || 0) < 60);
+  const skillTokens = new Set<string>();
+  lowSkills.forEach((h) => {
+    const code = normalizeSkillText(h.codigo || '');
+    const desc = normalizeSkillText(h.descricao || '');
+    const title = normalizeSkillText(skillDisplayTitle(h));
+    if (code) skillTokens.add(code);
+    if (desc) skillTokens.add(desc);
+    if (title) skillTokens.add(title);
+    if (code && desc) skillTokens.add(normalizeSkillText(`${code} ${desc}`));
+  });
 
   const shouldShowSkill = useCallback(
     (skillObj: Record<string, unknown>) => {
@@ -842,29 +826,6 @@ export default function SkillsHeatMapPage() {
   const [mapOnline, setMapOnline] = useState<SkillsMapResponse | null>(null);
   const [mapCartao, setMapCartao] = useState<SkillsMapResponse | null>(null);
   const [loadingMap, setLoadingMap] = useState(false);
-  const [iaOnlineSlice, setIaOnlineSlice] = useState<AnaliseIaRouteResponse | null>(null);
-  const [iaCartaoSlice, setIaCartaoSlice] = useState<AnaliseIaRouteResponse | null>(null);
-  const [iaRetryOnlineNonce, setIaRetryOnlineNonce] = useState(0);
-  const [iaRetryCartaoNonce, setIaRetryCartaoNonce] = useState(0);
-
-  const mapIaOnlineTimeoutRef = useRef<number | null>(null);
-  const mapIaCartaoTimeoutRef = useRef<number | null>(null);
-  const mapIaOnlineGenRef = useRef(0);
-  const mapIaCartaoGenRef = useRef(0);
-
-  const clearMapIaOnlineTimer = useCallback(() => {
-    if (mapIaOnlineTimeoutRef.current != null) {
-      window.clearTimeout(mapIaOnlineTimeoutRef.current);
-      mapIaOnlineTimeoutRef.current = null;
-    }
-  }, []);
-
-  const clearMapIaCartaoTimer = useCallback(() => {
-    if (mapIaCartaoTimeoutRef.current != null) {
-      window.clearTimeout(mapIaCartaoTimeoutRef.current);
-      mapIaCartaoTimeoutRef.current = null;
-    }
-  }, []);
   const [loadingFilters, setLoadingFilters] = useState(false);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -988,7 +949,6 @@ export default function SkillsHeatMapPage() {
     setOTurma('all');
     setODisciplina('all');
     setMapOnline(null);
-    setIaOnlineSlice(null);
     setCMunicipio('all');
     setCGabarito('all');
     setCEscola('all');
@@ -996,7 +956,6 @@ export default function SkillsHeatMapPage() {
     setCTurma('all');
     setCDisciplina('all');
     setMapCartao(null);
-    setIaCartaoSlice(null);
   }, [selectedPeriod]);
 
   const loadOnlineEstados = useCallback(async () => {
@@ -1377,190 +1336,6 @@ export default function SkillsHeatMapPage() {
     void loadCartaoMap();
   }, [canLoadCartaoMap, loadCartaoMap]);
 
-  useEffect(() => {
-    if (!canLoadOnlineMap || !mapOnline) {
-      clearMapIaOnlineTimer();
-      setIaOnlineSlice(null);
-      return;
-    }
-
-    let cancelled = false;
-    mapIaOnlineGenRef.current += 1;
-    const gen = mapIaOnlineGenRef.current;
-
-    clearMapIaOnlineTimer();
-    setIaOnlineSlice({ analise_ia_status: 'processing' });
-
-    const pollOnlineIa = async (attempt: number) => {
-      if (cancelled || gen !== mapIaOnlineGenRef.current) return;
-      const ia = await fetchSkillsMapOnlineAnaliseIa({
-        estado: oEstado,
-        municipio: oMunicipio,
-        avaliacao: oAvaliacao,
-        escola: oEscola,
-        serie: oSerie,
-        turma: oTurma,
-        disciplina: oDisciplina,
-        ...(periodoYm ? { periodo: periodoYm } : {}),
-      });
-
-      if (cancelled || gen !== mapIaOnlineGenRef.current) return;
-
-      if (!ia) {
-        clearMapIaOnlineTimer();
-        setIaOnlineSlice({
-          analise_ia_status: 'error',
-          analise_ia: { error: 'Falha ao consultar analise IA', details: '' },
-        });
-        return;
-      }
-
-      const st = ia.analise_ia_status ?? 'processing';
-      if (st === 'processing') {
-        setIaOnlineSlice({
-          analise_ia_status: 'processing',
-          analise_ia_cache_key: ia.analise_ia_cache_key,
-        });
-        const delayMs = Math.min(4000, 1000 + attempt * 500);
-        clearMapIaOnlineTimer();
-        mapIaOnlineTimeoutRef.current = window.setTimeout(() => void pollOnlineIa(attempt + 1), delayMs);
-        return;
-      }
-
-      clearMapIaOnlineTimer();
-
-      if (st === 'error') {
-        setIaOnlineSlice({
-          analise_ia_status: 'error',
-          analise_ia_cache_key: ia.analise_ia_cache_key,
-          analise_ia: {
-            error: readTrimMessage(ia.error) || 'Erro ao gerar análise',
-            details: readTrimMessage(ia.details),
-          },
-        });
-        return;
-      }
-
-      setIaOnlineSlice({
-        analise_ia_status: 'ready',
-        analise_ia_cache_key: ia.analise_ia_cache_key,
-        analise_ia: ia.analise_ia ?? {},
-      });
-    };
-
-    void pollOnlineIa(0);
-
-    return () => {
-      cancelled = true;
-      clearMapIaOnlineTimer();
-    };
-  }, [
-    canLoadOnlineMap,
-    mapOnline,
-    oEstado,
-    oMunicipio,
-    oAvaliacao,
-    oEscola,
-    oSerie,
-    oTurma,
-    oDisciplina,
-    periodoYm,
-    iaRetryOnlineNonce,
-    clearMapIaOnlineTimer,
-  ]);
-
-  useEffect(() => {
-    if (!canLoadCartaoMap || !mapCartao) {
-      clearMapIaCartaoTimer();
-      setIaCartaoSlice(null);
-      return;
-    }
-
-    let cancelled = false;
-    mapIaCartaoGenRef.current += 1;
-    const gen = mapIaCartaoGenRef.current;
-
-    clearMapIaCartaoTimer();
-    setIaCartaoSlice({ analise_ia_status: 'processing' });
-
-    const pollCartaoIa = async (attempt: number) => {
-      if (cancelled || gen !== mapIaCartaoGenRef.current) return;
-      const ia = await fetchSkillsMapCartaoAnaliseIa({
-        estado: cEstado,
-        municipio: cMunicipio,
-        gabarito: cGabarito,
-        escola: cEscola,
-        serie: cSerie,
-        turma: cTurma,
-        disciplina: cDisciplina,
-        ...(periodoYm ? { periodo: periodoYm } : {}),
-      });
-
-      if (cancelled || gen !== mapIaCartaoGenRef.current) return;
-
-      if (!ia) {
-        clearMapIaCartaoTimer();
-        setIaCartaoSlice({
-          analise_ia_status: 'error',
-          analise_ia: { error: 'Falha ao consultar analise IA', details: '' },
-        });
-        return;
-      }
-
-      const st = ia.analise_ia_status ?? 'processing';
-      if (st === 'processing') {
-        setIaCartaoSlice({
-          analise_ia_status: 'processing',
-          analise_ia_cache_key: ia.analise_ia_cache_key,
-        });
-        const delayMs = Math.min(4000, 1000 + attempt * 500);
-        clearMapIaCartaoTimer();
-        mapIaCartaoTimeoutRef.current = window.setTimeout(() => void pollCartaoIa(attempt + 1), delayMs);
-        return;
-      }
-
-      clearMapIaCartaoTimer();
-
-      if (st === 'error') {
-        setIaCartaoSlice({
-          analise_ia_status: 'error',
-          analise_ia_cache_key: ia.analise_ia_cache_key,
-          analise_ia: {
-            error: readTrimMessage(ia.error) || 'Erro ao gerar análise',
-            details: readTrimMessage(ia.details),
-          },
-        });
-        return;
-      }
-
-      setIaCartaoSlice({
-        analise_ia_status: 'ready',
-        analise_ia_cache_key: ia.analise_ia_cache_key,
-        analise_ia: ia.analise_ia ?? {},
-      });
-    };
-
-    void pollCartaoIa(0);
-
-    return () => {
-      cancelled = true;
-      clearMapIaCartaoTimer();
-    };
-  }, [
-    canLoadCartaoMap,
-    mapCartao,
-    cEstado,
-    cMunicipio,
-    cGabarito,
-    cEscola,
-    cSerie,
-    cTurma,
-    cDisciplina,
-    periodoYm,
-    iaRetryCartaoNonce,
-    clearMapIaCartaoTimer,
-  ]);
-
   const openErrosOnline = async (h: SkillsMapHabilidade) => {
     setDialogSkill(h);
     setDialogListaTab('acertaram');
@@ -1845,34 +1620,9 @@ export default function SkillsHeatMapPage() {
             </Card>
           )}
           {loadingMap && canLoadOnlineMap && !mapOnline && <AnalysisLoadingCard />}
-          {mapOnline && iaOnlineSlice?.analise_ia_status === 'processing' && <AnalysisLoadingCard />}
-          {mapOnline && iaOnlineSlice?.analise_ia_status === 'error' && (
-            <Card className="border-destructive/60">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base text-destructive">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  Não foi possível carregar a análise de IA
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm text-muted-foreground">
-                <p>
-                  {readTrimMessage((iaOnlineSlice?.analise_ia as Record<string, unknown> | undefined)?.details) ||
-                    readTrimMessage((iaOnlineSlice?.analise_ia as Record<string, unknown> | undefined)?.error) ||
-                    'Tente novamente em instantes.'}
-                </p>
-                <Button type="button" variant="outline" size="sm" onClick={() => setIaRetryOnlineNonce((n) => n + 1)}>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Tentar novamente
-                </Button>
-              </CardContent>
-            </Card>
+          {mapOnline && (
+            <AnalysisCard analysis={mapOnline.analise_ia} habilidadesMapa={mapOnline.habilidades} />
           )}
-          {mapOnline && iaOnlineSlice?.analise_ia_status === 'ready' && (
-              <AnalysisCard
-                analysis={(iaOnlineSlice?.analise_ia ?? mapOnline.analise_ia) as unknown}
-                habilidadesMapa={mapOnline.habilidades}
-              />
-            )}
         </TabsContent>
 
         <TabsContent value="cartao" className="space-y-4">
@@ -2004,34 +1754,9 @@ export default function SkillsHeatMapPage() {
             </Card>
           )}
           {loadingMap && canLoadCartaoMap && !mapCartao && <AnalysisLoadingCard />}
-          {mapCartao && iaCartaoSlice?.analise_ia_status === 'processing' && <AnalysisLoadingCard />}
-          {mapCartao && iaCartaoSlice?.analise_ia_status === 'error' && (
-            <Card className="border-destructive/60">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base text-destructive">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  Não foi possível carregar a análise de IA
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm text-muted-foreground">
-                <p>
-                  {readTrimMessage((iaCartaoSlice?.analise_ia as Record<string, unknown> | undefined)?.details) ||
-                    readTrimMessage((iaCartaoSlice?.analise_ia as Record<string, unknown> | undefined)?.error) ||
-                    'Tente novamente em instantes.'}
-                </p>
-                <Button type="button" variant="outline" size="sm" onClick={() => setIaRetryCartaoNonce((n) => n + 1)}>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Tentar novamente
-                </Button>
-              </CardContent>
-            </Card>
+          {mapCartao && (
+            <AnalysisCard analysis={mapCartao.analise_ia} habilidadesMapa={mapCartao.habilidades} />
           )}
-          {mapCartao && iaCartaoSlice?.analise_ia_status === 'ready' && (
-              <AnalysisCard
-                analysis={(iaCartaoSlice?.analise_ia ?? mapCartao.analise_ia) as unknown}
-                habilidadesMapa={mapCartao.habilidades}
-              />
-            )}
         </TabsContent>
       </Tabs>
 
