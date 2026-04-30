@@ -22,7 +22,12 @@ import { Separator } from "@/components/ui/separator";
 
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { EvaluationResultsApiService, NovaRespostaAPI, REPORT_ENTITY_TYPE_ANSWER_SHEET } from "@/services/evaluation/evaluationResultsApi";
+import {
+  EvaluationResultsApiService,
+  NovaRespostaAPI,
+  REPORT_ENTITY_TYPE_ANSWER_SHEET,
+  type AnaliseIaRouteResponse,
+} from "@/services/evaluation/evaluationResultsApi";
 import { RelatorioCompleto } from "@/types/evaluation-results";
 import { useAuth } from "@/context/authContext";
 import { FilterComponentAnalise, ResultsPeriodMonthYearPicker } from "@/components/filters";
@@ -58,6 +63,14 @@ const normalizeText = (value: string) =>
 
 function readTrimmedString(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
+}
+
+function novaRespostaSemAnaliseIa(payload: NovaRespostaAPI): NovaRespostaAPI {
+  const { analise_ia_status: _s, analise_ia_cache_key: _k, analise_ia: _a, ...rest } = payload;
+  void _s;
+  void _k;
+  void _a;
+  return rest as NovaRespostaAPI;
 }
 
 function getNomeExibicaoAluno(aluno: unknown): string {
@@ -489,9 +502,10 @@ const inferirSerieParaDescricao = (apiData: NovaRespostaAPI | null): string | un
   const geralFirst = apiData.tabela_detalhada?.geral?.alunos?.find((a) => a?.serie && String(a.serie).trim());
   if (geralFirst?.serie) return String(geralFirst.serie).trim();
 
-  const discFirst = apiData.tabela_detalhada?.disciplinas?.flatMap((d) => d.alunos || [])
-    ?.find((a) => a?.serie && String(a.serie).trim());
-  if ((discFirst as any)?.serie) return String((discFirst as any).serie).trim();
+  const alunosDasDisciplinas =
+    apiData.tabela_detalhada?.disciplinas?.flatMap((d) => d.alunos ?? []) ?? [];
+  const discFirst = alunosDasDisciplinas.find((a) => a?.serie && String(a.serie).trim());
+  if (discFirst?.serie) return String(discFirst.serie).trim();
 
   return undefined;
 };
@@ -1071,6 +1085,9 @@ export default function RelatorioEscolar({
   const reportAnswerSheet = reportAnswerSheetProp || isAnswerSheetAgregados;
   const { autoLogin, user } = useAuth();
   const [apiData, setApiData] = useState<NovaRespostaAPI | null>(null);
+  const [analiseEscolarIa, setAnaliseEscolarIa] = useState<
+    Pick<NovaRespostaAPI, "analise_ia_status" | "analise_ia_cache_key" | "analise_ia"> | null
+  >(null);
   const [aiRetryNonce, setAiRetryNonce] = useState(0);
   const [aiErrorMessage, setAiErrorMessage] = useState<string | null>(null);
   const [aiVisualLoading, setAiVisualLoading] = useState(false);
@@ -1091,6 +1108,7 @@ export default function RelatorioEscolar({
   const { toast } = useToast();
   const navigate = useNavigate();
   const aiPollingTimeoutRef = useRef<number | null>(null);
+  const relatorioEscolarIaPollGenRef = useRef(0);
   const aiVisualLoadingTimeoutRef = useRef<number | null>(null);
   const aiVisualLoadingMinUntilRef = useRef<number>(0);
 
@@ -1179,8 +1197,8 @@ export default function RelatorioEscolar({
   const repSchool = isAnswerSheetAgregados ? asEscola : selectedSchool;
   const repGabaritoOrEval = isAnswerSheetAgregados ? asGabarito : selectedEvaluation;
 
-  const aiAnaliseStatus = apiData?.analise_ia_status;
-  const aiAnalise = apiData?.analise_ia;
+  const aiAnaliseStatus = analiseEscolarIa?.analise_ia_status ?? apiData?.analise_ia_status;
+  const aiAnalise = analiseEscolarIa?.analise_ia ?? apiData?.analise_ia;
   const aiAnaliseObject =
     aiAnalise && typeof aiAnalise === "object" && !Array.isArray(aiAnalise)
       ? (aiAnalise as Record<string, unknown>)
@@ -3247,7 +3265,7 @@ export default function RelatorioEscolar({
         estimatedCardHeight += 7; // município
         estimatedCardHeight += (!isMunicipalView || escolaFromApi) ? 12 : 0;
         estimatedCardHeight += serieFromApi ? 7 : 0;
-        const dataAplicacao = (apiData as any)?.estatisticas_gerais?.data_aplicacao as string | undefined;
+        const dataAplicacao = apiData.estatisticas_gerais?.data_aplicacao;
         estimatedCardHeight += dataAplicacao ? 7 : 0;
         const cardHeight = Math.max(estimatedCardHeight, 100);
 
@@ -4009,7 +4027,6 @@ export default function RelatorioEscolar({
       });
 
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.error("Erro ao gerar PDF RelatorioEscolar", error);
       toast({
         title: "Erro ao gerar PDF",
@@ -4025,22 +4042,18 @@ export default function RelatorioEscolar({
     distributionCharts,
     isMunicipalView,
     proficiencyDistributions,
-    selectedEvaluation,
-    selectedMunicipality,
-    selectedSchool,
     selectedSchoolInfo,
-    selectedState,
     summaryStats,
     toast,
     user?.role,
     userHierarchyContext,
     reportAnswerSheet,
-    isAnswerSheetAgregados,
     repState,
     repMunicipality,
     repSchool,
     repGabaritoOrEval,
     asOpcoes.gabaritos,
+    performanceDisciplineColumns,
   ]);
 
   // Carregar dados quando todos os filtros estiverem selecionados (avaliação / report_entity_type)
@@ -4051,8 +4064,8 @@ export default function RelatorioEscolar({
       if (allRequiredFiltersSelected) {
         try {
           clearAiPollingTimeout();
-          startAiVisualLoading();
           setAiErrorMessage(null);
+          setAnaliseEscolarIa(null);
           setIsLoadingData(true);
 
           // Usar getEvaluationsList como em Results.tsx para obter tabela_detalhada com alunos por disciplina
@@ -4061,140 +4074,121 @@ export default function RelatorioEscolar({
             municipio: selectedMunicipality,
             avaliacao: selectedEvaluation !== 'all' ? selectedEvaluation : undefined,
             escola: selectedSchool !== 'all' ? selectedSchool : undefined,
-            ai_analises: true,
             ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
             ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
             ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
           };
 
-          const fetchWithPolling = async (attempt: number = 0): Promise<void> => {
-            const evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(1, 200, filters);
-            if (cancelled) return;
+          const evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(1, 200, filters);
+          if (cancelled) return;
 
-            // Fluxo online do Relatório Escolar usa apenas /evaluation-results/avaliacoes.
-            // Não consumir /reports/dados-json para evitar dependência de payload com análise.
-            setRelatorioCompleto(null);
+          // Fluxo online do Relatório Escolar usa apenas /evaluation-results/avaliacoes.
+          setRelatorioCompleto(null);
 
-            if (evaluationsResponse) {
-            // ✅ NOVO: Fallback - Se disciplina está vazia quando escola específica está selecionada, buscar dados do município e filtrar
+          if (evaluationsResponse) {
+            // Fallback - Se disciplina está vazia quando escola específica está selecionada, buscar dados do município e filtrar
             if (evaluationsResponse.tabela_detalhada) {
               const tabela = evaluationsResponse.tabela_detalhada;
-              const disciplinasComAlunos = tabela.disciplinas?.filter(
-                d => d.alunos && Array.isArray(d.alunos) && d.alunos.length > 0
-              ).length || 0;
-              
+              const disciplinasComAlunos =
+                tabela.disciplinas?.filter((d) => d.alunos && Array.isArray(d.alunos) && d.alunos.length > 0)
+                  .length || 0;
+
               if (disciplinasComAlunos === 0 && selectedSchool !== 'all' && filters.escola) {
                 try {
-                  // Buscar dados do município (sem filtro de escola)
                   const municipioFilters = {
                     estado: filters.estado,
                     municipio: filters.municipio,
                     avaliacao: filters.avaliacao,
-                    escola: undefined, // Remover filtro de escola para obter todos os dados do município
+                    escola: undefined,
                     ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
                     ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
                     ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
                   };
-                  
-                  const municipioResponse = await EvaluationResultsApiService.getEvaluationsList(1, 200, municipioFilters);
-                  
+
+                  const municipioResponse = await EvaluationResultsApiService.getEvaluationsList(
+                    1,
+                    200,
+                    municipioFilters
+                  );
+
                   if (municipioResponse?.tabela_detalhada?.disciplinas) {
-                    const municipioDisciplinasComAlunos = municipioResponse.tabela_detalhada.disciplinas.filter(
-                      d => d.alunos && Array.isArray(d.alunos) && d.alunos.length > 0
-                    ).length;
-                    
-                    // Obter nome da escola selecionada das estatísticas gerais
+                    const municipioDisciplinasComAlunos =
+                      municipioResponse.tabela_detalhada.disciplinas.filter(
+                        (d) => d.alunos && Array.isArray(d.alunos) && d.alunos.length > 0
+                      ).length;
+
                     const nomeEscolaSelecionada = evaluationsResponse.estatisticas_gerais?.escola;
-                    
+
                     if (municipioDisciplinasComAlunos > 0 && nomeEscolaSelecionada) {
-                      // Filtrar alunos que pertencem à escola selecionada
                       const alunosDaEscola = new Set<string>();
-                      
-                      // Primeiro, identificar IDs dos alunos da escola usando tabela_detalhada.geral
+
                       if (municipioResponse.tabela_detalhada.geral?.alunos) {
-                        municipioResponse.tabela_detalhada.geral.alunos.forEach(aluno => {
+                        municipioResponse.tabela_detalhada.geral.alunos.forEach((aluno) => {
                           const escolaDoAluno = aluno.escola;
-                          if (escolaDoAluno && escolaDoAluno.toLowerCase().includes(nomeEscolaSelecionada.toLowerCase())) {
+                          if (
+                            escolaDoAluno &&
+                            escolaDoAluno.toLowerCase().includes(nomeEscolaSelecionada.toLowerCase())
+                          ) {
                             const rid = alunoRowId(aluno);
                             if (rid) alunosDaEscola.add(rid);
                           }
                         });
                       }
-                      
-                      // Se não encontrou alunos em geral, tentar usar as disciplinas
+
                       if (alunosDaEscola.size === 0) {
-                        municipioResponse.tabela_detalhada.disciplinas.forEach(disciplina => {
-                          disciplina.alunos?.forEach(aluno => {
-                            if (aluno.escola && aluno.escola.toLowerCase().includes(nomeEscolaSelecionada.toLowerCase())) {
+                        municipioResponse.tabela_detalhada.disciplinas.forEach((disciplina) => {
+                          disciplina.alunos?.forEach((aluno) => {
+                            if (
+                              aluno.escola &&
+                              aluno.escola.toLowerCase().includes(nomeEscolaSelecionada.toLowerCase())
+                            ) {
                               const rid = alunoRowId(aluno);
                               if (rid) alunosDaEscola.add(rid);
                             }
                           });
                         });
                       }
-                      
+
                       if (alunosDaEscola.size > 0) {
-                        // Reconstruir tabela_detalhada com apenas alunos da escola selecionada
-                        const disciplinasComAlunosFiltrados = municipioResponse.tabela_detalhada.disciplinas.map(disciplina => {
-                          const alunosFiltrados = disciplina.alunos?.filter(aluno => alunosDaEscola.has(alunoRowId(aluno))) || [];
-                          
-                          return {
-                            ...disciplina,
-                            alunos: alunosFiltrados
-                          };
-                        });
-                        
-                        // Filtrar também alunos em geral
-                        const alunosGeralFiltrados = municipioResponse.tabela_detalhada.geral?.alunos?.filter(
-                          aluno => alunosDaEscola.has(alunoRowId(aluno))
-                        ) || [];
-                        
-                        // Atualizar a resposta com os dados filtrados
+                        const disciplinasComAlunosFiltrados = municipioResponse.tabela_detalhada.disciplinas.map(
+                          (disciplina) => {
+                            const alunosFiltrados =
+                              disciplina.alunos?.filter((aluno) => alunosDaEscola.has(alunoRowId(aluno))) || [];
+
+                            return {
+                              ...disciplina,
+                              alunos: alunosFiltrados,
+                            };
+                          }
+                        );
+
+                        const alunosGeralFiltrados =
+                          municipioResponse.tabela_detalhada.geral?.alunos?.filter((aluno) =>
+                            alunosDaEscola.has(alunoRowId(aluno))
+                          ) || [];
+
                         evaluationsResponse.tabela_detalhada = {
                           ...municipioResponse.tabela_detalhada,
                           disciplinas: disciplinasComAlunosFiltrados,
                           geral: {
                             ...municipioResponse.tabela_detalhada.geral,
-                            alunos: alunosGeralFiltrados
-                          }
+                            alunos: alunosGeralFiltrados,
+                          },
                         };
                       }
                     }
                   }
-                } catch (fallbackError) {
-                  // Erro silencioso no fallback
+                } catch {
+                  // fallback silencioso
                 }
               }
             }
 
-            setApiData(evaluationsResponse);
-            if (evaluationsResponse.analise_ia_status === "processing") {
-              const delayMs = Math.min(4000, 1000 + attempt * 500);
-              setIsLoadingData(false);
-              clearAiPollingTimeout();
-              aiPollingTimeoutRef.current = window.setTimeout(() => {
-                void fetchWithPolling(attempt + 1);
-              }, delayMs);
-              return;
-            }
-            if (evaluationsResponse.analise_ia_status === "error") {
-              const responseAi = evaluationsResponse.analise_ia as Record<string, unknown> | undefined;
-              const details = readTrimmedString(responseAi?.details);
-              const title = readTrimmedString(responseAi?.error);
-              setAiErrorMessage(details || title || "Nao foi possivel gerar o relatorio detalhado. Tente novamente.");
-            } else {
-              setAiErrorMessage(null);
-            }
-            stopAiVisualLoading();
+            setApiData(novaRespostaSemAnaliseIa(evaluationsResponse));
           } else {
             setApiData(null);
-            setAiErrorMessage("Nao foi possivel carregar os dados do relatorio detalhado.");
-            stopAiVisualLoading();
           }
-          };
-
-          await fetchWithPolling();
-        } catch (error) {
+        } catch {
           if (cancelled) return;
           toast({
             title: "Erro ao carregar dados",
@@ -4202,8 +4196,6 @@ export default function RelatorioEscolar({
             variant: "destructive",
           });
           setApiData(null);
-          setAiErrorMessage("Nao foi possivel carregar os dados do relatorio detalhado.");
-          stopAiVisualLoading();
         } finally {
           if (!cancelled) {
             setIsLoadingData(false);
@@ -4216,7 +4208,6 @@ export default function RelatorioEscolar({
     return () => {
       cancelled = true;
       clearAiPollingTimeout();
-      clearAiVisualLoadingTimeout();
     };
   }, [
     isAnswerSheetAgregados,
@@ -4225,7 +4216,115 @@ export default function RelatorioEscolar({
     selectedMunicipality,
     selectedSchool,
     selectedEvaluation,
-    selectedPeriod,
+    periodoYmRelatorio,
+    adminCityIdQuery,
+    reportEntityTypeParam,
+    clearAiPollingTimeout,
+    toast,
+  ]);
+
+  /** Polling da IA apenas em `/evaluation-results/avaliacoes/analise-ia`. */
+  useEffect(() => {
+    if (isAnswerSheetAgregados || !allRequiredFiltersSelected || apiData === null) {
+      return;
+    }
+
+    let cancelled = false;
+    relatorioEscolarIaPollGenRef.current += 1;
+    const pollGen = relatorioEscolarIaPollGenRef.current;
+
+    clearAiPollingTimeout();
+    startAiVisualLoading();
+    setAiErrorMessage(null);
+
+    const iaFilters = {
+      estado: selectedState,
+      municipio: selectedMunicipality,
+      avaliacao: selectedEvaluation !== 'all' ? selectedEvaluation : undefined,
+      escola: selectedSchool !== 'all' ? selectedSchool : undefined,
+      ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+      ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+      ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
+    };
+
+    const applyIaErrorMessage = (ia: AnaliseIaRouteResponse) => {
+      const details = readTrimmedString(ia.details);
+      const title = readTrimmedString(ia.error);
+      setAiErrorMessage(
+        details || title || "Nao foi possivel gerar o relatorio detalhado. Tente novamente."
+      );
+    };
+
+    const runPoll = async (attempt: number) => {
+      if (cancelled || pollGen !== relatorioEscolarIaPollGenRef.current) return;
+      const ia = await EvaluationResultsApiService.fetchAvaliacoesAnaliseIa(iaFilters);
+      if (cancelled || pollGen !== relatorioEscolarIaPollGenRef.current) return;
+
+      if (!ia) {
+        setAnaliseEscolarIa({
+          analise_ia_status: "error",
+          analise_ia: { error: "Falha ao consultar analise IA", details: "" },
+        });
+        applyIaErrorMessage({ details: "", error: "" });
+        stopAiVisualLoading();
+        return;
+      }
+
+      const st = ia.analise_ia_status ?? "processing";
+      if (st === "processing") {
+        setAnaliseEscolarIa({
+          analise_ia_status: "processing",
+          analise_ia_cache_key: ia.analise_ia_cache_key,
+        });
+        const delayMs = Math.min(4000, 1000 + attempt * 500);
+        clearAiPollingTimeout();
+        aiPollingTimeoutRef.current = window.setTimeout(() => {
+          void runPoll(attempt + 1);
+        }, delayMs);
+        return;
+      }
+
+      clearAiPollingTimeout();
+
+      if (st === "error") {
+        setAnaliseEscolarIa({
+          analise_ia_status: "error",
+          analise_ia_cache_key: ia.analise_ia_cache_key,
+          analise_ia: {
+            error: readTrimmedString(ia.error) || "Erro ao gerar análise",
+            details: readTrimmedString(ia.details),
+          },
+        });
+        applyIaErrorMessage(ia);
+        stopAiVisualLoading();
+        return;
+      }
+
+      setAnaliseEscolarIa({
+        analise_ia_status: "ready",
+        analise_ia_cache_key: ia.analise_ia_cache_key,
+        analise_ia: ia.analise_ia ?? {},
+      });
+      setAiErrorMessage(null);
+      stopAiVisualLoading();
+    };
+
+    void runPoll(0);
+
+    return () => {
+      cancelled = true;
+      clearAiPollingTimeout();
+      clearAiVisualLoadingTimeout();
+    };
+  }, [
+    isAnswerSheetAgregados,
+    allRequiredFiltersSelected,
+    apiData,
+    selectedState,
+    selectedMunicipality,
+    selectedSchool,
+    selectedEvaluation,
+    periodoYmRelatorio,
     adminCityIdQuery,
     reportEntityTypeParam,
     aiRetryNonce,
@@ -4233,7 +4332,6 @@ export default function RelatorioEscolar({
     clearAiVisualLoadingTimeout,
     startAiVisualLoading,
     stopAiVisualLoading,
-    toast,
   ]);
 
   // Cartão resposta: GET /answer-sheets/resultados-agregados
@@ -4244,62 +4342,39 @@ export default function RelatorioEscolar({
       if (!allRequiredFiltersSelected) {
         setApiData(null);
         setAiErrorMessage(null);
+        setAnaliseEscolarIa(null);
         clearAiPollingTimeout();
         return;
       }
       try {
         clearAiPollingTimeout();
-        startAiVisualLoading();
         setAiErrorMessage(null);
+        setAnaliseEscolarIa(null);
         setIsLoadingData(true);
         setRelatorioCompleto(null);
         const params = new URLSearchParams();
         params.set('estado', asEstado);
         params.set('municipio', asMunicipio);
         params.set('gabarito', asGabarito);
-        params.set('ai_analises', 'true');
         if (asEscola !== 'all') params.set('escola', asEscola);
         if (asSerie !== 'all') params.set('serie', asSerie);
         if (asTurma !== 'all') params.set('turma', asTurma);
         if (periodoYmRelatorio) params.set('periodo', periodoYmRelatorio);
 
-        const fetchWithPolling = async (attempt: number = 0): Promise<void> => {
-          const res = await api.get<AnswerSheetResultadosAgregadosRaw>(
-            `/answer-sheets/resultados-agregados?${params.toString()}`
-          );
-          if (cancelled) return;
+        const res = await api.get<AnswerSheetResultadosAgregadosRaw>(
+          `/answer-sheets/resultados-agregados?${params.toString()}`
+        );
+        if (cancelled) return;
 
-          const mapped = mapAnswerSheetResultadosAgregadosToNovaResposta(res.data, {
-            estado: asEstado,
-            municipio: asMunicipio,
-            gabarito: asGabarito,
-            escola: asEscola,
-            serie: asSerie,
-            turma: asTurma,
-          });
-          setApiData(mapped);
-
-          if (mapped.analise_ia_status === "processing") {
-            const delayMs = Math.min(4000, 1000 + attempt * 500);
-            setIsLoadingData(false);
-            clearAiPollingTimeout();
-            aiPollingTimeoutRef.current = window.setTimeout(() => {
-              void fetchWithPolling(attempt + 1);
-            }, delayMs);
-            return;
-          }
-          if (mapped.analise_ia_status === "error") {
-            const responseAi = mapped.analise_ia as Record<string, unknown> | undefined;
-            const details = readTrimmedString(responseAi?.details);
-            const title = readTrimmedString(responseAi?.error);
-            setAiErrorMessage(details || title || "Nao foi possivel gerar o relatorio detalhado. Tente novamente.");
-          } else {
-            setAiErrorMessage(null);
-          }
-          stopAiVisualLoading();
-        };
-
-        await fetchWithPolling();
+        const mapped = mapAnswerSheetResultadosAgregadosToNovaResposta(res.data, {
+          estado: asEstado,
+          municipio: asMunicipio,
+          gabarito: asGabarito,
+          escola: asEscola,
+          serie: asSerie,
+          turma: asTurma,
+        });
+        setApiData(novaRespostaSemAnaliseIa(mapped));
       } catch {
         if (cancelled) return;
         toast({
@@ -4308,8 +4383,6 @@ export default function RelatorioEscolar({
           variant: 'destructive',
         });
         setApiData(null);
-        setAiErrorMessage("Nao foi possivel carregar os dados do relatorio detalhado.");
-        stopAiVisualLoading();
       } finally {
         if (!cancelled) {
           setIsLoadingData(false);
@@ -4320,11 +4393,131 @@ export default function RelatorioEscolar({
     return () => {
       cancelled = true;
       clearAiPollingTimeout();
+    };
+  }, [
+    isAnswerSheetAgregados,
+    allRequiredFiltersSelected,
+    asEstado,
+    asMunicipio,
+    asGabarito,
+    asEscola,
+    asSerie,
+    asTurma,
+    periodoYmRelatorio,
+    clearAiPollingTimeout,
+    toast,
+  ]);
+
+  /** Polling da IA em `/answer-sheets/resultados-agregados/analise-ia` (cartão). */
+  useEffect(() => {
+    if (!isAnswerSheetAgregados || !allRequiredFiltersSelected || apiData === null) {
+      return;
+    }
+
+    let cancelled = false;
+    relatorioEscolarIaPollGenRef.current += 1;
+    const pollGen = relatorioEscolarIaPollGenRef.current;
+
+    clearAiPollingTimeout();
+    startAiVisualLoading();
+    setAiErrorMessage(null);
+
+    const iaParams = new URLSearchParams();
+    iaParams.set('estado', asEstado);
+    iaParams.set('municipio', asMunicipio);
+    iaParams.set('gabarito', asGabarito);
+    if (asEscola !== 'all') iaParams.set('escola', asEscola);
+    if (asSerie !== 'all') iaParams.set('serie', asSerie);
+    if (asTurma !== 'all') iaParams.set('turma', asTurma);
+    if (periodoYmRelatorio) iaParams.set('periodo', periodoYmRelatorio);
+
+    const applyAgregadosIaErrorMessage = (ia: AnaliseIaRouteResponse) => {
+      const details = readTrimmedString(ia.details);
+      const title = readTrimmedString(ia.error);
+      setAiErrorMessage(
+        details || title || "Nao foi possivel gerar o relatorio detalhado. Tente novamente."
+      );
+    };
+
+    const axiosConfigCartaoAgregadosIa =
+      asMunicipio !== 'all' ? { meta: { cityId: asMunicipio } as { cityId: string } } : {};
+
+    const runPollCartao = async (attempt: number) => {
+      if (cancelled || pollGen !== relatorioEscolarIaPollGenRef.current) return;
+
+      let ia: AnaliseIaRouteResponse | null = null;
+      try {
+        const res = await api.get<AnaliseIaRouteResponse>(
+          `/answer-sheets/resultados-agregados/analise-ia?${iaParams.toString()}`,
+          axiosConfigCartaoAgregadosIa
+        );
+        ia = res.data ?? null;
+      } catch {
+        ia = null;
+      }
+
+      if (cancelled || pollGen !== relatorioEscolarIaPollGenRef.current) return;
+
+      if (!ia) {
+        setAnaliseEscolarIa({
+          analise_ia_status: "error",
+          analise_ia: { error: "Falha ao consultar analise IA", details: "" },
+        });
+        applyAgregadosIaErrorMessage({ details: "", error: "" });
+        stopAiVisualLoading();
+        return;
+      }
+
+      const st = ia.analise_ia_status ?? "processing";
+      if (st === "processing") {
+        setAnaliseEscolarIa({
+          analise_ia_status: "processing",
+          analise_ia_cache_key: ia.analise_ia_cache_key,
+        });
+        const delayMs = Math.min(4000, 1000 + attempt * 500);
+        clearAiPollingTimeout();
+        aiPollingTimeoutRef.current = window.setTimeout(() => {
+          void runPollCartao(attempt + 1);
+        }, delayMs);
+        return;
+      }
+
+      clearAiPollingTimeout();
+
+      if (st === "error") {
+        setAnaliseEscolarIa({
+          analise_ia_status: "error",
+          analise_ia_cache_key: ia.analise_ia_cache_key,
+          analise_ia: {
+            error: readTrimmedString(ia.error) || "Erro ao gerar análise",
+            details: readTrimmedString(ia.details),
+          },
+        });
+        applyAgregadosIaErrorMessage(ia);
+        stopAiVisualLoading();
+        return;
+      }
+
+      setAnaliseEscolarIa({
+        analise_ia_status: "ready",
+        analise_ia_cache_key: ia.analise_ia_cache_key,
+        analise_ia: ia.analise_ia ?? {},
+      });
+      setAiErrorMessage(null);
+      stopAiVisualLoading();
+    };
+
+    void runPollCartao(0);
+
+    return () => {
+      cancelled = true;
+      clearAiPollingTimeout();
       clearAiVisualLoadingTimeout();
     };
   }, [
     isAnswerSheetAgregados,
     allRequiredFiltersSelected,
+    apiData,
     asEstado,
     asMunicipio,
     asGabarito,
@@ -4337,7 +4530,6 @@ export default function RelatorioEscolar({
     clearAiVisualLoadingTimeout,
     startAiVisualLoading,
     stopAiVisualLoading,
-    toast,
   ]);
 
   const formatAnaliseIaKey = useCallback((key: string) => {
