@@ -6,6 +6,11 @@ import type {
   SkillsMapResponse,
 } from '@/services/evaluation/skillsMapApi';
 import { urlToPngAsset } from '@/utils/pdfCityBranding';
+import {
+  buildStructuredIaSegmentsFromRoot,
+  hasAnyStructuredIaContent,
+  renderStructuredIaPdfContent,
+} from '@/utils/report/analiseIaPdfStructured';
 
 // ---------------------------------------------------------------------------
 // Tipos públicos
@@ -539,6 +544,8 @@ function drawSkillCardsByLevel(
   return y + maxColH;
 }
 
+type IcoAsset = { dataUrl: string; iw: number; ih: number } | null;
+
 // ---------------------------------------------------------------------------
 // PDF GERAL
 // ---------------------------------------------------------------------------
@@ -549,8 +556,10 @@ export async function downloadSkillsHeatMapGeneralPdf(opts: {
   filtrosTexto: string[];
   periodoLabel?: string;
   meta?: SkillsHeatMapPdfMeta;
+  /** Só preenchido quando a análise IA foi gerada na interface (status ready). */
+  analiseIa?: Record<string, unknown> | null;
 }): Promise<void> {
-  const { modo, map, periodoLabel, meta = {} } = opts;
+  const { modo, map, periodoLabel, meta = {}, analiseIa = null } = opts;
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const icoAsset = await urlToPngAsset('/AFIRME-PLAY-ico.png');
@@ -822,6 +831,39 @@ export async function downloadSkillsHeatMapGeneralPdf(opts: {
     });
   }
 
+  if (analiseIa && typeof analiseIa === 'object' && !Array.isArray(analiseIa)) {
+    const segments = buildStructuredIaSegmentsFromRoot(analiseIa, null);
+    if (hasAnyStructuredIaContent(segments)) {
+      doc.addPage();
+      const pageH = doc.internal.pageSize.getHeight();
+      const marginAnnex = 15;
+      const maxWAnnex = doc.internal.pageSize.getWidth() - 2 * marginAnnex;
+      let yAnnex = addPageHeader(doc, 'Análise com IA', meta.municipio, icoAsset);
+      const bumpIaPage = (): number => {
+        doc.addPage();
+        return addPageHeader(doc, 'Análise com IA (continuação)', meta.municipio, icoAsset);
+      };
+      await renderStructuredIaPdfContent(
+        {
+          doc,
+          margin: marginAnnex,
+          maxW: maxWAnnex,
+          contentBottom: pageH - 20,
+          palette: C,
+          bumpPage: bumpIaPage,
+        },
+        yAnnex,
+        {
+          sectionTitle: 'Análise com IA',
+          showSectionHeading: false,
+          footnote:
+            'Conteúdo gerado automaticamente a partir dos filtros e do recorte exibido.',
+          segments,
+        },
+      );
+    }
+  }
+
   addFooters(doc);
   doc.save(`mapa-habilidades-geral-${modo}.pdf`);
 }
@@ -837,8 +879,9 @@ export async function downloadSkillsHeatMapSkillPdf(opts: {
   filtrosTexto: string[];
   periodoLabel?: string;
   meta?: SkillsHeatMapPdfMeta;
+  analiseIa?: Record<string, unknown> | null;
 }): Promise<void> {
-  const { modo, skill, erros, meta = {} } = opts;
+  const { modo, skill, erros, meta = {}, analiseIa = null } = opts;
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const icoAsset = await urlToPngAsset('/AFIRME-PLAY-ico.png');
@@ -1050,6 +1093,43 @@ export async function downloadSkillsHeatMapSkillPdf(opts: {
     },
     pageBreak: 'auto',
   });
+
+  if (analiseIa && typeof analiseIa === 'object' && !Array.isArray(analiseIa)) {
+    const prefer = skill.disciplina_nome?.trim() || null;
+    let segments = buildStructuredIaSegmentsFromRoot(analiseIa, prefer);
+    if (!hasAnyStructuredIaContent(segments)) {
+      segments = buildStructuredIaSegmentsFromRoot(analiseIa, null);
+    }
+    if (hasAnyStructuredIaContent(segments)) {
+      doc.addPage();
+      const pageHSkill = doc.internal.pageSize.getHeight();
+      const marginIa = 15;
+      const maxWIa = doc.internal.pageSize.getWidth() - 2 * marginIa;
+      let yIa = addPageHeader(doc, 'Análise com IA', meta.municipio, icoAsset);
+      const bumpIaSkill = (): number => {
+        doc.addPage();
+        return addPageHeader(doc, 'Análise com IA (continuação)', meta.municipio, icoAsset);
+      };
+      await renderStructuredIaPdfContent(
+        {
+          doc,
+          margin: marginIa,
+          maxW: maxWIa,
+          contentBottom: pageHSkill - 20,
+          palette: C,
+          bumpPage: bumpIaSkill,
+        },
+        yIa,
+        {
+          sectionTitle: 'Análise com IA',
+          showSectionHeading: false,
+          footnote:
+            'Conteúdo gerado automaticamente a partir dos filtros e do recorte exibido.',
+          segments,
+        },
+      );
+    }
+  }
 
   addFooters(doc);
   const safeCode = codigoDisplay.replace(/[^\w-]+/g, '_').slice(0, 40);

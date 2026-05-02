@@ -844,8 +844,9 @@ export default function SkillsHeatMapPage() {
   const [loadingMap, setLoadingMap] = useState(false);
   const [iaOnlineSlice, setIaOnlineSlice] = useState<AnaliseIaRouteResponse | null>(null);
   const [iaCartaoSlice, setIaCartaoSlice] = useState<AnaliseIaRouteResponse | null>(null);
-  const [iaRetryOnlineNonce, setIaRetryOnlineNonce] = useState(0);
-  const [iaRetryCartaoNonce, setIaRetryCartaoNonce] = useState(0);
+  /** > 0 só após clicar em “Gerar análise da IA”; não chama analise-ia ao carregar o mapa. */
+  const [iaManualOnlineSeq, setIaManualOnlineSeq] = useState(0);
+  const [iaManualCartaoSeq, setIaManualCartaoSeq] = useState(0);
 
   const mapIaOnlineTimeoutRef = useRef<number | null>(null);
   const mapIaCartaoTimeoutRef = useRef<number | null>(null);
@@ -1286,6 +1287,9 @@ export default function SkillsHeatMapPage() {
     }
     try {
       setLoadingMap(true);
+      clearMapIaOnlineTimer();
+      setIaOnlineSlice(null);
+      setIaManualOnlineSeq(0);
       const data = await fetchSkillsMapOnline({
         estado: oEstado,
         municipio: oMunicipio,
@@ -1319,6 +1323,7 @@ export default function SkillsHeatMapPage() {
     oDisciplina,
     periodoYm,
     toast,
+    clearMapIaOnlineTimer,
   ]);
 
   const loadCartaoMap = useCallback(async () => {
@@ -1332,6 +1337,9 @@ export default function SkillsHeatMapPage() {
     }
     try {
       setLoadingMap(true);
+      clearMapIaCartaoTimer();
+      setIaCartaoSlice(null);
+      setIaManualCartaoSeq(0);
       const data = await fetchSkillsMapCartao({
         estado: cEstado,
         municipio: cMunicipio,
@@ -1365,6 +1373,7 @@ export default function SkillsHeatMapPage() {
     cDisciplina,
     periodoYm,
     toast,
+    clearMapIaCartaoTimer,
   ]);
 
   useEffect(() => {
@@ -1381,6 +1390,9 @@ export default function SkillsHeatMapPage() {
     if (!canLoadOnlineMap || !mapOnline) {
       clearMapIaOnlineTimer();
       setIaOnlineSlice(null);
+      return;
+    }
+    if (iaManualOnlineSeq === 0) {
       return;
     }
 
@@ -1465,7 +1477,7 @@ export default function SkillsHeatMapPage() {
     oTurma,
     oDisciplina,
     periodoYm,
-    iaRetryOnlineNonce,
+    iaManualOnlineSeq,
     clearMapIaOnlineTimer,
   ]);
 
@@ -1473,6 +1485,9 @@ export default function SkillsHeatMapPage() {
     if (!canLoadCartaoMap || !mapCartao) {
       clearMapIaCartaoTimer();
       setIaCartaoSlice(null);
+      return;
+    }
+    if (iaManualCartaoSeq === 0) {
       return;
     }
 
@@ -1557,7 +1572,7 @@ export default function SkillsHeatMapPage() {
     cTurma,
     cDisciplina,
     periodoYm,
-    iaRetryCartaoNonce,
+    iaManualCartaoSeq,
     clearMapIaCartaoTimer,
   ]);
 
@@ -1616,6 +1631,21 @@ export default function SkillsHeatMapPage() {
     }
   };
 
+  const analiseIaPdfPayloadOnline =
+    iaOnlineSlice?.analise_ia_status === 'ready' &&
+    iaOnlineSlice.analise_ia &&
+    typeof iaOnlineSlice.analise_ia === 'object' &&
+    !Array.isArray(iaOnlineSlice.analise_ia)
+      ? (iaOnlineSlice.analise_ia as Record<string, unknown>)
+      : null;
+  const analiseIaPdfPayloadCartao =
+    iaCartaoSlice?.analise_ia_status === 'ready' &&
+    iaCartaoSlice.analise_ia &&
+    typeof iaCartaoSlice.analise_ia === 'object' &&
+    !Array.isArray(iaCartaoSlice.analise_ia)
+      ? (iaCartaoSlice.analise_ia as Record<string, unknown>)
+      : null;
+
   const handlePdfGeral = () => {
     const run = async () => {
       if (tab === 'online') {
@@ -1626,6 +1656,7 @@ export default function SkillsHeatMapPage() {
           filtrosTexto: filtrosPdfOnline,
           periodoLabel: periodoLabelText,
           meta: filtrosMetaOnline,
+          analiseIa: analiseIaPdfPayloadOnline,
         });
       } else {
         if (!mapCartao) return;
@@ -1635,6 +1666,7 @@ export default function SkillsHeatMapPage() {
           filtrosTexto: filtrosPdfCartao,
           periodoLabel: periodoLabelText,
           meta: filtrosMetaCartao,
+          analiseIa: analiseIaPdfPayloadCartao,
         });
       }
       toast({ title: 'PDF gerado', description: 'O download deve começar em instantes.' });
@@ -1654,6 +1686,7 @@ export default function SkillsHeatMapPage() {
         filtrosTexto: tab === 'online' ? filtrosPdfOnline : filtrosPdfCartao,
         periodoLabel: periodoLabelText,
         meta: tab === 'online' ? filtrosMetaOnline : filtrosMetaCartao,
+        analiseIa: tab === 'online' ? analiseIaPdfPayloadOnline : analiseIaPdfPayloadCartao,
       });
       toast({ title: 'PDF gerado', description: 'O download deve começar em instantes.' });
     };
@@ -1845,6 +1878,33 @@ export default function SkillsHeatMapPage() {
             </Card>
           )}
           {loadingMap && canLoadOnlineMap && !mapOnline && <AnalysisLoadingCard />}
+          {mapOnline && (
+            <Card className="shadow-sm border border-border">
+              <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+                    Análise com IA
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Gere uma análise textual para o mapa e filtros exibidos. A consulta pode levar alguns segundos.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  className="shrink-0"
+                  disabled={loadingMap || iaOnlineSlice?.analise_ia_status === 'processing'}
+                  onClick={() => {
+                    clearMapIaOnlineTimer();
+                    setIaOnlineSlice(null);
+                    setIaManualOnlineSeq((n) => n + 1);
+                  }}
+                >
+                  Gerar análise da IA para os dados mostrados
+                </Button>
+              </CardContent>
+            </Card>
+          )}
           {mapOnline && iaOnlineSlice?.analise_ia_status === 'processing' && <AnalysisLoadingCard />}
           {mapOnline && iaOnlineSlice?.analise_ia_status === 'error' && (
             <Card className="border-destructive/60">
@@ -1860,7 +1920,7 @@ export default function SkillsHeatMapPage() {
                     readTrimMessage((iaOnlineSlice?.analise_ia as Record<string, unknown> | undefined)?.error) ||
                     'Tente novamente em instantes.'}
                 </p>
-                <Button type="button" variant="outline" size="sm" onClick={() => setIaRetryOnlineNonce((n) => n + 1)}>
+                <Button type="button" variant="outline" size="sm" onClick={() => setIaManualOnlineSeq((n) => n + 1)}>
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Tentar novamente
                 </Button>
@@ -1869,7 +1929,7 @@ export default function SkillsHeatMapPage() {
           )}
           {mapOnline && iaOnlineSlice?.analise_ia_status === 'ready' && (
               <AnalysisCard
-                analysis={(iaOnlineSlice?.analise_ia ?? mapOnline.analise_ia) as unknown}
+                analysis={iaOnlineSlice.analise_ia as unknown}
                 habilidadesMapa={mapOnline.habilidades}
               />
             )}
@@ -2004,6 +2064,33 @@ export default function SkillsHeatMapPage() {
             </Card>
           )}
           {loadingMap && canLoadCartaoMap && !mapCartao && <AnalysisLoadingCard />}
+          {mapCartao && (
+            <Card className="shadow-sm border border-border">
+              <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+                    Análise com IA
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Gere uma análise textual para o mapa e filtros exibidos. A consulta pode levar alguns segundos.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  className="shrink-0"
+                  disabled={loadingMap || iaCartaoSlice?.analise_ia_status === 'processing'}
+                  onClick={() => {
+                    clearMapIaCartaoTimer();
+                    setIaCartaoSlice(null);
+                    setIaManualCartaoSeq((n) => n + 1);
+                  }}
+                >
+                  Gerar análise da IA para os dados mostrados
+                </Button>
+              </CardContent>
+            </Card>
+          )}
           {mapCartao && iaCartaoSlice?.analise_ia_status === 'processing' && <AnalysisLoadingCard />}
           {mapCartao && iaCartaoSlice?.analise_ia_status === 'error' && (
             <Card className="border-destructive/60">
@@ -2019,7 +2106,7 @@ export default function SkillsHeatMapPage() {
                     readTrimMessage((iaCartaoSlice?.analise_ia as Record<string, unknown> | undefined)?.error) ||
                     'Tente novamente em instantes.'}
                 </p>
-                <Button type="button" variant="outline" size="sm" onClick={() => setIaRetryCartaoNonce((n) => n + 1)}>
+                <Button type="button" variant="outline" size="sm" onClick={() => setIaManualCartaoSeq((n) => n + 1)}>
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Tentar novamente
                 </Button>
@@ -2028,7 +2115,7 @@ export default function SkillsHeatMapPage() {
           )}
           {mapCartao && iaCartaoSlice?.analise_ia_status === 'ready' && (
               <AnalysisCard
-                analysis={(iaCartaoSlice?.analise_ia ?? mapCartao.analise_ia) as unknown}
+                analysis={iaCartaoSlice.analise_ia as unknown}
                 habilidadesMapa={mapCartao.habilidades}
               />
             )}
