@@ -9,7 +9,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Download, FileText, RefreshCw, Filter, BookOpen, LineChart, Trophy, GraduationCap, AlertCircle, Sparkles } from "lucide-react";
+import {
+  Download,
+  FileText,
+  RefreshCw,
+  Filter,
+  BookOpen,
+  LineChart,
+  Trophy,
+  GraduationCap,
+  AlertCircle,
+  Sparkles,
+  Loader2,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -54,6 +66,12 @@ import {
   paintLetterheadBackground,
   urlToPngAsset,
 } from "@/utils/pdfCityBranding";
+import { getDisciplinaAnaliseFromIaRoot } from "@/utils/report/analiseIaPdfText";
+import {
+  buildDisciplineRecordToBlocks,
+  buildGenericIaFallbackBlocks,
+  renderStructuredIaPdfContent,
+} from "@/utils/report/analiseIaPdfStructured";
 
 const normalizeText = (value: string) =>
   value
@@ -63,6 +81,55 @@ const normalizeText = (value: string) =>
 
 function readTrimmedString(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
+}
+
+/** Mesmo padrão visual de `SkillsHeatMapPage` / `AnalysisLoadingCard` durante a geração da análise IA. */
+function RelatorioEscolarAnalysisLoadingCard() {
+  return (
+    <Card className="mt-6 overflow-hidden border-primary/20 bg-gradient-to-br from-primary/5 via-background to-primary/10">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+          Análise do relatório escolar
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-lg border bg-background/70 p-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            Processando análise dos resultados...
+          </div>
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div className="h-full w-1/3 animate-[pulse_1.1s_ease-in-out_infinite] rounded-full bg-primary/70" />
+          </div>
+          <div className="mt-4 space-y-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+              Consolidando resultados por disciplina
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary/80" />
+              Cruzando proficiência, níveis e participação
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary/60" />
+              Estruturando recomendações para intervenção
+            </div>
+          </div>
+          <div className="mt-4 space-y-3">
+            <div className="h-3 w-11/12 rounded bg-muted animate-pulse" />
+            <div className="h-3 w-10/12 rounded bg-muted animate-pulse" />
+            <div className="h-3 w-8/12 rounded bg-muted animate-pulse" />
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="h-16 rounded-lg bg-muted animate-pulse" />
+          <div className="h-16 rounded-lg bg-muted animate-pulse" />
+          <div className="h-16 rounded-lg bg-muted animate-pulse" />
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function novaRespostaSemAnaliseIa(payload: NovaRespostaAPI): NovaRespostaAPI {
@@ -1104,7 +1171,8 @@ export default function RelatorioEscolar({
   const [analiseEscolarIa, setAnaliseEscolarIa] = useState<
     Pick<NovaRespostaAPI, "analise_ia_status" | "analise_ia_cache_key" | "analise_ia"> | null
   >(null);
-  const [aiRetryNonce, setAiRetryNonce] = useState(0);
+  /** > 0 somente após o usuário clicar em “Gerar análise da IA”; evita chamar analise-ia ao carregar os dados. */
+  const [iaRequestSeq, setIaRequestSeq] = useState(0);
   const [aiErrorMessage, setAiErrorMessage] = useState<string | null>(null);
   const [aiVisualLoading, setAiVisualLoading] = useState(false);
   const [relatorioCompleto, setRelatorioCompleto] = useState<RelatorioCompleto | null>(null);
@@ -3784,7 +3852,7 @@ export default function RelatorioEscolar({
 
       // ===== PÁGINAS 3+: Distribuição por níveis de proficiência =====
       if (proficiencyDistributions.length > 0) {
-        proficiencyDistributions.forEach((distribution) => {
+        for (const distribution of proficiencyDistributions) {
           doc.addPage();
           pageCount++;
           
@@ -3917,6 +3985,8 @@ export default function RelatorioEscolar({
             .filter((n) => Number.isFinite(n) && (alunosPorNivelPdf[n]?.length ?? 0) > 0)
             .sort((a, b) => a - b);
 
+          let yAfterProficiencyContent = chartStartY + chartHeight + 14;
+
           if (levelsWithStudentsPdf.length > 0) {
             let yList = chartStartY + chartHeight + 14;
             if (yList > pageHeight - 60) {
@@ -4019,10 +4089,71 @@ export default function RelatorioEscolar({
               const finalY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
               yList = (typeof finalY === "number" ? finalY : yList) + 6;
             }
+            yAfterProficiencyContent = yList;
+          }
+
+          if (
+            iaRequestSeq > 0 &&
+            analiseEscolarIa?.analise_ia_status === "ready" &&
+            analiseEscolarIa.analise_ia &&
+            typeof analiseEscolarIa.analise_ia === "object" &&
+            !Array.isArray(analiseEscolarIa.analise_ia)
+          ) {
+            const iaRoot = analiseEscolarIa.analise_ia as Record<string, unknown>;
+            const discPayload = getDisciplinaAnaliseFromIaRoot(
+              iaRoot,
+              distribution.disciplinaNome
+            );
+            let iaBlocks = buildDisciplineRecordToBlocks(discPayload);
+            if (!iaBlocks.length && discPayload) {
+              iaBlocks = buildGenericIaFallbackBlocks(discPayload);
+            }
+            if (iaBlocks.length > 0) {
+              let yIa = yAfterProficiencyContent + 6;
+
+              if (yIa > pageHeight - 40) {
+                addFooter(pageCount);
+                doc.addPage();
+                pageCount++;
+                yIa = addHeader() + 10;
+              }
+
+              const maxWIa = pageWidth - 2 * margin;
+              const bumpIaPage = (): number => {
+                addFooter(pageCount);
+                doc.addPage();
+                pageCount++;
+                return addHeader() + 10;
+              };
+
+              await renderStructuredIaPdfContent(
+                {
+                  doc,
+                  margin,
+                  maxW: maxWIa,
+                  contentBottom: pageHeight - 20,
+                  palette: COLORS,
+                  bumpPage: bumpIaPage,
+                },
+                yIa,
+                {
+                  sectionTitle: "Análise com IA",
+                  showSectionHeading: true,
+                  footnote:
+                    "Conteúdo gerado automaticamente com base nos dados desta disciplina e nos filtros aplicados.",
+                  segments: [
+                    {
+                      disciplineBand: distribution.disciplinaNome?.trim() || null,
+                      blocks: iaBlocks,
+                    },
+                  ],
+                }
+              );
+            }
           }
 
           addFooter(pageCount);
-        });
+        }
       }
 
       // Salvar PDF
@@ -4070,6 +4201,8 @@ export default function RelatorioEscolar({
     repGabaritoOrEval,
     asOpcoes.gabaritos,
     performanceDisciplineColumns,
+    iaRequestSeq,
+    analiseEscolarIa,
   ]);
 
   // Carregar dados quando todos os filtros estiverem selecionados (avaliação / report_entity_type)
@@ -4082,6 +4215,7 @@ export default function RelatorioEscolar({
           clearAiPollingTimeout();
           setAiErrorMessage(null);
           setAnaliseEscolarIa(null);
+          setIaRequestSeq(0);
           setIsLoadingData(true);
 
           // Usar getEvaluationsList como em Results.tsx para obter tabela_detalhada com alunos por disciplina
@@ -4203,6 +4337,7 @@ export default function RelatorioEscolar({
             setApiData(novaRespostaSemAnaliseIa(evaluationsResponse));
           } else {
             setApiData(null);
+            setIaRequestSeq(0);
           }
         } catch {
           if (cancelled) return;
@@ -4212,6 +4347,7 @@ export default function RelatorioEscolar({
             variant: "destructive",
           });
           setApiData(null);
+          setIaRequestSeq(0);
         } finally {
           if (!cancelled) {
             setIsLoadingData(false);
@@ -4242,6 +4378,9 @@ export default function RelatorioEscolar({
   /** Polling da IA apenas em `/evaluation-results/avaliacoes/analise-ia`. */
   useEffect(() => {
     if (isAnswerSheetAgregados || !allRequiredFiltersSelected || apiData === null) {
+      return;
+    }
+    if (iaRequestSeq === 0) {
       return;
     }
 
@@ -4343,7 +4482,7 @@ export default function RelatorioEscolar({
     periodoYmRelatorio,
     adminCityIdQuery,
     reportEntityTypeParam,
-    aiRetryNonce,
+    iaRequestSeq,
     clearAiPollingTimeout,
     clearAiVisualLoadingTimeout,
     startAiVisualLoading,
@@ -4359,6 +4498,7 @@ export default function RelatorioEscolar({
         setApiData(null);
         setAiErrorMessage(null);
         setAnaliseEscolarIa(null);
+        setIaRequestSeq(0);
         clearAiPollingTimeout();
         return;
       }
@@ -4366,6 +4506,7 @@ export default function RelatorioEscolar({
         clearAiPollingTimeout();
         setAiErrorMessage(null);
         setAnaliseEscolarIa(null);
+        setIaRequestSeq(0);
         setIsLoadingData(true);
         setRelatorioCompleto(null);
         const params = new URLSearchParams();
@@ -4399,6 +4540,7 @@ export default function RelatorioEscolar({
           variant: 'destructive',
         });
         setApiData(null);
+        setIaRequestSeq(0);
       } finally {
         if (!cancelled) {
           setIsLoadingData(false);
@@ -4427,6 +4569,9 @@ export default function RelatorioEscolar({
   /** Polling da IA em `/answer-sheets/resultados-agregados/analise-ia` (cartão). */
   useEffect(() => {
     if (!isAnswerSheetAgregados || !allRequiredFiltersSelected || apiData === null) {
+      return;
+    }
+    if (iaRequestSeq === 0) {
       return;
     }
 
@@ -4541,7 +4686,7 @@ export default function RelatorioEscolar({
     asSerie,
     asTurma,
     periodoYmRelatorio,
-    aiRetryNonce,
+    iaRequestSeq,
     clearAiPollingTimeout,
     clearAiVisualLoadingTimeout,
     startAiVisualLoading,
@@ -5360,6 +5505,42 @@ export default function RelatorioEscolar({
             </div>
           )}
 
+          {proficiencyDistributions.length > 0 && (
+            <Card className="shadow-md border border-border">
+              <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+                    Análise com IA
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Gere uma análise textual para os filtros e o recorte exibidos na página. A consulta pode levar alguns
+                    segundos.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  className="shrink-0"
+                  disabled={iaRequestSeq > 0 && (aiAnaliseStatus === "processing" || aiVisualLoading)}
+                  onClick={() => {
+                    clearAiPollingTimeout();
+                    setAiErrorMessage(null);
+                    setAnaliseEscolarIa(null);
+                    setIaRequestSeq((n) => n + 1);
+                  }}
+                >
+                  Gerar análise da IA para os dados mostrados
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {proficiencyDistributions.length > 0 &&
+            iaRequestSeq > 0 &&
+            (aiAnaliseStatus === "processing" || aiVisualLoading) && (
+              <RelatorioEscolarAnalysisLoadingCard />
+            )}
+
           {/* ✅ SEMPRE MOSTRAR: Seção de desempenho e botão de download sempre aparecem quando há apiData */}
           <Card className="mt-6 overflow-hidden shadow-md">
             <CardHeader className="flex flex-col gap-3 border-b border-border md:flex-row md:items-center md:justify-between">
@@ -5725,31 +5906,13 @@ export default function RelatorioEscolar({
                         </div>
                       </div>
 
+                      {iaRequestSeq > 0 &&
+                      !(aiAnaliseStatus === "processing" || aiVisualLoading) ? (
                       <div className="border-t border-border pt-5 space-y-3">
                         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
                           <Sparkles className="h-3.5 w-3.5 text-primary" />
                           Análise IA - {distribution.disciplinaNome ?? "Disciplina"}
                         </p>
-                        {(aiAnaliseStatus === "processing" || aiVisualLoading) && (
-                          <div className="rounded-lg border bg-gradient-to-r from-primary/10 via-background to-primary/10 p-4">
-                            <div className="flex items-center gap-3">
-                              <RefreshCw className="h-5 w-5 animate-spin text-primary" />
-                              <div>
-                                <p className="text-sm font-semibold text-foreground">
-                                  Gerando relatorio detalhado para esta disciplina
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  A IA esta processando os dados. Esse carregamento pode levar alguns segundos.
-                                </p>
-                              </div>
-                            </div>
-                            <div className="mt-4 space-y-2">
-                              <div className="h-2 w-full animate-pulse rounded-full bg-primary/20" />
-                              <div className="h-2 w-4/5 animate-pulse rounded-full bg-primary/15" />
-                              <div className="h-2 w-3/5 animate-pulse rounded-full bg-primary/10" />
-                            </div>
-                          </div>
-                        )}
                         {aiAnaliseStatus === "error" && !aiVisualLoading && (
                           <div className="space-y-3 rounded-md border border-destructive/40 bg-destructive/5 p-4">
                             <div className="flex items-start gap-2 text-sm text-destructive">
@@ -5770,7 +5933,7 @@ export default function RelatorioEscolar({
                               onClick={() => {
                                 clearAiPollingTimeout();
                                 startAiVisualLoading();
-                                setAiRetryNonce((prev) => prev + 1);
+                                setIaRequestSeq((prev) => prev + 1);
                               }}
                             >
                               Tentar novamente
@@ -5791,6 +5954,7 @@ export default function RelatorioEscolar({
                           </p>
                         )}
                       </div>
+                      ) : null}
 
                     </CardContent>
                   </Card>
