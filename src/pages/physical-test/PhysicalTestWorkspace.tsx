@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { isAxiosError } from "axios";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -75,6 +76,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useBatchCorrection } from "@/hooks/useBatchCorrection";
 import { api } from "@/lib/api";
+import { fetchAuthenticatedDownload } from "@/lib/fetch-authenticated-download";
 import { useAuth } from "@/context/authContext";
 import { cn } from "@/lib/utils";
 import { MultiSelect } from "@/components/ui/multi-select";
@@ -1111,42 +1113,38 @@ export function PhysicalTestWorkspace({
   };
 
   const handleDownloadForm = async (form: GeneratedForm) => {
+    if (!id) return;
+    const safe = (form.student_name || "formulario").replace(/[/\\?%*:|"<>]/g, "_");
     try {
-      // A nova rota retorna JSON com uma URL pré-assinada do MinIO
-      const response = await api.get(`/physical-tests/test/${id}/download/${form.id}`);
-
-      const { download_url, expires_in } = response.data || {};
-
-      if (!download_url) {
-        throw new Error("URL de download não disponível");
-      }
-
-      // Abrir o PDF em uma nova aba/janela usando a URL pré-assinada
-      window.open(download_url, '_blank');
+      await fetchAuthenticatedDownload(
+        `physical-tests/test/${id}/download/${form.id}`,
+        `${safe.slice(0, 120)}.pdf`
+      );
 
       toast({
         title: "Download iniciado",
-        description: `O arquivo PDF foi aberto em uma nova aba. Link expira em ${expires_in || "1 hora"}.`,
+        description: "O PDF será salvo pelo navegador.",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Erro ao baixar formulário:", error);
 
       let description = "Não foi possível baixar o formulário.";
+      const err = error as { response?: { status?: number; data?: { error?: string } }; message?: string };
 
-      if (error.response) {
-        const status = error.response.status;
-        const backendError = error.response.data?.error;
+      if (err.response) {
+        const status = err.response.status;
+        const backendError = err.response.data?.error;
 
         if (status === 404) {
-          description = backendError || "Formulário não encontrado ou URL do PDF não encontrada.";
+          description = backendError || "Formulário não encontrado.";
         } else if (status === 400) {
-          description = backendError || "Erro de formato de URL de download.";
+          description = backendError || "Não foi possível concluir o download.";
         } else if (status === 500) {
-          description = backendError || "Erro ao gerar URL de download.";
+          description = backendError || "Erro ao gerar o arquivo.";
         } else if (backendError) {
           description = backendError;
         }
-      } else if (error.message) {
+      } else if (error instanceof Error && error.message) {
         description = error.message;
       }
 
@@ -1162,36 +1160,31 @@ export function PhysicalTestWorkspace({
     if (!id) return;
 
     try {
-      // 1. Solicitar URL de download (JSON response com URL pré-assinada do MinIO)
-      const response = await api.get(`/physical-tests/test/${id}/download-all`);
+      await fetchAuthenticatedDownload(`physical-tests/test/${id}/download-all`, "formularios.zip");
 
-      // 2. Verificar se retornou URL de download
-      if (response.data.download_url) {
-        // 3. Redirecionar para URL pré-assinada (download direto do MinIO)
-        window.location.href = response.data.download_url;
-
-        toast({
-          title: "Download iniciado",
-          description: `O arquivo ZIP está sendo baixado. Link expira em ${response.data.expires_in || '1 hora'}.`,
-        });
-      } else {
-        throw new Error('URL de download não disponível');
-      }
-    } catch (error: any) {
+      toast({
+        title: "Download iniciado",
+        description: "O arquivo ZIP será salvo pelo navegador.",
+      });
+    } catch (error: unknown) {
       console.error("Erro ao baixar todos os formulários:", error);
-      
-      // Tratar erro específico: ZIP ainda não gerado
-      if (error.response?.data?.status === 'not_generated') {
+
+      if (isAxiosError(error) && error.response?.data?.status === "not_generated") {
         toast({
           title: "Aviso",
           description: "O ZIP ainda não foi gerado. Aguarde a conclusão da geração dos formulários.",
           variant: "destructive",
         });
       } else {
-        // Outros erros
+        const msg =
+          error instanceof Error
+            ? error.message
+            : isAxiosError(error)
+              ? (error.response?.data as { error?: string } | undefined)?.error
+              : undefined;
         toast({
           title: "Erro",
-          description: error.response?.data?.error || "Não foi possível baixar os formulários.",
+          description: msg || "Não foi possível baixar os formulários.",
           variant: "destructive",
         });
       }

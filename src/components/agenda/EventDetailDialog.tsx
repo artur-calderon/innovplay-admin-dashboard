@@ -54,7 +54,7 @@ export interface EventDetailDialogProps {
   emptyDescriptionHint?: string;
   /** Permite remover anexo no modal (admin); aluno só baixa */
   onDeleteFile?: (eventId: string, resourceId: string) => void;
-  onDownloadFile?: (eventId: string, resourceId: string) => void;
+  onDownloadFile?: (eventId: string, resourceId: string, fileName?: string) => void;
   /** Rodapé completo; se omitido, exibe só "Fechar" */
   footer?: ReactNode;
 }
@@ -314,7 +314,9 @@ export function EventDetailDialog({
                           size="icon"
                           className="shrink-0 h-9 w-9"
                           title="Baixar"
-                          onClick={() => onDownloadFile(String(selected.id), resource.id)}
+                          onClick={() =>
+                            onDownloadFile(String(selected.id), resource.id, resource.file_name)
+                          }
                         >
                           <Download className="h-4 w-4" />
                         </Button>

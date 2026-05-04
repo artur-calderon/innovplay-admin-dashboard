@@ -61,6 +61,8 @@ export interface CreatePlayTvVideoDTO {
   url: string;
   title?: string;
   schools: string[];
+  /** Lista opcional de IDs de turmas (UUID). */
+  classes?: string[];
   grade: string;
   subject: string;
   resources?: CreatePlayTvVideoLinkResourceDTO[];

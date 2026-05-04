@@ -219,15 +219,6 @@ export const CalendarApi = {
     return data?.resource;
   },
 
-  async getEventResourceDownloadUrl(eventId: string, resourceId: string): Promise<{
-    download_url: string;
-    expires_in_seconds: number;
-    file_name?: string;
-  }> {
-    const { data } = await api.get(`/calendar/events/${eventId}/resources/${resourceId}/download`);
-    return data;
-  },
-
   async deleteEventResource(eventId: string, resourceId: string): Promise<boolean> {
     const { data } = await api.delete(`/calendar/events/${eventId}/resources/${resourceId}`);
     return !!data?.success;

@@ -4,7 +4,8 @@
  * - Produção (Nginx): só `/api/*` vai ao backend; URLs absolutas no domínio do site sem `/api/`
  *   caem no SPA — aqui viram `answer-sheets/...` para o axios juntar com `BASE_URL` (`/api`).
  * - Localhost (Vite): `baseURL` é `/api` e o proxy repassa; mesmo esquema.
- * - URL absoluta para outro host (ex. presigned) permanece intacta para o axios usar a URL completa.
+ * - URL absoluta para outro host (ex.: presigned do branding) permanece intacta para o axios usar a URL completa.
+ * - Rotas de download da própria API (play-tv, calendar, physical-tests, answer-sheets) normalizam mesmo com host da API.
  */
 export function normalizeDownloadUrlForApi(raw: string): string {
   const s = raw.trim();
@@ -43,7 +44,17 @@ export function normalizeDownloadUrlForApi(raw: string): string {
 }
 
 function isApiDownloadUrl(u: URL): boolean {
-  if (u.pathname.startsWith('/answer-sheets') || u.pathname.startsWith('/api/answer-sheets')) {
+  const p = u.pathname;
+  if (
+    p.startsWith('/answer-sheets') ||
+    p.startsWith('/api/answer-sheets') ||
+    p.startsWith('/play-tv') ||
+    p.startsWith('/api/play-tv') ||
+    p.startsWith('/calendar') ||
+    p.startsWith('/api/calendar') ||
+    p.startsWith('/physical-tests') ||
+    p.startsWith('/api/physical-tests')
+  ) {
     return true;
   }
   if (typeof window !== 'undefined') {

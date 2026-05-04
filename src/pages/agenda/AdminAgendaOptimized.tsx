@@ -35,6 +35,7 @@ import { toast } from 'react-toastify';
 import { useAuth } from "@/context/authContext";
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { fetchAuthenticatedDownload } from '@/lib/fetch-authenticated-download';
 
 interface CustomEventInput extends EventInput {
   extendedProps: {
@@ -679,12 +680,14 @@ export default function AdminAgendaOptimized() {
     setter((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
   };
 
-  const handleDownloadFileResource = async (eventId: string, resourceId: string) => {
+  const handleDownloadFileResource = async (eventId: string, resourceId: string, fileName?: string) => {
     try {
-      const data = await CalendarService.getEventResourceDownloadUrl(eventId, resourceId);
-      window.open(data.download_url, '_blank', 'noopener,noreferrer');
+      await fetchAuthenticatedDownload(
+        `calendar/events/${eventId}/resources/${resourceId}/download`,
+        fileName?.trim() || 'anexo'
+      );
     } catch {
-      toast.error('Não foi possível gerar o link de download');
+      toast.error('Não foi possível baixar o arquivo');
     }
   };
 

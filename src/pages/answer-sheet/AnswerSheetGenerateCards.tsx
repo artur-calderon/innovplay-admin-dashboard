@@ -520,13 +520,10 @@ export default function AnswerSheetGenerateCards() {
         } else if (summaryDl) {
           next = summaryDl;
         } else if (gabaritoId) {
-          try {
-            const downloadRes = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`);
-            const u = downloadRes.data?.download_url?.trim();
-            next = u || null;
-          } catch {
-            next = null;
-          }
+          const jid = typeof d.job_id === 'string' ? d.job_id.trim() : '';
+          next = jid
+            ? `answer-sheets/gabarito/${gabaritoId}/download?job_id=${encodeURIComponent(jid)}`
+            : `answer-sheets/gabarito/${gabaritoId}/download`;
         }
         setJobDownloadUrl(next);
         setJobError(null);
@@ -616,7 +613,7 @@ export default function AnswerSheetGenerateCards() {
     opts?: {
       generationId?: string;
       jobId?: string;
-      /** `download_url` retornada pela API — sempre via axios + Bearer */
+      /** `download_url` retornada pela API — sempre via axios + Bearer (blob) */
       downloadUrl?: string | null;
     }
   ) => {
@@ -634,20 +631,15 @@ export default function AnswerSheetGenerateCards() {
       }
       const params: Record<string, string> = {};
       if (opts?.jobId) params.job_id = opts.jobId;
-      else if (opts?.generationId) params.generation_id = opts.generationId;
-      const res = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`, {
-        params: Object.keys(params).length > 0 ? params : undefined,
+      await fetchAuthenticatedDownload(
+        `answer-sheets/gabarito/${gabaritoId}/download`,
+        'cartoes.zip',
+        Object.keys(params).length > 0 ? { params } : undefined
+      );
+      toast({
+        title: 'Download iniciado',
+        description: 'O arquivo será salvo pelo navegador.',
       });
-      const data = res.data;
-      if (data.download_url) {
-        await fetchAuthenticatedDownload(data.download_url, 'cartoes.zip');
-        toast({
-          title: 'Download iniciado',
-          description: `Arquivo em download. Link expira em ${data.expires_in || '1 hora'}.`,
-        });
-      } else {
-        throw new Error('URL de download não fornecida');
-      }
     } catch (err: unknown) {
       if (err instanceof Error && !isAxiosError(err)) {
         toast({ title: 'Erro', description: err.message, variant: 'destructive' });

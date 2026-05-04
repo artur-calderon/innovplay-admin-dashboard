@@ -121,7 +121,7 @@ export interface GabaritoGeneration {
   created_by?: string;
   created_at?: string;
   can_download?: boolean;
-  /** URL assinada ou redirect, quando o backend expõe por geração (ex.: ?job_id=...) */
+  /** Caminho/URL da API para GET binário (ex.: `?job_id=` no histórico). */
   download_url?: string | null;
 }
 
@@ -153,7 +153,7 @@ export interface Gabarito {
   generation_status?: string;
   can_download?: boolean;
   minio_url?: string;
-  /** URL do backend para download (com ?redirect=1). Usar no link "Baixar"; não usar minio_url no navegador. */
+  /** Caminho/URL da API para GET binário autenticado (cartões ZIP); não usar minio_url no navegador. */
   download_url?: string;
   /** Apenas quando scope_type === 'city' */
   schools_summary?: GabaritoSchoolSummary[];

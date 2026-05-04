@@ -1,19 +1,55 @@
+import { isAxiosError } from 'axios';
 import { api } from '@/lib/api';
 import { normalizeDownloadUrlForApi } from '@/lib/normalize-api-download-url';
 
+export type FetchAuthenticatedDownloadOptions = {
+  /** Query params (axios); não use junto com query string duplicada na URL. */
+  params?: Record<string, string>;
+};
+
+async function messageFromBlobError(blob: Blob): Promise<string> {
+  const text = await blob.text();
+  try {
+    const j = JSON.parse(text) as { error?: string; message?: string; detail?: string };
+    return j.error || j.message || j.detail || text.slice(0, 300) || 'Erro ao baixar o arquivo.';
+  } catch {
+    return text.slice(0, 300) || 'Erro ao baixar o arquivo.';
+  }
+}
+
 /**
- * Baixa um arquivo usando o cliente axios (Bearer + headers), necessário quando a URL
- * é da própria API e não pode ser aberta em nova aba sem token.
+ * GET autenticado (Bearer + headers do `api`) com `responseType: blob` e download na mesma página.
  */
 export async function fetchAuthenticatedDownload(
   url: string,
-  fallbackFilename = 'cartoes.zip'
+  fallbackFilename = 'download.bin',
+  options?: FetchAuthenticatedDownloadOptions
 ): Promise<void> {
   const pathOrUrl = normalizeDownloadUrlForApi(url);
   if (!pathOrUrl) {
     throw new Error('URL de download inválida.');
   }
-  const res = await api.get(pathOrUrl, { responseType: 'blob' });
+
+  let res;
+  try {
+    res = await api.get(pathOrUrl, {
+      responseType: 'blob',
+      params: options?.params,
+      headers: {
+        Accept: '*/*',
+      },
+    });
+  } catch (err) {
+    if (isAxiosError(err) && err.response?.data instanceof Blob) {
+      throw new Error(await messageFromBlobError(err.response.data));
+    }
+    if (isAxiosError(err) && err.response?.data && typeof err.response.data === 'object') {
+      const d = err.response.data as { error?: string; message?: string };
+      throw new Error(d.error || d.message || 'Erro ao baixar o arquivo.');
+    }
+    throw err;
+  }
+
   const blob = res.data as Blob;
 
   if (blob.type?.includes('application/json')) {

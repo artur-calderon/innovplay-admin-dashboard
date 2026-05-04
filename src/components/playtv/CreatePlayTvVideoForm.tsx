@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,7 @@ import { Loader2, Send, School, GraduationCap, BookOpen, X, Check, ChevronsUpDow
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { FormMultiSelect } from '@/components/ui/form-multi-select';
 import {
   extractCreatedPlayTvVideoId,
   getPlayTvApiErrorMessage,
@@ -53,6 +54,7 @@ export function CreatePlayTvVideoForm({
   const [selectedSchools, setSelectedSchools] = useState<PlayTvSchool[]>([]);
   const [selectedGrade, setSelectedGrade] = useState<string>('');
   const [selectedSubject, setSelectedSubject] = useState<string>('');
+  const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
 
   type LocalLinkRow = { key: string; title: string; url: string };
   type LocalFileRow = { key: string; title: string; file: File | null };
@@ -73,6 +75,14 @@ export function CreatePlayTvVideoForm({
   const [filteredSchools, setFilteredSchools] = useState<PlayTvSchool[]>([]);
   const [grades, setGrades] = useState<PlayTvGrade[]>([]);
   const [subjects, setSubjects] = useState<PlayTvSubject[]>([]);
+  const [isLoadingClasses, setIsLoadingClasses] = useState(false);
+  const [classesOptions, setClassesOptions] = useState<Array<{ id: string; name: string; school_id?: string; grade_id?: string }>>([]);
+
+  const professorAllowedClassIds = useMemo(() => {
+    if (userRole !== 'professor') return null;
+    const ids = (userTurmas ?? []).map((t) => t.class_id).filter(Boolean);
+    return new Set(ids);
+  }, [userRole, userTurmas]);
 
   // Carregar estados e disciplinas ao montar componente
   useEffect(() => {
@@ -199,6 +209,52 @@ export function CreatePlayTvVideoForm({
     loadGradesForProfessor();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSchools, userRole, userTurmas]);
+
+  // Carregar turmas quando escola(s) e série forem selecionadas
+  useEffect(() => {
+    const loadClassesForSelection = async () => {
+      setSelectedClasses([]);
+      setClassesOptions([]);
+
+      if (selectedSchools.length === 0 || !selectedGrade) return;
+
+      setIsLoadingClasses(true);
+      try {
+        const classPromises = selectedSchools.map((school) =>
+          api.get(`/classes/school/${school.id}`).catch(() => ({ data: [] }))
+        );
+        const classResponses = await Promise.all(classPromises);
+
+        const normalized = classResponses.flatMap((res, idx) => {
+          const school = selectedSchools[idx];
+          const data = res.data || [];
+          return (Array.isArray(data) ? data : []).map((c: any) => ({
+            id: String(c.id),
+            name: String(c.name ?? c.nome ?? ''),
+            school_id: String(c.school_id ?? school?.id ?? ''),
+            grade_id: String(c.grade_id ?? c.grade?.id ?? ''),
+          }));
+        });
+
+        const filteredByGrade = normalized.filter((c) => c.grade_id === selectedGrade);
+        const filteredByRole =
+          userRole === 'professor' && professorAllowedClassIds
+            ? filteredByGrade.filter((c) => professorAllowedClassIds.has(c.id))
+            : filteredByGrade;
+
+        const dedup = Array.from(new Map(filteredByRole.map((c) => [c.id, c])).values());
+        setClassesOptions(dedup);
+      } catch (error) {
+        console.error('Erro ao carregar turmas:', error);
+        setClassesOptions([]);
+      } finally {
+        setIsLoadingClasses(false);
+      }
+    };
+
+    loadClassesForSelection();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSchools, selectedGrade, userRole, professorAllowedClassIds]);
 
   const loadStates = async () => {
     setIsLoadingStates(true);
@@ -415,6 +471,25 @@ export function CreatePlayTvVideoForm({
       return false;
     }
 
+    if (userRole === 'professor') {
+      if (!userTurmas || userTurmas.length === 0) {
+        toast({
+          title: 'Turmas do professor',
+          description: 'Nenhuma turma vinculada ao seu usuário. Entre em contato com o administrador.',
+          variant: 'destructive',
+        });
+        return false;
+      }
+      if (selectedClasses.length === 0) {
+        toast({
+          title: 'Erro de validação',
+          description: 'Selecione pelo menos uma turma',
+          variant: 'destructive',
+        });
+        return false;
+      }
+    }
+
     return validateComplementaryResources();
   };
 
@@ -539,6 +614,7 @@ export function CreatePlayTvVideoForm({
         url: url.trim(),
         title: title.trim() || undefined,
         schools: selectedSchools.map(s => s.id),
+        ...(selectedClasses.length > 0 ? { classes: selectedClasses } : {}),
         grade: selectedGrade,
         subject: selectedSubject,
         ...(linkResources.length > 0 ? { resources: linkResources } : {}),
@@ -597,6 +673,7 @@ export function CreatePlayTvVideoForm({
       setSelectedSchools([]);
       setSelectedGrade('');
       setSelectedSubject('');
+      setSelectedClasses([]);
       setLinkRows([]);
       setFileRows([]);
 
@@ -794,6 +871,65 @@ export function CreatePlayTvVideoForm({
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Seleção de Disciplina */}
+          <div className="space-y-2">
+            <Label>
+              Disciplina <span className="text-red-500">*</span>
+            </Label>
+            <Popover open={openSubjectCombo} onOpenChange={setOpenSubjectCombo}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={openSubjectCombo}
+                  className="w-full justify-between"
+                  disabled={isLoadingSubjects}
+                >
+                  {selectedSubject
+                    ? selectedSubjectData?.name
+                    : "Selecione uma disciplina..."}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[400px] p-0">
+                <Command>
+                  <CommandInput placeholder="Buscar disciplina..." />
+                  <CommandEmpty>Nenhuma disciplina encontrada.</CommandEmpty>
+                  <CommandGroup className="max-h-[200px] overflow-auto">
+                    {subjects.length > 0 ? (
+                      subjects.map((subject) => {
+                        const subjectName = subject.name || '';
+                        return (
+                          <CommandItem
+                            key={subject.id}
+                            value={subjectName}
+                            onSelect={() => {
+                              setSelectedSubject(subject.id);
+                              setOpenSubjectCombo(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedSubject === subject.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <BookOpen className="mr-2 h-4 w-4 text-muted-foreground" />
+                            <span className="flex-1">{subjectName}</span>
+                          </CommandItem>
+                        );
+                      })
+                    ) : (
+                      <CommandItem disabled>
+                        <span className="text-muted-foreground">Nenhuma disciplina disponível</span>
+                      </CommandItem>
+                    )}
+                  </CommandGroup>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {/* Seleção de Estado */}
@@ -1086,63 +1222,33 @@ export function CreatePlayTvVideoForm({
             )}
           </div>
 
-          {/* Seleção de Disciplina */}
+          {/* Seleção de Turmas */}
           <div className="space-y-2">
             <Label>
-              Disciplina <span className="text-red-500">*</span>
+              Turmas {userRole === 'professor' ? <span className="text-red-500">*</span> : null}
             </Label>
-            <Popover open={openSubjectCombo} onOpenChange={setOpenSubjectCombo}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={openSubjectCombo}
-                  className="w-full justify-between"
-                  disabled={isLoadingSubjects}
-                >
-                  {selectedSubject
-                    ? selectedSubjectData?.name
-                    : "Selecione uma disciplina..."}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[400px] p-0">
-                <Command>
-                  <CommandInput placeholder="Buscar disciplina..." />
-                  <CommandEmpty>Nenhuma disciplina encontrada.</CommandEmpty>
-                  <CommandGroup className="max-h-[200px] overflow-auto">
-                    {subjects.length > 0 ? (
-                      subjects.map((subject) => {
-                        const subjectName = subject.name || '';
-                        return (
-                          <CommandItem
-                            key={subject.id}
-                            value={subjectName}
-                            onSelect={() => {
-                              setSelectedSubject(subject.id);
-                              setOpenSubjectCombo(false);
-                            }}
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                selectedSubject === subject.id ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            <BookOpen className="mr-2 h-4 w-4 text-muted-foreground" />
-                            <span className="flex-1">{subjectName}</span>
-                          </CommandItem>
-                        );
-                      })
-                    ) : (
-                      <CommandItem disabled>
-                        <span className="text-muted-foreground">Nenhuma disciplina disponível</span>
-                      </CommandItem>
-                    )}
-                  </CommandGroup>
-                </Command>
-              </PopoverContent>
-            </Popover>
+            <FormMultiSelect
+              options={classesOptions.map((c) => ({ id: c.id, name: c.name }))}
+              selected={selectedClasses}
+              onChange={setSelectedClasses}
+              placeholder={
+                selectedSchools.length === 0
+                  ? 'Selecione escolas primeiro...'
+                  : !selectedGrade
+                  ? 'Selecione uma série primeiro...'
+                  : isLoadingClasses
+                  ? 'Carregando turmas...'
+                  : classesOptions.length === 0
+                  ? 'Nenhuma turma disponível'
+                  : 'Selecione uma ou mais turmas...'
+              }
+              className="w-full"
+            />
+            <p className="text-xs text-muted-foreground">
+              {userRole === 'professor'
+                ? 'Você só pode selecionar turmas vinculadas ao seu usuário.'
+                : 'Opcional. Se não selecionar turmas, o vídeo fica disponível para as escolas/série informadas.'}
+            </p>
           </div>
 
           {/* Botão de Enviar */}
@@ -1158,6 +1264,7 @@ export function CreatePlayTvVideoForm({
                 setSelectedSchools([]);
                 setSelectedGrade('');
                 setSelectedSubject('');
+                setSelectedClasses([]);
                 setLinkRows([]);
                 setFileRows([]);
               }}
