@@ -272,6 +272,23 @@ export const VideoList = ({
                       </div>
                     )}
 
+                    {video.classes && video.classes.length > 0 && (
+                      <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                        <span className="w-4 h-4 mt-0.5 inline-flex items-center justify-center text-xs font-semibold">
+                          T
+                        </span>
+                        <div className="flex-1">
+                          <span className="font-medium text-foreground">Turmas:</span>{' '}
+                          <span>
+                            {video.classes
+                              .map((c) => (c?.name ?? '').trim())
+                              .filter(Boolean)
+                              .join(', ')}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {video.created_at && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Calendar className="w-4 h-4" />

@@ -13,6 +13,7 @@ import { CalendarApi as CalendarService } from '@/services/calendarApi';
 import { EventDetailDialog } from '@/components/agenda/EventDetailDialog';
 import { summarizeStoredTargets } from '@/lib/calendarAudience';
 import { toast } from 'react-toastify';
+import { fetchAuthenticatedDownload } from '@/lib/fetch-authenticated-download';
 
 interface StudentEventInput extends EventInput {
   extendedProps: {
@@ -88,12 +89,14 @@ export default function StudentAgendaOptimized() {
     }
   };
 
-  const handleDownloadFileResource = async (eventId: string, resourceId: string) => {
+  const handleDownloadFileResource = async (eventId: string, resourceId: string, fileName?: string) => {
     try {
-      const data = await CalendarService.getEventResourceDownloadUrl(eventId, resourceId);
-      window.open(data.download_url, '_blank', 'noopener,noreferrer');
+      await fetchAuthenticatedDownload(
+        `calendar/events/${eventId}/resources/${resourceId}/download`,
+        fileName?.trim() || 'anexo'
+      );
     } catch {
-      toast.error('Não foi possível gerar o link de download');
+      toast.error('Não foi possível baixar o arquivo');
     }
   };
 

@@ -22,6 +22,7 @@ import {
   MapPin,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { fetchAuthenticatedDownload } from '@/lib/fetch-authenticated-download';
 import { VideoPlayer } from '@/components/playtv/VideoPlayer';
 import { PlayTvVideo, isPlayTvFileResource, isPlayTvLinkResource } from '@/types/playtv';
 import {
@@ -141,17 +142,14 @@ export default function PlayTvVideoView() {
     navigate(isStudent ? '/aluno/play-tv' : '/app/play-tv');
   };
 
-  const handleDownloadFile = async (resourceId: string) => {
+  const handleDownloadFile = async (resourceId: string, fallbackName: string) => {
     if (!id || !resourceId) return;
     setDownloadingResourceId(resourceId);
     try {
-      const res = await api.get<{ download_url?: string }>(
-        `/play-tv/videos/${id}/resources/${resourceId}/download`
+      await fetchAuthenticatedDownload(
+        `play-tv/videos/${id}/resources/${resourceId}/download`,
+        fallbackName || 'anexo'
       );
-      const downloadUrl = res.data?.download_url;
-      if (downloadUrl) {
-        window.open(downloadUrl, '_blank', 'noopener,noreferrer');
-      }
     } catch (err) {
       console.error('Erro ao obter link de download:', err);
       toast({
@@ -388,7 +386,7 @@ export default function PlayTvVideoView() {
                           variant="outline"
                           size="sm"
                           disabled={!canDownload || busy}
-                          onClick={() => r.id && handleDownloadFile(r.id)}
+                          onClick={() => r.id && handleDownloadFile(r.id, r.file_name || 'anexo')}
                         >
                           {busy ? (
                             <Loader2 className="w-4 h-4 mr-2 animate-spin" />

@@ -11,6 +11,16 @@ import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
 import { CreatePlayTvVideoForm } from '@/components/playtv/CreatePlayTvVideoForm';
 import { VideoList } from '@/components/playtv/VideoList';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { PlayTvVideo, PlayTvFilters } from '@/types/playtv';
 import { getUserHierarchyContext } from '@/utils/userHierarchy';
 
@@ -25,6 +35,9 @@ export default function PlayTvManagement() {
   const [schools, setSchools] = useState<Array<{ id: string; name: string }>>([]);
   const [grades, setGrades] = useState<Array<{ id: string; name: string }>>([]);
   const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [pendingDeleteVideoId, setPendingDeleteVideoId] = useState<string | null>(null);
+  const [isDeletingVideo, setIsDeletingVideo] = useState(false);
   const [userContext, setUserContext] = useState<{
     municipio_id?: string;
     escola_id?: string;
@@ -197,12 +210,13 @@ export default function PlayTvManagement() {
   };
 
   const canDeleteVideo = (video: PlayTvVideo): boolean => {
-    if (user.role === 'admin') {
+    // Regra base: qualquer usuário pode excluir o próprio vídeo (quando a API retorna created_by).
+    if (video.created_by?.id && video.created_by.id === user.id) {
       return true;
     }
 
-    if (user.role === 'coordenador' || user.role === 'professor') {
-      return false;
+    if (user.role === 'admin') {
+      return true;
     }
 
     if (user.role === 'tecadm' && userContext.municipio_id) {
@@ -220,16 +234,23 @@ export default function PlayTvManagement() {
     return false;
   };
 
-  const handleDeleteVideo = async (videoId: string) => {
-    if (!confirm('Tem certeza que deseja excluir este vídeo?')) return;
+  const requestDeleteVideo = (videoId: string) => {
+    setPendingDeleteVideoId(videoId);
+    setDeleteDialogOpen(true);
+  };
 
+  const confirmDeleteVideo = async () => {
+    if (!pendingDeleteVideoId) return;
+    setIsDeletingVideo(true);
     try {
-      await api.delete(`/play-tv/videos/${videoId}`);
+      await api.delete(`/play-tv/videos/${pendingDeleteVideoId}`);
       toast({
         title: 'Sucesso',
         description: 'Vídeo excluído com sucesso.',
       });
       loadVideos();
+      setDeleteDialogOpen(false);
+      setPendingDeleteVideoId(null);
     } catch (err) {
       const error = err as {
         response?: {
@@ -244,6 +265,8 @@ export default function PlayTvManagement() {
         description: error.response?.data?.message || 'Não foi possível excluir o vídeo.',
         variant: 'destructive',
       });
+    } finally {
+      setIsDeletingVideo(false);
     }
   };
 
@@ -263,6 +286,36 @@ export default function PlayTvManagement() {
 
   return (
     <div className="container mx-auto py-6 space-y-6">
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) setPendingDeleteVideoId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir vídeo</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir este vídeo? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingVideo}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                confirmDeleteVideo();
+              }}
+              disabled={isDeletingVideo}
+            >
+              {isDeletingVideo ? 'Excluindo...' : 'Excluir'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Header — mobile: título/desc alinhados, botão centralizado abaixo */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1.5">
@@ -393,7 +446,7 @@ export default function PlayTvManagement() {
               videos={videos} 
               isLoading={isLoading} 
               onVideoClick={handleVideoClick}
-              onDeleteVideo={handleDeleteVideo}
+              onDeleteVideo={requestDeleteVideo}
               userRole={user.role}
               canDeleteVideo={canDeleteVideo}
             />
@@ -508,7 +561,7 @@ export default function PlayTvManagement() {
             videos={videos} 
             isLoading={isLoading} 
             onVideoClick={handleVideoClick}
-            onDeleteVideo={handleDeleteVideo}
+            onDeleteVideo={requestDeleteVideo}
             userRole={user.role}
             canDeleteVideo={canDeleteVideo}
           />

@@ -1092,7 +1092,7 @@ export default function AnswerSheetGenerator() {
     downloadingGabaritoId === gabaritoId ||
     (downloadingGabaritoId?.startsWith(`${gabaritoId}__`) ?? false);
 
-  // Download de gabarito - Nova rota que retorna URL pré-assinada (opcionalmente por geração)
+  // Download de gabarito: GET binário na API (ou `download_url` do JSON apontando para a mesma rota)
   const handleDownloadGabarito = async (
     gabaritoId: string,
     opts?: {
@@ -1118,21 +1118,15 @@ export default function AnswerSheetGenerator() {
 
       const params: Record<string, string> = {};
       if (opts?.jobId) params.job_id = opts.jobId;
-      else if (opts?.generationId) params.generation_id = opts.generationId;
-      const response = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`, {
-        params: Object.keys(params).length > 0 ? params : undefined,
+      await fetchAuthenticatedDownload(
+        `answer-sheets/gabarito/${gabaritoId}/download`,
+        'cartoes.zip',
+        Object.keys(params).length > 0 ? { params } : undefined
+      );
+      toast({
+        title: '✅ Download iniciado',
+        description: 'O arquivo será salvo pelo navegador.',
       });
-      const data = response.data;
-
-      if (data.download_url) {
-        await fetchAuthenticatedDownload(data.download_url, 'cartoes.zip');
-        toast({
-          title: '✅ Download iniciado',
-          description: `O arquivo está sendo baixado. Link expira em ${data.expires_in || '1 hora'}.`,
-        });
-      } else {
-        throw new Error('URL de download não fornecida');
-      }
     } catch (error: unknown) {
       if (error instanceof Error && !isAxiosError(error)) {
         toast({
@@ -1271,16 +1265,10 @@ export default function AnswerSheetGenerator() {
           } else if (summaryDl) {
             next = summaryDl;
           } else if (gabaritoId) {
-            try {
-              const downloadRes = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`);
-              const u =
-                typeof downloadRes.data?.download_url === 'string'
-                  ? downloadRes.data.download_url.trim()
-                  : '';
-              next = u || null;
-            } catch {
-              next = null;
-            }
+            const jid = (jobIdParam || '').trim();
+            next = jid
+              ? `answer-sheets/gabarito/${gabaritoId}/download?job_id=${encodeURIComponent(jid)}`
+              : `answer-sheets/gabarito/${gabaritoId}/download`;
           }
           setJobDownloadUrl(next);
 
