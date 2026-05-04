@@ -1,0 +1,68 @@
+name: Frontend Pipeline (Dev)
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: [self-hosted, vps-afirme]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get Version
+        run: |
+          VERSION=$(cat VERSION)
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+      - name: Build Images
+        run: |
+          docker build -t afirmeplay/afirmeplay-frontend:v${{ env.VERSION }} .
+          docker build -t afirmeplay/afirmeplay-frontend:latest .
+
+  push:
+    runs-on: [self-hosted, vps-afirme]
+    needs: [build]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
+          password: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
+
+      - name: Get Version
+        run: |
+          VERSION=$(cat VERSION)
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+      - name: Push Images
+        run: |
+          docker push afirmeplay/afirmeplay-frontend:v${{ env.VERSION }}
+          docker push afirmeplay/afirmeplay-frontend:latest
+
+  deploy:
+    runs-on: [self-hosted, vps-afirme]
+    needs: [push]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy
+        run: |
+          export COMPOSE_PROJECT_NAME=afirmeplay_front_dev # Isso faz com que o docker compose separe os containers de produção dos de desenvolvimento
+          export VERSION=v$(cat VERSION)
+          export API_CONTAINER=${{ secrets.API_CONTAINER_DEV }}
+          export VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}
+
+          docker compose -f docker-compose.dev.yml pull
+          docker compose -f docker-compose.dev.yml up -d
+

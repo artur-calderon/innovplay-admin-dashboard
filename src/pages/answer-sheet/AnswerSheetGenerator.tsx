@@ -2355,10 +2355,11 @@ export default function AnswerSheetGenerator() {
                           ) : disciplines.length > 0 ? (
                             <Select
                               onValueChange={(value) => {
+                                if (value === '__reset') return;
                                 const discipline = disciplines.find(d => d.id === value);
                                 if (discipline) handleAddDisciplineBlock(discipline.id, discipline.name);
                               }}
-                              value=""
+                              value="__reset"
                             >
                               <SelectTrigger className="w-full max-w-sm border-dashed">
                                 <SelectValue placeholder="+ Adicionar outra disciplina" />
@@ -2411,10 +2412,11 @@ export default function AnswerSheetGenerator() {
                       ) : disciplines.length > 0 ? (
                         <Select
                           onValueChange={(value) => {
+                            if (value === '__reset') return;
                             const discipline = disciplines.find(d => d.id === value);
                             if (discipline) handleAddDisciplineBlock(discipline.id, discipline.name);
                           }}
-                          value=""
+                          value="__reset"
                         >
                           <SelectTrigger className="w-64 border-primary/30">
                             <SelectValue placeholder="+ Adicionar disciplina para criar blocos" />

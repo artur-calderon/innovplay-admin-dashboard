@@ -36,6 +36,7 @@ import { Label } from "@/components/ui/label";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext, cityIdQueryParamForAdmin } from "@/utils/userHierarchy";
 import { normalizeRelatorioCompletoForAnaliseUI } from "@/utils/report/relatorioCompletoNormalize";
 import { generateRelatorioOrganizadoPdf } from "@/services/reports/analiseAvaliacoesPdf";
+import { formatDecimal1PtBr, formatPercent1PtBr } from "@/utils/numberFormat";
 
 // Interfaces para os dados da API
 interface EvaluationResult {
@@ -115,16 +116,7 @@ const getStatusConfig = (status: 'concluida' | 'em_andamento' | 'pendente' | str
   return config;
 };
 
-const formatDecimal = (value?: number | null) => {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "0,0";
-  }
-
-  return Number(value).toLocaleString("pt-BR", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1
-  });
-};
+const formatDecimal = (value?: number | null) => formatDecimal1PtBr(value, "0,0");
 
 type TurmaRowLike = {
   turma?: unknown;
@@ -733,7 +725,7 @@ export default function AnaliseAvaliacoes() {
                             <td className="border border-border px-4 py-2">{escola.escola}</td>
                             <td className="border border-border px-4 py-2 text-center">{escola.matriculados}</td>
                             <td className="border border-border px-4 py-2 text-center">{escola.avaliados}</td>
-                            <td className="border border-border px-4 py-2 text-center">{escola.percentual}%</td>
+                            <td className="border border-border px-4 py-2 text-center">{formatPercent1PtBr(escola.percentual, "0,0%")}</td>
                             <td className="border border-border px-4 py-2 text-center">{escola.faltosos}</td>
                           </tr>
                         ))
@@ -744,7 +736,7 @@ export default function AnaliseAvaliacoes() {
                             </td>
                             <td className="border border-border px-4 py-2 text-center">{turma.matriculados}</td>
                             <td className="border border-border px-4 py-2 text-center">{turma.avaliados}</td>
-                            <td className="border border-border px-4 py-2 text-center">{turma.percentual}%</td>
+                            <td className="border border-border px-4 py-2 text-center">{formatPercent1PtBr(turma.percentual, "0,0%")}</td>
                             <td className="border border-border px-4 py-2 text-center">{turma.faltosos}</td>
                           </tr>
                         ))}
@@ -752,7 +744,7 @@ export default function AnaliseAvaliacoes() {
                       <td className="border border-border px-4 py-2">TOTAL GERAL</td>
                       <td className="border border-border px-4 py-2 text-center">{apiData.total_alunos.total_geral.matriculados}</td>
                       <td className="border border-border px-4 py-2 text-center">{apiData.total_alunos.total_geral.avaliados}</td>
-                      <td className="border border-border px-4 py-2 text-center">{apiData.total_alunos.total_geral.percentual}%</td>
+                      <td className="border border-border px-4 py-2 text-center">{formatPercent1PtBr(apiData.total_alunos.total_geral.percentual, "0,0%")}</td>
                       <td className="border border-border px-4 py-2 text-center">{apiData.total_alunos.total_geral.faltosos}</td>
                     </tr>
                   </tbody>
@@ -1022,7 +1014,7 @@ export default function AnaliseAvaliacoes() {
                                   : 'bg-card text-foreground'
                               }`}
                             >
-                              {questao.percentual}%
+                              {formatPercent1PtBr(questao.percentual, "0,0%")}
                             </div>
                           </div>
                         )) : (

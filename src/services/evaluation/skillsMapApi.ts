@@ -1,5 +1,6 @@
 import { api } from '@/lib/api';
 import { normalizeResultsPeriodYm } from '@/utils/resultsPeriod';
+import type { AnaliseIaRouteResponse } from '@/services/evaluation/evaluationResultsApi';
 
 function appendPeriodo(q: URLSearchParams, periodo?: string) {
   if (!periodo?.trim()) return;
@@ -34,6 +35,7 @@ export interface SkillsMapResponse {
   disciplinas_disponiveis: DisciplinaOpcao[];
   habilidades: SkillsMapHabilidade[];
   por_faixa: Record<SkillsMapFaixa, SkillsMapHabilidade[]>;
+  analise_ia?: unknown;
   filtros_aplicados?: Record<string, string | undefined>;
   /** Alunos matriculados no recorte (turma/escopo), antes de excluir faltosos. */
   total_alunos_escopo_turma?: number;
@@ -181,6 +183,52 @@ export async function fetchSkillsMapCartao(
     withCityMeta(params.municipio)
   );
   return data;
+}
+
+export async function fetchSkillsMapOnlineAnaliseIa(
+  params: EvaluationFilterParams & { disciplina?: string }
+): Promise<AnaliseIaRouteResponse | null> {
+  try {
+    const q = new URLSearchParams();
+    if (params.estado && params.estado !== 'all') q.set('estado', params.estado);
+    if (params.municipio && params.municipio !== 'all') q.set('municipio', params.municipio);
+    if (params.avaliacao) q.set('avaliacao', params.avaliacao);
+    if (params.escola && params.escola !== 'all') q.set('escola', params.escola);
+    if (params.serie && params.serie !== 'all') q.set('serie', params.serie);
+    if (params.turma && params.turma !== 'all') q.set('turma', params.turma);
+    q.set('disciplina', params.disciplina && params.disciplina !== 'all' ? params.disciplina : 'all');
+    appendPeriodo(q, params.periodo);
+    const { data } = await api.get<AnaliseIaRouteResponse>(
+      `/evaluation-results/mapa-habilidades/analise-ia?${q}`,
+      withCityMeta(params.municipio)
+    );
+    return data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchSkillsMapCartaoAnaliseIa(
+  params: AnswerSheetFilterParams & { disciplina?: string }
+): Promise<AnaliseIaRouteResponse | null> {
+  try {
+    const q = new URLSearchParams();
+    if (params.estado && params.estado !== 'all') q.set('estado', params.estado);
+    if (params.municipio && params.municipio !== 'all') q.set('municipio', params.municipio);
+    if (params.gabarito) q.set('gabarito', params.gabarito);
+    if (params.escola && params.escola !== 'all') q.set('escola', params.escola);
+    if (params.serie && params.serie !== 'all') q.set('serie', params.serie);
+    if (params.turma && params.turma !== 'all') q.set('turma', params.turma);
+    q.set('disciplina', params.disciplina && params.disciplina !== 'all' ? params.disciplina : 'all');
+    appendPeriodo(q, params.periodo);
+    const { data } = await api.get<AnaliseIaRouteResponse>(
+      `/answer-sheets/mapa-habilidades/analise-ia?${q}`,
+      withCityMeta(params.municipio)
+    );
+    return data ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchSkillsMapCartaoErros(

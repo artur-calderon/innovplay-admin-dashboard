@@ -17,7 +17,8 @@ import {
   Search,
   BarChart3,
   BookOpen,
-  Check
+  Check,
+  FileText
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -49,6 +50,7 @@ import {
 import { DisciplineTables } from "@/components/evaluations/results/DisciplineTables";
 import { StudentCard } from "@/components/evaluations/student/StudentCard";
 import { QuestionData as TableQuestionData, DetailedReport as TableDetailedReport } from "@/types/results-table";
+import { generatePendingStudentsPdf } from "@/services/reports/pendingStudentsPdf";
 
 // Interfaces para os dados da API - Nova estrutura baseada na implementação real
 interface EvaluationResult {
@@ -632,101 +634,6 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
 
 
-  // ✅ CORRIGIDO: Carregar alunos faltosos = alunos selecionados para a avaliação (no escopo) que não participaram
-  const loadAbsentStudents = useCallback(async () => {
-    if (!selectedEvaluation || selectedEvaluation === 'all') {
-      setAbsentStudents([]);
-      return;
-    }
-
-    try {
-      setIsLoadingAbsentStudents(true);
-
-      const selectedSchoolName = selectedSchool !== 'all' && schools.length > 0
-        ? schools.find(s => s.id === selectedSchool)?.name
-        : null;
-      const selectedGradeName = selectedGrade !== 'all' && grades.length > 0
-        ? grades.find(g => g.id === selectedGrade)?.name
-        : null;
-      const selectedClassName = selectedClass !== 'all' && classes.length > 0
-        ? classes.find(c => c.id === selectedClass)?.name
-        : null;
-
-      // Participantes = quem respondeu ao menos uma questão (ranking + tabela_detalhada)
-      const participatingIds = new Set<string>();
-      if (apiData?.ranking?.length) {
-        apiData.ranking.forEach((item: RankingItemWithAluno) => participatingIds.add(item.aluno_id));
-      }
-      if (apiData?.tabela_detalhada?.disciplinas?.length) {
-        apiData.tabela_detalhada.disciplinas.forEach((d: { alunos: Array<{ id: string; respostas_por_questao?: Array<{ respondeu: boolean }> }> }) => {
-          d.alunos.forEach((aluno: { id: string; respostas_por_questao?: Array<{ respondeu: boolean }> }) => {
-            const participou = aluno.respostas_por_questao?.some((r: { respondeu: boolean }) => r.respondeu);
-            if (participou) participatingIds.add(aluno.id);
-          });
-        });
-      }
-
-      // Lista de selecionados no escopo atual (com filtros para performance e correção)
-      const filters: { municipio?: string; escola?: string; serie?: string; turma?: string } = {};
-      if (selectedMunicipality && selectedMunicipality !== 'all') filters.municipio = selectedMunicipality;
-      if (selectedSchool && selectedSchool !== 'all') filters.escola = selectedSchool;
-      if (selectedGrade && selectedGrade !== 'all') filters.serie = selectedGrade;
-      if (selectedClass && selectedClass !== 'all') filters.turma = selectedClass;
-
-      const selectedStudentsResponse = await EvaluationResultsApiService.getStudentsByEvaluation(
-        selectedEvaluation,
-        Object.keys(filters).length > 0 ? filters : undefined
-      );
-
-      if (!selectedStudentsResponse || selectedStudentsResponse.length === 0) {
-        setAbsentStudents([]);
-        return;
-      }
-
-      const escolaNome =
-        selectedSchoolName ||
-        evaluationInfo?.escola ||
-        apiData?.estatisticas_gerais?.escola ||
-        'Escola não informada';
-      const serieNome =
-        selectedGradeName ||
-        evaluationInfo?.serie ||
-        apiData?.estatisticas_gerais?.serie ||
-        'Série não informada';
-
-      const absentStudentsList = selectedStudentsResponse
-        .filter((s: { id: string; turma?: string }) => {
-          if (selectedClassName && s.turma !== selectedClassName) return false;
-          return !participatingIds.has(s.id);
-        })
-        .map((s: { id: string; nome: string; turma?: string; escola?: string; serie?: string }) => ({
-          id: s.id,
-          nome: s.nome,
-          turma: s.turma ?? '',
-          escola: s.escola || escolaNome,
-          serie: s.serie || serieNome
-        }))
-        .sort((a: { nome: string }, b: { nome: string }) => a.nome.localeCompare(b.nome));
-
-      setAbsentStudents(absentStudentsList);
-    } catch (error) {
-      console.error('Erro ao carregar alunos faltosos:', error);
-      setAbsentStudents([]);
-    } finally {
-      setIsLoadingAbsentStudents(false);
-    }
-  }, [selectedEvaluation, apiData, evaluationInfo, schools, grades, classes, selectedSchool, selectedGrade, selectedClass, selectedMunicipality]);
-
-  // Handler para mostrar modal de alunos faltosos (abre o modal na hora e carrega os dados dentro)
-  const handleViewAbsent = useCallback(() => {
-    setShowAbsentStudentsModal(true);
-    setAbsentStudents([]);
-    loadAbsentStudents();
-  }, [loadAbsentStudents]);
-
-
-  
-
   const [selectedStudentForDetails, setSelectedStudentForDetails] = useState<string | null>(null);
   const [studentDetailedAnswers, setStudentDetailedAnswers] = useState<{
     student: {
@@ -746,17 +653,6 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
     }>;
   } | null>(null);
   const [isLoadingStudentAnswers, setIsLoadingStudentAnswers] = useState(false);
-
-  // ✅ NOVO: Estados para modal de alunos faltosos
-  const [showAbsentStudentsModal, setShowAbsentStudentsModal] = useState(false);
-  const [absentStudents, setAbsentStudents] = useState<Array<{
-    id: string;
-    nome: string;
-    turma: string;
-    escola: string;
-    serie: string;
-  }>>([]);
-  const [isLoadingAbsentStudents, setIsLoadingAbsentStudents] = useState(false);
 
   // Estados de paginação
   const currentPage = 1;
@@ -1306,67 +1202,8 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
       if (evaluationsResponse) {
         let dataToSet = evaluationsResponse;
 
-        // ✅ Fallback: se a rota filtrada não trouxe tabela_detalhada, buscar tabela completa (estado+municipio+avaliacao)
-        // e filtrar no front. Isso mantém "filtro por escola inteira" mesmo quando o backend não retorna tabela no recorte.
-        const hasFilter = selectedSchool !== 'all' || selectedGrade !== 'all' || selectedClass !== 'all';
-        if (
-          selectedEvaluation !== 'all' &&
-          selectedState !== 'all' &&
-          selectedMunicipality !== 'all' &&
-          hasFilter &&
-          !evaluationsResponse.tabela_detalhada?.disciplinas?.length
-        ) {
-          const fullResponse = await resultsFetchEvaluationsList(1, 500, {
-            estado: selectedState,
-            municipio: selectedMunicipality,
-            avaliacao: selectedEvaluation,
-            ...(periodoApi ? { periodo: periodoApi } : {}),
-          });
-          const fullTabela = fullResponse?.tabela_detalhada as TabelaDetalhada | undefined;
-          if (fullTabela?.disciplinas?.length) {
-            const selectedSchoolName = selectedSchool !== 'all' && schools.length > 0
-              ? schools.find(s => s.id === selectedSchool)?.name
-              : null;
-            const selectedGradeName = selectedGrade !== 'all' && grades.length > 0
-              ? grades.find(g => g.id === selectedGrade)?.name
-              : null;
-            const selectedClassName = selectedClass !== 'all' && classes.length > 0
-              ? classes.find(c => c.id === selectedClass)?.name
-              : null;
-            const filterBySchool = selectedSchoolName != null;
-            const filterByGrade = selectedGradeName != null;
-            const filterByClass = selectedClassName != null;
-            type DisciplinaRow = TabelaDetalhada['disciplinas'][number];
-            const filteredDisciplinas: DisciplinaRow[] = fullTabela.disciplinas.map((d: DisciplinaRow) => ({
-              ...d,
-              alunos: (d.alunos || []).filter((aluno) => {
-                if (filterBySchool && (aluno.escola || '') !== selectedSchoolName) return false;
-                if (filterByGrade && (aluno.serie || '') !== selectedGradeName) return false;
-                if (filterByClass && (aluno.turma || '') !== selectedClassName) return false;
-                return true;
-              }),
-            }));
-            const filteredGeral = fullTabela.geral?.alunos
-              ? {
-                  ...fullTabela.geral,
-                  alunos: fullTabela.geral.alunos.filter((aluno: { escola?: string; serie?: string; turma?: string }) => {
-                    if (filterBySchool && (aluno.escola || '') !== selectedSchoolName) return false;
-                    if (filterByGrade && (aluno.serie || '') !== selectedGradeName) return false;
-                    if (filterByClass && (aluno.turma || '') !== selectedClassName) return false;
-                    return true;
-                  }),
-                }
-              : fullTabela.geral;
-            dataToSet = {
-              ...evaluationsResponse,
-              tabela_detalhada: {
-                ...fullTabela,
-                disciplinas: filteredDisciplinas,
-                geral: filteredGeral,
-              },
-            };
-          }
-        }
+        // Importante: esta tela não deve derivar/filtrar dados no frontend.
+        // O backend é a fonte da verdade para estatísticas e tabelas, inclusive para recortes por escola/série/turma.
 
         setApiData(dataToSet);
 
@@ -1607,6 +1444,11 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
     description: string;
     source: 'database' | 'question';
   }>>>({});
+
+  // Modal: alunos pendentes (status_geral !== 'concluida')
+  const [showPendingStudentsModal, setShowPendingStudentsModal] = useState(false);
+
+  
   
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   const [isTableReady, setIsTableReady] = useState(false);
@@ -1659,22 +1501,9 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
       }>;
     }>();
 
-    // Professor sem turma selecionada: só incluir alunos das turmas do professor
-    const isProfessorNoClass = user?.role === 'professor' && selectedClass === 'all' && professorClassNames.size > 0;
-
     // ✅ Processar cada disciplina e consolidar dados por aluno
     apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
       disciplina.alunos.forEach(aluno => {
-        if (isProfessorNoClass && !professorClassNames.has((aluno.turma ?? '').trim())) return;
-
-        // ✅ CORRIGIDO: Verificar se o aluno respondeu pelo menos uma questão
-        const hasAnsweredAnyQuestion = aluno.respostas_por_questao.some(resposta => resposta.respondeu);
-        
-        // ✅ NOVO: Só incluir alunos que responderam pelo menos uma questão
-        if (!hasAnsweredAnyQuestion) {
-          return; // Pular alunos que não responderam nenhuma questão
-        }
-
         if (!studentsMap.has(aluno.id)) {
           // Primeira vez vendo este aluno - criar entrada
           studentsMap.set(aluno.id, {
@@ -1703,14 +1532,8 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
         } else {
           // Aluno já existe - consolidar dados
           const existingStudent = studentsMap.get(aluno.id)!;
-          
-          // Somar acertos, erros e questões respondidas
-          existingStudent.acertos += aluno.total_acertos;
-          existingStudent.erros += aluno.total_erros;
-          existingStudent.questoes_respondidas += aluno.total_respondidas;
-          existingStudent.em_branco += (aluno.total_questoes_disciplina - aluno.total_respondidas);
-          
-          // Adicionar respostas desta disciplina
+
+          // Importante: não calcular agregações no frontend; apenas anexar as respostas.
           const newRespostas = aluno.respostas_por_questao.map(resposta => ({
             questao_id: `q${resposta.questao}`,
             questao_numero: resposta.questao,
@@ -1741,8 +1564,7 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
           | 'Avançado';
         student.questoes_respondidas = Number(geral.total_respondidas_geral ?? student.questoes_respondidas ?? 0);
         student.acertos = Number(geral.total_acertos_geral ?? student.acertos ?? 0);
-        const totalQuestoesGeral = Number(geral.total_questoes_geral ?? 0);
-        student.erros = totalQuestoesGeral > 0 ? Math.max(0, totalQuestoesGeral - student.acertos) : student.erros;
+        student.erros = Number((geral as unknown as { total_erros_geral?: number }).total_erros_geral ?? student.erros ?? 0);
         student.em_branco = Number(geral.total_em_branco_geral ?? student.em_branco ?? 0);
       });
     }
@@ -1763,29 +1585,14 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
       questions: allQuestions.sort((a, b) => a.numero - b.numero),
       totalQuestions: allQuestions.length
     };
-  }, [apiData, user?.role, selectedClass, professorClassNames]);
+  }, [apiData]);
 
   // ✅ NOVO: Processar dados do ranking usando tabela_detalhada.geral
   const processRankingData = useCallback(() => {
-    const isProfessorNoClass = user?.role === 'professor' && selectedClass === 'all' && professorClassNames.size > 0;
-
     // Prioridade 1: Usar dados da tabela_detalhada.geral (mesma fonte da visão geral)
     const tabelaDetalhada = apiData?.tabela_detalhada as TabelaDetalhada | undefined;
     if (tabelaDetalhada?.geral?.alunos?.length) {
       return tabelaDetalhada.geral.alunos
-        .filter(aluno => {
-          if (isProfessorNoClass && !professorClassNames.has((aluno.turma ?? '').trim())) return false;
-          // Verificar se o aluno respondeu pelo menos uma questão
-          if (!apiData?.tabela_detalhada?.disciplinas?.length) {
-            return true; // Fallback: incluir todos se não temos dados de disciplinas
-          }
-          
-          return tabelaDetalhada.disciplinas.some(disciplina => {
-            const disciplinaAluno = disciplina.alunos.find(a => a.id === aluno.id);
-            if (!disciplinaAluno) return false;
-            return disciplinaAluno.respostas_por_questao.some(resposta => resposta.respondeu);
-          });
-        })
         .map(aluno => ({
           id: aluno.id,
           nome: aluno.nome,
@@ -1797,7 +1604,7 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
           classificacao: aluno.nivel_proficiencia_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
           questoes_respondidas: aluno.total_respondidas_geral,
           acertos: aluno.total_acertos_geral,
-          erros: aluno.total_questoes_geral - aluno.total_acertos_geral,
+          erros: (aluno as unknown as { total_erros_geral?: number }).total_erros_geral ?? 0,
           em_branco: aluno.total_em_branco_geral,
           tempo_gasto: 0,
           status: 'concluida' as const
@@ -1807,17 +1614,6 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
     // Prioridade 2: Fallback para apiData.ranking se tabela_detalhada.geral não disponível
     if (apiData?.ranking?.length) {
       return apiData.ranking
-        .filter((item: RankingItemWithAluno) => {
-          if (isProfessorNoClass && !professorClassNames.has((item.turma ?? '').trim())) return false;
-          if (!apiData?.tabela_detalhada?.disciplinas?.length) {
-            return true;
-          }
-          return apiData.tabela_detalhada.disciplinas.some(disciplina => {
-            const disciplinaAluno = disciplina.alunos.find(a => a.id === item.aluno_id);
-            if (!disciplinaAluno) return false;
-            return disciplinaAluno.respostas_por_questao.some(resposta => resposta.respondeu);
-          });
-        })
         .map((item: RankingItemWithAluno) => ({
           id: item.aluno_id,
           nome: item.nome,
@@ -1829,7 +1625,7 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
           classificacao: item.classificacao_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
           questoes_respondidas: item.total_questoes || 0,
           acertos: item.total_acertos || 0,
-          erros: (item.total_questoes || 0) - (item.total_acertos || 0),
+          erros: (item as unknown as { total_erros?: number; erros?: number }).total_erros ?? (item as unknown as { total_erros?: number; erros?: number }).erros ?? 0,
           em_branco: 0,
           tempo_gasto: 0,
           status: 'concluida' as const
@@ -1837,7 +1633,7 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
     }
 
     return [];
-  }, [apiData, user?.role, selectedClass, professorClassNames]);
+  }, [apiData]);
 
   // ✅ NOVA IMPLEMENTAÇÃO: Processar dados dos alunos da tabela_detalhada da nova API
   const loadStudentsData = useCallback(async () => {
@@ -2158,134 +1954,22 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
     };
   }, [detailedReport, normalizedQuestoes, computedTotalQuestions]);
 
-  // ✅ CORRIGIDO: Calcular estatísticas respeitando filtros selecionados
-  const derivedStats = useMemo(() => {
-    // Professor sem turma selecionada: usar apenas alunos das turmas do professor (não mostrar dados de outras turmas)
-    const isProfessorWithoutClass = user?.role === 'professor' && selectedClass === 'all' && professorClassNames.size > 0;
-    if (isProfessorWithoutClass && apiData?.tabela_detalhada?.disciplinas?.length) {
-      const alunosMap = new Map<string, { id: string; nome: string; turma: string; serie: string; escola: string; nota: number; proficiencia: number; participou: boolean }>();
-      apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
-        disciplina.alunos.forEach(aluno => {
-          const turmaNorm = (aluno.turma ?? '').trim();
-          if (!professorClassNames.has(turmaNorm)) return;
-          const participou = aluno.respostas_por_questao?.some(resposta => resposta.respondeu) ?? false;
-          if (!alunosMap.has(aluno.id)) {
-            alunosMap.set(aluno.id, {
-              id: aluno.id,
-              nome: aluno.nome,
-              turma: aluno.turma,
-              serie: aluno.serie,
-              escola: aluno.escola,
-              nota: aluno.nota,
-              proficiencia: aluno.proficiencia,
-              participou
-            });
-          }
-        });
-      });
-      const alunosArray = Array.from(alunosMap.values());
-      const participantes = alunosArray.filter(a => a.participou);
-      const totalAlunos = alunosArray.length;
-      const ausentes = totalAlunos - participantes.length;
-      const mediaNota = participantes.length > 0 ? participantes.reduce((sum, a) => sum + a.nota, 0) / participantes.length : 0;
-      const mediaProficiencia = participantes.length > 0 ? participantes.reduce((sum, a) => sum + a.proficiencia, 0) / participantes.length : 0;
-      return { totalAlunos, participantes: participantes.length, ausentes, mediaNota, mediaProficiencia };
-    }
+  // Métricas gerais: sempre do backend (sem derivar/calcular no frontend).
+  const backendStats = useMemo(() => {
+    const s = apiData?.estatisticas_gerais;
+    return {
+      totalAlunos: s?.total_alunos ?? 0,
+      participantes: s?.alunos_participantes ?? 0,
+      ausentes: s?.alunos_ausentes ?? 0,
+      mediaNota: s?.media_nota_geral ?? 0,
+      mediaProficiencia: s?.media_proficiencia_geral ?? 0,
+    };
+  }, [apiData?.estatisticas_gerais]);
 
-    // Se há filtros específicos selecionados, calcular estatísticas filtradas
-    const hasSpecificFilters = selectedClass !== 'all' || selectedGrade !== 'all' || selectedSchool !== 'all';
-    
-    // ✅ CORRIGIDO: Só calcular estatísticas filtradas se temos os nomes dos filtros disponíveis
-    if (hasSpecificFilters && apiData?.tabela_detalhada?.disciplinas?.length) {
-      // Obter nomes correspondentes aos IDs dos filtros (com verificação de disponibilidade)
-      const selectedSchoolName = selectedSchool !== 'all' && schools.length > 0
-        ? schools.find(s => s.id === selectedSchool)?.name 
-        : null;
-      const selectedGradeName = selectedGrade !== 'all' && grades.length > 0
-        ? grades.find(g => g.id === selectedGrade)?.name 
-        : null;
-      const selectedClassName = selectedClass !== 'all' && classes.length > 0
-        ? classes.find(c => c.id === selectedClass)?.name 
-        : null;
-      
-      // ✅ CORRIGIDO: Se filtro de escola está selecionado mas nome não está disponível, usar fallback
-      // Ou se temos estatisticas_gerais válidas (não zeradas), preferir usar elas
-      const hasValidStats = apiData?.estatisticas_gerais && 
-                            (apiData.estatisticas_gerais.total_alunos > 0 || 
-                             apiData.estatisticas_gerais.alunos_participantes > 0);
-      
-      if ((selectedSchool !== 'all' && !selectedSchoolName) || hasValidStats) {
-        // Usar dados gerais do backend quando não temos o nome da escola ainda ou quando temos stats válidas
-        const totalAlunos = apiData?.estatisticas_gerais?.total_alunos || 0;
-        const participantes = apiData?.estatisticas_gerais?.alunos_participantes || 0;
-        const ausentes = apiData?.estatisticas_gerais?.alunos_ausentes || 0;
-        const mediaNota = apiData?.estatisticas_gerais?.media_nota_geral || 0;
-        const mediaProficiencia = apiData?.estatisticas_gerais?.media_proficiencia_geral || 0;
-        return { totalAlunos, participantes, ausentes, mediaNota, mediaProficiencia };
-      }
-      
-      // Coletar todos os alunos únicos que atendem aos filtros
-      const alunosMap = new Map<string, {
-        id: string;
-        nome: string;
-        turma: string;
-        serie: string;
-        escola: string;
-        nota: number;
-        proficiencia: number;
-        participou: boolean;
-      }>();
-      
-      apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
-        disciplina.alunos.forEach(aluno => {
-          // Aplicar filtros (apenas se os nomes estão disponíveis)
-          if (selectedClassName && aluno.turma !== selectedClassName) return;
-          if (selectedGradeName && aluno.serie !== selectedGradeName) return;
-          if (selectedSchoolName && aluno.escola !== selectedSchoolName) return;
-          
-          // Verificar se participou (respondeu pelo menos uma questão)
-          const participou = aluno.respostas_por_questao.some(resposta => resposta.respondeu);
-          
-          if (!alunosMap.has(aluno.id)) {
-            alunosMap.set(aluno.id, {
-              id: aluno.id,
-              nome: aluno.nome,
-              turma: aluno.turma,
-              serie: aluno.serie,
-              escola: aluno.escola,
-              nota: aluno.nota,
-              proficiencia: aluno.proficiencia,
-              participou
-            });
-          }
-        });
-      });
-      
-      const alunosArray = Array.from(alunosMap.values());
-      const participantes = alunosArray.filter(a => a.participou);
-      const totalAlunos = alunosArray.length;
-      const ausentes = totalAlunos - participantes.length;
-      
-      // Calcular médias apenas dos participantes
-      const mediaNota = participantes.length > 0
-        ? participantes.reduce((sum, a) => sum + a.nota, 0) / participantes.length
-        : 0;
-      const mediaProficiencia = participantes.length > 0
-        ? participantes.reduce((sum, a) => sum + a.proficiencia, 0) / participantes.length
-        : 0;
-      
-      return { totalAlunos, participantes: participantes.length, ausentes, mediaNota, mediaProficiencia };
-    }
-    
-    // Fallback: usar dados gerais do backend quando não há filtros específicos
-    const totalAlunos = apiData?.estatisticas_gerais?.total_alunos || 0;
-    const participantes = apiData?.estatisticas_gerais?.alunos_participantes || 0;
-    const ausentes = apiData?.estatisticas_gerais?.alunos_ausentes || 0;
-    const mediaNota = apiData?.estatisticas_gerais?.media_nota_geral || 0;
-    const mediaProficiencia = apiData?.estatisticas_gerais?.media_proficiencia_geral || 0;
-
-    return { totalAlunos, participantes, ausentes, mediaNota, mediaProficiencia };
-  }, [apiData, selectedClass, selectedGrade, selectedSchool, schools, grades, classes, user?.role, professorClassNames]);
+  const pendingStudents = useMemo(() => {
+    const geral = apiData?.tabela_detalhada?.geral?.alunos ?? [];
+    return geral.filter((a) => (a.status_geral || '').toLowerCase() !== 'concluida');
+  }, [apiData?.tabela_detalhada?.geral?.alunos]);
 
   // Disciplinas derivadas unificando múltiplas fontes
   const derivedSubjects = useMemo(() => {
@@ -2731,41 +2415,25 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
                 <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mt-6">
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">Total de Alunos</div>
-                    <div className="text-2xl font-bold text-blue-600">{derivedStats.totalAlunos}</div>
+                    <div className="text-2xl font-bold text-blue-600">{backendStats.totalAlunos}</div>
                   </div>
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">Participantes</div>
-                    <div className="text-2xl font-bold text-green-600">{derivedStats.participantes}</div>
+                    <div className="text-2xl font-bold text-green-600">{backendStats.participantes}</div>
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
                       <div className="text-sm font-medium text-muted-foreground">Faltosos</div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleViewAbsent}
-                        className="h-7 px-2 text-xs text-red-600 hover:text-red-700 dark:hover:text-red-400"
-                        aria-label="Ver faltosos"
-                        disabled={!isRestrictedUser && derivedStats.ausentes === 0}
-                      >
-                        Ver faltosos
-                      </Button>
                     </div>
-                    <div className="text-2xl font-bold text-red-600">{derivedStats.ausentes}</div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium text-muted-foreground">Taxa de Participação</div>
-                    <div className="text-2xl font-bold text-blue-600">
-                      {derivedStats.totalAlunos > 0 ? ((derivedStats.participantes / derivedStats.totalAlunos) * 100).toFixed(1) : '0.0'}%
-                    </div>
+                    <div className="text-2xl font-bold text-red-600">{backendStats.ausentes}</div>
                   </div>
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">Nota Geral</div>
-                    <div className="text-2xl font-bold text-purple-600">{Number(derivedStats.mediaNota || 0).toFixed(1)}</div>
+                    <div className="text-2xl font-bold text-purple-600">{Number(backendStats.mediaNota || 0).toFixed(1)}</div>
                   </div>
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">Proficiência</div>
-                    <div className="text-2xl font-bold text-orange-600">{Number(derivedStats.mediaProficiencia || 0).toFixed(1)}</div>
+                    <div className="text-2xl font-bold text-orange-600">{Number(backendStats.mediaProficiencia || 0).toFixed(1)}</div>
                   </div>
                 </div>
               </CardContent>
@@ -2821,66 +2489,47 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
                       )}
                     </TabsList>
                   </div>
-                  <Button
-                    variant="outline"
-                    type="button"
-                    onClick={() => loadAllData()}
-                    disabled={isLoadingData}
-                    className="shrink-0 gap-2"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${isLoadingData ? 'animate-spin' : ''}`} />
-                    Atualizar
-                  </Button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      type="button"
+                      onClick={() => loadAllData()}
+                      disabled={isLoadingData}
+                      className="gap-2"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isLoadingData ? 'animate-spin' : ''}`} />
+                      Atualizar
+                    </Button>
+                  </div>
                 </div>
 
                 <TabsContent value="charts" className="space-y-6">
                   
                   {apiData && apiData.estatisticas_gerais && apiData.resultados_por_disciplina ? (
-                    (() => {
-                      const hasSpecificFilters = selectedClass !== 'all' || selectedGrade !== 'all' || selectedSchool !== 'all';
-                      const media_nota_geral = hasSpecificFilters
-                        ? derivedStats.mediaNota
-                        : (apiData.estatisticas_gerais?.media_nota_geral ??
-                            (apiData.resultados_por_disciplina?.length
-                              ? apiData.resultados_por_disciplina.reduce((sum, item) => sum + (Number(item.media_nota) || 0), 0) / apiData.resultados_por_disciplina.length
-                              : 0));
-                      const media_proficiencia_geral = hasSpecificFilters
-                        ? derivedStats.mediaProficiencia
-                        : (apiData.estatisticas_gerais?.media_proficiencia_geral ??
-                            (apiData.resultados_por_disciplina?.length
-                              ? apiData.resultados_por_disciplina.reduce((sum, item) => sum + (Number(item.media_proficiencia) || 0), 0) / apiData.resultados_por_disciplina.length
-                              : 0));
-                      return (
-                        <ResultsCharts
-                          apiData={{
-                            estatisticas_gerais: {
-                              ...apiData.estatisticas_gerais,
-                              media_nota_geral,
-                              media_proficiencia_geral
-                            },
-                            resultados_por_disciplina: apiData.resultados_por_disciplina
-                          }}
-                          evaluationInfo={evaluationInfo ? {
-                            id: evaluationInfo?.id || '',
-                            titulo: evaluationInfo?.titulo || '',
-                            disciplina: (evaluationInfo?.disciplinas && evaluationInfo.disciplinas.length > 0)
-                              ? evaluationInfo.disciplinas[0]
-                              : (evaluationInfo?.disciplina || ''),
-                            serie: evaluationInfo?.serie || '',
-                            escola: evaluationInfo?.escola || '',
-                            municipio: evaluationInfo?.municipio || '',
-                            data_aplicacao: evaluationInfo?.data_aplicacao || '',
-                            total_alunos: evaluationInfo?.total_alunos || 0,
-                            alunos_participantes: evaluationInfo?.alunos_participantes || 0,
-                            alunos_ausentes: evaluationInfo?.alunos_ausentes || 0,
-                            media_nota: evaluationInfo?.media_nota || 0,
-                            media_proficiencia: evaluationInfo?.media_proficiencia || 0
-                          } : null}
-                          inferStageGroup={inferStageGroup}
-                          getMaxForDiscipline={getMaxForDiscipline}
-                        />
-                      );
-                    })()
+                    <ResultsCharts
+                      apiData={{
+                        estatisticas_gerais: apiData.estatisticas_gerais,
+                        resultados_por_disciplina: apiData.resultados_por_disciplina,
+                      }}
+                      evaluationInfo={evaluationInfo ? {
+                        id: evaluationInfo?.id || '',
+                        titulo: evaluationInfo?.titulo || '',
+                        disciplina: (evaluationInfo?.disciplinas && evaluationInfo.disciplinas.length > 0)
+                          ? evaluationInfo.disciplinas[0]
+                          : (evaluationInfo?.disciplina || ''),
+                        serie: evaluationInfo?.serie || '',
+                        escola: evaluationInfo?.escola || '',
+                        municipio: evaluationInfo?.municipio || '',
+                        data_aplicacao: evaluationInfo?.data_aplicacao || '',
+                        total_alunos: evaluationInfo?.total_alunos || 0,
+                        alunos_participantes: evaluationInfo?.alunos_participantes || 0,
+                        alunos_ausentes: evaluationInfo?.alunos_ausentes || 0,
+                        media_nota: evaluationInfo?.media_nota || 0,
+                        media_proficiencia: evaluationInfo?.media_proficiencia || 0
+                      } : null}
+                      inferStageGroup={inferStageGroup}
+                      getMaxForDiscipline={getMaxForDiscipline}
+                    />
                   ) : (
                     <Card>
                       <CardContent className="text-center py-12">
@@ -3116,21 +2765,14 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
                             nota_geral: aluno.nota_geral || 0,
                             proficiencia_geral: aluno.proficiencia_geral || 0,
                             total_acertos_geral: aluno.total_acertos_geral || 0,
-                            total_erros_geral: (aluno.total_questoes_geral || 0) - (aluno.total_acertos_geral || 0) - (aluno.total_em_branco_geral || 0),
+                            total_erros_geral: (aluno as unknown as { total_erros_geral?: number }).total_erros_geral || 0,
                             total_respondidas_geral: aluno.total_respondidas_geral || 0
                           }))
                         } : undefined
                       } : undefined
                     };
                     if (hasSpecificFilters && apiData.estatisticas_gerais) {
-                      base.estatisticas_gerais = {
-                        ...apiData.estatisticas_gerais,
-                        total_alunos: derivedStats.totalAlunos,
-                        alunos_participantes: derivedStats.participantes,
-                        alunos_ausentes: derivedStats.ausentes,
-                        media_nota_geral: derivedStats.mediaNota,
-                        media_proficiencia_geral: derivedStats.mediaProficiencia
-                      };
+                      base.estatisticas_gerais = apiData.estatisticas_gerais;
                     }
                     return base;
                   })() : null} />
@@ -3151,61 +2793,53 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
         </>
       )}
 
-      {/* ✅ NOVO: Modal de Alunos Faltosos */}
-      <Dialog open={showAbsentStudentsModal} onOpenChange={setShowAbsentStudentsModal}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+      {/* Modal: Alunos Pendentes */}
+      <Dialog open={showPendingStudentsModal} onOpenChange={setShowPendingStudentsModal}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users className="h-5 w-5 text-red-600" />
-              Alunos Faltosos
-              {evaluationInfo && (
-                <span className="text-sm font-normal text-muted-foreground ml-2">
-                  - {evaluationInfo.titulo}
-                </span>
+              Alunos pendentes
+              {evaluationInfo?.titulo && (
+                <span className="text-sm font-normal text-muted-foreground ml-1">· {evaluationInfo.titulo}</span>
               )}
             </DialogTitle>
           </DialogHeader>
-          
-          <div className="overflow-y-auto max-h-[60vh] application-scroll pr-1">
-            {isLoadingAbsentStudents ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="flex items-center gap-3">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600 dark:border-red-500"></div>
-                  <span className="text-muted-foreground">Carregando lista de alunos faltosos...</span>
-                </div>
-              </div>
-            ) : absentStudents.length > 0 ? (
+          <div className="overflow-y-auto flex-1 min-h-0 py-2">
+            {pendingStudents.length > 0 ? (
               <div className="space-y-4">
                 <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="w-3 h-3 bg-red-500 dark:bg-red-400 rounded-full"></div>
+                    <div className="w-3 h-3 bg-red-500 dark:bg-red-400 rounded-full shrink-0" />
                     <span className="font-semibold text-red-800 dark:text-red-400">
-                      {absentStudents.length} {absentStudents.length === 1 ? 'aluno faltoso' : 'alunos faltosos'}
+                      {pendingStudents.length} {pendingStudents.length === 1 ? 'aluno' : 'alunos'} pendente(s)
                     </span>
                   </div>
                   <p className="text-sm text-red-700 dark:text-red-400">
-                    Estes alunos foram selecionados para a avaliação mas não a realizaram.
+                    Estes alunos ainda não entregaram ou não tiveram a avaliação concluída.
                   </p>
                 </div>
-                
                 <div className="grid gap-3">
-                  {absentStudents.map((aluno) => (
-                    <div key={aluno.id} className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border">
+                  {pendingStudents.map((a) => (
+                    <div
+                      key={a.id}
+                      className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border"
+                    >
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-red-100 dark:bg-red-950/30 rounded-full flex items-center justify-center">
+                        <div className="w-8 h-8 bg-red-100 dark:bg-red-950/30 rounded-full flex items-center justify-center shrink-0">
                           <span className="text-red-600 dark:text-red-400 font-semibold text-sm">
-                            {aluno.nome.charAt(0).toUpperCase()}
+                            {(a.nome || '').charAt(0).toUpperCase()}
                           </span>
                         </div>
-                        <div>
-                          <div className="font-medium text-foreground">{aluno.nome}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {aluno.turma} • {aluno.escola} • {aluno.serie}
+                        <div className="min-w-0">
+                          <div className="font-medium text-foreground truncate">{a.nome}</div>
+                          <div className="text-sm text-muted-foreground truncate">
+                            {[a.escola, a.turma, a.serie].filter(Boolean).join(' · ') || '—'}
                           </div>
                         </div>
                       </div>
                       <Badge variant="outline" className="text-red-600 dark:text-red-400 border-red-300 dark:border-red-800">
-                        Faltoso
+                        Pendente
                       </Badge>
                     </div>
                   ))}
@@ -3216,26 +2850,59 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
                 <div className="w-16 h-16 bg-green-100 dark:bg-green-950/30 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Check className="h-8 w-8 text-green-600 dark:text-green-400" />
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">
-                  Nenhum aluno faltoso
-                </h3>
+                <h3 className="text-lg font-semibold text-foreground mb-2">Nenhum pendente</h3>
                 <p className="text-muted-foreground">
-                  Todos os alunos realizaram a avaliação.
+                  Todos os alunos do escopo já têm resultado concluído.
                 </p>
               </div>
             )}
           </div>
-          
-          <div className="flex justify-end pt-4 border-t">
-            <Button 
-              variant="outline" 
-              onClick={() => setShowAbsentStudentsModal(false)}
-            >
+          <div className="flex items-center justify-between gap-2 pt-4 border-t mt-4">
+            {pendingStudents.length > 0 ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      await generatePendingStudentsPdf({
+                        title: "Alunos pendentes — Avaliação",
+                        subtitle: evaluationInfo?.titulo ? String(evaluationInfo.titulo) : undefined,
+                        students: pendingStudents.map((a) => ({
+                          nome: a.nome,
+                          escola: a.escola,
+                          turma: a.turma,
+                          serie: a.serie,
+                          statusLabel: "Pendente",
+                        })),
+                        fileName: "alunos-pendentes-avaliacao",
+                      });
+                      toast({
+                        title: "PDF gerado com sucesso!",
+                        description: "A lista de alunos pendentes foi baixada em PDF.",
+                      });
+                    } catch {
+                      toast({
+                        title: "Erro ao gerar PDF",
+                        description: "Não foi possível gerar o PDF da lista.",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  PDF
+                </Button>
+              </div>
+            ) : (
+              <span />
+            )}
+            <Button variant="outline" onClick={() => setShowPendingStudentsModal(false)}>
               Fechar
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 } 

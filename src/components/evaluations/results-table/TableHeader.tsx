@@ -152,6 +152,9 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
               <Users className="h-4 w-4" />
               ALUNO
             </div>
+            {visibleFields.percentualAluno && (
+              <div className="text-xs text-amber-700 dark:text-amber-400 font-medium">% ALUNO</div>
+            )}
             {visibleFields.habilidade && (
               <div className="text-xs text-blue-600 dark:text-blue-400 font-medium">HABILIDADE</div>
             )}

@@ -18,20 +18,33 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, RefreshCw, Thermometer, FileDown } from 'lucide-react';
+import {
+  Loader2,
+  RefreshCw,
+  Thermometer,
+  FileDown,
+  Sparkles,
+  Target,
+  ListChecks,
+  Lightbulb,
+  AlertCircle,
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
   fetchAnswerSheetFilterOptions,
   fetchEvaluationFilterOptions,
   fetchSkillsMapCartao,
+  fetchSkillsMapCartaoAnaliseIa,
   fetchSkillsMapCartaoErros,
   fetchSkillsMapOnline,
+  fetchSkillsMapOnlineAnaliseIa,
   fetchSkillsMapOnlineErros,
   type SkillsMapErrosResponse,
   type SkillsMapHabilidade,
   type SkillsMapResponse,
 } from '@/services/evaluation/skillsMapApi';
+import type { AnaliseIaRouteResponse } from '@/services/evaluation/evaluationResultsApi';
 import { ResultsPeriodMonthYearPicker } from '@/components/filters';
 import { normalizeResultsPeriodYm } from '@/utils/resultsPeriod';
 import {
@@ -262,6 +275,527 @@ function HeatColumns({
   );
 }
 
+function AnalysisLoadingCard() {
+  return (
+    <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/5 via-background to-primary/10">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+          Análise do mapa de habilidades
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-lg border bg-background/70 p-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            Processando análise dos resultados...
+          </div>
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div className="h-full w-1/3 animate-[pulse_1.1s_ease-in-out_infinite] rounded-full bg-primary/70" />
+          </div>
+          <div className="mt-4 space-y-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+              Consolidando resultados por faixa
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary/80" />
+              Organizando habilidades prioritárias
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary/60" />
+              Estruturando recomendações para intervenção
+            </div>
+          </div>
+          <div className="mt-4 space-y-3">
+            <div className="h-3 w-11/12 rounded bg-muted animate-pulse" />
+            <div className="h-3 w-10/12 rounded bg-muted animate-pulse" />
+            <div className="h-3 w-8/12 rounded bg-muted animate-pulse" />
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="h-16 rounded-lg bg-muted animate-pulse" />
+          <div className="h-16 rounded-lg bg-muted animate-pulse" />
+          <div className="h-16 rounded-lg bg-muted animate-pulse" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function toSectionLabel(key: string): string {
+  const map: Record<string, string> = {
+    document_title: 'Título',
+    warning: 'Aviso',
+    error: 'Mensagem',
+    details: 'Detalhes',
+    item_1: '1. Foco analítico',
+    item_2: '2. Matriz de ação por habilidade',
+    item_3: '3. Dinâmica de sala e recomposição',
+  };
+  if (map[key]) return map[key];
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (l) => l.toUpperCase());
+}
+
+function normalizeLabel(raw: string): string {
+  return raw
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeSkillText(raw: string): string {
+  return normalizeLabel(raw)
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function readTrimMessage(v: unknown): string {
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function isSkillAnalysisObject(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const keys = Object.keys(value).map((k) => normalizeLabel(k));
+  const hasSkill = keys.some((k) => k.includes('habilidade'));
+  const hasActionField = keys.some(
+    (k) =>
+      k.includes('conteudo') ||
+      k.includes('estruturante') ||
+      k.includes('dificuldade') ||
+      k.includes('como trabalhar') ||
+      k.includes('passo a passo') ||
+      k.includes('atividade')
+  );
+  return hasSkill || hasActionField;
+}
+
+function faixaTagClass(v: string): string {
+  const n = normalizeLabel(v);
+  if (n.includes('abaixo')) return 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30';
+  if (n.includes('basico')) return 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30';
+  if (n.includes('adequado')) return 'bg-lime-500/10 text-lime-700 dark:text-lime-300 border-lime-500/30';
+  if (n.includes('avancado')) return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30';
+  return 'bg-primary/10 text-primary border-primary/30';
+}
+
+function renderSkillAnalysisCard(skillObj: Record<string, unknown>, keyPrefix: string): JSX.Element {
+  const entries = Object.entries(skillObj);
+  const skillEntry = entries.find(([k]) => normalizeLabel(k).includes('habilidade'));
+  const levelEntry = entries.find(
+    ([k]) => normalizeLabel(k).includes('nivel') || normalizeLabel(k).includes('faixa')
+  );
+  const title = String(skillEntry?.[1] ?? 'Habilidade').trim() || 'Habilidade';
+  const level = String(levelEntry?.[1] ?? '').trim();
+  const detailEntries = entries.filter(([k]) => {
+    const nk = normalizeLabel(k);
+    return !nk.includes('habilidade') && !nk.includes('nivel') && !nk.includes('faixa');
+  });
+
+  return (
+    <article
+      key={keyPrefix}
+      className="rounded-xl border border-primary/20 bg-background/90 p-4 shadow-sm space-y-3"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <h4 className="text-sm font-semibold text-foreground leading-relaxed">{title}</h4>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center rounded-full border bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+            Habilidade
+          </span>
+          {level ? (
+            <span
+              className={cn(
+                'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
+                faixaTagClass(level)
+              )}
+            >
+              Nível: {level}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="grid gap-2">
+        {detailEntries.map(([k, v], index) => (
+          <div key={`${keyPrefix}-${k}-${index}`} className="rounded-lg border bg-muted/30 p-3">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {toSectionLabel(k)}
+            </p>
+            <div className="text-sm leading-relaxed text-foreground">
+              {typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+                ? String(v)
+                : renderAnalysisContent(v, `${keyPrefix}-${k}-${index}`)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function getSkillAnalysisTitle(skillObj: Record<string, unknown>): string {
+  const entries = Object.entries(skillObj);
+  const skillEntry = entries.find(([k]) => normalizeLabel(k).includes('habilidade'));
+  const title = String(skillEntry?.[1] ?? '').trim();
+  return title || 'Habilidade';
+}
+
+function extractSkillCode(title: string): string | null {
+  const head = String(title || '').split('-')[0]?.trim();
+  if (!head) return null;
+  if (/^[A-Z0-9]{4,}$/i.test(head.replace(/\s+/g, ''))) return head;
+  return null;
+}
+
+function renderSkillAnalysisDetail(
+  skillObj: Record<string, unknown>,
+  keyPrefix: string,
+  mapSkill?: SkillsMapHabilidade | null
+): JSX.Element {
+  const entries = Object.entries(skillObj);
+  const levelEntry = entries.find(
+    ([k]) => normalizeLabel(k).includes('nivel') || normalizeLabel(k).includes('faixa')
+  );
+  const level = String(levelEntry?.[1] ?? '').trim() || (mapSkill?.faixa ? FAIXA_LABELS[mapSkill.faixa] : '');
+  const title = getSkillAnalysisTitle(skillObj);
+  const codeFromTitle = extractSkillCode(title);
+  const code = (mapSkill?.codigo || '').trim() || codeFromTitle || null;
+  const detailEntries = entries.filter(([k]) => {
+    const nk = normalizeLabel(k);
+    return !nk.includes('habilidade') && !nk.includes('nivel') && !nk.includes('faixa');
+  });
+
+  return (
+    <div className="rounded-xl border border-primary/20 bg-background/90 p-4 shadow-sm space-y-3">
+      <h4 className="text-sm font-semibold leading-relaxed text-foreground">{title}</h4>
+      <div className="flex flex-wrap items-center gap-2">
+        {code ? (
+          <span className="inline-flex items-center rounded-full border bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+            {code}
+          </span>
+        ) : null}
+        <span className="inline-flex items-center rounded-full border bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+          Habilidade selecionada
+        </span>
+        {level ? (
+          <span
+            className={cn(
+              'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
+              faixaTagClass(level)
+            )}
+          >
+            Nível: {level}
+          </span>
+        ) : null}
+      </div>
+      <div className="grid gap-2">
+        {detailEntries.map(([k, v], index) => (
+          <div key={`${keyPrefix}-detail-${k}-${index}`} className="rounded-lg border bg-muted/30 p-3">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {toSectionLabel(k)}
+            </p>
+            <div className="text-sm leading-relaxed text-foreground">
+              {typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+                ? String(v)
+                : renderAnalysisContent(v, `${keyPrefix}-detail-${k}-${index}`)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function renderAnalysisContent(
+  value: unknown,
+  keyPrefix = 'analysis',
+  shouldShowSkill?: (skillObj: Record<string, unknown>) => boolean
+): JSX.Element {
+  if (value == null) {
+    return <p className="text-sm text-muted-foreground">Sem dados de análise disponíveis para este recorte.</p>;
+  }
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">{String(value)}</p>;
+  }
+
+  if (Array.isArray(value)) {
+    if (!value.length) {
+      return <p className="text-sm text-muted-foreground">Sem dados de análise disponíveis para este recorte.</p>;
+    }
+    const allPrimitive = value.every(
+      (item) => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
+    );
+    if (allPrimitive) {
+      return (
+        <ul className="list-disc space-y-1 pl-4">
+          {value.map((item, index) => (
+            <li key={`${keyPrefix}-${index}`} className="text-sm leading-relaxed text-foreground">
+              {String(item)}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    const allSkills = value.every((item) => isSkillAnalysisObject(item));
+    if (allSkills) {
+      const filteredSkills = shouldShowSkill
+        ? (value as Record<string, unknown>[]).filter((item) => shouldShowSkill(item))
+        : (value as Record<string, unknown>[]);
+      if (!filteredSkills.length) {
+        return (
+          <p className="text-sm text-muted-foreground">
+            Não há habilidades abaixo de 60% para exibir nesta análise.
+          </p>
+        );
+      }
+      return (
+        <div className="space-y-3">
+          {filteredSkills.map((item, index) => (
+            <div key={`${keyPrefix}-skill-${index}`}>
+              {renderSkillAnalysisCard(item as Record<string, unknown>, `${keyPrefix}-skill-${index}`)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return (
+      <ul className="space-y-2">
+        {value.map((item, index) => (
+          <li key={`${keyPrefix}-${index}`} className="rounded-md border bg-background/70 p-3">
+            {renderAnalysisContent(item, `${keyPrefix}-${index}`, shouldShowSkill)}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (!entries.length) {
+    return <p className="text-sm text-muted-foreground">Sem dados de análise disponíveis para este recorte.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {entries.map(([key, item]) => (
+        <details key={`${keyPrefix}-${key}`} className="group rounded-lg border bg-background/70 p-3" open>
+          <summary className="cursor-pointer list-none">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {toSectionLabel(key)}
+              </p>
+              <span className="text-[10px] text-muted-foreground transition-transform group-open:rotate-180">
+                ▼
+              </span>
+            </div>
+          </summary>
+          <div className="mt-2">{renderAnalysisContent(item, `${keyPrefix}-${key}`, shouldShowSkill)}</div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
+function AnalysisCard({
+  analysis,
+  habilidadesMapa,
+}: {
+  analysis: unknown;
+  habilidadesMapa?: SkillsMapHabilidade[];
+}) {
+  const topLevelEntries =
+    analysis && typeof analysis === 'object' && !Array.isArray(analysis)
+      ? Object.entries(analysis as Record<string, unknown>)
+      : [];
+  const hasWarning = topLevelEntries.some(([k]) => k === 'warning' || k === 'error');
+  const sectionsCount = topLevelEntries.filter(([k]) => !['document_title', 'warning', 'error'].includes(k)).length;
+
+  const lowSkills = useMemo(
+    () => (habilidadesMapa || []).filter((h) => Number(h.percentual_acertos || 0) < 60),
+    [habilidadesMapa]
+  );
+
+  const skillTokens = useMemo(() => {
+    const s = new Set<string>();
+    lowSkills.forEach((h) => {
+      const code = normalizeSkillText(h.codigo || '');
+      const desc = normalizeSkillText(h.descricao || '');
+      const title = normalizeSkillText(skillDisplayTitle(h));
+      if (code) s.add(code);
+      if (desc) s.add(desc);
+      if (title) s.add(title);
+      if (code && desc) s.add(normalizeSkillText(`${code} ${desc}`));
+    });
+    return s;
+  }, [lowSkills]);
+
+  const shouldShowSkill = useCallback(
+    (skillObj: Record<string, unknown>) => {
+      if (!skillTokens.size) return false;
+      const entries = Object.entries(skillObj);
+      const skillEntry = entries.find(([k]) => normalizeLabel(k).includes('habilidade'));
+      const label = normalizeSkillText(String(skillEntry?.[1] ?? ''));
+      if (!label) return false;
+      for (const token of skillTokens) {
+        if (token && (label.includes(token) || token.includes(label))) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [skillTokens]
+  );
+
+  const resolveMapSkillForAnalysis = useCallback(
+    (skillObj: Record<string, unknown>): SkillsMapHabilidade | null => {
+      const label = normalizeSkillText(getSkillAnalysisTitle(skillObj));
+      if (!label) return null;
+      for (const h of lowSkills) {
+        const candidates = [
+          normalizeSkillText(h.codigo || ''),
+          normalizeSkillText(h.descricao || ''),
+          normalizeSkillText(skillDisplayTitle(h)),
+          normalizeSkillText(`${h.codigo || ''} ${h.descricao || ''}`),
+        ].filter(Boolean);
+        if (candidates.some((c) => label.includes(c) || c.includes(label))) {
+          return h;
+        }
+      }
+      return null;
+    },
+    [lowSkills]
+  );
+
+  const analysisObject =
+    analysis && typeof analysis === 'object' && !Array.isArray(analysis)
+      ? (analysis as Record<string, unknown>)
+      : null;
+  const skillCandidatesRaw = Array.isArray(analysisObject?.item_2) ? analysisObject?.item_2 : [];
+  const skillCards = (skillCandidatesRaw as unknown[])
+    .filter((x): x is Record<string, unknown> => isSkillAnalysisObject(x))
+    .filter((x) => shouldShowSkill(x));
+  const [selectedSkillIdx, setSelectedSkillIdx] = useState(0);
+  const selectedSkill = skillCards[selectedSkillIdx] ?? null;
+
+  const generalEntries = topLevelEntries.filter(([k]) => !['item_2'].includes(k));
+  const generalAnalysis: Record<string, unknown> = Object.fromEntries(generalEntries);
+
+  return (
+    <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/5 via-background to-primary/10">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          Análise do mapa de habilidades
+        </CardTitle>
+        <div className="flex flex-wrap gap-2 pt-1">
+          <span className="inline-flex items-center gap-1 rounded-full border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground">
+            <Target className="h-3.5 w-3.5 text-primary" />
+            Priorização por desempenho
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground">
+            <ListChecks className="h-3.5 w-3.5 text-primary" />
+            {sectionsCount || 0} seções
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground">
+            <Lightbulb className="h-3.5 w-3.5 text-primary" />
+            Recomendações aplicáveis
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {hasWarning && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+            Alguns pontos desta análise podem depender do volume/qualidade dos dados no recorte atual.
+          </div>
+        )}
+
+        {Object.keys(generalAnalysis).length > 0 ? (
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Visão geral
+            </p>
+            {renderAnalysisContent(generalAnalysis, 'analysis-general', shouldShowSkill)}
+          </div>
+        ) : null}
+
+        {skillCards.length > 0 ? (
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Habilidades priorizadas (&lt; 60%)
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {skillCards.map((skillObj, idx) => {
+                const title = getSkillAnalysisTitle(skillObj);
+                const mapSkill = resolveMapSkillForAnalysis(skillObj);
+                const faixa = mapSkill?.faixa ?? 'basico';
+                const skillCode = (mapSkill?.codigo || '').trim() || extractSkillCode(title) || '';
+                const isSelected = idx === selectedSkillIdx;
+                return (
+                  <button
+                    key={`skill-card-${idx}-${title}`}
+                    type="button"
+                    onClick={() => setSelectedSkillIdx(idx)}
+                    className={cn(
+                      'rounded-lg border p-3 text-left transition shadow-sm',
+                      CARD_BG[faixa],
+                      isSelected
+                        ? 'ring-2 ring-primary/60'
+                        : 'opacity-95 hover:opacity-100'
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold leading-snug line-clamp-2">{title}</p>
+                      <span className="inline-flex items-center rounded-full border border-current/20 bg-black/10 px-2 py-0.5 text-[10px] font-medium">
+                        Habilidade
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {skillCode ? (
+                        <span className="inline-flex items-center rounded-full border border-current/20 bg-black/10 px-2 py-0.5 text-[10px] font-semibold">
+                          {skillCode}
+                        </span>
+                      ) : null}
+                      <span className="inline-flex items-center rounded-full border border-current/20 bg-black/10 px-2 py-0.5 text-[10px] font-medium">
+                        {FAIXA_LABELS[faixa]}
+                      </span>
+                      {mapSkill ? (
+                        <span className="inline-flex items-center rounded-full border border-current/20 bg-black/10 px-2 py-0.5 text-[10px] font-medium">
+                          {mapSkill.percentual_acertos.toFixed(1)}%
+                        </span>
+                      ) : null}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {selectedSkill ? (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Detalhamento específico
+                </p>
+                {renderSkillAnalysisDetail(
+                  selectedSkill,
+                  `selected-skill-${selectedSkillIdx}`,
+                  resolveMapSkillForAnalysis(selectedSkill)
+                )}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Não há habilidades abaixo de 60% para exibir nesta análise.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SkillsHeatMapPage() {
   const { toast } = useToast();
   const [tab, setTab] = useState<'online' | 'cartao'>('online');
@@ -308,6 +842,30 @@ export default function SkillsHeatMapPage() {
   const [mapOnline, setMapOnline] = useState<SkillsMapResponse | null>(null);
   const [mapCartao, setMapCartao] = useState<SkillsMapResponse | null>(null);
   const [loadingMap, setLoadingMap] = useState(false);
+  const [iaOnlineSlice, setIaOnlineSlice] = useState<AnaliseIaRouteResponse | null>(null);
+  const [iaCartaoSlice, setIaCartaoSlice] = useState<AnaliseIaRouteResponse | null>(null);
+  /** > 0 só após clicar em “Gerar análise da IA”; não chama analise-ia ao carregar o mapa. */
+  const [iaManualOnlineSeq, setIaManualOnlineSeq] = useState(0);
+  const [iaManualCartaoSeq, setIaManualCartaoSeq] = useState(0);
+
+  const mapIaOnlineTimeoutRef = useRef<number | null>(null);
+  const mapIaCartaoTimeoutRef = useRef<number | null>(null);
+  const mapIaOnlineGenRef = useRef(0);
+  const mapIaCartaoGenRef = useRef(0);
+
+  const clearMapIaOnlineTimer = useCallback(() => {
+    if (mapIaOnlineTimeoutRef.current != null) {
+      window.clearTimeout(mapIaOnlineTimeoutRef.current);
+      mapIaOnlineTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearMapIaCartaoTimer = useCallback(() => {
+    if (mapIaCartaoTimeoutRef.current != null) {
+      window.clearTimeout(mapIaCartaoTimeoutRef.current);
+      mapIaCartaoTimeoutRef.current = null;
+    }
+  }, []);
   const [loadingFilters, setLoadingFilters] = useState(false);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -431,6 +989,7 @@ export default function SkillsHeatMapPage() {
     setOTurma('all');
     setODisciplina('all');
     setMapOnline(null);
+    setIaOnlineSlice(null);
     setCMunicipio('all');
     setCGabarito('all');
     setCEscola('all');
@@ -438,6 +997,7 @@ export default function SkillsHeatMapPage() {
     setCTurma('all');
     setCDisciplina('all');
     setMapCartao(null);
+    setIaCartaoSlice(null);
   }, [selectedPeriod]);
 
   const loadOnlineEstados = useCallback(async () => {
@@ -727,6 +1287,9 @@ export default function SkillsHeatMapPage() {
     }
     try {
       setLoadingMap(true);
+      clearMapIaOnlineTimer();
+      setIaOnlineSlice(null);
+      setIaManualOnlineSeq(0);
       const data = await fetchSkillsMapOnline({
         estado: oEstado,
         municipio: oMunicipio,
@@ -760,6 +1323,7 @@ export default function SkillsHeatMapPage() {
     oDisciplina,
     periodoYm,
     toast,
+    clearMapIaOnlineTimer,
   ]);
 
   const loadCartaoMap = useCallback(async () => {
@@ -773,6 +1337,9 @@ export default function SkillsHeatMapPage() {
     }
     try {
       setLoadingMap(true);
+      clearMapIaCartaoTimer();
+      setIaCartaoSlice(null);
+      setIaManualCartaoSeq(0);
       const data = await fetchSkillsMapCartao({
         estado: cEstado,
         municipio: cMunicipio,
@@ -806,6 +1373,7 @@ export default function SkillsHeatMapPage() {
     cDisciplina,
     periodoYm,
     toast,
+    clearMapIaCartaoTimer,
   ]);
 
   useEffect(() => {
@@ -817,6 +1385,196 @@ export default function SkillsHeatMapPage() {
     if (!canLoadCartaoMap) return;
     void loadCartaoMap();
   }, [canLoadCartaoMap, loadCartaoMap]);
+
+  useEffect(() => {
+    if (!canLoadOnlineMap || !mapOnline) {
+      clearMapIaOnlineTimer();
+      setIaOnlineSlice(null);
+      return;
+    }
+    if (iaManualOnlineSeq === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    mapIaOnlineGenRef.current += 1;
+    const gen = mapIaOnlineGenRef.current;
+
+    clearMapIaOnlineTimer();
+    setIaOnlineSlice({ analise_ia_status: 'processing' });
+
+    const pollOnlineIa = async (attempt: number) => {
+      if (cancelled || gen !== mapIaOnlineGenRef.current) return;
+      const ia = await fetchSkillsMapOnlineAnaliseIa({
+        estado: oEstado,
+        municipio: oMunicipio,
+        avaliacao: oAvaliacao,
+        escola: oEscola,
+        serie: oSerie,
+        turma: oTurma,
+        disciplina: oDisciplina,
+        ...(periodoYm ? { periodo: periodoYm } : {}),
+      });
+
+      if (cancelled || gen !== mapIaOnlineGenRef.current) return;
+
+      if (!ia) {
+        clearMapIaOnlineTimer();
+        setIaOnlineSlice({
+          analise_ia_status: 'error',
+          analise_ia: { error: 'Falha ao consultar analise IA', details: '' },
+        });
+        return;
+      }
+
+      const st = ia.analise_ia_status ?? 'processing';
+      if (st === 'processing') {
+        setIaOnlineSlice({
+          analise_ia_status: 'processing',
+          analise_ia_cache_key: ia.analise_ia_cache_key,
+        });
+        const delayMs = Math.min(4000, 1000 + attempt * 500);
+        clearMapIaOnlineTimer();
+        mapIaOnlineTimeoutRef.current = window.setTimeout(() => void pollOnlineIa(attempt + 1), delayMs);
+        return;
+      }
+
+      clearMapIaOnlineTimer();
+
+      if (st === 'error') {
+        setIaOnlineSlice({
+          analise_ia_status: 'error',
+          analise_ia_cache_key: ia.analise_ia_cache_key,
+          analise_ia: {
+            error: readTrimMessage(ia.error) || 'Erro ao gerar análise',
+            details: readTrimMessage(ia.details),
+          },
+        });
+        return;
+      }
+
+      setIaOnlineSlice({
+        analise_ia_status: 'ready',
+        analise_ia_cache_key: ia.analise_ia_cache_key,
+        analise_ia: ia.analise_ia ?? {},
+      });
+    };
+
+    void pollOnlineIa(0);
+
+    return () => {
+      cancelled = true;
+      clearMapIaOnlineTimer();
+    };
+  }, [
+    canLoadOnlineMap,
+    mapOnline,
+    oEstado,
+    oMunicipio,
+    oAvaliacao,
+    oEscola,
+    oSerie,
+    oTurma,
+    oDisciplina,
+    periodoYm,
+    iaManualOnlineSeq,
+    clearMapIaOnlineTimer,
+  ]);
+
+  useEffect(() => {
+    if (!canLoadCartaoMap || !mapCartao) {
+      clearMapIaCartaoTimer();
+      setIaCartaoSlice(null);
+      return;
+    }
+    if (iaManualCartaoSeq === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    mapIaCartaoGenRef.current += 1;
+    const gen = mapIaCartaoGenRef.current;
+
+    clearMapIaCartaoTimer();
+    setIaCartaoSlice({ analise_ia_status: 'processing' });
+
+    const pollCartaoIa = async (attempt: number) => {
+      if (cancelled || gen !== mapIaCartaoGenRef.current) return;
+      const ia = await fetchSkillsMapCartaoAnaliseIa({
+        estado: cEstado,
+        municipio: cMunicipio,
+        gabarito: cGabarito,
+        escola: cEscola,
+        serie: cSerie,
+        turma: cTurma,
+        disciplina: cDisciplina,
+        ...(periodoYm ? { periodo: periodoYm } : {}),
+      });
+
+      if (cancelled || gen !== mapIaCartaoGenRef.current) return;
+
+      if (!ia) {
+        clearMapIaCartaoTimer();
+        setIaCartaoSlice({
+          analise_ia_status: 'error',
+          analise_ia: { error: 'Falha ao consultar analise IA', details: '' },
+        });
+        return;
+      }
+
+      const st = ia.analise_ia_status ?? 'processing';
+      if (st === 'processing') {
+        setIaCartaoSlice({
+          analise_ia_status: 'processing',
+          analise_ia_cache_key: ia.analise_ia_cache_key,
+        });
+        const delayMs = Math.min(4000, 1000 + attempt * 500);
+        clearMapIaCartaoTimer();
+        mapIaCartaoTimeoutRef.current = window.setTimeout(() => void pollCartaoIa(attempt + 1), delayMs);
+        return;
+      }
+
+      clearMapIaCartaoTimer();
+
+      if (st === 'error') {
+        setIaCartaoSlice({
+          analise_ia_status: 'error',
+          analise_ia_cache_key: ia.analise_ia_cache_key,
+          analise_ia: {
+            error: readTrimMessage(ia.error) || 'Erro ao gerar análise',
+            details: readTrimMessage(ia.details),
+          },
+        });
+        return;
+      }
+
+      setIaCartaoSlice({
+        analise_ia_status: 'ready',
+        analise_ia_cache_key: ia.analise_ia_cache_key,
+        analise_ia: ia.analise_ia ?? {},
+      });
+    };
+
+    void pollCartaoIa(0);
+
+    return () => {
+      cancelled = true;
+      clearMapIaCartaoTimer();
+    };
+  }, [
+    canLoadCartaoMap,
+    mapCartao,
+    cEstado,
+    cMunicipio,
+    cGabarito,
+    cEscola,
+    cSerie,
+    cTurma,
+    cDisciplina,
+    periodoYm,
+    iaManualCartaoSeq,
+    clearMapIaCartaoTimer,
+  ]);
 
   const openErrosOnline = async (h: SkillsMapHabilidade) => {
     setDialogSkill(h);
@@ -873,6 +1631,21 @@ export default function SkillsHeatMapPage() {
     }
   };
 
+  const analiseIaPdfPayloadOnline =
+    iaOnlineSlice?.analise_ia_status === 'ready' &&
+    iaOnlineSlice.analise_ia &&
+    typeof iaOnlineSlice.analise_ia === 'object' &&
+    !Array.isArray(iaOnlineSlice.analise_ia)
+      ? (iaOnlineSlice.analise_ia as Record<string, unknown>)
+      : null;
+  const analiseIaPdfPayloadCartao =
+    iaCartaoSlice?.analise_ia_status === 'ready' &&
+    iaCartaoSlice.analise_ia &&
+    typeof iaCartaoSlice.analise_ia === 'object' &&
+    !Array.isArray(iaCartaoSlice.analise_ia)
+      ? (iaCartaoSlice.analise_ia as Record<string, unknown>)
+      : null;
+
   const handlePdfGeral = () => {
     const run = async () => {
       if (tab === 'online') {
@@ -883,6 +1656,7 @@ export default function SkillsHeatMapPage() {
           filtrosTexto: filtrosPdfOnline,
           periodoLabel: periodoLabelText,
           meta: filtrosMetaOnline,
+          analiseIa: analiseIaPdfPayloadOnline,
         });
       } else {
         if (!mapCartao) return;
@@ -892,6 +1666,7 @@ export default function SkillsHeatMapPage() {
           filtrosTexto: filtrosPdfCartao,
           periodoLabel: periodoLabelText,
           meta: filtrosMetaCartao,
+          analiseIa: analiseIaPdfPayloadCartao,
         });
       }
       toast({ title: 'PDF gerado', description: 'O download deve começar em instantes.' });
@@ -911,6 +1686,7 @@ export default function SkillsHeatMapPage() {
         filtrosTexto: tab === 'online' ? filtrosPdfOnline : filtrosPdfCartao,
         periodoLabel: periodoLabelText,
         meta: tab === 'online' ? filtrosMetaOnline : filtrosMetaCartao,
+        analiseIa: tab === 'online' ? analiseIaPdfPayloadOnline : analiseIaPdfPayloadCartao,
       });
       toast({ title: 'PDF gerado', description: 'O download deve começar em instantes.' });
     };
@@ -1101,6 +1877,62 @@ export default function SkillsHeatMapPage() {
               </CardContent>
             </Card>
           )}
+          {loadingMap && canLoadOnlineMap && !mapOnline && <AnalysisLoadingCard />}
+          {mapOnline && (
+            <Card className="shadow-sm border border-border">
+              <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+                    Análise com IA
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Gere uma análise textual para o mapa e filtros exibidos. A consulta pode levar alguns segundos.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  className="shrink-0"
+                  disabled={loadingMap || iaOnlineSlice?.analise_ia_status === 'processing'}
+                  onClick={() => {
+                    clearMapIaOnlineTimer();
+                    setIaOnlineSlice(null);
+                    setIaManualOnlineSeq((n) => n + 1);
+                  }}
+                >
+                  Gerar análise da IA para os dados mostrados
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+          {mapOnline && iaOnlineSlice?.analise_ia_status === 'processing' && <AnalysisLoadingCard />}
+          {mapOnline && iaOnlineSlice?.analise_ia_status === 'error' && (
+            <Card className="border-destructive/60">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base text-destructive">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  Não foi possível carregar a análise de IA
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  {readTrimMessage((iaOnlineSlice?.analise_ia as Record<string, unknown> | undefined)?.details) ||
+                    readTrimMessage((iaOnlineSlice?.analise_ia as Record<string, unknown> | undefined)?.error) ||
+                    'Tente novamente em instantes.'}
+                </p>
+                <Button type="button" variant="outline" size="sm" onClick={() => setIaManualOnlineSeq((n) => n + 1)}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Tentar novamente
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+          {mapOnline && iaOnlineSlice?.analise_ia_status === 'ready' && (
+              <AnalysisCard
+                analysis={iaOnlineSlice.analise_ia as unknown}
+                habilidadesMapa={mapOnline.habilidades}
+              />
+            )}
         </TabsContent>
 
         <TabsContent value="cartao" className="space-y-4">
@@ -1231,6 +2063,62 @@ export default function SkillsHeatMapPage() {
               </CardContent>
             </Card>
           )}
+          {loadingMap && canLoadCartaoMap && !mapCartao && <AnalysisLoadingCard />}
+          {mapCartao && (
+            <Card className="shadow-sm border border-border">
+              <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+                    Análise com IA
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Gere uma análise textual para o mapa e filtros exibidos. A consulta pode levar alguns segundos.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  className="shrink-0"
+                  disabled={loadingMap || iaCartaoSlice?.analise_ia_status === 'processing'}
+                  onClick={() => {
+                    clearMapIaCartaoTimer();
+                    setIaCartaoSlice(null);
+                    setIaManualCartaoSeq((n) => n + 1);
+                  }}
+                >
+                  Gerar análise da IA para os dados mostrados
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+          {mapCartao && iaCartaoSlice?.analise_ia_status === 'processing' && <AnalysisLoadingCard />}
+          {mapCartao && iaCartaoSlice?.analise_ia_status === 'error' && (
+            <Card className="border-destructive/60">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base text-destructive">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  Não foi possível carregar a análise de IA
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  {readTrimMessage((iaCartaoSlice?.analise_ia as Record<string, unknown> | undefined)?.details) ||
+                    readTrimMessage((iaCartaoSlice?.analise_ia as Record<string, unknown> | undefined)?.error) ||
+                    'Tente novamente em instantes.'}
+                </p>
+                <Button type="button" variant="outline" size="sm" onClick={() => setIaManualCartaoSeq((n) => n + 1)}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Tentar novamente
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+          {mapCartao && iaCartaoSlice?.analise_ia_status === 'ready' && (
+              <AnalysisCard
+                analysis={iaCartaoSlice.analise_ia as unknown}
+                habilidadesMapa={mapCartao.habilidades}
+              />
+            )}
         </TabsContent>
       </Tabs>
 

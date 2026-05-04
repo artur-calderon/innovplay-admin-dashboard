@@ -6,6 +6,7 @@ import type {
   NivelAprendizagemGeral,
 } from "@/types/evaluation-results";
 import { loadLogoAssetForLandscapePdf } from "@/utils/pdfCityBranding";
+import { formatDecimal1PtBr, formatPercent1PtBr } from "@/utils/numberFormat";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -776,13 +777,13 @@ function drawNiveisBarChart(
       doc.setFontSize(9);
       doc.setTextColor(255, 255, 255);
       const ty = Math.min(yTop + fillH / 2 + 2, yBottom - 1);
-      doc.text(`${pct.toFixed(1)}%`, x + colW / 2, ty, { align: "center" });
+      doc.text(formatPercent1PtBr(pct, "0,0%"), x + colW / 2, ty, { align: "center" });
     }
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(...COLORS.textDark);
-    const cap = `${count} (${pct.toFixed(1)}%)`;
+    const cap = `${count} (${formatPercent1PtBr(pct, "0,0%")})`;
     doc.text(cap, x + colW / 2, chartTop + CHART_H + 5, { align: "center" });
     doc.setFontSize(7);
     doc.setTextColor(...COLORS.textGray);
@@ -800,7 +801,7 @@ type PdfCell = string | number | { content: string | number; rowSpan?: number; s
 
 function fmtNumPtBr(n: number | null | undefined): string {
   if (n === null || n === undefined || Number.isNaN(Number(n))) return "—";
-  return Number(n).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return formatDecimal1PtBr(n, "—");
 }
 
 function numOrNull(v: unknown): number | null {
@@ -1093,7 +1094,7 @@ function drawAcertosQuestoesGrid(
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7);
       doc.setTextColor(255, 255, 255);
-      const pctStr = Number.isInteger(pct) ? `${pct}%` : `${pct.toFixed(1)}%`;
+      const pctStr = formatPercent1PtBr(pct, "0,0%");
       doc.text(pctStr, cx + cardW / 2, rowTop + hTop + hMid + 5.2, { align: "center" });
     }
     y = rowTop + rowH + 3;
@@ -2213,7 +2214,7 @@ export async function generateRelatorioOrganizadoPdf(data: RelatorioCompleto): P
           String(qq.descricao ?? "—"),
           qq.acertos ?? "—",
           qq.total ?? "—",
-          `${pct.toFixed(1)}%`,
+          formatPercent1PtBr(pct, "0,0%"),
           classificarAcertoPct(pct),
         ];
       });

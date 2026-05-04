@@ -9,7 +9,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Download, FileText, RefreshCw, Filter, BookOpen, Calculator, LineChart, Trophy, GraduationCap } from "lucide-react";
+import {
+  Download,
+  FileText,
+  RefreshCw,
+  Filter,
+  BookOpen,
+  LineChart,
+  Trophy,
+  GraduationCap,
+  AlertCircle,
+  Sparkles,
+  Loader2,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -22,7 +34,12 @@ import { Separator } from "@/components/ui/separator";
 
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { EvaluationResultsApiService, NovaRespostaAPI, REPORT_ENTITY_TYPE_ANSWER_SHEET } from "@/services/evaluation/evaluationResultsApi";
+import {
+  EvaluationResultsApiService,
+  NovaRespostaAPI,
+  REPORT_ENTITY_TYPE_ANSWER_SHEET,
+  type AnaliseIaRouteResponse,
+} from "@/services/evaluation/evaluationResultsApi";
 import { RelatorioCompleto } from "@/types/evaluation-results";
 import { useAuth } from "@/context/authContext";
 import { FilterComponentAnalise, ResultsPeriodMonthYearPicker } from "@/components/filters";
@@ -39,6 +56,7 @@ import {
 import { descricoesNiveisEscolares, aplicarSerieNaDescricao, type NivelDescricao } from "@/lib/relatorioEscolarDescricoesNiveis";
 import { api } from "@/lib/api";
 import { mapAnswerSheetResultadosAgregadosToNovaResposta, type AnswerSheetResultadosAgregadosRaw } from "@/utils/answer-sheet/mapAnswerSheetResultadosAgregadosToNovaResposta";
+import { getReportProficiencyTagClass, normalizeProficiencyLevelLabel } from "@/utils/report/reportTagStyles";
 import {
   filtrarGabaritosOpcoesSomenteComHabilidadesVinculadas,
   type GabaritoOpcaoFiltrosResults,
@@ -48,12 +66,122 @@ import {
   paintLetterheadBackground,
   urlToPngAsset,
 } from "@/utils/pdfCityBranding";
+import { getDisciplinaAnaliseFromIaRoot } from "@/utils/report/analiseIaPdfText";
+import {
+  buildDisciplineRecordToBlocks,
+  buildGenericIaFallbackBlocks,
+  renderStructuredIaPdfContent,
+} from "@/utils/report/analiseIaPdfStructured";
 
 const normalizeText = (value: string) =>
   value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+
+function readTrimmedString(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+/** Mesmo padrão visual de `SkillsHeatMapPage` / `AnalysisLoadingCard` durante a geração da análise IA. */
+function RelatorioEscolarAnalysisLoadingCard() {
+  return (
+    <Card className="mt-6 overflow-hidden border-primary/20 bg-gradient-to-br from-primary/5 via-background to-primary/10">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+          Análise do relatório escolar
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-lg border bg-background/70 p-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            Processando análise dos resultados...
+          </div>
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div className="h-full w-1/3 animate-[pulse_1.1s_ease-in-out_infinite] rounded-full bg-primary/70" />
+          </div>
+          <div className="mt-4 space-y-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+              Consolidando resultados por disciplina
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary/80" />
+              Cruzando proficiência, níveis e participação
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary/60" />
+              Estruturando recomendações para intervenção
+            </div>
+          </div>
+          <div className="mt-4 space-y-3">
+            <div className="h-3 w-11/12 rounded bg-muted animate-pulse" />
+            <div className="h-3 w-10/12 rounded bg-muted animate-pulse" />
+            <div className="h-3 w-8/12 rounded bg-muted animate-pulse" />
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="h-16 rounded-lg bg-muted animate-pulse" />
+          <div className="h-16 rounded-lg bg-muted animate-pulse" />
+          <div className="h-16 rounded-lg bg-muted animate-pulse" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function novaRespostaSemAnaliseIa(payload: NovaRespostaAPI): NovaRespostaAPI {
+  const { analise_ia_status: _s, analise_ia_cache_key: _k, analise_ia: _a, ...rest } = payload;
+  void _s;
+  void _k;
+  void _a;
+  return rest as NovaRespostaAPI;
+}
+
+function getNomeExibicaoAluno(aluno: unknown): string {
+  if (!aluno || typeof aluno !== "object") return "";
+  const o = aluno as Record<string, unknown>;
+  const candidates = [
+    o.nome_completo,
+    o.nomeCompleto,
+    o.full_name,
+    o.fullName,
+    o.student_name,
+    o.studentName,
+    o.nome_social,
+    o.nomeSocial,
+    o.nome,
+    o.name,
+  ]
+    .map(readTrimmedString)
+    .filter(Boolean);
+
+  if (candidates.length === 0) return "";
+  return candidates.reduce((best, cur) => (cur.length > best.length ? cur : best), candidates[0]);
+}
+
+function getAlunoClassificacaoLabel(aluno: unknown, apiData: NovaRespostaAPI | null): string {
+  if (!aluno || typeof aluno !== "object") return "Abaixo do Básico";
+  const o = aluno as Record<string, unknown>;
+
+  const raw =
+    readTrimmedString(o.classificacao) ||
+    readTrimmedString(o.classificacao_geral) ||
+    readTrimmedString(o.nivel_proficiencia) ||
+    readTrimmedString(o.nivel_proficiencia_geral);
+
+  if (raw) return normalizeProficiencyLevelLabel(raw);
+
+  const profRaw = o.proficiencia ?? o.proficiencia_geral;
+  const prof = typeof profRaw === "number" ? profRaw : Number(profRaw);
+  if (!Number.isFinite(prof)) return "Abaixo do Básico";
+
+  const serie = readTrimmedString(o.serie);
+  const lvl = getProficiencyLevelAggregadoCartaoOuRelatorio(prof, apiData, serie || undefined);
+  return normalizeProficiencyLevelLabel(getProficiencyLevelLabel(lvl));
+}
 
 /** Cartão-resposta: não exibir blocos de distribuição agregada só como "GERAL" — apenas por disciplina real. */
 const isNomeDisciplinaGeralAgregado = (nome: string | undefined) =>
@@ -93,6 +221,31 @@ function readOptionalFiniteNumber(v: unknown): number | undefined {
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
 }
+
+const IA_ANALISE_SECTION_LABELS: Record<string, string> = {
+  panorama_geral: "Panorama geral",
+  reflexao_niveis: "Reflexao por niveis",
+  reflexao_niveis_habilidades: "Reflexao por niveis",
+  encaminhamentos_cultura_digital: "Encaminhamentos (cultura digital)",
+  metadados_entrada: "Metadados de entrada",
+  metadados_gerais: "Metadados gerais",
+};
+
+const IA_ANALISE_HIDDEN_KEYS = new Set([
+  "warning",
+  "error",
+  "document_title",
+  "metadados_entrada",
+  "metadados_gerais",
+]);
+
+const IA_PANORAMA_GERAL_HIDDEN_KEYS = new Set([
+  "componente_curricular",
+  "distribuicao_niveis",
+  "etapa_avaliada",
+  "media_nota",
+  "media_proficiencia",
+]);
 
 interface ClassSummaryRow {
   serie: string;
@@ -432,9 +585,10 @@ const inferirSerieParaDescricao = (apiData: NovaRespostaAPI | null): string | un
   const geralFirst = apiData.tabela_detalhada?.geral?.alunos?.find((a) => a?.serie && String(a.serie).trim());
   if (geralFirst?.serie) return String(geralFirst.serie).trim();
 
-  const discFirst = apiData.tabela_detalhada?.disciplinas?.flatMap((d) => d.alunos || [])
-    ?.find((a) => a?.serie && String(a.serie).trim());
-  if ((discFirst as any)?.serie) return String((discFirst as any).serie).trim();
+  const alunosDasDisciplinas =
+    apiData.tabela_detalhada?.disciplinas?.flatMap((d) => d.alunos ?? []) ?? [];
+  const discFirst = alunosDasDisciplinas.find((a) => a?.serie && String(a.serie).trim());
+  if (discFirst?.serie) return String(discFirst.serie).trim();
 
   return undefined;
 };
@@ -746,6 +900,115 @@ function alunoRowId(aluno: { id?: string; aluno_id?: string }): string {
   return String(aluno.id ?? aluno.aluno_id ?? "").trim();
 }
 
+/** Respondeu ao menos uma questão da disciplina (`tabela_detalhada.disciplinas`). */
+function alunoDisciplinaRespondeu(aluno: {
+  status?: string;
+  total_respondidas?: number;
+}): boolean {
+  return (
+    (aluno.status ?? "") === "concluida" ||
+    ((aluno.total_respondidas ?? 0) > 0)
+  );
+}
+
+/** Resultado consolidado em `tabela_detalhada.geral.alunos` (não é só matrícula). */
+function alunoGeralNaTabelaParticipou(aluno: {
+  nivel_proficiencia_geral?: string | null;
+  total_respondidas_geral?: number;
+  status_geral?: string;
+}): boolean {
+  // Em alguns payloads, `nivel_proficiencia_geral` vem preenchido mesmo com
+  // aluno pendente e sem respostas; por isso ele não pode definir participação.
+  return (
+    ((aluno.total_respondidas_geral ?? 0) > 0) ||
+    aluno.status_geral === "concluida"
+  );
+}
+
+function nomeDisciplinaEhPortugues(nome: string | undefined): boolean {
+  const n = normalizeText((nome ?? "").trim());
+  if (!n) return false;
+  if (
+    n.includes("ingles") ||
+    n.includes("espanhol") ||
+    n.includes("frances") ||
+    n.includes("lingua estrangeira")
+  ) {
+    return false;
+  }
+  return (
+    n.includes("portugues") ||
+    n.includes("lingua portuguesa") ||
+    n.includes("lingua port") ||
+    (n.includes("lingua") && n.includes("materna")) ||
+    (n.includes("linguagens") && !n.includes("matematica")) ||
+    n.includes("letramento") ||
+    n.includes("alfabetizacao") ||
+    n.includes("redacao") ||
+    n.includes("literacia")
+  );
+}
+
+function nomeDisciplinaEhMatematica(nome: string | undefined): boolean {
+  const n = normalizeText((nome ?? "").trim());
+  return n.includes("matematica");
+}
+
+/** Média da nota na disciplina, só entre alunos que responderam (inclui nota 0). */
+function mediaNotasDisciplinaNaTabela(
+  tabela: TabelaDetalhadaRelatorio | undefined,
+  matchNome: (nome: string | undefined) => boolean
+): number | undefined {
+  if (!tabela?.disciplinas?.length) return undefined;
+  const notas: number[] = [];
+  for (const disc of tabela.disciplinas) {
+    if (!matchNome(disc.nome)) continue;
+    disc.alunos?.forEach((aluno) => {
+      if (!alunoRowId(aluno)) return;
+      if (!alunoDisciplinaRespondeu(aluno)) return;
+      if (aluno.nota === undefined || aluno.nota === null || Number.isNaN(aluno.nota)) return;
+      notas.push(Number(aluno.nota));
+    });
+  }
+  if (!notas.length) return undefined;
+  return notas.reduce((a, b) => a + b, 0) / notas.length;
+}
+
+function mediasComparecimentoFromTabelaGeral(
+  tabela: TabelaDetalhadaRelatorio | undefined
+): {
+  mediaGeral?: number;
+  proficienciaMedia?: number;
+  totalMatriculados: number;
+  totalAvaliados: number;
+} | null {
+  const alunos = tabela?.geral?.alunos;
+  if (!alunos?.length) return null;
+  const idsTodos = new Set(
+    alunos.map((a) => alunoRowId(a)).filter((id): id is string => Boolean(id))
+  );
+  const participantes = alunos.filter(alunoGeralNaTabelaParticipou);
+  const idsPart = new Set(
+    participantes.map((a) => alunoRowId(a)).filter((id): id is string => Boolean(id))
+  );
+  const notas = participantes
+    .map((a) => Number(a.nota_geral))
+    .filter((n) => Number.isFinite(n));
+  const profs = participantes
+    .map((a) => Number(a.proficiencia_geral))
+    .filter((n) => Number.isFinite(n));
+  return {
+    mediaGeral: notas.length
+      ? notas.reduce((s, n) => s + n, 0) / notas.length
+      : undefined,
+    proficienciaMedia: profs.length
+      ? profs.reduce((s, p) => s + p, 0) / profs.length
+      : undefined,
+    totalMatriculados: idsTodos.size,
+    totalAvaliados: idsPart.size,
+  };
+}
+
 function escolaChaveAgrupamento(
   aluno: { escola?: string },
   reportAnswerSheet: boolean,
@@ -863,16 +1126,15 @@ function mediasLPeMatematicaPorLinhaAvaliacao(
   const notasMAT: number[] = [];
 
   for (const disc of tabela.disciplinas) {
-    const nome = normalizeText(disc.nome ?? "");
-    const isLP =
-      nome.includes("portugues") || nome.includes("lingua portuguesa");
-    const isMAT = nome.includes("matematica");
+    const isLP = nomeDisciplinaEhPortugues(disc.nome);
+    const isMAT = nomeDisciplinaEhMatematica(disc.nome);
     if (!isLP && !isMAT) continue;
 
     disc.alunos?.forEach((aluno) => {
       if (!alunoRowId(aluno)) return;
       if (!alunoPertenceLinhaAvaliacao(aluno, avaliacao, granularidade)) return;
       if (aluno.nota === undefined || aluno.nota === null || Number.isNaN(aluno.nota)) return;
+      if (!alunoDisciplinaRespondeu(aluno)) return;
       if (isLP) notasLP.push(Number(aluno.nota));
       else notasMAT.push(Number(aluno.nota));
     });
@@ -906,6 +1168,13 @@ export default function RelatorioEscolar({
   const reportAnswerSheet = reportAnswerSheetProp || isAnswerSheetAgregados;
   const { autoLogin, user } = useAuth();
   const [apiData, setApiData] = useState<NovaRespostaAPI | null>(null);
+  const [analiseEscolarIa, setAnaliseEscolarIa] = useState<
+    Pick<NovaRespostaAPI, "analise_ia_status" | "analise_ia_cache_key" | "analise_ia"> | null
+  >(null);
+  /** > 0 somente após o usuário clicar em “Gerar análise da IA”; evita chamar analise-ia ao carregar os dados. */
+  const [iaRequestSeq, setIaRequestSeq] = useState(0);
+  const [aiErrorMessage, setAiErrorMessage] = useState<string | null>(null);
+  const [aiVisualLoading, setAiVisualLoading] = useState(false);
   const [relatorioCompleto, setRelatorioCompleto] = useState<RelatorioCompleto | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
@@ -922,6 +1191,44 @@ export default function RelatorioEscolar({
   }>({ participantes: [], faltosos: [], porNivel: {} });
   const { toast } = useToast();
   const navigate = useNavigate();
+  const aiPollingTimeoutRef = useRef<number | null>(null);
+  const relatorioEscolarIaPollGenRef = useRef(0);
+  const aiVisualLoadingTimeoutRef = useRef<number | null>(null);
+  const aiVisualLoadingMinUntilRef = useRef<number>(0);
+
+  const clearAiPollingTimeout = useCallback(() => {
+    if (aiPollingTimeoutRef.current != null) {
+      window.clearTimeout(aiPollingTimeoutRef.current);
+      aiPollingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearAiVisualLoadingTimeout = useCallback(() => {
+    if (aiVisualLoadingTimeoutRef.current != null) {
+      window.clearTimeout(aiVisualLoadingTimeoutRef.current);
+      aiVisualLoadingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const startAiVisualLoading = useCallback(() => {
+    aiVisualLoadingMinUntilRef.current = Date.now() + 6000;
+    clearAiVisualLoadingTimeout();
+    setAiVisualLoading(true);
+  }, [clearAiVisualLoadingTimeout]);
+
+  const stopAiVisualLoading = useCallback(() => {
+    const remaining = aiVisualLoadingMinUntilRef.current - Date.now();
+    if (remaining <= 0) {
+      clearAiVisualLoadingTimeout();
+      setAiVisualLoading(false);
+      return;
+    }
+    clearAiVisualLoadingTimeout();
+    aiVisualLoadingTimeoutRef.current = window.setTimeout(() => {
+      setAiVisualLoading(false);
+      aiVisualLoadingTimeoutRef.current = null;
+    }, remaining);
+  }, [clearAiVisualLoadingTimeout]);
 
   // Estados dos filtros
   const [selectedState, setSelectedState] = useState<string>('all');
@@ -973,6 +1280,16 @@ export default function RelatorioEscolar({
   const repMunicipality = isAnswerSheetAgregados ? asMunicipio : selectedMunicipality;
   const repSchool = isAnswerSheetAgregados ? asEscola : selectedSchool;
   const repGabaritoOrEval = isAnswerSheetAgregados ? asGabarito : selectedEvaluation;
+
+  const aiAnaliseStatus = analiseEscolarIa?.analise_ia_status ?? apiData?.analise_ia_status;
+  const aiAnalise = analiseEscolarIa?.analise_ia ?? apiData?.analise_ia;
+  const aiAnaliseObject =
+    aiAnalise && typeof aiAnalise === "object" && !Array.isArray(aiAnalise)
+      ? (aiAnalise as Record<string, unknown>)
+      : null;
+  const aiAnaliseErrorDetails = readTrimmedString(aiAnaliseObject?.details);
+  const aiAnaliseErrorTitle = readTrimmedString(aiAnaliseObject?.error);
+  const hasAiAnaliseContent = !!(aiAnaliseObject && Object.keys(aiAnaliseObject).length > 0);
 
   const handleStateChange = useCallback((stateId: string) => {
     if (stateId === selectedState) return;
@@ -1034,6 +1351,27 @@ export default function RelatorioEscolar({
     const scopeLabel = isMunicipalView ? "Total Município" : "Total Escola";
     
     const curso = inferirCursoFromApiData(apiData);
+
+    const geralById = new Map<string, { nome?: string }>();
+    const geralAlunos = apiData.tabela_detalhada?.geral?.alunos ?? [];
+    for (const ga of geralAlunos) {
+      const id = alunoRowId(ga);
+      if (!id) continue;
+      geralById.set(id, { nome: getNomeExibicaoAluno(ga) || (ga.nome ?? "") });
+    }
+
+    const mergeAlunoNomeFromGeral = <T extends { id?: string; aluno_id?: string; nome?: string }>(aluno: T): T => {
+      const id = alunoRowId(aluno);
+      if (!id) return aluno;
+      const geral = geralById.get(id);
+      if (!geral) return aluno;
+      const nomeDisc = getNomeExibicaoAluno(aluno) || (aluno.nome ?? "");
+      const nomeGeral = (geral.nome ?? "").trim();
+      if (nomeGeral && nomeGeral.length > nomeDisc.trim().length) {
+        return { ...aluno, nome: nomeGeral } as T;
+      }
+      return aluno;
+    };
 
     // Processar TODAS as disciplinas que têm dados em apiData.tabela_detalhada
     if (!apiData.tabela_detalhada.disciplinas || apiData.tabela_detalhada.disciplinas.length === 0) {
@@ -1134,7 +1472,7 @@ export default function RelatorioEscolar({
           
           if (nivel >= 0 && nivel <= maxLevel) {
             contagemPorNivel[nivel] = (contagemPorNivel[nivel] || 0) + 1;
-            (alunosPorNivel[nivel] ||= []).push(aluno);
+            (alunosPorNivel[nivel] ||= []).push(mergeAlunoNomeFromGeral(aluno));
           }
         });
 
@@ -1172,6 +1510,9 @@ export default function RelatorioEscolar({
         // Obter cor da disciplina
         const color = obterCorDisciplina(nomeDisciplina, index);
 
+        const alunosParticipantesExib = alunosParticipantes.map(mergeAlunoNomeFromGeral);
+        const alunosFaltososExib = alunosFaltosos.map(mergeAlunoNomeFromGeral);
+
         return {
           title: `Distribuição percentual dos estudantes por Nível de Proficiência - ${nomeDisciplina}`,
           color,
@@ -1181,17 +1522,17 @@ export default function RelatorioEscolar({
           ],
           bars,
           disciplinaNome: nomeDisciplina,
-          alunosParticipantes,
-          alunosFaltosos,
+          alunosParticipantes: alunosParticipantesExib,
+          alunosFaltosos: alunosFaltososExib,
           alunosPorNivel,
         };
       })
-      .filter((item): item is ProficiencyDistribution & { disciplinaNome: string } => item !== null);
+      .filter((item): item is NonNullable<typeof item> => item !== null);
   }, [apiData, isAnswerSheetAgregados, isMunicipalView]);
 
   const formatAlunoLine = useCallback(
     (aluno: { nome?: string; turma?: string; serie?: string; escola?: string }) => {
-      const nome = (aluno.nome ?? "").trim() || "—";
+      const nome = getNomeExibicaoAluno(aluno) || (aluno.nome ?? "").trim() || "—";
       const turma = (aluno.turma ?? "").trim();
       const serie = (aluno.serie ?? "").trim();
       const escola = (aluno.escola ?? "").trim();
@@ -1469,10 +1810,16 @@ export default function RelatorioEscolar({
   }, [isAnswerSheetAgregados, asGabarito, asOpcoes.gabaritos]);
 
   const classSummaryRows = useMemo<ClassSummaryRow[]>(() => {
-    // Cartão-resposta: mesma fonte que a aba Estatísticas (`ClassStatistics` → `resultados_detalhados.avaliacoes`)
-    if (reportAnswerSheet && apiData?.resultados_detalhados?.avaliacoes?.length) {
+    // Fonte única da tabela: agregados prontos do backend em `resultados_detalhados.avaliacoes`.
+    if (apiData?.resultados_detalhados?.avaliacoes?.length) {
       const granularidade = apiData.nivel_granularidade;
       const avaliacoes = apiData.resultados_detalhados.avaliacoes;
+      const mediaLpGlobal = readOptionalFiniteNumber(
+        (apiData.resultados_por_disciplina ?? []).find((d) => nomeDisciplinaEhPortugues(d.disciplina))?.media_nota
+      );
+      const mediaMatGlobal = readOptionalFiniteNumber(
+        (apiData.resultados_por_disciplina ?? []).find((d) => nomeDisciplinaEhMatematica(d.disciplina))?.media_nota
+      );
 
       const rows: ClassSummaryRow[] = avaliacoes.map((avaliacao, index) => {
         const { turmaLabel, serieVal } = labelsFromAvaliacaoClassStatistics(
@@ -1486,19 +1833,17 @@ export default function RelatorioEscolar({
           (avaliacao as { percentual_comparecimento?: number }).percentual_comparecimento
         );
         const comparecimento =
-          isAnswerSheetAgregados && pctAgregados !== undefined
-            ? pctAgregados
-            : totalAlunos > 0
-              ? (participantes / totalAlunos) * 100
-              : undefined;
+          pctAgregados ??
+          (
+            avaliacao.total_alunos && avaliacao.total_alunos > 0
+              ? (Number(avaliacao.alunos_participantes ?? 0) / Number(avaliacao.total_alunos)) * 100
+              : undefined
+          );
         const proficienciaMedia = avaliacao.media_proficiencia;
         const mediaGeral = avaliacao.media_nota;
 
-        const computedMedias = mediasLPeMatematicaPorLinhaAvaliacao(
-          avaliacao,
-          apiData.tabela_detalhada,
-          granularidade
-        );
+        const disciplinaDaLinha = String(avaliacao.disciplina ?? "");
+        const mediaDisciplinaDaLinha = readOptionalFiniteNumber(avaliacao.media_nota);
         const lpAg = readOptionalFiniteNumber(
           (avaliacao as { media_nota_lingua_portuguesa?: number | null }).media_nota_lingua_portuguesa
         );
@@ -1506,9 +1851,13 @@ export default function RelatorioEscolar({
           (avaliacao as { media_nota_matematica?: number | null }).media_nota_matematica
         );
         const mediaLP =
-          isAnswerSheetAgregados && lpAg !== undefined ? lpAg : computedMedias.mediaLP;
+          lpAg ??
+          mediaLpGlobal ??
+          (nomeDisciplinaEhPortugues(disciplinaDaLinha) ? mediaDisciplinaDaLinha : undefined);
         const mediaMAT =
-          isAnswerSheetAgregados && matAg !== undefined ? matAg : computedMedias.mediaMAT;
+          matAg ??
+          mediaMatGlobal ??
+          (nomeDisciplinaEhMatematica(disciplinaDaLinha) ? mediaDisciplinaDaLinha : undefined);
 
         const row: ClassSummaryRow = {
           turma: turmaLabel,
@@ -1522,54 +1871,22 @@ export default function RelatorioEscolar({
           comparecimento,
         };
 
-        const labelsDaLinha: string[] = [];
-        apiData.tabela_detalhada?.geral?.alunos?.forEach((aluno) => {
-          if (!alunoRowId(aluno)) return;
-          if (!alunoPertenceLinhaAvaliacao(aluno, avaliacao, granularidade)) return;
-          const lbl =
-            aluno.nivel_proficiencia_geral ||
-            (aluno as { classificacao?: string }).classificacao;
-          if (lbl) labelsDaLinha.push(lbl);
-        });
-
-        if (isAnswerSheetAgregados) {
-          const ne = (avaliacao as { nivel_classificacao?: string | null }).nivel_classificacao;
-          if (ne !== undefined) {
-            if (ne === null) {
-              row.proficiencyLabel = "Sem classificação";
-              row.proficiencyLevel = undefined;
-              row.proficiencyColor = "bg-muted text-muted-foreground border-border";
-            } else {
-              const text = String(ne).trim();
-              if (text) {
-                row.proficiencyLabel = text;
-                const mapped = backendNivelProficienciaToLevel(text);
-                if (mapped) {
-                  row.proficiencyLevel = mapped;
-                  row.proficiencyColor = getProficiencyLevelColorRelatorio(mapped);
-                } else {
-                  row.proficiencyColor =
-                    "bg-muted text-muted-foreground border-border";
-                }
-              } else {
-                row.proficiencyLabel = "Sem classificação";
-                row.proficiencyColor = "bg-muted text-muted-foreground border-border";
-              }
-            }
+        const ne = (avaliacao as { nivel_classificacao?: string | null }).nivel_classificacao;
+        if (ne !== undefined && ne !== null && String(ne).trim()) {
+          const text = String(ne).trim();
+          row.proficiencyLabel = text;
+          const mapped = backendNivelProficienciaToLevel(text);
+          if (mapped) {
+            row.proficiencyLevel = mapped;
+            row.proficiencyColor = getProficiencyLevelColorRelatorio(mapped);
           } else {
-            const levelFromDist = getBestProficiencyLevelFromBackendDistribution(
-              avaliacao.distribuicao_classificacao
-            );
-            const levelFromAlunos = getBestProficiencyLevelFromBackendLabels(labelsDaLinha);
-            const level = levelFromDist ?? levelFromAlunos;
-            if (level) {
-              row.proficiencyLevel = level;
-              row.proficiencyLabel = getProficiencyLevelLabel(level);
-              row.proficiencyColor = getProficiencyLevelColorRelatorio(level);
-            }
+            row.proficiencyColor = "bg-muted text-muted-foreground border-border";
           }
         } else {
           const pNum = Number(proficienciaMedia);
+          const levelFromDist = getBestProficiencyLevelFromBackendDistribution(
+            avaliacao.distribuicao_classificacao
+          );
           const levelFromMedia =
             proficienciaMedia !== undefined &&
             proficienciaMedia !== null &&
@@ -1580,11 +1897,9 @@ export default function RelatorioEscolar({
                   avaliacao.serie ?? serieVal
                 )
               : null;
-          const levelFromDist = getBestProficiencyLevelFromBackendDistribution(
-            avaliacao.distribuicao_classificacao
-          );
-          const levelFromAlunos = getBestProficiencyLevelFromBackendLabels(labelsDaLinha);
-          const level = levelFromMedia ?? levelFromDist ?? levelFromAlunos;
+          // Prioriza distribuição/classificação agregada do backend para evitar divergência
+          // quando a conversão por média usa faixas de outra série/escopo.
+          const level = levelFromDist ?? levelFromMedia;
           if (level) {
             row.proficiencyLevel = level;
             row.proficiencyLabel = getProficiencyLevelLabel(level);
@@ -1890,6 +2205,143 @@ export default function RelatorioEscolar({
       return sortedRows;
     }
     
+    // Avaliação online: usar agregados por linha em resultados_detalhados.avaliacoes
+    // para evitar agrupamento inválido quando turma/escola vem vazia em tabela_detalhada.
+    if (!reportAnswerSheet && !isAnswerSheetAgregados && apiData?.resultados_detalhados?.avaliacoes?.length) {
+      const granularidade = apiData.nivel_granularidade;
+      const disciplinas = apiData.resultados_por_disciplina ?? [];
+      const mediaLpGlobal = readOptionalFiniteNumber(
+        disciplinas.find((d) => nomeDisciplinaEhPortugues(d.disciplina))?.media_nota
+      );
+      const mediaMatGlobal = readOptionalFiniteNumber(
+        disciplinas.find((d) => nomeDisciplinaEhMatematica(d.disciplina))?.media_nota
+      );
+      const rows: ClassSummaryRow[] = apiData.resultados_detalhados.avaliacoes.map((avaliacao, index) => {
+        const { turmaLabel, serieVal } = labelsFromAvaliacaoClassStatistics(
+          granularidade,
+          avaliacao,
+          index
+        );
+
+        const computedMedias = mediasLPeMatematicaPorLinhaAvaliacao(
+          avaliacao,
+          apiData.tabela_detalhada,
+          granularidade
+        );
+        const lpAg = readOptionalFiniteNumber(
+          (avaliacao as { media_nota_lingua_portuguesa?: number | null }).media_nota_lingua_portuguesa
+        );
+        const matAg = readOptionalFiniteNumber(
+          (avaliacao as { media_nota_matematica?: number | null }).media_nota_matematica
+        );
+
+        // `tabela_detalhada.geral.alunos` traz TODOS os alunos do escopo,
+        // inclusive ausentes (com `nota_geral=0` e `proficiencia_geral=0`).
+        // Para evitar inflar/zerar médias, contabilizamos separadamente
+        // todos os alunos da linha vs. apenas quem efetivamente fez.
+        const alunosLinhaTodos =
+          apiData.tabela_detalhada?.geral?.alunos?.filter((aluno) =>
+            alunoRowId(aluno) && alunoPertenceLinhaAvaliacao(aluno, avaliacao, granularidade)
+          ) ?? [];
+        const idsLinhaTodos = new Set(
+          alunosLinhaTodos.map((aluno) => alunoRowId(aluno)).filter((id): id is string => Boolean(id))
+        );
+        const alunosLinhaParticipantes = alunosLinhaTodos.filter((aluno) =>
+          alunoGeralNaTabelaParticipou(aluno)
+        );
+        const idsParticipantes = new Set(
+          alunosLinhaParticipantes
+            .map((aluno) => alunoRowId(aluno))
+            .filter((id): id is string => Boolean(id))
+        );
+
+        const notasParticipantes = alunosLinhaParticipantes
+          .map((aluno) => Number(aluno.nota_geral))
+          .filter((n) => Number.isFinite(n));
+        const profsParticipantes = alunosLinhaParticipantes
+          .map((aluno) => Number(aluno.proficiencia_geral))
+          .filter((n) => Number.isFinite(n));
+
+        // Prioriza a contagem real (tabela_detalhada.geral.alunos), pois o
+        // agregado do backend pode trazer total/participantes inconsistentes
+        // por agrupamento; só usa o agregado quando a tabela detalhada não
+        // tem alunos para a linha.
+        const totalAlunos = idsLinhaTodos.size > 0
+          ? idsLinhaTodos.size
+          : (avaliacao.total_alunos ?? 0);
+        const participantes = idsLinhaTodos.size > 0
+          ? idsParticipantes.size
+          : (avaliacao.alunos_participantes ?? 0);
+
+        const comparecimento =
+          totalAlunos > 0 ? (participantes / totalAlunos) * 100 : undefined;
+
+        const mediaGeralFromParticipantes = notasParticipantes.length
+          ? notasParticipantes.reduce((sum, n) => sum + n, 0) / notasParticipantes.length
+          : undefined;
+        const profMediaFromParticipantes = profsParticipantes.length
+          ? profsParticipantes.reduce((sum, p) => sum + p, 0) / profsParticipantes.length
+          : undefined;
+
+        const proficienciaMedia =
+          profMediaFromParticipantes ??
+          readOptionalFiniteNumber(avaliacao.media_proficiencia) ??
+          readOptionalFiniteNumber(apiData.estatisticas_gerais?.media_proficiencia_geral);
+        const mediaGeral =
+          mediaGeralFromParticipantes ??
+          readOptionalFiniteNumber(avaliacao.media_nota) ??
+          readOptionalFiniteNumber(apiData.estatisticas_gerais?.media_nota_geral);
+
+        const row: ClassSummaryRow = {
+          turma: turmaLabel,
+          serie: serieVal,
+          mediaLP: computedMedias.mediaLP ?? lpAg ?? mediaLpGlobal,
+          mediaMAT: computedMedias.mediaMAT ?? matAg ?? mediaMatGlobal,
+          mediaGeral,
+          proficienciaMedia,
+          matriculados: totalAlunos,
+          avaliados: participantes,
+          comparecimento,
+        };
+
+        const labelsDaLinha = alunosLinhaParticipantes
+          .map(
+            (aluno) =>
+              aluno.nivel_proficiencia_geral ||
+              (aluno as { classificacao?: string }).classificacao
+          )
+          .filter((lbl): lbl is string => Boolean(lbl));
+
+        const pNum = Number(proficienciaMedia);
+        const levelFromMedia =
+          proficienciaMedia !== undefined &&
+          proficienciaMedia !== null &&
+          !Number.isNaN(pNum)
+            ? getProficiencyLevelAggregadoCartaoOuRelatorio(
+                pNum,
+                apiData,
+                avaliacao.serie ?? serieVal
+              )
+            : null;
+        const levelFromDist = getBestProficiencyLevelFromBackendDistribution(
+          avaliacao.distribuicao_classificacao
+        );
+        const levelFromAlunos = getBestProficiencyLevelFromBackendLabels(labelsDaLinha);
+        const level = levelFromMedia ?? levelFromDist ?? levelFromAlunos;
+        if (level) {
+          row.proficiencyLevel = level;
+          row.proficiencyLabel = getProficiencyLevelLabel(level);
+          row.proficiencyColor = getProficiencyLevelColorRelatorio(level);
+        }
+
+        return row;
+      });
+
+      return rows.sort((a, b) =>
+        a.turma.localeCompare(b.turma, "pt-BR", { sensitivity: "base" })
+      );
+    }
+
     // Fallback: usar dados de tabela_detalhada se relatório completo não estiver disponível
     if (!apiData || !apiData.tabela_detalhada) {
       return [];
@@ -2509,32 +2961,34 @@ export default function RelatorioEscolar({
       };
     }
 
-    // ✅ Avaliação digital: resultados_por_disciplina + estatisticas_gerais
-    const portuguesDisciplina = apiData.resultados_por_disciplina?.find(
-      d => d.disciplina?.toLowerCase().includes('português') || d.disciplina?.toLowerCase().includes('portugues')
+    // ✅ Avaliação digital: usar apenas agregados já calculados pelo backend.
+    const portuguesDisciplina = apiData.resultados_por_disciplina?.find((d) =>
+      nomeDisciplinaEhPortugues(d.disciplina)
     );
-    const matematicaDisciplina = apiData.resultados_por_disciplina?.find(
-      d => d.disciplina?.toLowerCase().includes('matemática') || d.disciplina?.toLowerCase().includes('matematica')
+    const matematicaDisciplina = apiData.resultados_por_disciplina?.find((d) =>
+      nomeDisciplinaEhMatematica(d.disciplina)
     );
 
-    const mediaLP = portuguesDisciplina?.media_nota ?? null;
-    const mediaMAT = matematicaDisciplina?.media_nota ?? null;
-    
-    // Calcular média geral como média das médias das disciplinas
-    const disciplinasComMedia = apiData.resultados_por_disciplina?.filter(
-      d => d.media_nota !== undefined && d.media_nota !== null
-    ) || [];
-    const mediaGeral = disciplinasComMedia.length > 0
-      ? disciplinasComMedia.reduce((sum, d) => sum + (d.media_nota || 0), 0) / disciplinasComMedia.length
-      : null;
+    const mediaLpApi =
+      portuguesDisciplina?.media_nota != null &&
+      !Number.isNaN(Number(portuguesDisciplina.media_nota))
+        ? Number(portuguesDisciplina.media_nota)
+        : null;
+    const mediaMatApi =
+      matematicaDisciplina?.media_nota != null &&
+      !Number.isNaN(Number(matematicaDisciplina.media_nota))
+        ? Number(matematicaDisciplina.media_nota)
+        : null;
 
-    // Proficiência média geral
-    const proficienciasValidas = apiData.resultados_por_disciplina?.filter(
-      d => d.media_proficiencia !== undefined && d.media_proficiencia !== null
-    ).map(d => d.media_proficiencia!) || [];
-    const proficienciaMedia = proficienciasValidas.length > 0
-      ? proficienciasValidas.reduce((sum, prof) => sum + prof, 0) / proficienciasValidas.length
-      : apiData.estatisticas_gerais?.media_proficiencia_geral ?? null;
+    const mediaLP: number | null = mediaLpApi;
+    const mediaMAT: number | null = mediaMatApi;
+
+    const mediaGeral = readOptionalFiniteNumber(
+      apiData.estatisticas_gerais?.media_nota_geral
+    );
+    const proficienciaMedia = readOptionalFiniteNumber(
+      apiData.estatisticas_gerais?.media_proficiencia_geral
+    );
 
     if (
       mediaLP === null &&
@@ -2545,24 +2999,42 @@ export default function RelatorioEscolar({
       return null;
     }
 
+    const ncStatsDigital = apiData.estatisticas_gerais?.nivel_classificacao;
+    const levelFromNcDigital =
+      ncStatsDigital !== undefined && ncStatsDigital !== null && String(ncStatsDigital).trim()
+        ? backendNivelProficienciaToLevel(String(ncStatsDigital).trim())
+        : null;
+    const levelFromDistDigital = getBestProficiencyLevelFromBackendDistribution(
+      apiData.estatisticas_gerais?.distribuicao_classificacao_geral
+    );
     const serieKpiDigital =
       apiData.estatisticas_gerais?.serie?.trim() ||
       inferirSerieParaDescricao(apiData) ||
       undefined;
     const pKpiDigital = proficienciaMedia != null ? Number(proficienciaMedia) : NaN;
-    const proficiencyLevel =
+    const levelFromProficienciaMediaDigital =
       !Number.isNaN(pKpiDigital)
-        ? getProficiencyLevelAggregadoCartaoOuRelatorio(pKpiDigital, apiData, serieKpiDigital)
-        : getBestProficiencyLevelFromBackendDistribution(
-            apiData.estatisticas_gerais?.distribuicao_classificacao_geral
-          );
+        ? getProficiencyLevelAggregadoCartaoOuRelatorio(
+            pKpiDigital,
+            apiData,
+            serieKpiDigital
+          )
+        : null;
+    const proficiencyLevel =
+      levelFromNcDigital ?? levelFromDistDigital ?? levelFromProficienciaMediaDigital;
 
-    // Usar dados de estatisticas_gerais
     const totalMatriculados = apiData.estatisticas_gerais?.total_alunos ?? null;
     const totalAvaliados = apiData.estatisticas_gerais?.alunos_participantes ?? null;
-    const comparecimentoGeral = totalMatriculados && totalMatriculados > 0
-      ? (totalAvaliados ?? 0) / totalMatriculados * 100
-      : null;
+    const comparecimentoFromStats = readOptionalFiniteNumber(
+      apiData.estatisticas_gerais?.percentual_comparecimento
+    );
+    const comparecimentoGeral =
+      comparecimentoFromStats ??
+      (
+        totalMatriculados && totalMatriculados > 0
+          ? ((Number(totalAvaliados ?? 0) / Number(totalMatriculados)) * 100)
+          : null
+      );
 
     return {
       mediaLP,
@@ -2570,13 +3042,54 @@ export default function RelatorioEscolar({
       mediaGeral,
       proficienciaMedia,
       proficiencyLevel,
-      proficiencyLabel: proficiencyLevel ? getProficiencyLevelLabel(proficiencyLevel) : null,
-      proficiencyColor: proficiencyLevel ? getProficiencyLevelColorRelatorio(proficiencyLevel) : null,
+      proficiencyLabel:
+        ncStatsDigital !== undefined && ncStatsDigital !== null && String(ncStatsDigital).trim()
+          ? String(ncStatsDigital).trim()
+          : proficiencyLevel
+            ? getProficiencyLevelLabel(proficiencyLevel)
+            : null,
+      proficiencyColor: proficiencyLevel
+        ? getProficiencyLevelColorRelatorio(proficiencyLevel)
+        : null,
       totalMatriculados,
       totalAvaliados,
       comparecimentoGeral
     };
   }, [apiData, relatorioCompleto, isAnswerSheetAgregados]);
+
+  const disciplineSummaryCards = useMemo(() => {
+    if (!apiData?.resultados_por_disciplina?.length) return [];
+
+    return apiData.resultados_por_disciplina
+      .filter((d) => !isNomeDisciplinaGeralAgregado(d.disciplina))
+      .map((d) => {
+        const media = readOptionalFiniteNumber(d.media_nota);
+        if (media === undefined) return null;
+        const nome = (d.disciplina ?? "").trim() || "Disciplina";
+        return {
+          key: normalizeText(nome),
+          label: `Média ${nome}`,
+          value: media,
+          badge: nome,
+        };
+      })
+      .filter((item): item is { key: string; label: string; value: number; badge: string } => Boolean(item));
+  }, [apiData]);
+
+  const performanceDisciplineColumns = useMemo<
+    Array<{ key: "lp" | "mat"; label: string }>
+  >(() => {
+    const hasLp = disciplineSummaryCards.some((c) =>
+      nomeDisciplinaEhPortugues(c.badge)
+    );
+    const hasMat = disciplineSummaryCards.some((c) =>
+      nomeDisciplinaEhMatematica(c.badge)
+    );
+    const cols: Array<{ key: "lp" | "mat"; label: string }> = [];
+    if (hasLp) cols.push({ key: "lp", label: "Média LP" });
+    if (hasMat) cols.push({ key: "mat", label: "Média MAT" });
+    return cols;
+  }, [disciplineSummaryCards]);
 
   const serieDaAvaliacao = useMemo(() => inferirSerieParaDescricao(apiData), [apiData]);
 
@@ -2836,7 +3349,7 @@ export default function RelatorioEscolar({
         estimatedCardHeight += 7; // município
         estimatedCardHeight += (!isMunicipalView || escolaFromApi) ? 12 : 0;
         estimatedCardHeight += serieFromApi ? 7 : 0;
-        const dataAplicacao = (apiData as any)?.estatisticas_gerais?.data_aplicacao as string | undefined;
+        const dataAplicacao = apiData.estatisticas_gerais?.data_aplicacao;
         estimatedCardHeight += dataAplicacao ? 7 : 0;
         const cardHeight = Math.max(estimatedCardHeight, 100);
 
@@ -3087,45 +3600,56 @@ export default function RelatorioEscolar({
       // Tabela de desempenho
       if (classSummaryRows.length > 0) {
         const tableData: (string | number)[][] = [];
+        const hasLpCol = performanceDisciplineColumns.some((c) => c.key === "lp");
+        const hasMatCol = performanceDisciplineColumns.some((c) => c.key === "mat");
         
         classSummaryRows.forEach(row => {
           // Truncar nomes muito longos
           const turmaName = row.turma.length > 35 ? row.turma.substring(0, 32) + '...' : row.turma;
-          tableData.push([
-            turmaName,
-            formatAverage(row.mediaLP),
-            formatAverage(row.mediaMAT),
+          const rowValues: (string | number)[] = [turmaName];
+          if (hasLpCol) rowValues.push(formatAverage(row.mediaLP));
+          if (hasMatCol) rowValues.push(formatAverage(row.mediaMAT));
+          rowValues.push(
             formatAverage(row.mediaGeral),
             formatPercentageValue(row.comparecimento),
             formatProficiency(row.proficienciaMedia),
             row.proficiencyLabel || '--'
-          ]);
+          );
+          tableData.push(rowValues);
         });
 
         // Adicionar linha total
         if (summaryStats) {
-          tableData.push([
+          const totalRow: (string | number)[] = [
             isMunicipalView ? 'Total Município' : 'Total Escola',
-            formatAverage(summaryStats.mediaLP),
-            formatAverage(summaryStats.mediaMAT),
+          ];
+          if (hasLpCol) totalRow.push(formatAverage(summaryStats.mediaLP));
+          if (hasMatCol) totalRow.push(formatAverage(summaryStats.mediaMAT));
+          totalRow.push(
             formatAverage(summaryStats.mediaGeral),
             formatPercentageValue(summaryStats.comparecimentoGeral),
             formatProficiency(summaryStats.proficienciaMedia),
             summaryStats.proficiencyLabel || '--'
-          ]);
+          );
+          tableData.push(totalRow);
         }
+
+        const levelColIndex =
+          1 + (hasLpCol ? 1 : 0) + (hasMatCol ? 1 : 0) + 3;
+        const nonLevelColsCount = levelColIndex;
+        const headColumns = [
+          isMunicipalView ? 'ESCOLA' : 'TURMA',
+          ...(hasLpCol ? ['MÉDIA LP'] : []),
+          ...(hasMatCol ? ['MÉDIA MAT'] : []),
+          'MÉDIA GERAL',
+          'COMPAREC.',
+          'PROFIC. MÉDIA',
+          'NÍVEL PROFIC.'
+        ];
 
         autoTable(doc, {
           startY: startY,
-          head: [[
-            isMunicipalView ? 'ESCOLA' : 'TURMA',
-            'MÉDIA LP',
-            'MÉDIA MAT',
-            'MÉDIA GERAL',
-            'COMPAREC.',
-            'PROFIC. MÉDIA',
-            'NÍVEL PROFIC.'
-          ]],
+          head: [headColumns],
           body: tableData,
           theme: 'grid',
           margin: { left: margin, right: margin },
@@ -3146,18 +3670,19 @@ export default function RelatorioEscolar({
           },
           bodyStyles: { textColor: [55, 65, 81] },
           alternateRowStyles: { fillColor: [248, 250, 252] },
-          columnStyles: {
-            0: { halign: 'left', fontStyle: 'bold', cellWidth: 'auto', minCellWidth: 32 },
-            1: { halign: 'center', cellWidth: 17 },
-            2: { halign: 'center', cellWidth: 17 },
-            3: { halign: 'center', cellWidth: 19 },
-            4: { halign: 'center', cellWidth: 19 },
-            5: { halign: 'center', cellWidth: 20 },
-            6: { halign: 'center', cellWidth: 'auto', minCellWidth: 30 }
-          },
+          columnStyles: (() => {
+            const styles: Record<number, { halign: 'left' | 'center'; fontStyle?: 'bold'; cellWidth?: number | 'auto'; minCellWidth?: number }> = {
+              0: { halign: 'left', fontStyle: 'bold', cellWidth: 'auto', minCellWidth: 32 },
+            };
+            for (let i = 1; i < levelColIndex; i += 1) {
+              styles[i] = { halign: 'center', cellWidth: 19 };
+            }
+            styles[levelColIndex] = { halign: 'center', cellWidth: 'auto', minCellWidth: 30 };
+            return styles;
+          })(),
           didDrawCell: (data) => {
             // Colorir última coluna (Nível Proficiência)
-            if (data.section === 'body' && data.column.index === 6) {
+            if (data.section === 'body' && data.column.index === levelColIndex) {
               const textValue = (Array.isArray(data.cell.text) ? data.cell.text[0] : data.cell.text || '').toString().trim();
               
               if (textValue !== '--') {
@@ -3180,7 +3705,7 @@ export default function RelatorioEscolar({
 
             // Destacar linha total
             if (data.section === 'body' && data.row.index === tableData.length - 1) {
-              if (data.column.index < 6) {
+              if (data.column.index < nonLevelColsCount) {
                 data.cell.styles.fillColor = [238, 242, 255];
                 data.cell.styles.fontStyle = 'bold';
               }
@@ -3327,7 +3852,7 @@ export default function RelatorioEscolar({
 
       // ===== PÁGINAS 3+: Distribuição por níveis de proficiência =====
       if (proficiencyDistributions.length > 0) {
-        proficiencyDistributions.forEach((distribution) => {
+        for (const distribution of proficiencyDistributions) {
           doc.addPage();
           pageCount++;
           
@@ -3460,6 +3985,8 @@ export default function RelatorioEscolar({
             .filter((n) => Number.isFinite(n) && (alunosPorNivelPdf[n]?.length ?? 0) > 0)
             .sort((a, b) => a - b);
 
+          let yAfterProficiencyContent = chartStartY + chartHeight + 14;
+
           if (levelsWithStudentsPdf.length > 0) {
             let yList = chartStartY + chartHeight + 14;
             if (yList > pageHeight - 60) {
@@ -3500,20 +4027,61 @@ export default function RelatorioEscolar({
               autoTable(doc, {
                 startY: yList,
                 margin: { left: margin, right: margin },
-                head: [["Nome", "Turma"]],
+                head: [["Nome", "Escola", "Série", "Turma", "Classificação"]],
                 body:
                   list.length > 0
                     ? list.map((a) => [
-                        String(a.nome ?? "—").trim() || "—",
+                        getNomeExibicaoAluno(a) || String(a.nome ?? "—").trim() || "—",
+                        String(a.escola ?? "—").trim() || "—",
+                        String(a.serie ?? "—").trim() || "—",
                         String(a.turma ?? "—").trim() || "—",
+                        getAlunoClassificacaoLabel(a, apiData),
                       ])
-                    : [["—", "—"]],
+                    : [["—", "—", "—", "—", "—"]],
                 theme: "grid",
-                styles: { fontSize: 7.5, cellPadding: 2, textColor: [31, 41, 55] },
+                styles: {
+                  fontSize: 7.5,
+                  cellPadding: 2,
+                  textColor: [31, 41, 55],
+                  overflow: "linebreak",
+                  valign: "middle",
+                },
                 headStyles: { fillColor: [243, 244, 246], textColor: [31, 41, 55], fontStyle: "bold" },
                 columnStyles: {
-                  0: { cellWidth: sectionW - 40, halign: "left" },
-                  1: { cellWidth: 40, halign: "center" },
+                  0: { cellWidth: sectionW - 104, halign: "left" },
+                  1: { cellWidth: 34, halign: "left" },
+                  2: { cellWidth: 14, halign: "center" },
+                  3: { cellWidth: 18, halign: "center" },
+                  4: { cellWidth: 38, halign: "center" },
+                },
+                didDrawCell: (data) => {
+                  if (data.section === "body" && data.column.index === 4) {
+                    const rawText = data.cell?.text;
+                    const firstText =
+                      Array.isArray(rawText)
+                        ? (rawText.find((t) => t !== undefined && t !== null && String(t).trim() !== "") ?? "")
+                        : (rawText ?? "");
+                    const textValue = (firstText === undefined || firstText === null ? "" : String(firstText)).trim();
+                    if (!textValue || textValue === "—") return;
+
+                    const [rTag, gTag, bTag] = generateClassificationColor(textValue);
+                    const pad = 1.2;
+                    const w = (data.cell?.width ?? 0) - pad * 2;
+                    const h = (data.cell?.height ?? 0) - pad * 2;
+                    if (w <= 1 || h <= 1) return;
+
+                    doc.setFillColor(rTag, gTag, bTag);
+                    doc.roundedRect((data.cell?.x ?? 0) + pad, (data.cell?.y ?? 0) + pad, w, h, 2, 2, "F");
+
+                    doc.setTextColor(255, 255, 255);
+                    doc.setFont("helvetica", "bold");
+                    doc.setFontSize(7);
+                    doc.text(textValue, (data.cell?.x ?? 0) + (data.cell?.width ?? 0) / 2, (data.cell?.y ?? 0) + (data.cell?.height ?? 0) / 2 + 2, {
+                      align: "center",
+                      maxWidth: Math.max(1, (data.cell?.width ?? 0) - 4),
+                    });
+                    doc.setTextColor(31, 41, 55);
+                  }
                 },
                 pageBreak: "auto",
               });
@@ -3521,10 +4089,71 @@ export default function RelatorioEscolar({
               const finalY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
               yList = (typeof finalY === "number" ? finalY : yList) + 6;
             }
+            yAfterProficiencyContent = yList;
+          }
+
+          if (
+            iaRequestSeq > 0 &&
+            analiseEscolarIa?.analise_ia_status === "ready" &&
+            analiseEscolarIa.analise_ia &&
+            typeof analiseEscolarIa.analise_ia === "object" &&
+            !Array.isArray(analiseEscolarIa.analise_ia)
+          ) {
+            const iaRoot = analiseEscolarIa.analise_ia as Record<string, unknown>;
+            const discPayload = getDisciplinaAnaliseFromIaRoot(
+              iaRoot,
+              distribution.disciplinaNome
+            );
+            let iaBlocks = buildDisciplineRecordToBlocks(discPayload);
+            if (!iaBlocks.length && discPayload) {
+              iaBlocks = buildGenericIaFallbackBlocks(discPayload);
+            }
+            if (iaBlocks.length > 0) {
+              let yIa = yAfterProficiencyContent + 6;
+
+              if (yIa > pageHeight - 40) {
+                addFooter(pageCount);
+                doc.addPage();
+                pageCount++;
+                yIa = addHeader() + 10;
+              }
+
+              const maxWIa = pageWidth - 2 * margin;
+              const bumpIaPage = (): number => {
+                addFooter(pageCount);
+                doc.addPage();
+                pageCount++;
+                return addHeader() + 10;
+              };
+
+              await renderStructuredIaPdfContent(
+                {
+                  doc,
+                  margin,
+                  maxW: maxWIa,
+                  contentBottom: pageHeight - 20,
+                  palette: COLORS,
+                  bumpPage: bumpIaPage,
+                },
+                yIa,
+                {
+                  sectionTitle: "Análise com IA",
+                  showSectionHeading: true,
+                  footnote:
+                    "Conteúdo gerado automaticamente com base nos dados desta disciplina e nos filtros aplicados.",
+                  segments: [
+                    {
+                      disciplineBand: distribution.disciplinaNome?.trim() || null,
+                      blocks: iaBlocks,
+                    },
+                  ],
+                }
+              );
+            }
           }
 
           addFooter(pageCount);
-        });
+        }
       }
 
       // Salvar PDF
@@ -3545,6 +4174,7 @@ export default function RelatorioEscolar({
       });
 
     } catch (error) {
+      console.error("Erro ao gerar PDF RelatorioEscolar", error);
       toast({
         title: "Erro ao gerar PDF",
         description: "Não foi possível criar o arquivo. Tente novamente.",
@@ -3559,32 +4189,35 @@ export default function RelatorioEscolar({
     distributionCharts,
     isMunicipalView,
     proficiencyDistributions,
-    selectedEvaluation,
-    selectedMunicipality,
-    selectedSchool,
     selectedSchoolInfo,
-    selectedState,
     summaryStats,
     toast,
     user?.role,
     userHierarchyContext,
     reportAnswerSheet,
-    isAnswerSheetAgregados,
     repState,
     repMunicipality,
     repSchool,
     repGabaritoOrEval,
     asOpcoes.gabaritos,
+    performanceDisciplineColumns,
+    iaRequestSeq,
+    analiseEscolarIa,
   ]);
 
   // Carregar dados quando todos os filtros estiverem selecionados (avaliação / report_entity_type)
   useEffect(() => {
     if (isAnswerSheetAgregados) return;
+    let cancelled = false;
     const loadData = async () => {
       if (allRequiredFiltersSelected) {
         try {
+          clearAiPollingTimeout();
+          setAiErrorMessage(null);
+          setAnaliseEscolarIa(null);
+          setIaRequestSeq(0);
           setIsLoadingData(true);
-          
+
           // Usar getEvaluationsList como em Results.tsx para obter tabela_detalhada com alunos por disciplina
           const filters = {
             estado: selectedState,
@@ -3596,143 +4229,138 @@ export default function RelatorioEscolar({
             ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
           };
 
-          const evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(1, 1, filters);
-          
-          // ✅ NOVO: Buscar relatório completo para obter dados agregados por turma
-          let relatorioCompletoData: RelatorioCompleto | null = null;
-          if (selectedEvaluation !== 'all') {
-            try {
-              const options =
-                selectedSchool !== 'all'
-                  ? {
-                      schoolId: selectedSchool,
-                      ...(selectedMunicipality !== 'all' ? { cityId: selectedMunicipality } : {}),
-                    }
-                  : { cityId: selectedMunicipality };
-              const relatorioOptions = {
-                ...options,
-                ...(adminCityIdQuery ? { adminCityIdQuery } : {}),
-                ...(reportEntityTypeParam ? { reportEntityType: reportEntityTypeParam } : {}),
-              };
-              relatorioCompletoData = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation, relatorioOptions);
-              setRelatorioCompleto(relatorioCompletoData);
-            } catch (relatorioError) {
-              setRelatorioCompleto(null);
-            }
-          } else {
-            setRelatorioCompleto(null);
-          }
-          
+          const evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(1, 200, filters);
+          if (cancelled) return;
+
+          // Fluxo online do Relatório Escolar usa apenas /evaluation-results/avaliacoes.
+          setRelatorioCompleto(null);
+
           if (evaluationsResponse) {
-            // ✅ NOVO: Fallback - Se disciplina está vazia quando escola específica está selecionada, buscar dados do município e filtrar
+            // Fallback - Se disciplina está vazia quando escola específica está selecionada, buscar dados do município e filtrar
             if (evaluationsResponse.tabela_detalhada) {
               const tabela = evaluationsResponse.tabela_detalhada;
-              const disciplinasComAlunos = tabela.disciplinas?.filter(
-                d => d.alunos && Array.isArray(d.alunos) && d.alunos.length > 0
-              ).length || 0;
-              
+              const disciplinasComAlunos =
+                tabela.disciplinas?.filter((d) => d.alunos && Array.isArray(d.alunos) && d.alunos.length > 0)
+                  .length || 0;
+
               if (disciplinasComAlunos === 0 && selectedSchool !== 'all' && filters.escola) {
                 try {
-                  // Buscar dados do município (sem filtro de escola)
                   const municipioFilters = {
                     estado: filters.estado,
                     municipio: filters.municipio,
                     avaliacao: filters.avaliacao,
-                    escola: undefined, // Remover filtro de escola para obter todos os dados do município
+                    escola: undefined,
                     ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
                     ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
                     ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
                   };
-                  
-                  const municipioResponse = await EvaluationResultsApiService.getEvaluationsList(1, 1, municipioFilters);
-                  
+
+                  const municipioResponse = await EvaluationResultsApiService.getEvaluationsList(
+                    1,
+                    200,
+                    municipioFilters
+                  );
+
                   if (municipioResponse?.tabela_detalhada?.disciplinas) {
-                    const municipioDisciplinasComAlunos = municipioResponse.tabela_detalhada.disciplinas.filter(
-                      d => d.alunos && Array.isArray(d.alunos) && d.alunos.length > 0
-                    ).length;
-                    
-                    // Obter nome da escola selecionada das estatísticas gerais
+                    const municipioDisciplinasComAlunos =
+                      municipioResponse.tabela_detalhada.disciplinas.filter(
+                        (d) => d.alunos && Array.isArray(d.alunos) && d.alunos.length > 0
+                      ).length;
+
                     const nomeEscolaSelecionada = evaluationsResponse.estatisticas_gerais?.escola;
-                    
+
                     if (municipioDisciplinasComAlunos > 0 && nomeEscolaSelecionada) {
-                      // Filtrar alunos que pertencem à escola selecionada
                       const alunosDaEscola = new Set<string>();
-                      
-                      // Primeiro, identificar IDs dos alunos da escola usando tabela_detalhada.geral
+
                       if (municipioResponse.tabela_detalhada.geral?.alunos) {
-                        municipioResponse.tabela_detalhada.geral.alunos.forEach(aluno => {
+                        municipioResponse.tabela_detalhada.geral.alunos.forEach((aluno) => {
                           const escolaDoAluno = aluno.escola;
-                          if (escolaDoAluno && escolaDoAluno.toLowerCase().includes(nomeEscolaSelecionada.toLowerCase())) {
+                          if (
+                            escolaDoAluno &&
+                            escolaDoAluno.toLowerCase().includes(nomeEscolaSelecionada.toLowerCase())
+                          ) {
                             const rid = alunoRowId(aluno);
                             if (rid) alunosDaEscola.add(rid);
                           }
                         });
                       }
-                      
-                      // Se não encontrou alunos em geral, tentar usar as disciplinas
+
                       if (alunosDaEscola.size === 0) {
-                        municipioResponse.tabela_detalhada.disciplinas.forEach(disciplina => {
-                          disciplina.alunos?.forEach(aluno => {
-                            if (aluno.escola && aluno.escola.toLowerCase().includes(nomeEscolaSelecionada.toLowerCase())) {
+                        municipioResponse.tabela_detalhada.disciplinas.forEach((disciplina) => {
+                          disciplina.alunos?.forEach((aluno) => {
+                            if (
+                              aluno.escola &&
+                              aluno.escola.toLowerCase().includes(nomeEscolaSelecionada.toLowerCase())
+                            ) {
                               const rid = alunoRowId(aluno);
                               if (rid) alunosDaEscola.add(rid);
                             }
                           });
                         });
                       }
-                      
+
                       if (alunosDaEscola.size > 0) {
-                        // Reconstruir tabela_detalhada com apenas alunos da escola selecionada
-                        const disciplinasComAlunosFiltrados = municipioResponse.tabela_detalhada.disciplinas.map(disciplina => {
-                          const alunosFiltrados = disciplina.alunos?.filter(aluno => alunosDaEscola.has(alunoRowId(aluno))) || [];
-                          
-                          return {
-                            ...disciplina,
-                            alunos: alunosFiltrados
-                          };
-                        });
-                        
-                        // Filtrar também alunos em geral
-                        const alunosGeralFiltrados = municipioResponse.tabela_detalhada.geral?.alunos?.filter(
-                          aluno => alunosDaEscola.has(alunoRowId(aluno))
-                        ) || [];
-                        
-                        // Atualizar a resposta com os dados filtrados
+                        const disciplinasComAlunosFiltrados = municipioResponse.tabela_detalhada.disciplinas.map(
+                          (disciplina) => {
+                            const alunosFiltrados =
+                              disciplina.alunos?.filter((aluno) => alunosDaEscola.has(alunoRowId(aluno))) || [];
+
+                            return {
+                              ...disciplina,
+                              alunos: alunosFiltrados,
+                            };
+                          }
+                        );
+
+                        const alunosGeralFiltrados =
+                          municipioResponse.tabela_detalhada.geral?.alunos?.filter((aluno) =>
+                            alunosDaEscola.has(alunoRowId(aluno))
+                          ) || [];
+
                         evaluationsResponse.tabela_detalhada = {
                           ...municipioResponse.tabela_detalhada,
                           disciplinas: disciplinasComAlunosFiltrados,
                           geral: {
                             ...municipioResponse.tabela_detalhada.geral,
-                            alunos: alunosGeralFiltrados
-                          }
+                            alunos: alunosGeralFiltrados,
+                          },
                         };
                       }
                     }
                   }
-                } catch (fallbackError) {
-                  // Erro silencioso no fallback
+                } catch {
+                  // fallback silencioso
                 }
               }
             }
 
-            setApiData(evaluationsResponse);
+            setApiData(novaRespostaSemAnaliseIa(evaluationsResponse));
           } else {
             setApiData(null);
+            setIaRequestSeq(0);
           }
-        } catch (error) {
+        } catch {
+          if (cancelled) return;
           toast({
             title: "Erro ao carregar dados",
             description: "Não foi possível carregar os dados do relatório. Tente novamente.",
             variant: "destructive",
           });
           setApiData(null);
+          setIaRequestSeq(0);
         } finally {
-          setIsLoadingData(false);
+          if (!cancelled) {
+            setIsLoadingData(false);
+          }
         }
       }
     };
 
     loadData();
+    return () => {
+      cancelled = true;
+      clearAiPollingTimeout();
+    };
   }, [
     isAnswerSheetAgregados,
     allRequiredFiltersSelected,
@@ -3740,21 +4368,145 @@ export default function RelatorioEscolar({
     selectedMunicipality,
     selectedSchool,
     selectedEvaluation,
-    selectedPeriod,
+    periodoYmRelatorio,
     adminCityIdQuery,
     reportEntityTypeParam,
+    clearAiPollingTimeout,
     toast,
+  ]);
+
+  /** Polling da IA apenas em `/evaluation-results/avaliacoes/analise-ia`. */
+  useEffect(() => {
+    if (isAnswerSheetAgregados || !allRequiredFiltersSelected || apiData === null) {
+      return;
+    }
+    if (iaRequestSeq === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    relatorioEscolarIaPollGenRef.current += 1;
+    const pollGen = relatorioEscolarIaPollGenRef.current;
+
+    clearAiPollingTimeout();
+    startAiVisualLoading();
+    setAiErrorMessage(null);
+
+    const iaFilters = {
+      estado: selectedState,
+      municipio: selectedMunicipality,
+      avaliacao: selectedEvaluation !== 'all' ? selectedEvaluation : undefined,
+      escola: selectedSchool !== 'all' ? selectedSchool : undefined,
+      ...(adminCityIdQuery ? { city_id: adminCityIdQuery } : {}),
+      ...(reportEntityTypeParam ? { report_entity_type: reportEntityTypeParam } : {}),
+      ...(periodoYmRelatorio ? { periodo: periodoYmRelatorio } : {}),
+    };
+
+    const applyIaErrorMessage = (ia: AnaliseIaRouteResponse) => {
+      const details = readTrimmedString(ia.details);
+      const title = readTrimmedString(ia.error);
+      setAiErrorMessage(
+        details || title || "Nao foi possivel gerar o relatorio detalhado. Tente novamente."
+      );
+    };
+
+    const runPoll = async (attempt: number) => {
+      if (cancelled || pollGen !== relatorioEscolarIaPollGenRef.current) return;
+      const ia = await EvaluationResultsApiService.fetchAvaliacoesAnaliseIa(iaFilters);
+      if (cancelled || pollGen !== relatorioEscolarIaPollGenRef.current) return;
+
+      if (!ia) {
+        setAnaliseEscolarIa({
+          analise_ia_status: "error",
+          analise_ia: { error: "Falha ao consultar analise IA", details: "" },
+        });
+        applyIaErrorMessage({ details: "", error: "" });
+        stopAiVisualLoading();
+        return;
+      }
+
+      const st = ia.analise_ia_status ?? "processing";
+      if (st === "processing") {
+        setAnaliseEscolarIa({
+          analise_ia_status: "processing",
+          analise_ia_cache_key: ia.analise_ia_cache_key,
+        });
+        const delayMs = Math.min(4000, 1000 + attempt * 500);
+        clearAiPollingTimeout();
+        aiPollingTimeoutRef.current = window.setTimeout(() => {
+          void runPoll(attempt + 1);
+        }, delayMs);
+        return;
+      }
+
+      clearAiPollingTimeout();
+
+      if (st === "error") {
+        setAnaliseEscolarIa({
+          analise_ia_status: "error",
+          analise_ia_cache_key: ia.analise_ia_cache_key,
+          analise_ia: {
+            error: readTrimmedString(ia.error) || "Erro ao gerar análise",
+            details: readTrimmedString(ia.details),
+          },
+        });
+        applyIaErrorMessage(ia);
+        stopAiVisualLoading();
+        return;
+      }
+
+      setAnaliseEscolarIa({
+        analise_ia_status: "ready",
+        analise_ia_cache_key: ia.analise_ia_cache_key,
+        analise_ia: ia.analise_ia ?? {},
+      });
+      setAiErrorMessage(null);
+      stopAiVisualLoading();
+    };
+
+    void runPoll(0);
+
+    return () => {
+      cancelled = true;
+      clearAiPollingTimeout();
+      clearAiVisualLoadingTimeout();
+    };
+  }, [
+    isAnswerSheetAgregados,
+    allRequiredFiltersSelected,
+    apiData,
+    selectedState,
+    selectedMunicipality,
+    selectedSchool,
+    selectedEvaluation,
+    periodoYmRelatorio,
+    adminCityIdQuery,
+    reportEntityTypeParam,
+    iaRequestSeq,
+    clearAiPollingTimeout,
+    clearAiVisualLoadingTimeout,
+    startAiVisualLoading,
+    stopAiVisualLoading,
   ]);
 
   // Cartão resposta: GET /answer-sheets/resultados-agregados
   useEffect(() => {
     if (!isAnswerSheetAgregados) return;
+    let cancelled = false;
     const load = async () => {
       if (!allRequiredFiltersSelected) {
         setApiData(null);
+        setAiErrorMessage(null);
+        setAnaliseEscolarIa(null);
+        setIaRequestSeq(0);
+        clearAiPollingTimeout();
         return;
       }
       try {
+        clearAiPollingTimeout();
+        setAiErrorMessage(null);
+        setAnaliseEscolarIa(null);
+        setIaRequestSeq(0);
         setIsLoadingData(true);
         setRelatorioCompleto(null);
         const params = new URLSearchParams();
@@ -3765,31 +4517,41 @@ export default function RelatorioEscolar({
         if (asSerie !== 'all') params.set('serie', asSerie);
         if (asTurma !== 'all') params.set('turma', asTurma);
         if (periodoYmRelatorio) params.set('periodo', periodoYmRelatorio);
+
         const res = await api.get<AnswerSheetResultadosAgregadosRaw>(
           `/answer-sheets/resultados-agregados?${params.toString()}`
         );
-        setApiData(
-          mapAnswerSheetResultadosAgregadosToNovaResposta(res.data, {
-            estado: asEstado,
-            municipio: asMunicipio,
-            gabarito: asGabarito,
-            escola: asEscola,
-            serie: asSerie,
-            turma: asTurma,
-          })
-        );
+        if (cancelled) return;
+
+        const mapped = mapAnswerSheetResultadosAgregadosToNovaResposta(res.data, {
+          estado: asEstado,
+          municipio: asMunicipio,
+          gabarito: asGabarito,
+          escola: asEscola,
+          serie: asSerie,
+          turma: asTurma,
+        });
+        setApiData(novaRespostaSemAnaliseIa(mapped));
       } catch {
+        if (cancelled) return;
         toast({
           title: 'Erro ao carregar dados',
           description: 'Não foi possível carregar os resultados agregados do cartão resposta.',
           variant: 'destructive',
         });
         setApiData(null);
+        setIaRequestSeq(0);
       } finally {
-        setIsLoadingData(false);
+        if (!cancelled) {
+          setIsLoadingData(false);
+        }
       }
     };
     void load();
+    return () => {
+      cancelled = true;
+      clearAiPollingTimeout();
+    };
   }, [
     isAnswerSheetAgregados,
     allRequiredFiltersSelected,
@@ -3800,8 +4562,406 @@ export default function RelatorioEscolar({
     asSerie,
     asTurma,
     periodoYmRelatorio,
+    clearAiPollingTimeout,
     toast,
   ]);
+
+  /** Polling da IA em `/answer-sheets/resultados-agregados/analise-ia` (cartão). */
+  useEffect(() => {
+    if (!isAnswerSheetAgregados || !allRequiredFiltersSelected || apiData === null) {
+      return;
+    }
+    if (iaRequestSeq === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    relatorioEscolarIaPollGenRef.current += 1;
+    const pollGen = relatorioEscolarIaPollGenRef.current;
+
+    clearAiPollingTimeout();
+    startAiVisualLoading();
+    setAiErrorMessage(null);
+
+    const iaParams = new URLSearchParams();
+    iaParams.set('estado', asEstado);
+    iaParams.set('municipio', asMunicipio);
+    iaParams.set('gabarito', asGabarito);
+    if (asEscola !== 'all') iaParams.set('escola', asEscola);
+    if (asSerie !== 'all') iaParams.set('serie', asSerie);
+    if (asTurma !== 'all') iaParams.set('turma', asTurma);
+    if (periodoYmRelatorio) iaParams.set('periodo', periodoYmRelatorio);
+
+    const applyAgregadosIaErrorMessage = (ia: AnaliseIaRouteResponse) => {
+      const details = readTrimmedString(ia.details);
+      const title = readTrimmedString(ia.error);
+      setAiErrorMessage(
+        details || title || "Nao foi possivel gerar o relatorio detalhado. Tente novamente."
+      );
+    };
+
+    const axiosConfigCartaoAgregadosIa =
+      asMunicipio !== 'all' ? { meta: { cityId: asMunicipio } as { cityId: string } } : {};
+
+    const runPollCartao = async (attempt: number) => {
+      if (cancelled || pollGen !== relatorioEscolarIaPollGenRef.current) return;
+
+      let ia: AnaliseIaRouteResponse | null = null;
+      try {
+        const res = await api.get<AnaliseIaRouteResponse>(
+          `/answer-sheets/resultados-agregados/analise-ia?${iaParams.toString()}`,
+          axiosConfigCartaoAgregadosIa
+        );
+        ia = res.data ?? null;
+      } catch {
+        ia = null;
+      }
+
+      if (cancelled || pollGen !== relatorioEscolarIaPollGenRef.current) return;
+
+      if (!ia) {
+        setAnaliseEscolarIa({
+          analise_ia_status: "error",
+          analise_ia: { error: "Falha ao consultar analise IA", details: "" },
+        });
+        applyAgregadosIaErrorMessage({ details: "", error: "" });
+        stopAiVisualLoading();
+        return;
+      }
+
+      const st = ia.analise_ia_status ?? "processing";
+      if (st === "processing") {
+        setAnaliseEscolarIa({
+          analise_ia_status: "processing",
+          analise_ia_cache_key: ia.analise_ia_cache_key,
+        });
+        const delayMs = Math.min(4000, 1000 + attempt * 500);
+        clearAiPollingTimeout();
+        aiPollingTimeoutRef.current = window.setTimeout(() => {
+          void runPollCartao(attempt + 1);
+        }, delayMs);
+        return;
+      }
+
+      clearAiPollingTimeout();
+
+      if (st === "error") {
+        setAnaliseEscolarIa({
+          analise_ia_status: "error",
+          analise_ia_cache_key: ia.analise_ia_cache_key,
+          analise_ia: {
+            error: readTrimmedString(ia.error) || "Erro ao gerar análise",
+            details: readTrimmedString(ia.details),
+          },
+        });
+        applyAgregadosIaErrorMessage(ia);
+        stopAiVisualLoading();
+        return;
+      }
+
+      setAnaliseEscolarIa({
+        analise_ia_status: "ready",
+        analise_ia_cache_key: ia.analise_ia_cache_key,
+        analise_ia: ia.analise_ia ?? {},
+      });
+      setAiErrorMessage(null);
+      stopAiVisualLoading();
+    };
+
+    void runPollCartao(0);
+
+    return () => {
+      cancelled = true;
+      clearAiPollingTimeout();
+      clearAiVisualLoadingTimeout();
+    };
+  }, [
+    isAnswerSheetAgregados,
+    allRequiredFiltersSelected,
+    apiData,
+    asEstado,
+    asMunicipio,
+    asGabarito,
+    asEscola,
+    asSerie,
+    asTurma,
+    periodoYmRelatorio,
+    iaRequestSeq,
+    clearAiPollingTimeout,
+    clearAiVisualLoadingTimeout,
+    startAiVisualLoading,
+    stopAiVisualLoading,
+  ]);
+
+  const formatAnaliseIaKey = useCallback((key: string) => {
+    if (IA_ANALISE_SECTION_LABELS[key]) return IA_ANALISE_SECTION_LABELS[key];
+    return key
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  }, []);
+
+  const renderAnaliseIaValue = useCallback((value: unknown, keyPrefix: string): JSX.Element => {
+    if (value == null || value === "") {
+      return <span className="text-sm text-muted-foreground">Sem dados.</span>;
+    }
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      return <span className="text-sm text-foreground whitespace-pre-wrap">{String(value)}</span>;
+    }
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        return <span className="text-sm text-muted-foreground">Sem dados.</span>;
+      }
+      return (
+        <ul className="space-y-2">
+          {value.map((item, index) => (
+            <li key={`${keyPrefix}-${index}`} className="rounded-md border bg-background/70 p-3">
+              {renderAnaliseIaValue(item, `${keyPrefix}-${index}`)}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    if (typeof value === "object") {
+      const isPanoramaGeral = normalizeText(keyPrefix).includes("panorama_geral");
+      const entries = Object.entries(value as Record<string, unknown>).filter(([k]) => {
+        if (IA_ANALISE_HIDDEN_KEYS.has(k)) return false;
+        if (isPanoramaGeral && IA_PANORAMA_GERAL_HIDDEN_KEYS.has(k)) return false;
+        return true;
+      });
+      if (!entries.length) {
+        return <span className="text-sm text-muted-foreground">Sem dados.</span>;
+      }
+      return (
+        <div className="space-y-2">
+          {entries.map(([key, item]) => (
+            <div key={`${keyPrefix}-${key}`} className="rounded-md border bg-background/70 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                {formatAnaliseIaKey(key)}
+              </p>
+              {renderAnaliseIaValue(item, `${keyPrefix}-${key}`)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return <span className="text-sm text-muted-foreground">Sem dados.</span>;
+  }, [formatAnaliseIaKey]);
+
+  const renderReflexaoNiveis = useCallback((value: unknown, keyPrefix: string) => {
+    if (!Array.isArray(value) || value.length === 0) return renderAnaliseIaValue(value, keyPrefix);
+
+    type ReflexaoNivelLegacy = {
+      nivel_identificado?: string;
+      significado_e_impacto?: string;
+      analise_habilidades?: Array<{
+        habilidade_foco?: string;
+        reflexao_pedagogica?: string;
+      }>;
+    };
+
+    type ReflexaoNivelNovo = {
+      nivel?: string;
+      descricao_desempenho?: string;
+      habilidades_analisadas?: Array<{
+        codigo?: string;
+        descricao?: string;
+        reflexao?: string;
+      }>;
+    };
+
+    const items = value as Array<ReflexaoNivelLegacy | ReflexaoNivelNovo>;
+    return (
+      <div className="space-y-3">
+        {items.map((item, idx) => {
+          const asAny = item as Record<string, unknown>;
+
+          const nivel =
+            readTrimmedString(asAny.nivel_identificado) || readTrimmedString(asAny.nivel) || "—";
+
+          const significado =
+            readTrimmedString(asAny.significado_e_impacto) || readTrimmedString(asAny.descricao_desempenho);
+
+          const analiseDireta = readTrimmedString(asAny.analise);
+          const quantidadeAlunosRaw = asAny.quantidade_alunos;
+          const quantidadeAlunos =
+            typeof quantidadeAlunosRaw === "number" && Number.isFinite(quantidadeAlunosRaw)
+              ? quantidadeAlunosRaw
+              : undefined;
+
+          const habilidadesLegacy = Array.isArray(asAny.analise_habilidades) ? asAny.analise_habilidades : null;
+          const habilidadesNovo = Array.isArray(asAny.habilidades_analisadas) ? asAny.habilidades_analisadas : null;
+
+          return (
+            <div
+              key={`${keyPrefix}-${idx}`}
+              className="rounded-lg border border-border bg-background/70 p-4 space-y-3"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Nível identificado
+                  </p>
+                  <p className="text-sm font-semibold text-foreground">{nivel}</p>
+                </div>
+                {quantidadeAlunos != null ? (
+                  <Badge variant="secondary" className="font-semibold">
+                    {quantidadeAlunos} {quantidadeAlunos === 1 ? "aluno" : "alunos"}
+                  </Badge>
+                ) : null}
+              </div>
+
+              {significado ? (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Descrição do desempenho
+                  </p>
+                  <p className="text-sm text-foreground whitespace-pre-wrap">{significado}</p>
+                </div>
+              ) : null}
+
+              {!significado && analiseDireta ? (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Análise
+                  </p>
+                  <p className="text-sm text-foreground whitespace-pre-wrap">{analiseDireta}</p>
+                </div>
+              ) : null}
+
+              {habilidadesNovo && habilidadesNovo.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Habilidades analisadas
+                  </p>
+                  <div className="space-y-2">
+                    {habilidadesNovo.map((h, hIdx) => {
+                      const codigo = readTrimmedString((h as Record<string, unknown>)?.codigo);
+                      const descricao = readTrimmedString((h as Record<string, unknown>)?.descricao);
+                      const reflexao = readTrimmedString((h as Record<string, unknown>)?.reflexao);
+                      return (
+                        <div
+                          key={`${keyPrefix}-${idx}-hab2-${hIdx}`}
+                          className="rounded-md border border-border bg-card p-3"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Código
+                            </span>
+                            <span className="text-xs font-semibold text-foreground">{codigo || "—"}</span>
+                          </div>
+                          {descricao ? (
+                            <p className="mt-2 text-sm text-foreground whitespace-pre-wrap">{descricao}</p>
+                          ) : null}
+                          {reflexao ? (
+                            <div className="mt-2 pt-2 border-t border-border/60">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                Reflexão
+                              </p>
+                              <p className="mt-1 text-sm text-foreground whitespace-pre-wrap">{reflexao}</p>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {(!habilidadesNovo || habilidadesNovo.length === 0) && habilidadesLegacy && habilidadesLegacy.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Análise de habilidades
+                  </p>
+                  <div className="space-y-2">
+                    {habilidadesLegacy.map((h, hIdx) => {
+                      const foco = readTrimmedString((h as Record<string, unknown>)?.habilidade_foco);
+                      const reflexao = readTrimmedString((h as Record<string, unknown>)?.reflexao_pedagogica);
+                      return (
+                        <div
+                          key={`${keyPrefix}-${idx}-hab-${hIdx}`}
+                          className="rounded-md border border-border bg-card p-3"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Habilidade foco
+                            </span>
+                            <span className="text-xs font-semibold text-foreground">{foco || "—"}</span>
+                          </div>
+                          {reflexao ? (
+                            <p className="mt-2 text-sm text-foreground whitespace-pre-wrap">{reflexao}</p>
+                          ) : (
+                            <p className="mt-2 text-sm text-muted-foreground">Sem descrição.</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }, [renderAnaliseIaValue]);
+
+  const getAnaliseIaPorDisciplina = useCallback(
+    (disciplinaNome?: string): unknown => {
+      if (!aiAnaliseObject || !disciplinaNome) return null;
+      const alvo = normalizeText(disciplinaNome);
+
+      // Novo formato: analises_por_disciplina.{Disciplina}
+      const analisesPorDisciplina = (aiAnaliseObject as Record<string, unknown>).analises_por_disciplina;
+      if (
+        analisesPorDisciplina &&
+        typeof analisesPorDisciplina === "object" &&
+        !Array.isArray(analisesPorDisciplina)
+      ) {
+        const entries = Object.entries(analisesPorDisciplina as Record<string, unknown>);
+        const found = entries.find(([k]) => {
+          const n = normalizeText(k);
+          return n.includes(alvo) || alvo.includes(n);
+        });
+        if (found) return found[1];
+      }
+
+      // Formato antigo: por_disciplina.{Disciplina}
+      const porDisciplina = (aiAnaliseObject as Record<string, unknown>).por_disciplina;
+      if (porDisciplina && typeof porDisciplina === "object" && !Array.isArray(porDisciplina)) {
+        const entries = Object.entries(porDisciplina as Record<string, unknown>);
+        const found = entries.find(([k]) => {
+          const n = normalizeText(k);
+          return n.includes(alvo) || alvo.includes(n);
+        });
+        if (found) return found[1];
+      }
+
+      const entries = Object.entries(aiAnaliseObject).filter(([key]) => !IA_ANALISE_HIDDEN_KEYS.has(key));
+      const direct = entries.find(([key]) => {
+        const n = normalizeText(key);
+        return n.includes(alvo) || alvo.includes(n);
+      });
+      if (direct) return direct[1];
+
+      for (const [, value] of entries) {
+        if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+        const obj = value as Record<string, unknown>;
+        const disc = readTrimmedString(
+          obj.disciplina ??
+            obj.componente_curricular ??
+            obj.componenteCurricular ??
+            obj.subject
+        );
+        if (!disc) continue;
+        const n = normalizeText(disc);
+        if (n.includes(alvo) || alvo.includes(n)) return value;
+      }
+
+      return null;
+    },
+    [aiAnaliseObject]
+  );
 
   // Removido: useEffect de getTabelaDetalhada - os dados já vêm de getEvaluationsList em apiData.tabela_detalhada
 
@@ -3842,10 +5002,12 @@ export default function RelatorioEscolar({
               aluno: { nome?: string; escola?: string; serie?: string; turma?: string };
               tone?: "default" | "danger";
             }) => {
-              const nome = (aluno.nome ?? "").trim() || "—";
+              const nome = getNomeExibicaoAluno(aluno) || (aluno.nome ?? "").trim() || "—";
               const turma = (aluno.turma ?? "").trim();
               const serie = (aluno.serie ?? "").trim();
               const escola = (aluno.escola ?? "").trim();
+              const classificacao = getAlunoClassificacaoLabel(aluno, apiData);
+              const showClassificacao = tone !== "danger";
               const toneCls =
                 tone === "danger"
                   ? "border-red-200 bg-red-50/60 dark:border-red-900/40 dark:bg-red-950/20"
@@ -3862,18 +5024,21 @@ export default function RelatorioEscolar({
                 <div className={cn("rounded-lg border p-3", toneCls)}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-foreground truncate">
+                      <div className="text-sm font-semibold text-foreground whitespace-normal break-words">
                         {nome}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-1.5">
-                        {turma ? (
-                          <span className={cn(tagClsBase, tagCls)}>Turma {turma}</span>
+                        {escola ? (
+                          <span className={cn(tagClsBase, tagCls)}>{escola}</span>
                         ) : null}
                         {serie ? (
                           <span className={cn(tagClsBase, tagCls)}>Série {serie}</span>
                         ) : null}
-                        {escola ? (
-                          <span className={cn(tagClsBase, tagCls)}>{escola}</span>
+                        {turma ? (
+                          <span className={cn(tagClsBase, tagCls)}>Turma {turma}</span>
+                        ) : null}
+                        {showClassificacao && classificacao ? (
+                          <span className={getReportProficiencyTagClass(classificacao)}>{classificacao}</span>
                         ) : null}
                         {!turma && !serie && !escola ? (
                           <span className={cn(tagClsBase, tagCls)}>Sem metadados</span>
@@ -4259,38 +5424,24 @@ export default function RelatorioEscolar({
         <div className="space-y-6">
           {summaryStats && (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-              <Card className="shadow-sm border border-border">
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between text-sm font-semibold text-purple-600 dark:text-purple-400">
-                    <span className="uppercase tracking-wide text-muted-foreground">Média Geral LP</span>
-                    <BookOpen className="h-5 w-5" />
-                  </div>
-                  <div className="mt-2 text-3xl font-bold text-foreground">
-                    {formatAverage(summaryStats.mediaLP)}
-                  </div>
-                  <div className="mt-4">
-                    <span className="inline-flex rounded-md bg-purple-100 dark:bg-purple-900/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-300">
-                      LP
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="shadow-sm border border-border">
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between text-sm font-semibold text-purple-600 dark:text-purple-400">
-                    <span className="uppercase tracking-wide text-muted-foreground">Média Geral MAT</span>
-                    <Calculator className="h-5 w-5" />
-                  </div>
-                  <div className="mt-2 text-3xl font-bold text-foreground">
-                    {formatAverage(summaryStats.mediaMAT)}
-                  </div>
-                  <div className="mt-4">
-                    <span className="inline-flex rounded-md bg-purple-100 dark:bg-purple-900/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-300">
-                      MAT
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
+              {disciplineSummaryCards.map((card) => (
+                <Card key={card.key} className="shadow-sm border border-border">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between text-sm font-semibold text-purple-600 dark:text-purple-400">
+                      <span className="uppercase tracking-wide text-muted-foreground">{card.label}</span>
+                      <BookOpen className="h-5 w-5" />
+                    </div>
+                    <div className="mt-2 text-3xl font-bold text-foreground">
+                      {formatAverage(card.value)}
+                    </div>
+                    <div className="mt-4">
+                      <span className="inline-flex rounded-md bg-purple-100 dark:bg-purple-900/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-300">
+                        {card.badge}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
               <Card className="shadow-sm border border-border">
                 <CardContent className="p-5">
                   <div className="flex items-center justify-between text-sm font-semibold text-purple-600 dark:text-purple-400">
@@ -4354,6 +5505,42 @@ export default function RelatorioEscolar({
             </div>
           )}
 
+          {proficiencyDistributions.length > 0 && (
+            <Card className="shadow-md border border-border">
+              <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+                    Análise com IA
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Gere uma análise textual para os filtros e o recorte exibidos na página. A consulta pode levar alguns
+                    segundos.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  className="shrink-0"
+                  disabled={iaRequestSeq > 0 && (aiAnaliseStatus === "processing" || aiVisualLoading)}
+                  onClick={() => {
+                    clearAiPollingTimeout();
+                    setAiErrorMessage(null);
+                    setAnaliseEscolarIa(null);
+                    setIaRequestSeq((n) => n + 1);
+                  }}
+                >
+                  Gerar análise da IA para os dados mostrados
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {proficiencyDistributions.length > 0 &&
+            iaRequestSeq > 0 &&
+            (aiAnaliseStatus === "processing" || aiVisualLoading) && (
+              <RelatorioEscolarAnalysisLoadingCard />
+            )}
+
           {/* ✅ SEMPRE MOSTRAR: Seção de desempenho e botão de download sempre aparecem quando há apiData */}
           <Card className="mt-6 overflow-hidden shadow-md">
             <CardHeader className="flex flex-col gap-3 border-b border-border md:flex-row md:items-center md:justify-between">
@@ -4391,8 +5578,14 @@ export default function RelatorioEscolar({
                         <th className="bg-[#6C2BD9] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white">
                           {isMunicipalView ? 'Escola' : 'Turma'}
                         </th>
-                        <th className="bg-[#6C2BD9] px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-white">Média LP</th>
-                        <th className="bg-[#6C2BD9] px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-white">Média MAT</th>
+                        {performanceDisciplineColumns.map((col) => (
+                          <th
+                            key={col.key}
+                            className="bg-[#6C2BD9] px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-white"
+                          >
+                            {col.label}
+                          </th>
+                        ))}
                         <th className="bg-[#6C2BD9] px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-white">Média Geral</th>
                         <th className="bg-[#6C2BD9] px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-white">Comparecimento</th>
                         <th className="bg-[#6C2BD9] px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-white">Proficiência Média</th>
@@ -4410,12 +5603,16 @@ export default function RelatorioEscolar({
                           <td className="px-4 py-3 text-sm font-semibold text-foreground border-t border-border">
                             {row.turma}
                           </td>
-                          <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
-                            {formatAverage(row.mediaLP)}
-                          </td>
-                          <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
-                            {formatAverage(row.mediaMAT)}
-                          </td>
+                          {performanceDisciplineColumns.map((col) => (
+                            <td
+                              key={`${row.turma}-${col.key}`}
+                              className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border"
+                            >
+                              {col.key === 'lp'
+                                ? formatAverage(row.mediaLP)
+                                : formatAverage(row.mediaMAT)}
+                            </td>
+                          ))}
                           <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
                             {formatAverage(row.mediaGeral)}
                           </td>
@@ -4446,12 +5643,16 @@ export default function RelatorioEscolar({
                           <td className="px-4 py-3 text-sm font-semibold text-foreground border-t border-border">
                             {isMunicipalView ? 'Total Município' : 'Total Escola'}
                           </td>
-                          <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
-                            {formatAverage(summaryStats.mediaLP)}
-                          </td>
-                          <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
-                            {formatAverage(summaryStats.mediaMAT)}
-                          </td>
+                          {performanceDisciplineColumns.map((col) => (
+                            <td
+                              key={`total-${col.key}`}
+                              className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border"
+                            >
+                              {col.key === 'lp'
+                                ? formatAverage(summaryStats.mediaLP)
+                                : formatAverage(summaryStats.mediaMAT)}
+                            </td>
+                          ))}
                           <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
                             {formatAverage(summaryStats.mediaGeral)}
                           </td>
@@ -4544,6 +5745,7 @@ export default function RelatorioEscolar({
             <div className="mt-6 space-y-6">
               {proficiencyDistributions.map(distribution => {
                 const maxValue = Math.max(...distribution.bars.map(bar => bar.value), 1);
+                const analiseDisciplina = getAnaliseIaPorDisciplina(distribution.disciplinaNome);
 
                 return (
                   <Card key={distribution.title} className="shadow-md">
@@ -4704,6 +5906,56 @@ export default function RelatorioEscolar({
                         </div>
                       </div>
 
+                      {iaRequestSeq > 0 &&
+                      !(aiAnaliseStatus === "processing" || aiVisualLoading) ? (
+                      <div className="border-t border-border pt-5 space-y-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                          <Sparkles className="h-3.5 w-3.5 text-primary" />
+                          Análise IA - {distribution.disciplinaNome ?? "Disciplina"}
+                        </p>
+                        {aiAnaliseStatus === "error" && !aiVisualLoading && (
+                          <div className="space-y-3 rounded-md border border-destructive/40 bg-destructive/5 p-4">
+                            <div className="flex items-start gap-2 text-sm text-destructive">
+                              <AlertCircle className="h-4 w-4 mt-0.5" />
+                              <div className="space-y-1">
+                                <span>
+                                  {aiErrorMessage || aiAnaliseErrorTitle || "Nao foi possivel gerar o relatorio detalhado para esta disciplina."}
+                                </span>
+                                {aiAnaliseErrorDetails && aiAnaliseErrorDetails !== aiErrorMessage && (
+                                  <p className="text-xs text-destructive/80">{aiAnaliseErrorDetails}</p>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                clearAiPollingTimeout();
+                                startAiVisualLoading();
+                                setIaRequestSeq((prev) => prev + 1);
+                              }}
+                            >
+                              Tentar novamente
+                            </Button>
+                          </div>
+                        )}
+                        {aiAnaliseStatus === "ready" && !aiVisualLoading && analiseDisciplina && (
+                          <div className="space-y-2">
+                            {renderAnaliseIaValue(
+                              analiseDisciplina,
+                              `analise-disciplina-${normalizeText(distribution.disciplinaNome ?? "geral")}`
+                            )}
+                          </div>
+                        )}
+                        {aiAnaliseStatus === "ready" && !aiVisualLoading && !analiseDisciplina && (
+                          <p className="text-sm text-muted-foreground">
+                            A IA nao retornou analise especifica para esta disciplina.
+                          </p>
+                        )}
+                      </div>
+                      ) : null}
+
                     </CardContent>
                   </Card>
                 );
@@ -4755,6 +6007,7 @@ export default function RelatorioEscolar({
               </CardContent>
             </Card>
           ) : null}
+
         </div>
       )}
     </div>
