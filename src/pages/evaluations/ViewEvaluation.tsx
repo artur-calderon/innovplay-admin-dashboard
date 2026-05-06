@@ -666,6 +666,10 @@ export default function ViewEvaluation({
   const entityNameCapitalized = isOlimpiadaType ? 'Olimpíada' : 'Avaliação';
   const entityNamePlural = isOlimpiadaType ? 'Olimpíadas' : 'Avaliações';
   const isModalView = Boolean(onClose);
+  const handleViewStudentResults = (studentId: string) => {
+    if (!id) return;
+    navigate(`/app/avaliacao/${id}/aluno/${studentId}/resultados`);
+  };
 
   if (!evaluation) {
     return (
@@ -966,16 +970,30 @@ export default function ViewEvaluation({
                   <label className="text-sm font-medium text-green-700 dark:text-green-400 mb-2 block">
                     Aluno(s) selecionado(s):
                   </label>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="space-y-2">
                     {((evaluation as any).selected_students as string[]).map((studentId) => (
-                      <Badge
+                      <div
                         key={studentId}
-                        variant="outline"
-                        className="text-xs bg-white/80 dark:bg-card/80 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800"
-                        title={studentId}
+                        className="flex items-center justify-between gap-2 rounded-lg border border-green-200 bg-white/80 p-2 dark:border-green-800 dark:bg-card/80"
                       >
-                        {individualStudentNamesMap[String(studentId)] || String(studentId).slice(0, 8) + "…"}
-                      </Badge>
+                        <Badge
+                          variant="outline"
+                          className="text-xs bg-white/80 dark:bg-card/80 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800"
+                          title={studentId}
+                        >
+                          {individualStudentNamesMap[String(studentId)] || String(studentId).slice(0, 8) + "…"}
+                        </Badge>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2"
+                          onClick={() => handleViewStudentResults(String(studentId))}
+                        >
+                          <Eye className="mr-1 h-3.5 w-3.5" />
+                          Ver aluno
+                        </Button>
+                      </div>
                     ))}
                   </div>
                 </div>

@@ -1607,7 +1607,7 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
           erros: (aluno as unknown as { total_erros_geral?: number }).total_erros_geral ?? 0,
           em_branco: aluno.total_em_branco_geral,
           tempo_gasto: 0,
-          status: 'concluida' as const
+          status: ((aluno.status_geral || '').toLowerCase() === 'concluida' ? 'concluida' : 'pendente') as const
         }));
     }
     
@@ -1758,6 +1758,18 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
       (a.nome ?? '').localeCompare(b.nome ?? '', undefined, { sensitivity: 'base' })
     );
   }, [transformedStudents]);
+
+  const rankingStudents = useMemo(() => {
+    return filteredStudents.filter((student) => {
+      const isCompleted = String(student.status || '').toLowerCase() === 'concluida';
+      const hasAnyEvaluation =
+        Number(student.questoes_respondidas ?? 0) > 0 ||
+        Number(student.acertos ?? 0) > 0 ||
+        Number(student.erros ?? 0) > 0 ||
+        Number(student.em_branco ?? 0) > 0;
+      return isCompleted && hasAnyEvaluation;
+    });
+  }, [filteredStudents]);
 
   const buildDisciplineStatsForStudent = useCallback((studentId: string): DisciplineStatsMap | null => {
     const tabelaDetalhada = apiData?.tabela_detalhada as TabelaDetalhada | undefined;
@@ -2421,11 +2433,33 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
                     <div className="text-sm font-medium text-muted-foreground">Participantes</div>
                     <div className="text-2xl font-bold text-green-600">{backendStats.participantes}</div>
                   </div>
-                  <div className="space-y-1">
+                  <div
+                    role="button"
+                    tabIndex={pendingStudents.length > 0 ? 0 : -1}
+                    onClick={() => {
+                      if (pendingStudents.length > 0) setShowPendingStudentsModal(true);
+                    }}
+                    onKeyDown={(e) => {
+                      if (pendingStudents.length === 0) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setShowPendingStudentsModal(true);
+                      }
+                    }}
+                    className={
+                      pendingStudents.length > 0
+                        ? "space-y-1 rounded-lg p-2 -m-2 cursor-pointer hover:bg-red-50/70 dark:hover:bg-red-950/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        : "space-y-1"
+                    }
+                    aria-label="Ver faltosos e pendentes"
+                  >
                     <div className="flex items-center justify-between">
                       <div className="text-sm font-medium text-muted-foreground">Faltosos</div>
                     </div>
                     <div className="text-2xl font-bold text-red-600">{backendStats.ausentes}</div>
+                    {pendingStudents.length > 0 && (
+                      <div className="text-xs text-muted-foreground">Clique para ver a lista</div>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">Nota Geral</div>
@@ -2782,7 +2816,7 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
                   <TabsContent value="ranking" className="space-y-6">
                     {/* Usar sempre a mesma lista da página (tabela/cards): evita ranking vazio ao filtrar por escola/turma/série */}
                     <StudentRanking
-                      students={filteredStudents}
+                      students={rankingStudents}
                       maxStudents={100}
                     />
                   </TabsContent>

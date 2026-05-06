@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,6 +55,39 @@ interface Municipality {
 interface School {
   id: string;
   name: string;
+}
+
+function normalizePreviewText(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/\u00a0/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractPlainText(content?: string): string {
+  if (!content) return '';
+  const source = content
+    .replace(/<img\b[^>]*>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/&nbsp;/gi, ' ');
+
+  if (/<[a-z][\s\S]*>/i.test(source)) {
+    const temp = document.createElement('div');
+    temp.innerHTML = source;
+    return normalizePreviewText(temp.textContent || temp.innerText || '');
+  }
+
+  return normalizePreviewText(source);
+}
+
+function getQuestionPreviewText(question: Question): string {
+  const fromFormatted = extractPlainText(question.formattedText);
+  if (fromFormatted) return fromFormatted;
+  const fromText = extractPlainText(question.text);
+  if (fromText) return fromText;
+  return 'Sem texto disponível';
 }
 
 export function CreateEvaluationModal({
@@ -115,6 +148,10 @@ export function CreateEvaluationModal({
   
   // Estado para rastrear se está navegando (evita dupla navegação)
   const [isNavigating, setIsNavigating] = useState(false);
+  const classNameCollator = useMemo(
+    () => new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' }),
+    []
+  );
 
   // Carregar dados iniciais
   useEffect(() => {
@@ -1909,7 +1946,7 @@ export function CreateEvaluationModal({
                     {!municipality && (
                       <span className="text-sm text-muted-foreground">Selecione um município primeiro</span>
                     )}
-                    {municipality && filteredSchools.length > 0 && (
+                    {municipality && schools.length > 0 && (
                       <Button
                         type="button"
                         variant="outline"
@@ -1931,47 +1968,51 @@ export function CreateEvaluationModal({
                       <AlertCircle className="h-4 w-4 text-muted-foreground" />
                       <span className="text-sm text-muted-foreground">Selecione um município primeiro</span>
                     </div>
-                  ) : filteredSchools.length === 0 ? (
-                    <div className="flex items-center gap-2 p-4 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                      <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-                      <span className="text-sm text-yellow-800 dark:text-yellow-400">
-                        {schoolSearchTerm ? 'Nenhuma escola encontrada com esse termo' : 'Nenhuma escola encontrada para este município'}
-                      </span>
-                    </div>
                   ) : (
                     <>
-                      {/* Busca de escolas */}
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Buscar escolas..."
-                          value={schoolSearchTerm}
-                          onChange={(e) => setSchoolSearchTerm(e.target.value)}
-                          className="pl-10"
-                        />
-                      </div>
-                      
-                      {/* Lista de escolas */}
-                      <div className="grid gap-2 max-h-48 overflow-y-auto border rounded-lg p-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full dark:[&::-webkit-scrollbar-thumb]:bg-gray-700 hover:[&::-webkit-scrollbar-thumb]:bg-gray-400 dark:hover:[&::-webkit-scrollbar-thumb]:bg-gray-600">
-                        {filteredSchools.map((school) => {
-                          const isSelected = selectedSchools.some(s => s.id === school.id);
-                          return (
-                            <div key={school.id} className="flex items-center space-x-2 p-2 hover:bg-muted rounded transition-colors">
-                              <Checkbox
-                                id={`school-${school.id}`}
-                                checked={isSelected}
-                                onCheckedChange={() => handleSchoolToggle(school)}
-                              />
-                              <Label
-                                htmlFor={`school-${school.id}`}
-                                className="flex-1 cursor-pointer"
-                              >
-                                {school.name}
-                              </Label>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      {schools.length > 0 && (
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Buscar escolas..."
+                            value={schoolSearchTerm}
+                            onChange={(e) => setSchoolSearchTerm(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                      )}
+
+                      {filteredSchools.length === 0 ? (
+                        <div className="flex items-center gap-2 p-4 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                          <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                          <span className="text-sm text-yellow-800 dark:text-yellow-400">
+                            {schoolSearchTerm ? 'Nenhuma escola encontrada com esse termo' : 'Nenhuma escola encontrada para este município'}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="max-h-56 overflow-y-auto rounded-lg border p-2 pr-1 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full dark:[&::-webkit-scrollbar-thumb]:bg-gray-700 hover:[&::-webkit-scrollbar-thumb]:bg-gray-400 dark:hover:[&::-webkit-scrollbar-thumb]:bg-gray-600">
+                          <div className="grid gap-2">
+                            {filteredSchools.map((school) => {
+                              const isSelected = selectedSchools.some(s => s.id === school.id);
+                              return (
+                                <div key={school.id} className="flex items-center space-x-2 p-2 hover:bg-muted rounded transition-colors">
+                                  <Checkbox
+                                    id={`school-${school.id}`}
+                                    checked={isSelected}
+                                    onCheckedChange={() => handleSchoolToggle(school)}
+                                  />
+                                  <Label
+                                    htmlFor={`school-${school.id}`}
+                                    className="flex-1 cursor-pointer"
+                                  >
+                                    {school.name}
+                                  </Label>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
 
@@ -2099,6 +2140,8 @@ export function CreateEvaluationModal({
                           // Remover duplicatas (caso uma turma selecionada também esteja disponível)
                           const uniqueClasses = Array.from(
                             new Map(filtered.map(c => [c.id, c])).values()
+                          ).sort((a, b) =>
+                            classNameCollator.compare(a.name || '', b.name || '')
                           );
                           
                           if (uniqueClasses.length === 0) {
@@ -2263,6 +2306,29 @@ export function CreateEvaluationModal({
                                 subjectQuestions.map((question, index) => {
                                   // ✅ CORREÇÃO: Criar chave única combinando ID da questão com ID da disciplina e índice
                                   const uniqueKey = `${subject.id}-${question.id || `temp-${index}`}-${index}`;
+                                  const questionTypeLabel = (() => {
+                                    const rawType = (question.type || '').toString().toLowerCase();
+                                    if (rawType.includes('multiple')) return 'Múltipla Escolha';
+                                    if (rawType.includes('dissert') || rawType.includes('essay') || rawType.includes('open')) return 'Dissertativa';
+                                    if (rawType.includes('true')) return 'Verdadeiro/Falso';
+                                    return question.type || 'Questão';
+                                  })();
+                                  const questionDifficultyLabel = (() => {
+                                    const rawDifficulty = (question.difficulty || '').toString().toLowerCase();
+                                    if (rawDifficulty.includes('abaixo')) return 'Abaixo do Básico';
+                                    if (rawDifficulty.includes('adequado')) return 'Adequado';
+                                    if (rawDifficulty.includes('avanç') || rawDifficulty.includes('avanc')) return 'Avançado';
+                                    if (rawDifficulty.includes('bás') || rawDifficulty.includes('bas')) return 'Básico';
+                                    return question.difficulty || '';
+                                  })();
+                                  const gradeLabel =
+                                    grades.find((g) => g.id === grade)?.name || 'Série não informada';
+                                  const pointsLabel =
+                                    Number((question as unknown as { value?: number }).value) > 0
+                                      ? `${Number((question as unknown as { value?: number }).value)} pt(s)`
+                                      : Number((question as unknown as { points?: number }).points) > 0
+                                        ? `${Number((question as unknown as { points?: number }).points)} pt(s)`
+                                        : null;
                                   return (
                                   <div
                                     key={uniqueKey}
@@ -2275,14 +2341,29 @@ export function CreateEvaluationModal({
                                           {question.title || `Questão ${index + 1}`}
                                         </span>
                                       </div>
-                                      <p className="text-sm text-muted-foreground line-clamp-2">
-                                        {question.text || "Sem texto disponível"}
-                                      </p>
-                                      {question.options && question.options.length > 0 && (
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                          {question.options.length} alternativas
-                                        </p>
-                                      )}
+                                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                        <DisciplineTag
+                                          subjectId={subject.id}
+                                          name={subject.name}
+                                          className="text-[10px]"
+                                        />
+                                        <Badge variant="outline" className="text-[10px]">
+                                          {gradeLabel}
+                                        </Badge>
+                                        {questionDifficultyLabel ? (
+                                          <Badge variant="outline" className="text-[10px]">
+                                            {questionDifficultyLabel}
+                                          </Badge>
+                                        ) : null}
+                                        <Badge variant="outline" className="text-[10px]">
+                                          {questionTypeLabel}
+                                        </Badge>
+                                        {pointsLabel ? (
+                                          <Badge variant="outline" className="text-[10px]">
+                                            {pointsLabel}
+                                          </Badge>
+                                        ) : null}
+                                      </div>
                                     </div>
                                     <div className="flex gap-2">
                                       <Button

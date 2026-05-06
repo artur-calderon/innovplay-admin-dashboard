@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -151,11 +151,16 @@ export default function Turmas({ embedded = false }: TurmasProps) {
   const [viewStudents, setViewStudents] = useState<Student[]>([]);
   /** Aba de escola ativa (modo embedded: turmas separadas por escola) */
   const [activeSchoolTab, setActiveSchoolTab] = useState<string>("");
+  const [showFilters, setShowFilters] = useState(true);
   const [isLoadingViewStudents, setIsLoadingViewStudents] = useState(false);
 
   const { toast } = useToast();
   const { user } = useAuth();
   const canDeleteTurma = user?.role !== "professor";
+  const classNameCollator = useMemo(
+    () => new Intl.Collator("pt-BR", { numeric: true, sensitivity: "base" }),
+    []
+  );
 
   // Carregamento de alunos vinculado à edição foi removido com o botão Editar
 
@@ -633,10 +638,17 @@ export default function Turmas({ embedded = false }: TurmasProps) {
     }
   };
 
-  const filteredTurmas = turmas.filter(turma =>
-    turma.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (turma.school?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (turma.grade?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredTurmas = useMemo(
+    () =>
+      turmas
+        .filter(
+          (turma) =>
+            turma.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (turma.school?.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (turma.grade?.name || "").toLowerCase().includes(searchTerm.toLowerCase())
+        )
+        .sort((a, b) => classNameCollator.compare(a.name || "", b.name || "")),
+    [turmas, searchTerm, classNameCollator]
   );
 
   if (isLoading) {
@@ -708,19 +720,19 @@ export default function Turmas({ embedded = false }: TurmasProps) {
         <></>
       )}
 
+      {embedded && (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowFilters((prev) => !prev)}
+          >
+            {showFilters ? "Ocultar escolas" : "Ver escolas"}
+          </Button>
+        </div>
+      )}
       <div className="flex items-center space-x-2 flex-wrap gap-2">
-        {embedded && (
-          <div className="flex-shrink-0">
-            <CreateClassForm
-              showSchoolSelector={false}
-              schoolId={activeSchoolTab || schools[0]?.id}
-              availableSchools={schools}
-              onSuccess={() => {
-                fetchTurmas();
-              }}
-            />
-          </div>
-        )}
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -734,26 +746,28 @@ export default function Turmas({ embedded = false }: TurmasProps) {
 
       {embedded && schools.length > 0 ? (
         <Tabs value={activeSchoolTab || schools[0]?.id} onValueChange={setActiveSchoolTab} className="w-full">
-          <TabsList className="flex flex-wrap h-auto gap-1 bg-muted/60 p-1 rounded-lg w-full">
-            {schools.map((school) => {
-              const count = filteredTurmas.filter((t) => t.school_id === school.id).length;
-              return (
-                <TabsTrigger
-                  key={school.id}
-                  value={school.id}
-                  className="flex items-start gap-2 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-border rounded-md transition-all"
-                >
-                  <Building className="h-3.5 w-3.5 shrink-0" />
-                  <span className="whitespace-normal break-words max-w-[140px] sm:max-w-[200px] leading-tight">
-                    {school.name}
-                  </span>
-                  <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
-                    {count}
-                  </Badge>
-                </TabsTrigger>
-              );
-            })}
-          </TabsList>
+          {showFilters && (
+            <TabsList className="flex flex-wrap h-auto gap-1 bg-muted/60 p-1 rounded-lg w-full">
+              {schools.map((school) => {
+                const count = filteredTurmas.filter((t) => t.school_id === school.id).length;
+                return (
+                  <TabsTrigger
+                    key={school.id}
+                    value={school.id}
+                    className="flex items-start gap-2 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-border rounded-md transition-all"
+                  >
+                    <Building className="h-3.5 w-3.5 shrink-0" />
+                    <span className="whitespace-normal break-words max-w-[140px] sm:max-w-[200px] leading-tight">
+                      {school.name}
+                    </span>
+                    <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
+                      {count}
+                    </Badge>
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          )}
           {schools.map((school) => {
             const turmasDaEscola = filteredTurmas.filter((t) => t.school_id === school.id);
             return (

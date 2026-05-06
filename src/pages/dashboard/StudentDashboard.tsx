@@ -870,7 +870,14 @@ const StudentDashboard = () => {
           setDashboardRanking(null);
           return;
         }
-        const list = data.ranking;
+        const list = (data.ranking ?? []).filter((r) => {
+          const completedEvaluations = Number(r.completed_evaluations ?? 0);
+          return completedEvaluations > 0;
+        });
+        if (!list.length) {
+          setDashboardRanking(null);
+          return;
+        }
         const currentItem = list.find(
           (r) => String(r.student_id) === String(studentIdToMatch) || String(r.student_id) === String(user.id)
         );

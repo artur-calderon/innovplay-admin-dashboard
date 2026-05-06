@@ -22,7 +22,6 @@ import {
   Users2,
   HelpCircle,
   X,
-  ClipboardCheck,
   BarChart3,
   Calculator,
   Menu,
@@ -318,7 +317,6 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
             { icon: Target, label: "Cálculo de Metas", href: "/app/calculo-metas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
           ]
         },
-        { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: TrendingUp, label: "Evolução", href: "/app/evolucao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         {
