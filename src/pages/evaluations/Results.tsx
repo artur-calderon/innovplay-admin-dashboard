@@ -2433,33 +2433,24 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
                     <div className="text-sm font-medium text-muted-foreground">Participantes</div>
                     <div className="text-2xl font-bold text-green-600">{backendStats.participantes}</div>
                   </div>
-                  <div
-                    role="button"
-                    tabIndex={pendingStudents.length > 0 ? 0 : -1}
-                    onClick={() => {
-                      if (pendingStudents.length > 0) setShowPendingStudentsModal(true);
-                    }}
-                    onKeyDown={(e) => {
-                      if (pendingStudents.length === 0) return;
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        setShowPendingStudentsModal(true);
-                      }
-                    }}
-                    className={
-                      pendingStudents.length > 0
-                        ? "space-y-1 rounded-lg p-2 -m-2 cursor-pointer hover:bg-red-50/70 dark:hover:bg-red-950/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        : "space-y-1"
-                    }
-                    aria-label="Ver faltosos e pendentes"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium text-muted-foreground">Faltosos</div>
+                  <div className="space-y-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-sm font-medium text-muted-foreground leading-tight">
+                        Faltosos /<br />Pendentes
+                      </div>
+                      {pendingStudents.length > 0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowPendingStudentsModal(true)}
+                          className="h-auto p-0 text-sm font-semibold text-red-600 hover:text-red-700 hover:bg-transparent"
+                        >
+                          Ver lista
+                        </Button>
+                      )}
                     </div>
                     <div className="text-2xl font-bold text-red-600">{backendStats.ausentes}</div>
-                    {pendingStudents.length > 0 && (
-                      <div className="text-xs text-muted-foreground">Clique para ver a lista</div>
-                    )}
                   </div>
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">Nota Geral</div>
@@ -2829,7 +2820,7 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
 
       {/* Modal: Alunos Pendentes */}
       <Dialog open={showPendingStudentsModal} onOpenChange={setShowPendingStudentsModal}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogContent className="w-[96vw] max-w-5xl h-[88vh] max-h-[92vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users className="h-5 w-5 text-red-600" />
