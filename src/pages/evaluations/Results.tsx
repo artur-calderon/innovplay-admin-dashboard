@@ -51,6 +51,7 @@ import { DisciplineTables } from "@/components/evaluations/results/DisciplineTab
 import { StudentCard } from "@/components/evaluations/student/StudentCard";
 import { QuestionData as TableQuestionData, DetailedReport as TableDetailedReport } from "@/types/results-table";
 import { generatePendingStudentsPdf } from "@/services/reports/pendingStudentsPdf";
+import { generateRankingPdf } from "@/services/reports/rankingPdf";
 
 // Interfaces para os dados da API - Nova estrutura baseada na implementação real
 interface EvaluationResult {
@@ -1554,7 +1555,11 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
       const geralById = new Map(geralAlunos.map((a) => [a.id, a]));
       studentsMap.forEach((student, studentId) => {
         const geral = geralById.get(studentId);
-        if (!geral) return;
+        if (!geral) {
+          // Linha só por disciplinas sem correspondência na visão geral: não tratar como concluído
+          student.status = 'pendente';
+          return;
+        }
         student.nota = Number(geral.nota_geral ?? student.nota ?? 0);
         student.proficiencia = Number(geral.proficiencia_geral ?? student.proficiencia ?? 0);
         student.classificacao = (geral.nivel_proficiencia_geral ?? student.classificacao) as
@@ -1566,6 +1571,10 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
         student.acertos = Number(geral.total_acertos_geral ?? student.acertos ?? 0);
         student.erros = Number((geral as unknown as { total_erros_geral?: number }).total_erros_geral ?? student.erros ?? 0);
         student.em_branco = Number(geral.total_em_branco_geral ?? student.em_branco ?? 0);
+        student.status =
+          String(geral.status_geral || '').trim().toLowerCase() === 'concluida'
+            ? 'concluida'
+            : 'pendente';
       });
     }
 
@@ -1770,6 +1779,72 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
       return isCompleted && hasAnyEvaluation;
     });
   }, [filteredStudents]);
+
+  const rankingPdfFilterLabels = useMemo(() => {
+    const estadoLabel =
+      selectedState === 'all'
+        ? 'Todos'
+        : (() => {
+            const st = states.find((s) => s.id === selectedState);
+            return st ? `${st.name} (${st.uf})` : selectedState;
+          })();
+    const municipioLabel =
+      selectedMunicipality === 'all'
+        ? 'Todos'
+        : municipalities.find((m) => m.id === selectedMunicipality)?.name ?? selectedMunicipality;
+    const escolaLabel =
+      selectedSchool === 'all'
+        ? 'Todas'
+        : schools.find((s) => s.id === selectedSchool)?.name ?? selectedSchool;
+    const serieLabel =
+      selectedGrade === 'all'
+        ? 'Todas'
+        : grades.find((g) => g.id === selectedGrade)?.name ?? selectedGrade;
+    const turmaLabel =
+      selectedClass === 'all'
+        ? 'Todas'
+        : classes.find((c) => c.id === selectedClass)?.name ?? selectedClass;
+    return {
+      estado: estadoLabel,
+      municipio: municipioLabel,
+      escola: escolaLabel,
+      serie: serieLabel,
+      turma: turmaLabel,
+    };
+  }, [
+    selectedState,
+    selectedMunicipality,
+    selectedSchool,
+    selectedGrade,
+    selectedClass,
+    states,
+    municipalities,
+    schools,
+    grades,
+    classes,
+  ]);
+
+  const handleExportRankingPdf = useCallback(async () => {
+    if (rankingStudents.length === 0) return;
+    try {
+      await generateRankingPdf({
+        context: 'avaliacoes',
+        escopoTitulo: evaluationInfo?.titulo,
+        filterLabels: rankingPdfFilterLabels,
+        students: rankingStudents,
+        maxRows: 100,
+        fileNameBase: `ranking-avaliacoes-${evaluationInfo?.titulo ?? 'resultados'}`,
+      });
+      toast({ title: 'PDF gerado', description: 'O ranking foi exportado com sucesso.' });
+    } catch (e) {
+      console.error(e);
+      toast({
+        title: 'Erro ao gerar PDF',
+        description: 'Não foi possível exportar o ranking. Tente novamente.',
+        variant: 'destructive',
+      });
+    }
+  }, [rankingStudents, rankingPdfFilterLabels, evaluationInfo?.titulo, toast]);
 
   const buildDisciplineStatsForStudent = useCallback((studentId: string): DisciplineStatsMap | null => {
     const tabelaDetalhada = apiData?.tabela_detalhada as TabelaDetalhada | undefined;
@@ -2805,6 +2880,19 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
 
                 {selectedEvaluation !== 'all' && (
                   <TabsContent value="ranking" className="space-y-6">
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={rankingStudents.length === 0}
+                        onClick={() => void handleExportRankingPdf()}
+                      >
+                        <FileText className="h-4 w-4" />
+                        Exportar PDF
+                      </Button>
+                    </div>
                     {/* Usar sempre a mesma lista da página (tabela/cards): evita ranking vazio ao filtrar por escola/turma/série */}
                     <StudentRanking
                       students={rankingStudents}

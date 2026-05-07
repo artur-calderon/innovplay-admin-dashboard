@@ -37,19 +37,21 @@ export function StudentRanking({
   showCoins = false,
   isCompetition = false
 }: StudentRankingProps) {
-  // Separar alunos que participaram da avaliação dos faltosos
+  const normStatus = (s: Student['status'] | undefined) => String(s ?? '').trim().toLowerCase();
+
+  // Separar alunos que participaram da avaliação dos que não concluíram (faltosos / pendente)
   const { completedStudents, absentStudents } = useMemo(() => {
-    const completed = students.filter(student => student.status === 'concluida');
-    const absent = students.filter(student => student.status === 'pendente');
-    
+    const completed = students.filter((student) => normStatus(student.status) === 'concluida');
+    const absent = students.filter((student) => normStatus(student.status) !== 'concluida');
+
     return { completedStudents: completed, absentStudents: absent };
   }, [students]);
 
   // Ordenar alunos por proficiência (maior para menor) ou por posição se for competição
   const rankedStudents = useMemo(() => {
     const sorted = isCompetition && students.some(s => s.posicao !== undefined)
-      ? completedStudents.sort((a, b) => (a.posicao || 999) - (b.posicao || 999))
-      : completedStudents.sort((a, b) => (b.proficiencia || 0) - (a.proficiencia || 0));
+      ? [...completedStudents].sort((a, b) => (a.posicao || 999) - (b.posicao || 999))
+      : [...completedStudents].sort((a, b) => (b.proficiencia || 0) - (a.proficiencia || 0));
     
     return sorted
       .map((student, index) => ({
