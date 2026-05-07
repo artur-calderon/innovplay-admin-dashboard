@@ -1,9 +1,9 @@
 /**
  * Componente de sino de notificações com badge e dropdown.
- * Exibe notificações não lidas e permite redirecionamento para competições.
+ * Exibe avisos (calendário) e competições recentes.
  */
-import React, { useState, useEffect, useCallback } from 'react';
-import { Bell, Trophy, X, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Bell, Trophy, Loader2, Megaphone } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -18,10 +18,14 @@ import { api } from '@/lib/api';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { getFilteredAvisos } from '@/services/avisosApi';
+import type { Aviso } from '@/types/avisos';
+import { computeAvisoUnread } from '@/utils/avisosRead';
+import { useUnreadAvisos, AVISOS_UPDATE_EVENT } from '@/hooks/useUnreadAvisos';
 
 export interface Notification {
   id: string;
-  type: 'competition' | 'evaluation' | 'system' | 'deadline';
+  type: 'competition' | 'evaluation' | 'system' | 'deadline' | 'aviso';
   title: string;
   message: string;
   created_at: string;
@@ -29,131 +33,213 @@ export interface Notification {
   action_url?: string;
   competition_id?: string;
   priority: 'high' | 'medium' | 'low';
+  /** Avisos do calendário: marca leitura via hook + `/calendar/events/:id/read`. */
+  calendarEventId?: string;
+}
+
+const AVISO_PREVIEW_LEN = 220;
+
+async function fetchCompetitionNotifications(userRole: string | undefined): Promise<Notification[]> {
+  const newNotifications: Notification[] = [];
+
+  try {
+    const competitionsRes = await api.get('/competitions/available').catch(() => ({ data: [] }));
+    const competitions = Array.isArray(competitionsRes.data) ? competitionsRes.data : [];
+
+    competitions.forEach((comp: any) => {
+      if (!comp.is_enrolled && comp.enrollment_start) {
+        const enrollmentStart = new Date(comp.enrollment_start).getTime();
+        const now = Date.now();
+        const daysUntilStart = Math.floor((enrollmentStart - now) / (1000 * 60 * 60 * 24));
+
+        if (daysUntilStart >= 0 && daysUntilStart <= 3) {
+          newNotifications.push({
+            id: `competition-${comp.id}-enrollment`,
+            type: 'competition',
+            title: 'Nova competição disponível',
+            message: `"${comp.name}" está aberta para inscrição`,
+            created_at: comp.enrollment_start,
+            is_read: false,
+            action_url:
+              userRole === 'aluno'
+                ? `/aluno/competitions/${comp.id}`
+                : `/app/competitions/${comp.id}`,
+            competition_id: comp.id,
+            priority: daysUntilStart === 0 ? 'high' : 'medium',
+          });
+        }
+      }
+
+      if (comp.application) {
+        const applicationDate = new Date(comp.application).getTime();
+        const now = Date.now();
+        const hoursUntilStart = Math.floor((applicationDate - now) / (1000 * 60 * 60));
+
+        if (comp.is_enrolled && hoursUntilStart >= 0 && hoursUntilStart <= 24) {
+          newNotifications.push({
+            id: `competition-${comp.id}-start`,
+            type: 'competition',
+            title: 'Competição começa em breve',
+            message: `"${comp.name}" começa em ${hoursUntilStart}h`,
+            created_at: comp.application,
+            is_read: false,
+            action_url:
+              userRole === 'aluno'
+                ? `/aluno/competitions/${comp.id}`
+                : `/app/competitions/${comp.id}`,
+            competition_id: comp.id,
+            priority: hoursUntilStart <= 2 ? 'high' : 'medium',
+          });
+        }
+      }
+    });
+
+    newNotifications.sort((a, b) => {
+      const priorityOrder = { high: 0, medium: 1, low: 2 };
+      if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
+        return priorityOrder[a.priority] - priorityOrder[b.priority];
+      }
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  } catch {
+    /* mantém lista vazia */
+  }
+
+  return newNotifications;
 }
 
 export function NotificationBell() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const { isAvisoRead, markAsRead: markAvisoRead } = useUnreadAvisos();
+
+  const [avisosList, setAvisosList] = useState<Aviso[]>([]);
+  const [competitionNotifications, setCompetitionNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [competitionsLoaded, setCompetitionsLoaded] = useState(false);
 
-  const fetchNotifications = useCallback(async () => {
+  const loadAvisos = useCallback(async () => {
     if (!user?.id) {
-      setNotifications([]);
+      setAvisosList([]);
       return;
     }
+    try {
+      const list = await getFilteredAvisos();
+      setAvisosList(list.slice(0, 15));
+    } catch {
+      setAvisosList([]);
+    }
+  }, [user?.id]);
 
+  useEffect(() => {
+    loadAvisos();
+    const onSync = () => loadAvisos();
+    window.addEventListener(AVISOS_UPDATE_EVENT, onSync);
+    return () => window.removeEventListener(AVISOS_UPDATE_EVENT, onSync);
+  }, [loadAvisos]);
+
+  useEffect(() => {
+    setCompetitionsLoaded(false);
+    setCompetitionNotifications([]);
+  }, [user?.id]);
+
+  const avisoNotifications: Notification[] = useMemo(() => {
+    const avisosUrl = user?.role === 'aluno' ? '/aluno/avisos' : '/app/avisos';
+    return avisosList.map((a) => {
+      const preview =
+        a.mensagem.length > AVISO_PREVIEW_LEN
+          ? `${a.mensagem.slice(0, AVISO_PREVIEW_LEN)}…`
+          : a.mensagem;
+      const unread = computeAvisoUnread(a, user?.id, isAvisoRead);
+      return {
+        id: `calendar-aviso-${a.id}`,
+        type: 'aviso' as const,
+        title: a.titulo,
+        message: preview,
+        created_at: a.created_at,
+        is_read: !unread,
+        action_url: avisosUrl,
+        priority: 'high' as const,
+        calendarEventId: a.id,
+      };
+    });
+  }, [avisosList, user?.id, user?.role, isAvisoRead]);
+
+  const notifications = useMemo(() => {
+    const merged = [...avisoNotifications, ...competitionNotifications].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+    return merged.slice(0, 20);
+  }, [avisoNotifications, competitionNotifications]);
+
+  const fetchPanelData = useCallback(async () => {
+    if (!user?.id) {
+      setCompetitionNotifications([]);
+      return;
+    }
     try {
       setIsLoading(true);
-      
-      // Buscar competições recentes e criar notificações
-      // TODO: Substituir por endpoint real de notificações quando disponível
-      const competitionsRes = await api.get('/competitions/available').catch(() => ({ data: [] }));
-      const competitions = Array.isArray(competitionsRes.data) ? competitionsRes.data : [];
-
-      const newNotifications: Notification[] = [];
-
-      // Criar notificações para competições que começam em breve
-      competitions.forEach((comp: any) => {
-        if (!comp.is_enrolled && comp.enrollment_start) {
-          const enrollmentStart = new Date(comp.enrollment_start).getTime();
-          const now = Date.now();
-          const daysUntilStart = Math.floor((enrollmentStart - now) / (1000 * 60 * 60 * 24));
-
-          // Notificar sobre competições que começam nos próximos 3 dias
-          if (daysUntilStart >= 0 && daysUntilStart <= 3) {
-            newNotifications.push({
-              id: `competition-${comp.id}-enrollment`,
-              type: 'competition',
-              title: 'Nova competição disponível',
-              message: `"${comp.name}" está aberta para inscrição`,
-              created_at: comp.enrollment_start,
-              is_read: false,
-              action_url: user.role === 'aluno' 
-                ? `/aluno/competitions/${comp.id}` 
-                : `/app/competitions/${comp.id}`,
-              competition_id: comp.id,
-              priority: daysUntilStart === 0 ? 'high' : 'medium',
-            });
-          }
-        }
-
-        // Notificar sobre competições que começam hoje
-        if (comp.application) {
-          const applicationDate = new Date(comp.application).getTime();
-          const now = Date.now();
-          const hoursUntilStart = Math.floor((applicationDate - now) / (1000 * 60 * 60));
-
-          if (comp.is_enrolled && hoursUntilStart >= 0 && hoursUntilStart <= 24) {
-            newNotifications.push({
-              id: `competition-${comp.id}-start`,
-              type: 'competition',
-              title: 'Competição começa em breve',
-              message: `"${comp.name}" começa em ${hoursUntilStart}h`,
-              created_at: comp.application,
-              is_read: false,
-              action_url: user.role === 'aluno' 
-                ? `/aluno/competitions/${comp.id}` 
-                : `/app/competitions/${comp.id}`,
-              competition_id: comp.id,
-              priority: hoursUntilStart <= 2 ? 'high' : 'medium',
-            });
-          }
-        }
-      });
-
-      // Ordenar por prioridade e data
-      newNotifications.sort((a, b) => {
-        const priorityOrder = { high: 0, medium: 1, low: 2 };
-        if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
-          return priorityOrder[a.priority] - priorityOrder[b.priority];
-        }
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      });
-
-      setNotifications(newNotifications);
+      await loadAvisos();
+      try {
+        const comps = await fetchCompetitionNotifications(user.role);
+        setCompetitionNotifications(comps);
+      } catch (compErr) {
+        console.error('Erro ao buscar competições (notificações):', compErr);
+        setCompetitionNotifications([]);
+      }
     } catch (error) {
       console.error('Erro ao buscar notificações:', error);
-      setNotifications([]);
+      setCompetitionNotifications([]);
     } finally {
+      setCompetitionsLoaded(true);
       setIsLoading(false);
     }
-  }, [user?.id, user?.role]);
+  }, [user?.id, user?.role, loadAvisos]);
 
-  // Buscar notificações apenas quando o popover é aberto,
-  // para evitar chamadas constantes à API (especialmente em caso de erro 500).
   useEffect(() => {
     if (isOpen) {
-      fetchNotifications();
+      fetchPanelData();
     }
-  }, [isOpen, fetchNotifications]);
+  }, [isOpen, fetchPanelData]);
 
-  const markAsRead = useCallback(async (notificationId: string) => {
-    setNotifications(prev =>
-      prev.map(notif =>
-        notif.id === notificationId ? { ...notif, is_read: true } : notif
-      )
+  const avisosUnreadCount = useMemo(
+    () => avisosList.filter((a) => computeAvisoUnread(a, user?.id, isAvisoRead)).length,
+    [avisosList, user?.id, isAvisoRead]
+  );
+
+  const competitionUnreadCount = competitionNotifications.filter((n) => !n.is_read).length;
+
+  const unreadCount =
+    avisosUnreadCount + (competitionsLoaded ? competitionUnreadCount : 0);
+
+  const markCompetitionAsRead = useCallback((notificationId: string) => {
+    setCompetitionNotifications((prev) =>
+      prev.map((notif) => (notif.id === notificationId ? { ...notif, is_read: true } : notif))
     );
-
-    // TODO: Chamar API para marcar como lida quando endpoint estiver disponível
-    // await api.patch(`/notifications/${notificationId}`, { is_read: true });
   }, []);
 
-  const handleNotificationClick = useCallback((notification: Notification) => {
-    markAsRead(notification.id);
-    if (notification.action_url) {
-      navigate(notification.action_url);
-      setIsOpen(false);
-    }
-  }, [markAsRead, navigate]);
-
-  const unreadCount = notifications.filter(n => !n.is_read).length;
+  const handleNotificationClick = useCallback(
+    (notification: Notification) => {
+      if (notification.calendarEventId) {
+        markAvisoRead(notification.calendarEventId);
+      } else {
+        markCompetitionAsRead(notification.id);
+      }
+      if (notification.action_url) {
+        navigate(notification.action_url);
+        setIsOpen(false);
+      }
+    },
+    [markAvisoRead, markCompetitionAsRead, navigate]
+  );
 
   const getNotificationIcon = (type: Notification['type']) => {
     switch (type) {
       case 'competition':
         return <Trophy className="h-4 w-4" />;
+      case 'aviso':
+        return <Megaphone className="h-4 w-4" />;
       default:
         return <Bell className="h-4 w-4" />;
     }
@@ -169,6 +255,9 @@ export function NotificationBell() {
       return 'há pouco tempo';
     }
   };
+
+  const emptyPanel =
+    !isLoading && competitionsLoaded && notifications.length === 0;
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -203,7 +292,7 @@ export function NotificationBell() {
             <div className="flex items-center justify-center p-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : notifications.length === 0 ? (
+          ) : emptyPanel ? (
             <div className="flex flex-col items-center justify-center p-8 text-center">
               <Bell className="h-12 w-12 text-muted-foreground mb-2 opacity-50" />
               <p className="text-sm text-muted-foreground">
@@ -215,6 +304,7 @@ export function NotificationBell() {
               {notifications.map((notification) => (
                 <button
                   key={notification.id}
+                  type="button"
                   onClick={() => handleNotificationClick(notification)}
                   className={cn(
                     "w-full text-left p-4 hover:bg-muted/50 transition-colors",
@@ -225,6 +315,7 @@ export function NotificationBell() {
                     <div className={cn(
                       "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
                       notification.type === 'competition' && "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+                      notification.type === 'aviso' && "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200",
                       notification.type === 'evaluation' && "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
                       notification.type === 'system' && "bg-gray-100 text-gray-700 dark:bg-gray-900/40 dark:text-gray-300",
                       notification.type === 'deadline' && "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"

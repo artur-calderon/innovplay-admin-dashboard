@@ -58,6 +58,7 @@ import { Button } from "@/components/ui/button";
 import { useGamesCount } from "@/hooks/useGamesCount";
 import { useOpenCompetitionsCount } from "@/hooks/useOpenCompetitionsCount";
 import { DashboardApiService } from "@/services/dashboardApi";
+import { AVISOS_UPDATE_EVENT } from "@/hooks/useUnreadAvisos";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getRoleDisplayName } from "@/lib/constants";
 import { AvatarPreview } from "@/components/profile/AvatarPreview";
@@ -153,6 +154,12 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
     };
 
     if (user.id) loadAvisosQuantidade();
+
+    const onAvisosSync = () => {
+      if (user.id) loadAvisosQuantidade();
+    };
+    window.addEventListener(AVISOS_UPDATE_EVENT, onAvisosSync);
+    return () => window.removeEventListener(AVISOS_UPDATE_EVENT, onAvisosSync);
   }, [user.id, user.role]);
 
   useEffect(() => {

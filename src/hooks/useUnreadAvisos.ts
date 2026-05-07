@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/authContext';
+import { markAvisoReadOnServer, markManyAvisosReadOnServer } from '@/services/avisosApi';
 
-// Evento customizado para sincronizar entre componentes
-const AVISOS_UPDATE_EVENT = 'avisos-update';
+/** Disparado ao atualizar estado de leitura (local/sync). Outros componentes podem ouvir este nome. */
+export const AVISOS_UPDATE_EVENT = 'avisos-update';
 
 /**
  * Hook para gerenciar avisos não lidos
@@ -73,6 +74,9 @@ export function useUnreadAvisos() {
       saveToLocalStorage(newSet);
       return newSet;
     });
+    markAvisoReadOnServer(avisoId).catch(() => {
+      /* leitura local já aplicada */
+    });
   }, [saveToLocalStorage]);
 
   /**
@@ -116,6 +120,9 @@ export function useUnreadAvisos() {
    */
   const markAllAsRead = useCallback((avisoIds: string[]) => {
     markMultipleAsRead(avisoIds);
+    markManyAvisosReadOnServer(avisoIds).catch(() => {
+      /* leitura local já aplicada */
+    });
   }, [markMultipleAsRead]);
 
   return {

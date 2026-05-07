@@ -10,12 +10,13 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Send, AlertCircle, Info, Globe, Building2, School, Check, ChevronsUpDown, Users, MapPin } from 'lucide-react';
+import { Loader2, Send, AlertCircle, Info, Building2, School, Check, ChevronsUpDown, Users, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import type { CreateAvisoDTO, AvisoDestinatarios } from '@/types/avisos';
-import { canSendToAll, canSelectMunicipality, canSelectSchool, getScopeDescription } from '@/utils/avisosPermissions';
+import type { CreateAvisoDTO, CreateAvisoDestinatarios } from '@/types/avisos';
+import { createAviso as createAvisoApi } from '@/services/avisosApi';
+import { canSelectMunicipality, canSelectSchool, getScopeDescription } from '@/utils/avisosPermissions';
 
 interface CreateAvisoFormProps {
   userRole: string;
@@ -53,7 +54,7 @@ export function CreateAvisoForm({
   // Estados do formulário
   const [titulo, setTitulo] = useState('');
   const [mensagem, setMensagem] = useState('');
-  const [destinatarioTipo, setDestinatarioTipo] = useState<'todos' | 'municipio' | 'escola'>('todos');
+  const [destinatarioTipo, setDestinatarioTipo] = useState<'municipio' | 'escola'>('municipio');
   const [selectedMunicipioId, setSelectedMunicipioId] = useState<string>('');
   const [selectedEscolaId, setSelectedEscolaId] = useState<string>('');
 
@@ -68,7 +69,6 @@ export function CreateAvisoForm({
 
   // Permissões do usuário
   const permissions = {
-    canSendToAll: canSendToAll(userRole),
     canSelectMunicipality: canSelectMunicipality(userRole),
     canSelectSchool: canSelectSchool(userRole),
   };
@@ -116,6 +116,8 @@ export function CreateAvisoForm({
     } else if (userRole === 'tecadm') {
       setDestinatarioTipo('municipio');
       setSelectedMunicipioId(userMunicipioId || '');
+    } else if (userRole === 'admin') {
+      setDestinatarioTipo('municipio');
     }
   }, [userRole, userEscolaId, userMunicipioId]);
 
@@ -224,20 +226,15 @@ export function CreateAvisoForm({
 
   // Estatísticas para preview
   const previewStats = useMemo(() => {
-    if (destinatarioTipo === 'todos') {
-      return {
-        alcance: 'Global',
-        descricao: 'Todos os usuários do sistema',
-        icon: Globe,
-      };
-    } else if (destinatarioTipo === 'municipio' && selectedMunicipio) {
+    if (destinatarioTipo === 'municipio' && selectedMunicipio) {
       const escolasDoMunicipio = schools.filter(s => s.city_id === selectedMunicipioId).length;
       return {
         alcance: selectedMunicipio.name,
         descricao: `${escolasDoMunicipio} escola${escolasDoMunicipio !== 1 ? 's' : ''} no município`,
         icon: Building2,
       };
-    } else if (destinatarioTipo === 'escola' && selectedEscola) {
+    }
+    if (destinatarioTipo === 'escola' && selectedEscola) {
       return {
         alcance: selectedEscola.name || selectedEscola.nome || 'Escola',
         descricao: escolaMunicipio ? `${escolaMunicipio.name} - ${escolaMunicipio.state}` : 'Município não identificado',
@@ -255,17 +252,20 @@ export function CreateAvisoForm({
     setIsSubmitting(true);
 
     try {
-      // Montar estrutura de destinatários
-      const destinatarios: AvisoDestinatarios = {
-        tipo: destinatarioTipo,
-      };
+      let destinatarios: CreateAvisoDestinatarios;
 
       if (destinatarioTipo === 'municipio') {
-        destinatarios.municipio_id = selectedMunicipioId;
-        destinatarios.municipio_nome = selectedMunicipio?.name || '';
-      } else if (destinatarioTipo === 'escola') {
-        destinatarios.escola_id = selectedEscolaId;
-        destinatarios.escola_nome = selectedEscola?.name || selectedEscola?.nome || '';
+        destinatarios = {
+          tipo: 'municipio',
+          municipio_id: selectedMunicipioId,
+          municipio_nome: selectedMunicipio?.name || '',
+        };
+      } else {
+        destinatarios = {
+          tipo: 'escola',
+          escola_id: selectedEscolaId,
+          escola_nome: selectedEscola?.name || selectedEscola?.nome || '',
+        };
       }
 
       const avisoData: CreateAvisoDTO = {
@@ -274,20 +274,12 @@ export function CreateAvisoForm({
         destinatarios,
       };
 
-      // TODO: Integrar com API quando disponível
-      // const response = await createAviso(avisoData);
-      
-      console.log('Aviso a ser criado:', avisoData);
-
-      toast({
-        title: 'Aviso criado com sucesso!',
-        description: 'O aviso foi publicado e está visível para os destinatários.',
-      });
+      await createAvisoApi(avisoData);
 
       // Limpar formulário
       setTitulo('');
       setMensagem('');
-      setDestinatarioTipo(userRole === 'diretor' ? 'escola' : 'todos');
+      setDestinatarioTipo(userRole === 'diretor' ? 'escola' : 'municipio');
       setSelectedMunicipioId('');
       setSelectedEscolaId('');
 
@@ -359,29 +351,22 @@ export function CreateAvisoForm({
           <div className="space-y-4 p-4 border rounded-lg bg-muted">
             <Label className="text-base font-semibold">Destinatários</Label>
 
-            {/* Admin - pode escolher entre todos, município ou escola */}
+            {/* Admin — município ou escola */}
             {userRole === 'admin' && (
               <RadioGroup 
                 value={destinatarioTipo} 
-                onValueChange={(value: 'todos' | 'municipio' | 'escola') => setDestinatarioTipo(value)}
+                onValueChange={(value: 'municipio' | 'escola') => setDestinatarioTipo(value)}
               >
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="todos" id="todos" />
-                  <Label htmlFor="todos" className="flex items-center gap-2 cursor-pointer font-normal">
-                    <Globe className="w-4 h-4" />
-                    Todos os usuários
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="municipio" id="municipio" />
-                  <Label htmlFor="municipio" className="flex items-center gap-2 cursor-pointer font-normal">
+                  <RadioGroupItem value="municipio" id="municipio-admin" />
+                  <Label htmlFor="municipio-admin" className="flex items-center gap-2 cursor-pointer font-normal">
                     <Building2 className="w-4 h-4" />
                     Município específico
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="escola" id="escola" />
-                  <Label htmlFor="escola" className="flex items-center gap-2 cursor-pointer font-normal">
+                  <RadioGroupItem value="escola" id="escola-admin" />
+                  <Label htmlFor="escola-admin" className="flex items-center gap-2 cursor-pointer font-normal">
                     <School className="w-4 h-4" />
                     Escola específica
                   </Label>
@@ -396,15 +381,15 @@ export function CreateAvisoForm({
                 onValueChange={(value: 'municipio' | 'escola') => setDestinatarioTipo(value)}
               >
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="municipio" id="municipio" />
-                  <Label htmlFor="municipio" className="flex items-center gap-2 cursor-pointer font-normal">
+                  <RadioGroupItem value="municipio" id="municipio-tecadm" />
+                  <Label htmlFor="municipio-tecadm" className="flex items-center gap-2 cursor-pointer font-normal">
                     <Building2 className="w-4 h-4" />
                     Todo o município
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="escola" id="escola" />
-                  <Label htmlFor="escola" className="flex items-center gap-2 cursor-pointer font-normal">
+                  <RadioGroupItem value="escola" id="escola-tecadm" />
+                  <Label htmlFor="escola-tecadm" className="flex items-center gap-2 cursor-pointer font-normal">
                     <School className="w-4 h-4" />
                     Escola específica
                   </Label>
@@ -609,20 +594,23 @@ export function CreateAvisoForm({
           {previewStats && (
             <>
               <Separator />
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950/30">
                 <div className="flex items-start gap-3">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <previewStats.icon className="w-5 h-5 text-blue-600" />
+                  <div className="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/50">
+                    <previewStats.icon className="w-5 h-5 text-blue-700 dark:text-blue-300" />
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <Users className="w-4 h-4 text-blue-600" />
-                      <h4 className="font-semibold text-blue-900">Este aviso será enviado para:</h4>
+                      <Users className="w-4 h-4 text-blue-700 dark:text-blue-300" />
+                      <h4 className="font-semibold text-blue-900 dark:text-blue-100">Este aviso será enviado para:</h4>
                     </div>
-                    <p className="text-blue-800 font-medium">{previewStats.alcance}</p>
-                    <p className="text-sm text-blue-600 mt-1">{previewStats.descricao}</p>
+                    <p className="font-medium text-blue-800 dark:text-blue-100">{previewStats.alcance}</p>
+                    <p className="mt-1 text-sm text-blue-700 dark:text-blue-300">{previewStats.descricao}</p>
                   </div>
-                  <Badge variant="secondary" className="bg-blue-200 text-blue-800">
+                  <Badge
+                    variant="secondary"
+                    className="bg-blue-200 text-blue-800 dark:bg-blue-900/60 dark:text-blue-100"
+                  >
                     Preview
                   </Badge>
                 </div>
@@ -638,7 +626,7 @@ export function CreateAvisoForm({
               onClick={() => {
                 setTitulo('');
                 setMensagem('');
-                setDestinatarioTipo(userRole === 'diretor' ? 'escola' : 'todos');
+                setDestinatarioTipo(userRole === 'diretor' ? 'escola' : 'municipio');
                 setSelectedMunicipioId('');
                 setSelectedEscolaId('');
               }}

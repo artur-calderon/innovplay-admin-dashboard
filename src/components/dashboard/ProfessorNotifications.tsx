@@ -16,6 +16,8 @@ import {
   ExternalLink
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { getFilteredAvisos } from "@/services/avisosApi";
+import { CalendarApi } from "@/services/calendarApi";
 import { useAuth } from "@/context/authContext";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -31,6 +33,8 @@ interface Notification {
   action_text?: string;
   priority: 'high' | 'medium' | 'low';
   category: 'evaluation' | 'student' | 'system' | 'deadline';
+  /** Quando definido, a notificação vem da API de calendário (avisos); marcar como lida via `/calendar/events/:id/read`. */
+  calendarEventId?: string;
 }
 
 export default function ProfessorNotifications() {
@@ -63,6 +67,33 @@ export default function ProfessorNotifications() {
 
     const generateSmartNotifications = async () => {
       try {
+        let avisoNotifs: Notification[] = [];
+        try {
+          const avisosLista = await getFilteredAvisos();
+          avisoNotifs = avisosLista.slice(0, 15).map((a) => {
+            const preview =
+              a.mensagem.length > 220 ? `${a.mensagem.slice(0, 220)}…` : a.mensagem;
+            const mine =
+              !!user?.id && !!a.autor_id && String(a.autor_id) === String(user.id);
+            const lidoServidor = a.readOnServer === true;
+            return {
+              id: `calendar-aviso-${a.id}`,
+              type: 'info' as const,
+              title: a.titulo,
+              message: preview,
+              created_at: a.created_at,
+              is_read: mine || lidoServidor,
+              action_url: user?.role === 'aluno' ? '/aluno/avisos' : '/app/avisos',
+              action_text: 'Abrir avisos',
+              priority: 'high' as const,
+              category: 'system' as const,
+              calendarEventId: a.id,
+            };
+          });
+        } catch {
+          avisoNotifs = [];
+        }
+
         const [evaluationsRes, studentsRes] = await Promise.allSettled([
           api.get("/test/"),
           api.get("/students"),
@@ -148,7 +179,10 @@ export default function ProfessorNotifications() {
           }
         }
 
-        setNotifications(smartNotifications.slice(0, 5));
+        const merged = [...avisoNotifs, ...smartNotifications].sort(
+          (x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime()
+        );
+        setNotifications(merged.slice(0, 8));
       } catch (error) {
         console.error("Erro ao gerar notificações inteligentes:", error);
         toast({
@@ -230,21 +264,24 @@ export default function ProfessorNotifications() {
     }
   };
 
-  const markAsRead = async (notificationId: string) => {
+  const markAsRead = async (notification: Notification) => {
     try {
-      await api.patch(`/notifications/${notificationId}`, { is_read: true });
+      if (notification.calendarEventId) {
+        await CalendarApi.markRead(notification.calendarEventId);
+      } else {
+        await api.patch(`/notifications/${notification.id}`, { is_read: true });
+      }
       setNotifications(prev => 
         prev.map(notif => 
-          notif.id === notificationId 
+          notif.id === notification.id 
             ? { ...notif, is_read: true }
             : notif
         )
       );
     } catch (error) {
-      // Silently fail - just update locally
       setNotifications(prev => 
         prev.map(notif => 
-          notif.id === notificationId 
+          notif.id === notification.id 
             ? { ...notif, is_read: true }
             : notif
         )
@@ -353,7 +390,7 @@ export default function ProfessorNotifications() {
                       size="sm"
                       variant="ghost"
                       className="h-6 w-6 p-0"
-                      onClick={() => markAsRead(notification.id)}
+                      onClick={() => markAsRead(notification)}
                     >
                       <X className="h-3 w-3" />
                     </Button>

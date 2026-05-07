@@ -7,11 +7,13 @@ import { Button } from '@/components/ui/button';
 import { AlertCircle, RefreshCw, Plus, Eye, CheckCheck } from 'lucide-react';
 import { AvisosList } from '@/components/avisos/AvisosList';
 import { CreateAvisoForm } from '@/components/avisos/CreateAvisoForm';
-import { getFilteredAvisos } from '@/services/avisosApi';
+import { deleteAviso, getFilteredAvisos, updateAviso } from '@/services/avisosApi';
 import { canCreateAvisos } from '@/utils/avisosPermissions';
 import { useToast } from '@/hooks/use-toast';
-import { useUnreadAvisos } from '@/hooks/useUnreadAvisos';
-import type { Aviso, AvisosFilters } from '@/types/avisos';
+import { useUnreadAvisos, AVISOS_UPDATE_EVENT } from '@/hooks/useUnreadAvisos';
+import type { Aviso, CreateAvisoDTO } from '@/types/avisos';
+import { computeAvisoUnread } from '@/utils/avisosRead';
+import { CalendarApi } from '@/services/calendarApi';
 
 export default function Avisos() {
   const { user } = useAuth();
@@ -24,32 +26,48 @@ export default function Avisos() {
   const canCreate = canCreateAvisos(user.role);
 
   // Hook para gerenciar avisos não lidos
-  const { getUnreadCount, markAllAsRead } = useUnreadAvisos();
+  const { isAvisoRead, markAllAsRead } = useUnreadAvisos();
+  const [escolaContextId, setEscolaContextId] = useState<string | undefined>(undefined);
 
   // Calcular avisos não lidos
   const unreadCount = useMemo(() => {
-    const avisoIds = avisos.map(a => a.id);
-    return getUnreadCount(avisoIds);
-  }, [avisos, getUnreadCount]);
+    return avisos.filter((a) =>
+      computeAvisoUnread(a, user.id, (id) => isAvisoRead(id))
+    ).length;
+  }, [avisos, isAvisoRead, user.id]);
 
   // Buscar avisos na montagem e quando alternar tabs
   useEffect(() => {
     loadAvisos();
   }, [user.id, user.role]);
 
+  useEffect(() => {
+    const loadEscola = async () => {
+      if (!['diretor', 'coordenador'].includes(user.role)) {
+        setEscolaContextId(undefined);
+        return;
+      }
+      try {
+        const targets = await CalendarApi.getTargets();
+        const escolaIds = [
+          ...new Set(
+            (targets.turmas ?? [])
+              .map((t) => t.escola_id)
+              .filter((id): id is string => Boolean(id))
+          ),
+        ];
+        setEscolaContextId(escolaIds[0]);
+      } catch {
+        setEscolaContextId(undefined);
+      }
+    };
+    if (user.id) loadEscola();
+  }, [user.id, user.role]);
+
   const loadAvisos = async () => {
     setIsLoading(true);
     try {
-      // TODO: Buscar IDs reais do contexto do usuário quando integrar com API
-      const filters: AvisosFilters = {
-        role: user.role,
-        user_id: user.id,
-        // Estes valores virão do contexto do usuário quando a API estiver pronta
-        municipio_id: user.role === 'tecadm' ? 'mun-001' : undefined,
-        escola_id: ['diretor', 'coordenador', 'professor', 'aluno'].includes(user.role) ? 'escola-001' : undefined,
-      };
-
-      const data = await getFilteredAvisos(filters);
+      const data = await getFilteredAvisos();
       setAvisos(data);
     } catch (error) {
       console.error('Erro ao carregar avisos:', error);
@@ -64,10 +82,9 @@ export default function Avisos() {
   };
 
   const handleAvisoCreated = () => {
-    // Recarregar avisos após criar um novo
     loadAvisos();
-    // Voltar para tab de visualização
     setActiveTab('visualizar');
+    window.dispatchEvent(new CustomEvent(AVISOS_UPDATE_EVENT));
     toast({
       title: 'Sucesso',
       description: 'Aviso publicado com sucesso!',
@@ -76,6 +93,18 @@ export default function Avisos() {
 
   const handleRefresh = () => {
     loadAvisos();
+  };
+
+  const handleEditAviso = async (id: string, data: Partial<CreateAvisoDTO>) => {
+    await updateAviso(id, data);
+    await loadAvisos();
+    window.dispatchEvent(new CustomEvent(AVISOS_UPDATE_EVENT));
+  };
+
+  const handleDeleteAviso = async (id: string) => {
+    await deleteAviso(id);
+    await loadAvisos();
+    window.dispatchEvent(new CustomEvent(AVISOS_UPDATE_EVENT));
   };
 
   const handleMarkAllAsRead = () => {
@@ -157,7 +186,12 @@ export default function Avisos() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <AvisosList avisos={avisos} isLoading={isLoading} />
+                <AvisosList
+                  avisos={avisos}
+                  isLoading={isLoading}
+                  onEditAviso={handleEditAviso}
+                  onDeleteAviso={handleDeleteAviso}
+                />
               </CardContent>
             </Card>
           </TabsContent>
@@ -166,9 +200,8 @@ export default function Avisos() {
             <CreateAvisoForm
               userRole={user.role}
               userId={user.id}
-              // TODO: Passar IDs reais quando integrar com API
-              userMunicipioId={user.role === 'tecadm' ? 'mun-001' : undefined}
-              userEscolaId={['diretor', 'coordenador'].includes(user.role) ? 'escola-001' : undefined}
+              userMunicipioId={user.role === 'tecadm' ? user.city_id : undefined}
+              userEscolaId={escolaContextId}
               onSuccess={handleAvisoCreated}
             />
           </TabsContent>
@@ -183,7 +216,12 @@ export default function Avisos() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <AvisosList avisos={avisos} isLoading={isLoading} />
+            <AvisosList
+              avisos={avisos}
+              isLoading={isLoading}
+              onEditAviso={handleEditAviso}
+              onDeleteAviso={handleDeleteAviso}
+            />
           </CardContent>
         </Card>
       )}
