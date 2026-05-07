@@ -69,6 +69,23 @@ export default function TakeEvaluation() {
     // ✅ NOVO: Manter referência às questões originais para mapeamento correto
     const [originalQuestions, setOriginalQuestions] = useState<Question[]>([]);
     const [showCompetitionSuccessModal, setShowCompetitionSuccessModal] = useState(false);
+    const [isAutoAdvanceEnabled, setIsAutoAdvanceEnabled] = useState(true);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const saved = window.localStorage.getItem("take-evaluation:auto-advance-enabled");
+        if (saved != null) {
+            setIsAutoAdvanceEnabled(saved === "true");
+        }
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        window.localStorage.setItem(
+            "take-evaluation:auto-advance-enabled",
+            String(isAutoAdvanceEnabled)
+        );
+    }, [isAutoAdvanceEnabled]);
 
     // ✅ NOVO: Função para mapear resposta da interface para letra original
     const mapAnswerToOriginalLetter = useCallback((questionId: string, selectedText: string | string[]): string => {
@@ -1092,19 +1109,30 @@ export default function TakeEvaluation() {
                                                     )}
                                                 </div>
                                             </div>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    setShowFullscreenQuestion(true);
-                                                }}
-                                                className="h-7 w-7 sm:h-8 sm:w-8 p-0 flex-shrink-0"
-                                                title="Visualizar questão em tela cheia"
-                                            >
-                                                <Maximize2 className="h-3 w-3 sm:h-4 sm:w-4" />
-                                            </Button>
+                                            <div className="flex items-center gap-2">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => setIsAutoAdvanceEnabled((prev) => !prev)}
+                                                    className="h-7 px-2 sm:h-8 sm:px-3 text-[10px] sm:text-xs font-semibold"
+                                                    title={isAutoAdvanceEnabled ? "Desativar avanço automático" : "Ativar avanço automático"}
+                                                >
+                                                    {isAutoAdvanceEnabled ? "Auto avanço: ON" : "Auto avanço: OFF"}
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        setShowFullscreenQuestion(true);
+                                                    }}
+                                                    className="h-7 w-7 sm:h-8 sm:w-8 p-0 flex-shrink-0"
+                                                    title="Visualizar questão em tela cheia"
+                                                >
+                                                    <Maximize2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                                                </Button>
+                                            </div>
                                         </div>
                                     </CardHeader>
                                     <CardContent className="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8 md:space-y-10 dark:bg-card">
@@ -1166,6 +1194,7 @@ export default function TakeEvaluation() {
 
                                                         // Avanço automático
                                                         if (
+                                                            isAutoAdvanceEnabled &&
                                                             ['multiple_choice', 'multipleChoice', 'true_false', 'truefalse'].includes(
                                                                 currentQuestion.type,
                                                             ) &&
@@ -1732,6 +1761,16 @@ export default function TakeEvaluation() {
                                    <h3 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-foreground mb-3 sm:mb-4 md:mb-6 sticky top-0 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 dark:from-purple-950/30 dark:via-blue-950/30 dark:to-indigo-950/30 pb-2 z-10">
                                        Alternativas:
                                    </h3>
+                                   <div className="mb-3">
+                                       <Button
+                                           variant="outline"
+                                           size="sm"
+                                           onClick={() => setIsAutoAdvanceEnabled((prev) => !prev)}
+                                           className="h-8 px-3 text-xs font-semibold"
+                                       >
+                                           {isAutoAdvanceEnabled ? "Auto avanço: ON" : "Auto avanço: OFF"}
+                                       </Button>
+                                   </div>
                                    <div className="space-y-3 sm:space-y-4">
                                        <QuestionOptions
                                            question={currentQuestion}
@@ -1762,7 +1801,10 @@ export default function TakeEvaluation() {
                                                                setTimeout(() => {
                                                                    setShowSubmitDialog(true);
                                                                }, 100);
-                                                           } else if (currentQuestionIndex < shuffledQuestions.length - 1) {
+                                                          } else if (
+                                                              isAutoAdvanceEnabled &&
+                                                              currentQuestionIndex < shuffledQuestions.length - 1
+                                                          ) {
                                                                // Não é a última questão - navegar para a próxima
                                                                navigateToQuestion(currentQuestionIndex + 1);
                                                            }

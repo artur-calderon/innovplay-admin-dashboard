@@ -9,41 +9,31 @@ export const canCreateAvisos = (role: string): boolean => {
 };
 
 /**
- * Verifica se o usuário pode enviar avisos para todos
- */
-export const canSendToAll = (role: string): boolean => {
-  return role === 'admin';
-};
-
-/**
- * Verifica se o usuário pode selecionar município
+ * Apenas admin escolhe o município alvo explicitamente no formulário de aviso.
  */
 export const canSelectMunicipality = (role: string): boolean => {
   return role === 'admin';
 };
 
 /**
- * Verifica se o usuário pode selecionar escola
+ * Admin ou Tec adm podem endereçar aviso a uma escola específica.
  */
 export const canSelectSchool = (role: string): boolean => {
-  const allowedRoles = ['admin', 'tecadm'];
-  return allowedRoles.includes(role);
+  return role === 'admin' || role === 'tecadm';
 };
 
 /**
- * Retorna o escopo de visualização de avisos do usuário
+ * Escopo de visualização (nunca global no produto atual).
  */
-export const getAvisosScope = (role: string): 'todos' | 'municipio' | 'escola' => {
+export const getAvisosScope = (role: string): 'municipio' | 'escola' => {
   switch (role) {
     case 'admin':
-      return 'todos';
     case 'tecadm':
       return 'municipio';
     case 'diretor':
     case 'coordenador':
     case 'professor':
     case 'aluno':
-      return 'escola';
     default:
       return 'escola';
   }
@@ -55,7 +45,6 @@ export const getAvisosScope = (role: string): 'todos' | 'municipio' | 'escola' =
 export const getAvisosPermissions = (role: string): AvisosPermissions => {
   return {
     canCreate: canCreateAvisos(role),
-    canSendToAll: canSendToAll(role),
     canSelectMunicipality: canSelectMunicipality(role),
     canSelectSchool: canSelectSchool(role),
     scope: getAvisosScope(role),
@@ -68,13 +57,12 @@ export const getAvisosPermissions = (role: string): AvisosPermissions => {
 export const getScopeDescription = (role: string): string => {
   switch (role) {
     case 'admin':
-      return 'Você pode enviar avisos para todos, municípios específicos ou escolas específicas';
+      return 'Envie o aviso para um município inteiro ou para uma escola específica.';
     case 'tecadm':
-      return 'Você pode enviar avisos para todo o município ou escolas específicas do município';
+      return 'Envie o aviso para todo o seu município ou para uma escola do município.';
     case 'diretor':
-      return 'Você pode enviar avisos apenas para sua escola';
+      return 'Você pode enviar avisos apenas para sua escola.';
     default:
       return 'Você não tem permissão para enviar avisos';
   }
 };
-

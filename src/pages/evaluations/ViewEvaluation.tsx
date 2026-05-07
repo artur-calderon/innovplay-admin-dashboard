@@ -76,6 +76,14 @@ export default function ViewEvaluation({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showStartEvaluationModal, setShowStartEvaluationModal] = useState(false);
   const [individualStudentNamesMap, setIndividualStudentNamesMap] = useState<Record<string, string>>({});
+  const [applicationStudents, setApplicationStudents] = useState<Array<{
+    id: string;
+    nome: string;
+    turma?: string;
+    escola?: string;
+    status: 'realizado' | 'pendente';
+  }>>([]);
+  const [loadingApplicationStudents, setLoadingApplicationStudents] = useState(false);
   
   // Estados para mapeamento de habilidades
   const [skillsMapping, setSkillsMapping] = useState<Record<string, string>>({});
@@ -143,6 +151,14 @@ export default function ViewEvaluation({
           setTestClasses([]);
         }
 
+        // Buscar relatório detalhado uma única vez para status/nomes de alunos
+        let detailedReportCache: any = null;
+        try {
+          detailedReportCache = await EvaluationResultsApiService.getDetailedReport(id);
+        } catch {
+          detailedReportCache = null;
+        }
+
         // ✅ Se houver aplicação individual, buscar nomes dos alunos para exibir no detalhe
         if (isOlimpiadaFromBase && Array.isArray((data as any).selected_students) && (data as any).selected_students.length > 0) {
           try {
@@ -151,7 +167,7 @@ export default function ViewEvaluation({
             
             // Tentar buscar do relatório detalhado primeiro (pode ter alunos que já fizeram)
             try {
-              const detailedReport = await EvaluationResultsApiService.getDetailedReport(id);
+              const detailedReport = detailedReportCache;
               if (detailedReport?.alunos) {
                 selectedIds.forEach((studentId) => {
                   const student = detailedReport.alunos.find(
@@ -212,6 +228,96 @@ export default function ViewEvaluation({
           }
         } else {
           setIndividualStudentNamesMap({});
+        }
+
+        // Lista de alunos para acompanhamento da aplicação (aplicado / realizou / pendente)
+        setLoadingApplicationStudents(true);
+        try {
+          const statusById = new Map<string, 'realizado' | 'pendente'>();
+          const namesById = new Map<string, string>();
+          const turmaById = new Map<string, string>();
+          if (detailedReportCache?.alunos && Array.isArray(detailedReportCache.alunos)) {
+            detailedReportCache.alunos.forEach((a: any) => {
+              const sid = String(a.id || a.student_id || '');
+              if (!sid) return;
+              const rawStatus = String(a.status || '').toLowerCase();
+              statusById.set(sid, rawStatus === 'concluida' ? 'realizado' : 'pendente');
+              namesById.set(sid, String(a.nome || a.name || sid));
+              if (a.turma) turmaById.set(sid, String(a.turma));
+            });
+          }
+
+          const studentsMap = new Map<string, { id: string; nome: string; turma?: string; escola?: string; status: 'realizado' | 'pendente' }>();
+          const addStudent = (student: any, fallback?: { turma?: string; escola?: string }) => {
+            const sid = String(student?.id || student?.student_id || '');
+            if (!sid) return;
+            const existing = studentsMap.get(sid);
+            const nome = String(
+              student?.name ||
+              student?.nome ||
+              namesById.get(sid) ||
+              sid
+            );
+            const turma = String(
+              student?.class_name ||
+              student?.turma ||
+              fallback?.turma ||
+              turmaById.get(sid) ||
+              ''
+            );
+            const escola = String(
+              student?.school_name ||
+              student?.escola ||
+              fallback?.escola ||
+              ''
+            );
+            const status = statusById.get(sid) ?? 'pendente';
+            studentsMap.set(sid, {
+              id: sid,
+              nome,
+              turma: turma || existing?.turma,
+              escola: escola || existing?.escola,
+              status,
+            });
+          };
+
+          const selectedStudents = (data as any).selected_students;
+          if (Array.isArray(selectedStudents) && selectedStudents.length > 0) {
+            selectedStudents.forEach((sid: any) => {
+              const idStr = String(sid);
+              addStudent({ id: idStr, name: namesById.get(idStr) || individualStudentNamesMap[idStr] || idStr });
+            });
+          } else if (Array.isArray(testClasses) && testClasses.length > 0) {
+            for (const cls of testClasses) {
+              try {
+                const classId = String(cls.class?.id || '');
+                if (!classId) continue;
+                const response = await api.get(`/students/classes/${classId}`);
+                const classStudents = Array.isArray(response.data)
+                  ? response.data
+                  : (response.data?.alunos || response.data?.students || []);
+                classStudents.forEach((s: any) =>
+                  addStudent(s, {
+                    turma: cls.class?.name || '',
+                    escola: cls.class?.school?.name || '',
+                  })
+                );
+              } catch {
+                // ignora turma com erro e continua demais
+              }
+            }
+          }
+
+          if (studentsMap.size === 0 && detailedReportCache?.alunos?.length) {
+            detailedReportCache.alunos.forEach((a: any) => addStudent(a));
+          }
+
+          const ordered = Array.from(studentsMap.values()).sort((a, b) => a.nome.localeCompare(b.nome));
+          setApplicationStudents(ordered);
+        } catch {
+          setApplicationStudents([]);
+        } finally {
+          setLoadingApplicationStudents(false);
         }
         
         // Buscar skills da avaliação para mapeamento
@@ -666,6 +772,18 @@ export default function ViewEvaluation({
   const entityNameCapitalized = isOlimpiadaType ? 'Olimpíada' : 'Avaliação';
   const entityNamePlural = isOlimpiadaType ? 'Olimpíadas' : 'Avaliações';
   const isModalView = Boolean(onClose);
+  const formatStatusLabel = (rawStatus: string) => {
+    const normalized = String(rawStatus || '')
+      .trim()
+      .replace(/_/g, ' ')
+      .toLowerCase();
+    if (!normalized) return 'Não informado';
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  };
+  const handleViewStudentResults = (studentId: string) => {
+    if (!id) return;
+    navigate(`/app/avaliacao/${id}/aluno/${studentId}/resultados`);
+  };
 
   if (!evaluation) {
     return (
@@ -698,6 +816,8 @@ export default function ViewEvaluation({
   const appliedClassesCount = testClasses !== null ? testClasses.length : (evaluation.applied_classes_count ?? 0);
   const isAppliedForDisplay = Boolean((evaluation as any).is_applied) || hasIndividualSelected;
   const displayClasses = testClasses ?? evaluation.applied_classes ?? [];
+  const completedStudentsCount = applicationStudents.filter((s) => s.status === 'realizado').length;
+  const pendingStudentsCount = Math.max(0, applicationStudents.length - completedStudentsCount);
 
   return (
     <div className="container mx-auto px-2 md:px-4 py-4 md:py-6 space-y-6">
@@ -891,154 +1011,70 @@ export default function ViewEvaluation({
                </Badge>
               {evaluation.status && (
                 <Badge variant="outline" className="text-xs">
-                  Status: {evaluation.status}
+                  Status: {formatStatusLabel(evaluation.status)}
                 </Badge>
               )}
             </div>
 
-            {/* Informações de aplicação */}
-            {evaluation.is_applied && !hasIndividualSelected && displayClasses.length > 0 && (
-              <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
-                  <span className="font-semibold text-green-800 dark:text-green-300">
-                    {totalStudents} alunos receberam a {entityName}
-                  </span>
-                </div>
-                <p className="text-sm text-green-700 dark:text-green-400 mb-4">
-                  Distribuída em {appliedClassesCount} turmas de {schoolsCount} escolas
-                </p>
-                
-                {/* Turmas aplicadas (GET /test/:id/classes ou applied_classes; quando is_applied, todas as turmas retornadas são aplicadas) */}
-                <div>
-                  <label className="text-sm font-medium text-green-700 dark:text-green-400 mb-2 block">
-                    Turmas onde foi aplicada:
-                  </label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto application-scroll pr-1">
-                    {displayClasses.map((appliedClass, idx) => (
-                        <div key={appliedClass.class.id || idx} className="bg-white/80 dark:bg-card/80 rounded-lg p-3 border border-green-200 dark:border-green-800">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-medium text-green-800 dark:text-green-300">
-                              {appliedClass.class.name}
-                            </span>
-                            <Badge variant="outline" className="text-xs bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800">
-                              {appliedClass.class.students_count} alunos
-                            </Badge>
-                          </div>
-                          <div className="text-xs text-green-600 dark:text-green-400 space-y-1">
-                            {appliedClass.class.school && (
-                              <div className="flex items-center gap-1">
-                                <School className="h-3 w-3" />
-                                <span>{appliedClass.class.school.name}</span>
-                              </div>
-                            )}
-                            {appliedClass.application && appliedClass.expiration && (
-                              <div className="flex items-center gap-1">
-                                <Calendar className="h-3 w-3" />
-                                <span>
-                                  {new Date(appliedClass.application).toLocaleDateString('pt-BR')} às {new Date(appliedClass.application).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - {new Date(appliedClass.expiration).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </div>
+            {/* Lista única de alunos da aplicação */}
+            <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">Aplicado para: {applicationStudents.length || totalStudents}</Badge>
+                <Badge variant="outline" className="text-emerald-700 border-emerald-300">
+                  Realizaram: {completedStudentsCount}
+                </Badge>
+                <Badge variant="outline" className="text-amber-700 border-amber-300">
+                  Pendentes: {pendingStudentsCount}
+                </Badge>
               </div>
-            )}
 
-            {/* ✅ Aplicação individual (alunos) */}
-            {hasIndividualSelected && (
-              <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
-                  <span className="font-semibold text-green-800 dark:text-green-300">
-                    Aplicada para {totalStudents} aluno{totalStudents === 1 ? "" : "s"} (individual)
-                  </span>
+              {loadingApplicationStudents ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span className="animate-spin">◌</span>
+                  Carregando alunos da aplicação...
                 </div>
-                <p className="text-sm text-green-700 dark:text-green-400">
-                  Esta {entityName} foi enviada apenas para alunos selecionados (sem distribuição por turma).
-                </p>
-
-                {/* Lista de alunos selecionados (mostrar nome) */}
-                <div className="mt-3">
-                  <label className="text-sm font-medium text-green-700 dark:text-green-400 mb-2 block">
-                    Aluno(s) selecionado(s):
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {((evaluation as any).selected_students as string[]).map((studentId) => (
-                      <Badge
-                        key={studentId}
-                        variant="outline"
-                        className="text-xs bg-white/80 dark:bg-card/80 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800"
-                        title={studentId}
-                      >
-                        {individualStudentNamesMap[String(studentId)] || String(studentId).slice(0, 8) + "…"}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Turmas pendentes (GET /test/:id/classes) */}
-            {!evaluation.is_applied && !hasIndividualSelected && displayClasses.length > 0 && (
-              <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Users className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                  <span className="font-semibold text-yellow-800 dark:text-yellow-300">
-                    {totalStudents} alunos agendados para receber a {entityName}
-                  </span>
-                </div>
-                <p className="text-sm text-yellow-700 dark:text-yellow-400 mb-4">
-                  Agendada para {appliedClassesCount} turmas de {schoolsCount} escolas
-                </p>
-                
-                <div>
-                  <label className="text-sm font-medium text-yellow-700 dark:text-yellow-400 mb-2 block">
-                    Turmas agendadas:
-                  </label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto application-scroll pr-1">
-                    {displayClasses.map((appliedClass: AppliedClass, idx: number) => (
-                      <div key={appliedClass.class.id || idx} className="bg-white/80 dark:bg-card/80 rounded-lg p-3 border border-yellow-200 dark:border-yellow-800">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium text-yellow-800 dark:text-yellow-300">
-                            {appliedClass.class.name}
-                          </span>
-                          <Badge variant="outline" className="text-xs bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800">
-                            {appliedClass.class.students_count} alunos
-                          </Badge>
-                        </div>
-                        <div className="text-xs text-yellow-600 dark:text-yellow-400">
-                          {appliedClass.class.school && (
-                            <div className="flex items-center gap-1">
-                              <School className="h-3 w-3" />
-                              <span>{appliedClass.class.school.name}</span>
-                            </div>
-                          )}
-                        </div>
+              ) : applicationStudents.length > 0 ? (
+                <div className="max-h-64 overflow-y-auto application-scroll pr-1 space-y-2">
+                  {applicationStudents.map((student) => (
+                    <div
+                      key={student.id}
+                      className="flex items-center justify-between gap-2 rounded-lg border bg-background/80 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{student.nome}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {[student.turma, student.escola].filter(Boolean).join(" · ") || "Sem turma/escola informada"}
+                        </p>
                       </div>
-                    ))}
-                  </div>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={
+                            student.status === 'realizado'
+                              ? "text-emerald-700 border-emerald-300"
+                              : "text-amber-700 border-amber-300"
+                          }
+                        >
+                          {student.status === 'realizado' ? 'Realizou' : 'Pendente'}
+                        </Badge>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2"
+                          onClick={() => handleViewStudentResults(student.id)}
+                        >
+                          <Eye className="mr-1 h-3.5 w-3.5" />
+                          Ver aluno
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            )}
-
-            {/* Quando não há turmas aplicadas ou agendadas */}
-            {displayClasses.length === 0 && !hasIndividualSelected && (
-              <div className="bg-gray-50 dark:bg-muted/50 border border-gray-200 dark:border-gray-800 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Users className="h-5 w-5 text-gray-500 dark:text-gray-400" />
-                  <span className="font-semibold text-gray-700 dark:text-gray-300">
-                    Nenhuma turma selecionada
-                  </span>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Esta {entityName} ainda não foi agendada para nenhuma turma.
-                </p>
-              </div>
-            )}
+              ) : (
+                <p className="text-sm text-muted-foreground">Nenhum aluno encontrado para esta aplicação.</p>
+              )}
+            </div>
             
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">

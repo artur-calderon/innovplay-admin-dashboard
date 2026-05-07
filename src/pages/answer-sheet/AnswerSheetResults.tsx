@@ -48,6 +48,7 @@ import { StudentCard } from '@/components/evaluations/student/StudentCard';
 import { DisciplineTables } from '@/components/evaluations/results/DisciplineTables';
 import { cn } from '@/lib/utils';
 import { generatePendingStudentsPdf } from '@/services/reports/pendingStudentsPdf';
+import { generateRankingPdf } from '@/services/reports/rankingPdf';
 import {
   RESULTS_PERIOD_YEAR_MIN,
   getResultsPeriodYearMax,
@@ -924,6 +925,46 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
   const totalQuestionsForCards = geralAlunos.find((a) => (a.total_questoes_geral ?? 0) > 0)?.total_questoes_geral ?? 0;
   const derivedSubjects = useMemo(() => [tituloGabarito].filter(Boolean), [tituloGabarito]);
 
+  const rankingPdfFilterLabels = useMemo(
+    () => ({
+      estado:
+        estado === 'all' ? 'Todos' : norm(estados.find((e) => e.id === estado) ?? { id: estado }),
+      municipio:
+        municipio === 'all'
+          ? 'Todos'
+          : norm(municipios.find((m) => m.id === municipio) ?? { id: municipio }),
+      escola:
+        escola === 'all' ? 'Todas' : norm(escolas.find((e) => e.id === escola) ?? { id: escola }),
+      serie:
+        serie === 'all' ? 'Todas' : norm(series.find((s) => s.id === serie) ?? { id: serie }),
+      turma:
+        turma === 'all' ? 'Todas' : norm(turmas.find((t) => t.id === turma) ?? { id: turma }),
+    }),
+    [estado, municipio, escola, serie, turma, estados, municipios, escolas, series, turmas]
+  );
+
+  const handleExportRankingPdf = useCallback(async () => {
+    if (studentsParticipantesTabelas.length === 0) return;
+    try {
+      await generateRankingPdf({
+        context: 'cartao-resposta',
+        escopoTitulo: tituloGabarito,
+        filterLabels: rankingPdfFilterLabels,
+        students: studentsParticipantesTabelas,
+        maxRows: 100,
+        fileNameBase: `ranking-cartao-${tituloGabarito}`,
+      });
+      toast({ title: 'PDF gerado', description: 'O ranking foi exportado com sucesso.' });
+    } catch (e) {
+      console.error(e);
+      toast({
+        title: 'Erro ao gerar PDF',
+        description: 'Não foi possível exportar o ranking. Tente novamente.',
+        variant: 'destructive',
+      });
+    }
+  }, [studentsParticipantesTabelas, rankingPdfFilterLabels, tituloGabarito, toast]);
+
   // Mapear tabela_detalhada da API para o formato esperado por DisciplineTables (questões com numero + campos opcionais)
   const tabelaDetalhadaForDisciplineTables = useMemo(() => {
     if (!disciplinasTabela.length && !geralAlunos.length) return null;
@@ -1649,9 +1690,23 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
               <TabsContent value="ranking" className="space-y-6 mt-6">
                 {studentsParticipantesTabelas.length > 0 ? (
                   <Card>
-                    <CardHeader>
-                      <CardTitle>Ranking</CardTitle>
-                      <CardDescription>Alunos ordenados por nota e proficiência (apenas participantes)</CardDescription>
+                    <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-1">
+                        <CardTitle>Ranking</CardTitle>
+                        <CardDescription>
+                          Alunos ordenados por nota e proficiência (apenas participantes)
+                        </CardDescription>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 shrink-0"
+                        onClick={() => void handleExportRankingPdf()}
+                      >
+                        <FileText className="h-4 w-4" />
+                        Exportar PDF
+                      </Button>
                     </CardHeader>
                     <CardContent>
                       <StudentRanking

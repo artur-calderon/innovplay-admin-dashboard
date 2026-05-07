@@ -3,14 +3,16 @@ import { AvisoCard } from './AvisoCard';
 import { AvisoDetailModal } from './AvisoDetailModal';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertCircle, Inbox } from 'lucide-react';
-import type { Aviso } from '@/types/avisos';
+import type { Aviso, CreateAvisoDTO } from '@/types/avisos';
 
 interface AvisosListProps {
   avisos: Aviso[];
   isLoading: boolean;
+  onEditAviso: (id: string, data: Partial<CreateAvisoDTO>) => Promise<void>;
+  onDeleteAviso: (id: string) => Promise<void>;
 }
 
-export function AvisosList({ avisos, isLoading }: AvisosListProps) {
+export function AvisosList({ avisos, isLoading, onEditAviso, onDeleteAviso }: AvisosListProps) {
   const [selectedAviso, setSelectedAviso] = useState<Aviso | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -72,7 +74,11 @@ export function AvisosList({ avisos, isLoading }: AvisosListProps) {
       <AvisoDetailModal
         aviso={selectedAviso}
         open={isModalOpen}
-        onOpenChange={handleCloseModal}
+        onOpenChange={(open) => {
+          if (!open) handleCloseModal();
+        }}
+        onEditAviso={onEditAviso}
+        onDeleteAviso={onDeleteAviso}
       />
     </>
   );

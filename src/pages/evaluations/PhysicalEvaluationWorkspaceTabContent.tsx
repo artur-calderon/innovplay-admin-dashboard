@@ -111,6 +111,8 @@ export function PhysicalEvaluationWorkspaceTabContent({
                     Selecione uma avaliação abaixo e clique em{" "}
                     <strong>Transformar em física</strong> para configurar a prova
                     física (cartões-resposta) aqui mesmo, sem sair da Central.
+                    {" "}Somente avaliações <strong>já aplicadas</strong> ficam
+                    disponíveis nesta lista.
                   </>
                 ) : (
                   <>

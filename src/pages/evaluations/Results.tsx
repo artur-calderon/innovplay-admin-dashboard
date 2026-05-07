@@ -51,6 +51,7 @@ import { DisciplineTables } from "@/components/evaluations/results/DisciplineTab
 import { StudentCard } from "@/components/evaluations/student/StudentCard";
 import { QuestionData as TableQuestionData, DetailedReport as TableDetailedReport } from "@/types/results-table";
 import { generatePendingStudentsPdf } from "@/services/reports/pendingStudentsPdf";
+import { generateRankingPdf } from "@/services/reports/rankingPdf";
 
 // Interfaces para os dados da API - Nova estrutura baseada na implementação real
 interface EvaluationResult {
@@ -1554,7 +1555,11 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
       const geralById = new Map(geralAlunos.map((a) => [a.id, a]));
       studentsMap.forEach((student, studentId) => {
         const geral = geralById.get(studentId);
-        if (!geral) return;
+        if (!geral) {
+          // Linha só por disciplinas sem correspondência na visão geral: não tratar como concluído
+          student.status = 'pendente';
+          return;
+        }
         student.nota = Number(geral.nota_geral ?? student.nota ?? 0);
         student.proficiencia = Number(geral.proficiencia_geral ?? student.proficiencia ?? 0);
         student.classificacao = (geral.nivel_proficiencia_geral ?? student.classificacao) as
@@ -1566,6 +1571,10 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
         student.acertos = Number(geral.total_acertos_geral ?? student.acertos ?? 0);
         student.erros = Number((geral as unknown as { total_erros_geral?: number }).total_erros_geral ?? student.erros ?? 0);
         student.em_branco = Number(geral.total_em_branco_geral ?? student.em_branco ?? 0);
+        student.status =
+          String(geral.status_geral || '').trim().toLowerCase() === 'concluida'
+            ? 'concluida'
+            : 'pendente';
       });
     }
 
@@ -1607,7 +1616,7 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
           erros: (aluno as unknown as { total_erros_geral?: number }).total_erros_geral ?? 0,
           em_branco: aluno.total_em_branco_geral,
           tempo_gasto: 0,
-          status: 'concluida' as const
+          status: ((aluno.status_geral || '').toLowerCase() === 'concluida' ? 'concluida' : 'pendente') as const
         }));
     }
     
@@ -1758,6 +1767,84 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
       (a.nome ?? '').localeCompare(b.nome ?? '', undefined, { sensitivity: 'base' })
     );
   }, [transformedStudents]);
+
+  const rankingStudents = useMemo(() => {
+    return filteredStudents.filter((student) => {
+      const isCompleted = String(student.status || '').toLowerCase() === 'concluida';
+      const hasAnyEvaluation =
+        Number(student.questoes_respondidas ?? 0) > 0 ||
+        Number(student.acertos ?? 0) > 0 ||
+        Number(student.erros ?? 0) > 0 ||
+        Number(student.em_branco ?? 0) > 0;
+      return isCompleted && hasAnyEvaluation;
+    });
+  }, [filteredStudents]);
+
+  const rankingPdfFilterLabels = useMemo(() => {
+    const estadoLabel =
+      selectedState === 'all'
+        ? 'Todos'
+        : (() => {
+            const st = states.find((s) => s.id === selectedState);
+            return st ? `${st.name} (${st.uf})` : selectedState;
+          })();
+    const municipioLabel =
+      selectedMunicipality === 'all'
+        ? 'Todos'
+        : municipalities.find((m) => m.id === selectedMunicipality)?.name ?? selectedMunicipality;
+    const escolaLabel =
+      selectedSchool === 'all'
+        ? 'Todas'
+        : schools.find((s) => s.id === selectedSchool)?.name ?? selectedSchool;
+    const serieLabel =
+      selectedGrade === 'all'
+        ? 'Todas'
+        : grades.find((g) => g.id === selectedGrade)?.name ?? selectedGrade;
+    const turmaLabel =
+      selectedClass === 'all'
+        ? 'Todas'
+        : classes.find((c) => c.id === selectedClass)?.name ?? selectedClass;
+    return {
+      estado: estadoLabel,
+      municipio: municipioLabel,
+      escola: escolaLabel,
+      serie: serieLabel,
+      turma: turmaLabel,
+    };
+  }, [
+    selectedState,
+    selectedMunicipality,
+    selectedSchool,
+    selectedGrade,
+    selectedClass,
+    states,
+    municipalities,
+    schools,
+    grades,
+    classes,
+  ]);
+
+  const handleExportRankingPdf = useCallback(async () => {
+    if (rankingStudents.length === 0) return;
+    try {
+      await generateRankingPdf({
+        context: 'avaliacoes',
+        escopoTitulo: evaluationInfo?.titulo,
+        filterLabels: rankingPdfFilterLabels,
+        students: rankingStudents,
+        maxRows: 100,
+        fileNameBase: `ranking-avaliacoes-${evaluationInfo?.titulo ?? 'resultados'}`,
+      });
+      toast({ title: 'PDF gerado', description: 'O ranking foi exportado com sucesso.' });
+    } catch (e) {
+      console.error(e);
+      toast({
+        title: 'Erro ao gerar PDF',
+        description: 'Não foi possível exportar o ranking. Tente novamente.',
+        variant: 'destructive',
+      });
+    }
+  }, [rankingStudents, rankingPdfFilterLabels, evaluationInfo?.titulo, toast]);
 
   const buildDisciplineStatsForStudent = useCallback((studentId: string): DisciplineStatsMap | null => {
     const tabelaDetalhada = apiData?.tabela_detalhada as TabelaDetalhada | undefined;
@@ -2422,8 +2509,21 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
                     <div className="text-2xl font-bold text-green-600">{backendStats.participantes}</div>
                   </div>
                   <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium text-muted-foreground">Faltosos</div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-sm font-medium text-muted-foreground leading-tight">
+                        Faltosos /<br />Pendentes
+                      </div>
+                      {pendingStudents.length > 0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowPendingStudentsModal(true)}
+                          className="h-auto p-0 text-sm font-semibold text-red-600 hover:text-red-700 hover:bg-transparent"
+                        >
+                          Ver lista
+                        </Button>
+                      )}
                     </div>
                     <div className="text-2xl font-bold text-red-600">{backendStats.ausentes}</div>
                   </div>
@@ -2780,9 +2880,22 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
 
                 {selectedEvaluation !== 'all' && (
                   <TabsContent value="ranking" className="space-y-6">
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={rankingStudents.length === 0}
+                        onClick={() => void handleExportRankingPdf()}
+                      >
+                        <FileText className="h-4 w-4" />
+                        Exportar PDF
+                      </Button>
+                    </div>
                     {/* Usar sempre a mesma lista da página (tabela/cards): evita ranking vazio ao filtrar por escola/turma/série */}
                     <StudentRanking
-                      students={filteredStudents}
+                      students={rankingStudents}
                       maxStudents={100}
                     />
                   </TabsContent>
@@ -2795,7 +2908,7 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
 
       {/* Modal: Alunos Pendentes */}
       <Dialog open={showPendingStudentsModal} onOpenChange={setShowPendingStudentsModal}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogContent className="w-[96vw] max-w-5xl h-[88vh] max-h-[92vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users className="h-5 w-5 text-red-600" />

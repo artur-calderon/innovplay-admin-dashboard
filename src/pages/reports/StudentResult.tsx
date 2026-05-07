@@ -580,7 +580,12 @@ export default function StudentResult() {
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base">{evaluationTitle}</p>
         </div>
-        <div className="flex justify-center w-full sm:w-auto sm:justify-end">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:justify-end">
+          {!isAdminView && (
+            <Button variant="outline" onClick={() => navigate("/aluno/resultados")}>
+              Resultados do Aluno
+            </Button>
+          )}
           <Button variant="ghost" onClick={() => navigate(myItemsButtonPath)}>{myItemsButtonText}</Button>
         </div>
       </div>

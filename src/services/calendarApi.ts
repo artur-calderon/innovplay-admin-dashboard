@@ -91,6 +91,7 @@ export interface CreateEventBody {
   }>;
   is_published?: boolean;
   recurrence_rule?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface UpdateEventBody {
@@ -112,6 +113,7 @@ export interface UpdateEventBody {
   }>;
   is_published?: boolean;
   recurrence_rule?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CalendarTarget {
@@ -151,17 +153,38 @@ export function mapDtoToFullCalendar(e: CalendarEventDTO): EventInput {
   } as EventInput;
 }
 
-async function listMyEventsFromApi(startISO: string, endISO: string): Promise<EventInput[]> {
-  const { data } = await api.get('/calendar/my-events', { params: { start: startISO, end: endISO } });
+async function listMyEventsFromApi(
+  startISO: string,
+  endISO: string,
+  filters?: { kind?: string; exclude_kind?: string }
+): Promise<EventInput[]> {
+  const params: Record<string, string> = { start: startISO, end: endISO };
+  if (filters?.kind) params.kind = filters.kind;
+  /* A Agenda não deve exibir avisos (`metadata.kind=aviso`). */
+  if (filters?.exclude_kind) params.exclude_kind = filters.exclude_kind;
+  const { data } = await api.get('/calendar/my-events', { params });
   const items: CalendarEventDTO[] = Array.isArray(data) ? data : (data?.events || []);
   return items.map(mapDtoToFullCalendar);
 }
 
 export const CalendarApi = {
-  listMyEvents: listMyEventsFromApi,
+  listMyEvents(startISO: string, endISO: string): Promise<EventInput[]> {
+    return listMyEventsFromApi(startISO, endISO, { exclude_kind: 'aviso' });
+  },
 
   /** @deprecated Use `listMyEvents`. `GET /calendar/events` foi descontinuado. */
-  listEvents: listMyEventsFromApi,
+  listEvents(startISO: string, endISO: string): Promise<EventInput[]> {
+    return listMyEventsFromApi(startISO, endISO, { exclude_kind: 'aviso' });
+  },
+
+  /** Listagem sem filtro `exclude_kind` (ex.: tela dedicada). */
+  listMyEventsRaw(
+    startISO: string,
+    endISO: string,
+    filters?: { kind?: string; exclude_kind?: string }
+  ): Promise<EventInput[]> {
+    return listMyEventsFromApi(startISO, endISO, filters);
+  },
 
   async getEvent(eventId: string): Promise<EventInput> {
     const { data } = await api.get(`/calendar/events/${eventId}`);

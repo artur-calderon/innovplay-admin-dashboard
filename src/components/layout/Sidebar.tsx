@@ -22,7 +22,6 @@ import {
   Users2,
   HelpCircle,
   X,
-  ClipboardCheck,
   BarChart3,
   Calculator,
   Menu,
@@ -59,6 +58,7 @@ import { Button } from "@/components/ui/button";
 import { useGamesCount } from "@/hooks/useGamesCount";
 import { useOpenCompetitionsCount } from "@/hooks/useOpenCompetitionsCount";
 import { DashboardApiService } from "@/services/dashboardApi";
+import { AVISOS_UPDATE_EVENT } from "@/hooks/useUnreadAvisos";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getRoleDisplayName } from "@/lib/constants";
 import { AvatarPreview } from "@/components/profile/AvatarPreview";
@@ -154,6 +154,12 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
     };
 
     if (user.id) loadAvisosQuantidade();
+
+    const onAvisosSync = () => {
+      if (user.id) loadAvisosQuantidade();
+    };
+    window.addEventListener(AVISOS_UPDATE_EVENT, onAvisosSync);
+    return () => window.removeEventListener(AVISOS_UPDATE_EVENT, onAvisosSync);
   }, [user.id, user.role]);
 
   useEffect(() => {
@@ -318,7 +324,6 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
             { icon: Target, label: "Cálculo de Metas", href: "/app/calculo-metas", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
           ]
         },
-        { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: TrendingUp, label: "Evolução", href: "/app/evolucao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         {

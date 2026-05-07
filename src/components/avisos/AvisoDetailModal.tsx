@@ -1,45 +1,93 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { AlertCircle, Building2, School, Globe, Calendar, User, Mail } from 'lucide-react';
-import type { Aviso } from '@/types/avisos';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { AlertCircle, Building2, School, Calendar, User, Mail, Pencil, Trash2, Save, X } from 'lucide-react';
+import type { Aviso, CreateAvisoDTO } from '@/types/avisos';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useUnreadAvisos } from '@/hooks/useUnreadAvisos';
+import { useAuth } from '@/context/authContext';
+import { useToast } from '@/hooks/use-toast';
 
 interface AvisoDetailModalProps {
   aviso: Aviso | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onEditAviso: (id: string, data: Partial<CreateAvisoDTO>) => Promise<void>;
+  onDeleteAviso: (id: string) => Promise<void>;
 }
 
-export function AvisoDetailModal({ aviso, open, onOpenChange }: AvisoDetailModalProps) {
+export function AvisoDetailModal({
+  aviso,
+  open,
+  onOpenChange,
+  onEditAviso,
+  onDeleteAviso,
+}: AvisoDetailModalProps) {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const { markAsRead, isAvisoRead } = useUnreadAvisos();
+  const [isEditing, setIsEditing] = useState(false);
+  const [tituloEdit, setTituloEdit] = useState('');
+  const [mensagemEdit, setMensagemEdit] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   // Marcar como lido quando o modal abrir com um aviso
   useEffect(() => {
-    if (open && aviso && !isAvisoRead(aviso.id)) {
-      // Pequeno delay para garantir que o usuário realmente viu
-      const timer = setTimeout(() => {
-        markAsRead(aviso.id);
-      }, 500);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [open, aviso, markAsRead, isAvisoRead]);
+    if (!open || !aviso || isAvisoRead(aviso.id)) return;
+    const isCreator =
+      !!user?.id && !!aviso.autor_id && String(aviso.autor_id) === String(user.id);
+    if (isCreator) return;
+    // Pequeno delay para garantir que o usuário realmente viu
+    const timer = setTimeout(() => {
+      markAsRead(aviso.id);
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [open, aviso, markAsRead, isAvisoRead, user?.id]);
+
+  useEffect(() => {
+    if (!aviso) return;
+    setTituloEdit(aviso.titulo);
+    setMensagemEdit(aviso.mensagem);
+    setIsEditing(false);
+  }, [aviso?.id, aviso?.titulo, aviso?.mensagem]);
+
+  const canManageAviso = useMemo(() => {
+    if (!aviso) return false;
+    const isAuthor = !!user?.id && String(aviso.autor_id) === String(user.id);
+    return isAuthor || ['admin', 'tecadm'].includes(user?.role ?? '');
+  }, [aviso, user?.id, user?.role]);
 
   if (!aviso) return null;
 
   const getDestinatarioIcon = () => {
     switch (aviso.destinatarios.tipo) {
       case 'todos':
-        return <Globe className="w-5 h-5" />;
+        return <Building2 className="w-5 h-5" />;
       case 'municipio':
         return <Building2 className="w-5 h-5" />;
       case 'escola':
@@ -66,8 +114,9 @@ export function AvisoDetailModal({ aviso, open, onOpenChange }: AvisoDetailModal
     switch (aviso.destinatarios.tipo) {
       case 'todos':
         return {
-          titulo: 'Todos os usuários',
-          descricao: 'Este aviso é visível para todos os usuários do sistema em todos os municípios e escolas.',
+          titulo: 'Escopo anterior (global)',
+          descricao:
+            'Este aviso foi criado antes da restrição a município ou escola. O envio atual não permite mais escopo global.',
         };
       case 'municipio':
         return {
@@ -98,11 +147,65 @@ export function AvisoDetailModal({ aviso, open, onOpenChange }: AvisoDetailModal
 
   const destinatarioInfo = getDestinatarioDescricao();
 
+  const handleSaveEdit = async () => {
+    const titulo = tituloEdit.trim();
+    const mensagem = mensagemEdit.trim();
+    if (!titulo || !mensagem) {
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Preencha título e mensagem para salvar.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await onEditAviso(aviso.id, { titulo, mensagem });
+      setIsEditing(false);
+      toast({
+        title: 'Aviso atualizado',
+        description: 'As alterações foram salvas com sucesso.',
+      });
+    } catch {
+      toast({
+        title: 'Erro ao editar',
+        description: 'Não foi possível salvar o aviso.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await onDeleteAviso(aviso.id);
+      setIsDeleteDialogOpen(false);
+      onOpenChange(false);
+      toast({
+        title: 'Aviso apagado',
+        description: 'O aviso foi removido com sucesso.',
+      });
+    } catch {
+      toast({
+        title: 'Erro ao apagar',
+        description: 'Não foi possível remover o aviso.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <div className="flex items-start gap-3">
+          <DialogDescription className="sr-only">
+            Detalhes do aviso, com informações de destinatários, autor e data de publicação.
+          </DialogDescription>
+          <div className="flex items-start justify-between gap-4">
             <AlertCircle className="w-6 h-6 text-orange-500 flex-shrink-0 mt-1" />
             <div className="flex-1">
               <DialogTitle className="text-2xl font-bold leading-tight mb-3">
@@ -113,7 +216,71 @@ export function AvisoDetailModal({ aviso, open, onOpenChange }: AvisoDetailModal
                 <span>{destinatarioInfo.titulo}</span>
               </Badge>
             </div>
+            {canManageAviso && (
+              <div className="hidden sm:flex items-center gap-2 flex-shrink-0 mt-10">
+                {!isEditing ? (
+                  <>
+                    <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
+                      <Pencil className="w-4 h-4 mr-2" />
+                      Editar
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setIsDeleteDialogOpen(true)}
+                      disabled={isDeleting}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      {isDeleting ? 'Apagando...' : 'Apagar'}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="outline" size="sm" onClick={() => setIsEditing(false)} disabled={isSaving}>
+                      <X className="w-4 h-4 mr-2" />
+                      Cancelar
+                    </Button>
+                    <Button size="sm" onClick={handleSaveEdit} disabled={isSaving}>
+                      <Save className="w-4 h-4 mr-2" />
+                      {isSaving ? 'Salvando...' : 'Salvar'}
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
+          {canManageAviso && (
+            <div className="sm:hidden flex items-center justify-end gap-2 mt-2">
+              {!isEditing ? (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Editar
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setIsDeleteDialogOpen(true)}
+                    disabled={isDeleting}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    {isDeleting ? 'Apagando...' : 'Apagar'}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => setIsEditing(false)} disabled={isSaving}>
+                    <X className="w-4 h-4 mr-2" />
+                    Cancelar
+                  </Button>
+                  <Button size="sm" onClick={handleSaveEdit} disabled={isSaving}>
+                    <Save className="w-4 h-4 mr-2" />
+                    {isSaving ? 'Salvando...' : 'Salvar'}
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
         </DialogHeader>
 
         <Separator className="my-4" />
@@ -122,9 +289,33 @@ export function AvisoDetailModal({ aviso, open, onOpenChange }: AvisoDetailModal
         <div className="space-y-4">
           <div>
             <h4 className="text-sm font-semibold text-foreground mb-2">Mensagem</h4>
-            <p className="text-base text-foreground leading-relaxed whitespace-pre-wrap">
-              {aviso.mensagem}
-            </p>
+            {isEditing ? (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="aviso-titulo-edit">Titulo</Label>
+                  <Input
+                    id="aviso-titulo-edit"
+                    value={tituloEdit}
+                    onChange={(e) => setTituloEdit(e.target.value)}
+                    maxLength={100}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="aviso-mensagem-edit">Mensagem</Label>
+                  <Textarea
+                    id="aviso-mensagem-edit"
+                    value={mensagemEdit}
+                    onChange={(e) => setMensagemEdit(e.target.value)}
+                    rows={6}
+                    maxLength={5000}
+                  />
+                </div>
+              </div>
+            ) : (
+              <p className="text-base text-foreground leading-relaxed whitespace-pre-wrap">
+                {aviso.mensagem}
+              </p>
+            )}
           </div>
 
           <Separator />
@@ -169,6 +360,26 @@ export function AvisoDetailModal({ aviso, open, onOpenChange }: AvisoDetailModal
           </div>
         </div>
       </DialogContent>
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apagar aviso?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Essa acao remove o aviso para os usuarios e nao pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Apagando...' : 'Sim, apagar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

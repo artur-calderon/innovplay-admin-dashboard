@@ -1,12 +1,14 @@
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, Building2, School, Globe, Eye, Calendar, User, CircleDot } from 'lucide-react';
+import { AlertCircle, Building2, School, Eye, Calendar, User, CircleDot } from 'lucide-react';
 import type { Aviso } from '@/types/avisos';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useUnreadAvisos } from '@/hooks/useUnreadAvisos';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/authContext';
+import { computeAvisoUnread } from '@/utils/avisosRead';
 
 interface AvisoCardProps {
   aviso: Aviso;
@@ -14,13 +16,14 @@ interface AvisoCardProps {
 }
 
 export function AvisoCard({ aviso, onViewDetails }: AvisoCardProps) {
+  const { user } = useAuth();
   const { isAvisoRead } = useUnreadAvisos();
-  const isUnread = !isAvisoRead(aviso.id);
+  const isUnread = computeAvisoUnread(aviso, user?.id, (id) => isAvisoRead(id));
 
   const getDestinatarioIcon = () => {
     switch (aviso.destinatarios.tipo) {
       case 'todos':
-        return <Globe className="w-4 h-4" />;
+        return <Building2 className="w-4 h-4" />;
       case 'municipio':
         return <Building2 className="w-4 h-4" />;
       case 'escola':
@@ -46,7 +49,7 @@ export function AvisoCard({ aviso, onViewDetails }: AvisoCardProps) {
   const getDestinatarioText = () => {
     switch (aviso.destinatarios.tipo) {
       case 'todos':
-        return 'Todos';
+        return 'Escopo anterior';
       case 'municipio':
         return aviso.destinatarios.municipio_nome || 'Município';
       case 'escola':

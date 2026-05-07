@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Users, User, Eye, EyeOff, Pencil, Building, MapPin, School, UserPlus, Trash2 } from "lucide-react";
@@ -130,6 +130,11 @@ interface CityOption {
   name: string;
 }
 
+interface SchoolOption {
+  id: string;
+  name: string;
+}
+
 export interface InstituicaoUsersTabProps {
   /** ID do município (obrigatório para tecadm; para admin pode vir do seletor) */
   cityId: string | null;
@@ -164,6 +169,7 @@ export function InstituicaoUsersTab({
   const [data, setData] = useState<MunicipioUsersResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedSchoolFilter, setSelectedSchoolFilter] = useState<string>("ALL");
   const [viewingUser, setViewingUser] = useState<MunicipioUser | null>(null);
   const [viewingUserSchool, setViewingUserSchool] = useState<string | null>(null);
   const [loadingViewDetails, setLoadingViewDetails] = useState(false);
@@ -498,6 +504,59 @@ export function InstituicaoUsersTab({
     authUser?.role === "professor"
       ? rawUsers.filter((u) => toCanonicalRole(u.role) === "aluno")
       : rawUsers;
+  const effectiveCityId = cityId || selectedCityId;
+
+  const schoolOptions = useMemo<SchoolOption[]>(() => {
+    const map = new Map<string, SchoolOption>();
+    users.forEach((u) => {
+      const directId = u.school_id || u.school?.id;
+      const directName = u.school_name || u.school?.name;
+      if (directName) {
+        const key = directId ? `id:${directId}` : `name:${directName}`;
+        map.set(key, { id: key, name: directName });
+      }
+      (u.schools || []).forEach((s) => {
+        if (!s?.name) return;
+        const key = s.id ? `id:${s.id}` : `name:${s.name}`;
+        map.set(key, { id: key, name: s.name });
+      });
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [users]);
+
+  const userMatchesSelectedSchool = useCallback(
+    (u: MunicipioUser) => {
+      if (selectedSchoolFilter === "ALL") return true;
+      const selectedName = selectedSchoolFilter.startsWith("name:")
+        ? selectedSchoolFilter.replace(/^name:/, "")
+        : "";
+
+      const allKeys = new Set<string>();
+      if (u.school_id) allKeys.add(`id:${u.school_id}`);
+      if (u.school?.id) allKeys.add(`id:${u.school.id}`);
+      if (u.school_name) allKeys.add(`name:${u.school_name}`);
+      if (u.school?.name) allKeys.add(`name:${u.school.name}`);
+      (u.schools || []).forEach((s) => {
+        if (s.id) allKeys.add(`id:${s.id}`);
+        if (s.name) allKeys.add(`name:${s.name}`);
+      });
+
+      if (allKeys.has(selectedSchoolFilter)) return true;
+      if (selectedName) {
+        for (const key of allKeys) {
+          if (key.startsWith("name:") && key.replace(/^name:/, "") === selectedName) {
+            return true;
+          }
+        }
+      }
+      return false;
+    },
+    [selectedSchoolFilter]
+  );
+
+  useEffect(() => {
+    setSelectedSchoolFilter("ALL");
+  }, [effectiveCityId]);
   const byRole = users.reduce<Record<string, MunicipioUser[]>>((acc, u) => {
     const canonical = toCanonicalRole(u.role || "");
     if (!acc[canonical]) acc[canonical] = [];
@@ -505,15 +564,19 @@ export function InstituicaoUsersTab({
     return acc;
   }, {});
 
-  const filteredByRole = searchQuery.trim()
+  const filteredByRole = searchQuery.trim() || selectedSchoolFilter !== "ALL"
     ? Object.fromEntries(
         Object.entries(byRole).map(([role, list]) => [
           role,
           list.filter(
             (u) =>
-              u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              (u.registration && u.registration.toLowerCase().includes(searchQuery.toLowerCase()))
+              (
+                !searchQuery.trim() ||
+                u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (u.registration && u.registration.toLowerCase().includes(searchQuery.toLowerCase()))
+              ) &&
+              userMatchesSelectedSchool(u)
           ),
         ]).filter(([, list]) => list.length > 0)
       )
@@ -525,7 +588,6 @@ export function InstituicaoUsersTab({
     ? Object.values(filteredByRole).flat().map((u) => String(u.id))
     : [];
 
-  const effectiveCityId = cityId || selectedCityId;
   const showCitySelector = isAdmin && cities.length > 0 && !cityId;
 
   return (
@@ -579,14 +641,33 @@ export function InstituicaoUsersTab({
 
       {effectiveCityId && (
         <>
-          <div className="relative max-w-sm">
-            <Input
-              placeholder="Buscar por nome, e-mail ou matrícula..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
-            <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative max-w-sm w-full">
+              <Input
+                placeholder="Buscar por nome, e-mail ou matrícula..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+              <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            </div>
+            <Select
+              value={selectedSchoolFilter}
+              onValueChange={setSelectedSchoolFilter}
+              disabled={schoolOptions.length === 0}
+            >
+              <SelectTrigger className="w-full sm:w-[280px]">
+                <SelectValue placeholder="Filtrar por escola" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas as escolas</SelectItem>
+                {schoolOptions.map((school) => (
+                  <SelectItem key={school.id} value={school.id}>
+                    {school.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {canBatchDelete && (

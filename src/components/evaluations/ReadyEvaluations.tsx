@@ -76,6 +76,66 @@ interface FiltersData {
   grade: string;
 }
 
+function isEligibleForPhysicalCorrection(evaluation: Evaluation): boolean {
+  const status = String(evaluation.status || "")
+    .trim()
+    .toLowerCase();
+
+  const hasAppliedFlag = Boolean(evaluation.is_applied);
+  const hasAppliedClassesCount = Number(evaluation.applied_classes_count || 0) > 0;
+  const hasAppliedClassesList = Array.isArray(evaluation.applied_classes) && evaluation.applied_classes.length > 0;
+  const hasAppliedLikeStatus = [
+    "applied",
+    "completed",
+    "finalizada",
+    "concluida",
+    "realizada",
+    "corrigida",
+  ].some((token) => status.includes(token));
+
+  const physicalHints = evaluation as Evaluation & {
+    has_physical_forms?: boolean;
+    has_answer_sheet_data?: boolean;
+    physical_test_generated?: boolean;
+    has_physical_test?: boolean;
+    is_physical_ready?: boolean;
+  };
+
+  const hasPhysicalGenerated =
+    Boolean(physicalHints.has_physical_forms) ||
+    Boolean(physicalHints.has_answer_sheet_data) ||
+    Boolean(physicalHints.physical_test_generated) ||
+    Boolean(physicalHints.has_physical_test) ||
+    Boolean(physicalHints.is_physical_ready);
+
+  return (
+    hasAppliedFlag ||
+    hasAppliedClassesCount ||
+    hasAppliedClassesList ||
+    hasAppliedLikeStatus ||
+    hasPhysicalGenerated
+  );
+}
+
+function isEligibleForPhysicalTransform(evaluation: Evaluation): boolean {
+  const status = String(evaluation.status || "")
+    .trim()
+    .toLowerCase();
+
+  const hasAppliedFlag = Boolean(evaluation.is_applied);
+  const hasAppliedClassesCount = Number(evaluation.applied_classes_count || 0) > 0;
+  const hasAppliedClassesList = Array.isArray(evaluation.applied_classes) && evaluation.applied_classes.length > 0;
+  const hasAppliedLikeStatus = [
+    "applied",
+    "completed",
+    "finalizada",
+    "concluida",
+    "realizada",
+  ].some((token) => status.includes(token));
+
+  return hasAppliedFlag || hasAppliedClassesCount || hasAppliedClassesList || hasAppliedLikeStatus;
+}
+
 // Componente separado para listar disciplinas
 const SubjectsList = ({ evaluation }: { evaluation: Evaluation }) => {
   // Usar função helper padronizada
@@ -843,8 +903,16 @@ export function ReadyEvaluations({
   
   const pagination = adjustedPagination;
 
-  // ✅ CORREÇÃO: Usar avaliações filtradas
-  const evaluations = filteredEvaluations;
+  // ✅ CORREÇÃO: Usar avaliações filtradas + regra de elegibilidade para aba de correção física
+  const evaluations = useMemo(() => {
+    if (variant === "transformTab") {
+      return filteredEvaluations.filter(isEligibleForPhysicalTransform);
+    }
+    if (variant === "correctionTab") {
+      return filteredEvaluations.filter(isEligibleForPhysicalCorrection);
+    }
+    return filteredEvaluations;
+  }, [filteredEvaluations, variant]);
 
   // ✅ MELHORADO: Função robusta para atualizar dados
   const refreshData = useCallback(async () => {
