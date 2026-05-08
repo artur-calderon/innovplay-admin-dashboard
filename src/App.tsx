@@ -48,6 +48,7 @@ const RelatoriosRelatorioEscolarHub = React.lazy(() => import("@/pages/reports/R
 const RelatoriosResultadosHub = React.lazy(() => import("@/pages/reports/RelatoriosResultadosHub"));
 const RelatorioApresentacao19Slides = React.lazy(() => import("@/pages/reports/RelatorioApresentacao19Slides"));
 const InseSaebReport = React.lazy(() => import("@/pages/reports/InseSaebReport"));
+const PneerqReport = React.lazy(() => import("@/pages/reports/PneerqReport"));
 const FormReports = React.lazy(() => import("@/pages/reports/FormReports"));
 const FormRespostasReport = React.lazy(() => import("@/pages/reports/FormRespostasReport"));
 const StudentResult = React.lazy(() => import("@/pages/reports/StudentResult"));
@@ -400,6 +401,7 @@ const App = () => {
               <Route path="/app/questionarios/relatorios-socio-economicos" element={<PrivateRoute><FormReports /></PrivateRoute>} />
               <Route path="/app/questionarios/resultados-socioeconomicos" element={<PrivateRoute><FormRespostasReport /></PrivateRoute>} />
               <Route path="/app/questionarios/inse-saeb" element={<PrivateRoute><InseSaebReport /></PrivateRoute>} />
+              <Route path="/app/questionarios/pneerq" element={<PrivateRoute><PneerqReport /></PrivateRoute>} />
               <Route path="/app/questionario" element={<PrivateRoute><QuestionarioList /></PrivateRoute>} />
               <Route path="/app/questionario/responder/:formId" element={<PrivateRoute><QuestionarioRespond /></PrivateRoute>} />
 

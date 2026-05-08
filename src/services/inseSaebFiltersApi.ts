@@ -2,7 +2,7 @@ import { api } from '@/lib/api';
 
 /** Resposta bruta da API GET /forms/results/inse-saeb/filter-options */
 interface RawInseSaebFilterOptionsResponse {
-  estados?: Array<{ id: string; nome?: string; name?: string }>;
+  estados?: Array<{ id: string; nome?: string; name?: string; uf?: string }>;
   municipios?: Array<{ id: string; nome?: string; name?: string; estado_id?: string }>;
   formularios?: Array<{ id: string; titulo?: string; nome?: string; name?: string; formType?: string }>;
   avaliacoes?: Array<{ id: string; titulo?: string; nome?: string }>;
@@ -12,7 +12,7 @@ interface RawInseSaebFilterOptionsResponse {
 }
 
 export interface InseSaebFilterOptions {
-  estados: Array<{ id: string; name: string }>;
+  estados: Array<{ id: string; name: string; uf?: string }>;
   municipios: Array<{ id: string; name: string }>;
   formularios: Array<{ id: string; name: string; formType?: string }>;
   avaliacoes: Array<{ id: string; name: string }>;
@@ -70,6 +70,7 @@ export class InseSaebFiltersApiService {
         estados: (data.estados ?? []).map((e) => ({
           id: e.id,
           name: normalizeName(e.nome ?? e.name),
+          uf: e.uf,
         })),
         municipios: (data.municipios ?? []).map((m) => ({
           id: m.id,

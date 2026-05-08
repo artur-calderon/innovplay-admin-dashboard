@@ -48,6 +48,7 @@ import {
   ShoppingBag,
   Smartphone,
   Thermometer,
+  Scale,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -335,6 +336,7 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
             { icon: Presentation, label: "Relatórios Socio-Econômicos", href: "/app/questionarios/relatorios-socio-economicos", role: ["admin", "tecadm"] },
             { icon: BarChart3, label: "Resultados Socioeconomicos", href: "/app/questionarios/resultados-socioeconomicos", role: ["admin", "tecadm"] },
             { icon: BarChart3, label: "INSE x SAEB", href: "/app/questionarios/inse-saeb", role: ["admin", "tecadm"] },
+            { icon: Scale, label: "PNEERQ", href: "/app/questionarios/pneerq", role: ["admin", "tecadm"] },
           ]
         },
         {
