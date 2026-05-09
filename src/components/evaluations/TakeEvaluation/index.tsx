@@ -1093,6 +1093,48 @@ export default function TakeEvaluation() {
                         {/* ✅ Área principal - MAIS VISÍVEL e PROFISSIONAL */}
                         <div className="flex-1 overflow-y-auto bg-background">
                             <div className="max-w-4xl mx-2 sm:mx-4 md:mx-auto p-3 sm:p-4 md:p-6">
+                                {/* Navegação no topo (somente mobile) */}
+                                <div className="md:hidden mb-3">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                navigateToQuestion(currentQuestionIndex - 1);
+                                            }}
+                                            onTouchEnd={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                navigateToQuestion(currentQuestionIndex - 1);
+                                            }}
+                                            disabled={currentQuestionIndex === 0 || isTimeUp}
+                                            className="flex-1 h-9 rounded-lg font-semibold"
+                                        >
+                                            Anterior
+                                        </Button>
+
+                                        <Button
+                                            size="sm"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                navigateToQuestion(currentQuestionIndex + 1);
+                                            }}
+                                            onTouchEnd={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                navigateToQuestion(currentQuestionIndex + 1);
+                                            }}
+                                            disabled={currentQuestionIndex === shuffledQuestions.length - 1 || isTimeUp}
+                                            className="flex-1 h-9 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold"
+                                        >
+                                            Proximo
+                                        </Button>
+                                    </div>
+                                </div>
+
                                 <Card className="evaluation-question-card question-fade-in dark:bg-card dark:border-border">
                                     <CardHeader className="evaluation-question-header p-4 sm:p-5 md:p-6 dark:bg-card dark:border-border">
                                         <div className="flex items-center justify-between gap-2">
@@ -1110,15 +1152,34 @@ export default function TakeEvaluation() {
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => setIsAutoAdvanceEnabled((prev) => !prev)}
-                                                    className="h-7 px-2 sm:h-8 sm:px-3 text-[10px] sm:text-xs font-semibold"
-                                                    title={isAutoAdvanceEnabled ? "Desativar avanço automático" : "Ativar avanço automático"}
-                                                >
-                                                    {isAutoAdvanceEnabled ? "Auto avanço: ON" : "Auto avanço: OFF"}
-                                                </Button>
+                                                <div className="flex items-center gap-2">
+                                                    <span
+                                                        className={`text-[10px] sm:text-xs font-semibold ${isAutoAdvanceEnabled
+                                                            ? "text-green-700 dark:text-green-400"
+                                                            : "text-red-700 dark:text-red-400"
+                                                            }`}
+                                                    >
+                                                        {isAutoAdvanceEnabled ? "Auto avanço: ON" : "Auto avanço: OFF"}
+                                                    </span>
+                                                    <label
+                                                        className="relative inline-block w-12 h-6 sm:w-14 sm:h-7 cursor-pointer"
+                                                        title={isAutoAdvanceEnabled ? "Desativar avanço automático" : "Ativar avanço automático"}
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isAutoAdvanceEnabled}
+                                                            onChange={() => setIsAutoAdvanceEnabled((prev) => !prev)}
+                                                            className="peer sr-only"
+                                                            aria-label="Auto avanço"
+                                                        />
+                                                        <div
+                                                            className={`absolute inset-0 rounded-full transition-colors duration-300 ease-in-out shadow-[inset_0_0_0_2px] peer-focus-visible:ring-2 peer-focus-visible:ring-violet-400 peer-focus-visible:ring-offset-2 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 sm:after:w-6 sm:after:h-6 after:rounded-full after:bg-white after:shadow-[0_2px_5px_rgba(0,0,0,0.2)] after:transition-transform after:duration-300 after:ease-in-out peer-checked:after:translate-x-6 sm:peer-checked:after:translate-x-7 ${isAutoAdvanceEnabled
+                                                                ? "bg-green-500 shadow-green-600/80"
+                                                                : "bg-red-500 shadow-red-600/70"
+                                                                }`}
+                                                        />
+                                                    </label>
+                                                </div>
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
@@ -1214,7 +1275,7 @@ export default function TakeEvaluation() {
                                 </Card>
 
                                 {/* ✅ Navegação SIMPLIFICADA para crianças */}
-                                <div className="flex items-center justify-between pt-4 sm:pt-6 border-t border-border gap-2 sm:gap-4">
+                                <div className="hidden md:flex items-center justify-between pt-4 sm:pt-6 border-t border-border gap-2 sm:gap-4">
                                     <Button
                                         variant="outline"
                                         size="sm"
@@ -1692,7 +1753,7 @@ export default function TakeEvaluation() {
                        {/* Conteúdo principal - MELHORADO */}
                        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
                            {/* Lado esquerdo/topo - Questão */}
-                           <div className="fullscreen-question-container flex-1 bg-card overflow-y-auto md:w-1/2 lg:w-3/5 xl:w-2/3">
+                          <div className="fullscreen-question-container hide-scrollbar flex-1 bg-card overflow-y-auto md:w-1/2 lg:w-3/5 xl:w-2/3">
                                <div className="p-4 sm:p-5 md:p-6 lg:p-8 xl:p-10 max-w-4xl mx-auto">
                                    <div className="evaluation-question-content space-y-8 sm:space-y-10">
                                        {/* Texto 1 — Primeiro enunciado */}
@@ -1756,21 +1817,39 @@ export default function TakeEvaluation() {
                            <div className="h-px md:h-auto md:w-px bg-border flex-shrink-0"></div>
 
                            {/* Lado direito/baixo - Alternativas */}
-                           <div className="fullscreen-options-container flex-1 flex flex-col bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 dark:from-purple-950/30 dark:via-blue-950/30 dark:to-indigo-950/30 overflow-y-auto md:w-1/2 lg:w-2/5 xl:w-1/3">
+                          <div className="fullscreen-options-container hide-scrollbar flex-1 flex flex-col bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 dark:from-purple-950/30 dark:via-blue-950/30 dark:to-indigo-950/30 overflow-y-auto md:w-1/2 lg:w-2/5 xl:w-1/3">
                                <div className="p-4 sm:p-5 md:p-6 lg:p-8">
                                    <h3 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-foreground mb-3 sm:mb-4 md:mb-6 sticky top-0 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 dark:from-purple-950/30 dark:via-blue-950/30 dark:to-indigo-950/30 pb-2 z-10">
                                        Alternativas:
                                    </h3>
-                                   <div className="mb-3">
-                                       <Button
-                                           variant="outline"
-                                           size="sm"
-                                           onClick={() => setIsAutoAdvanceEnabled((prev) => !prev)}
-                                           className="h-8 px-3 text-xs font-semibold"
-                                       >
-                                           {isAutoAdvanceEnabled ? "Auto avanço: ON" : "Auto avanço: OFF"}
-                                       </Button>
-                                   </div>
+                                  <div className="mb-3 flex items-center gap-3">
+                                      <span
+                                          className={`text-xs font-semibold ${isAutoAdvanceEnabled
+                                              ? "text-green-700 dark:text-green-400"
+                                              : "text-red-700 dark:text-red-400"
+                                              }`}
+                                      >
+                                          {isAutoAdvanceEnabled ? "Auto avanço: ON" : "Auto avanço: OFF"}
+                                      </span>
+                                      <label
+                                          className="relative inline-block w-14 h-7 cursor-pointer"
+                                          title={isAutoAdvanceEnabled ? "Desativar avanço automático" : "Ativar avanço automático"}
+                                      >
+                                          <input
+                                              type="checkbox"
+                                              checked={isAutoAdvanceEnabled}
+                                              onChange={() => setIsAutoAdvanceEnabled((prev) => !prev)}
+                                              className="peer sr-only"
+                                              aria-label="Auto avanço"
+                                          />
+                                          <div
+                                              className={`absolute inset-0 rounded-full transition-colors duration-300 ease-in-out shadow-[inset_0_0_0_2px] peer-focus-visible:ring-2 peer-focus-visible:ring-violet-400 peer-focus-visible:ring-offset-2 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-6 after:h-6 after:rounded-full after:bg-white after:shadow-[0_2px_5px_rgba(0,0,0,0.2)] after:transition-transform after:duration-300 after:ease-in-out peer-checked:after:translate-x-7 ${isAutoAdvanceEnabled
+                                                  ? "bg-green-500 shadow-green-600/80"
+                                                  : "bg-red-500 shadow-red-600/70"
+                                                  }`}
+                                          />
+                                      </label>
+                                  </div>
                                    <div className="space-y-3 sm:space-y-4">
                                        <QuestionOptions
                                            question={currentQuestion}

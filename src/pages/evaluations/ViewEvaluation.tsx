@@ -780,10 +780,6 @@ export default function ViewEvaluation({
     if (!normalized) return 'Não informado';
     return normalized.charAt(0).toUpperCase() + normalized.slice(1);
   };
-  const handleViewStudentResults = (studentId: string) => {
-    if (!id) return;
-    navigate(`/app/avaliacao/${id}/aluno/${studentId}/resultados`);
-  };
 
   if (!evaluation) {
     return (
@@ -1057,16 +1053,6 @@ export default function ViewEvaluation({
                         >
                           {student.status === 'realizado' ? 'Realizou' : 'Pendente'}
                         </Badge>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8 px-2"
-                          onClick={() => handleViewStudentResults(student.id)}
-                        >
-                          <Eye className="mr-1 h-3.5 w-3.5" />
-                          Ver aluno
-                        </Button>
                       </div>
                     </div>
                   ))}

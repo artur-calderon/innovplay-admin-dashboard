@@ -814,7 +814,9 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
         nota: r.grade ?? 0,
         proficiencia: r.proficiency ?? 0,
         classificacao: classNorm,
-        status: 'concluida',
+        // Só marca como concluída após conciliar com `geral.alunos`.
+        // Evita que faltosos/pendentes vindos no payload de ranking apareçam indevidamente.
+        status: 'pendente',
         posicao: r.posicao ?? idx + 1,
         questoes_respondidas: 0,
         acertos: 0,
