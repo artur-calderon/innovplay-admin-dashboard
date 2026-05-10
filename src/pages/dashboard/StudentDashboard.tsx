@@ -346,19 +346,23 @@ const normalizeNumber = (value: unknown): number => {
   return 0;
 };
 
+const hasRankingPerformance = (value: unknown): boolean => normalizeNumber(value) > 0;
+
 const transformRankingGroupToCardData = (group?: ApiRankingGroup): RankingCardData => {
   if (!group || !group.current_student) {
     return { ...emptyRankingCardData };
   }
 
-  const rankingList = (group.ranking ?? []).map((item) => ({
-    id: item.position,
-    nome: item.student_name,
-    acertos: 0,
-    total: 0,
-    posicao: item.position,
-    pontos: normalizeNumber(item.proficiency)
-  }));
+  const rankingList = (group.ranking ?? [])
+    .filter((item) => hasRankingPerformance(item.proficiency))
+    .map((item) => ({
+      id: item.position,
+      nome: item.student_name,
+      acertos: 0,
+      total: 0,
+      posicao: item.position,
+      pontos: normalizeNumber(item.proficiency)
+    }));
 
   const currentPosition = group.current_student?.position ?? group.position ?? 0;
   const currentProficiency = normalizeNumber(group.current_student?.proficiency);
@@ -872,7 +876,7 @@ const StudentDashboard = () => {
         }
         const list = (data.ranking ?? []).filter((r) => {
           const completedEvaluations = Number(r.completed_evaluations ?? 0);
-          return completedEvaluations > 0;
+          return completedEvaluations > 0 && hasRankingPerformance(r.media);
         });
         if (!list.length) {
           setDashboardRanking(null);
