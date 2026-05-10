@@ -62,11 +62,11 @@ export default function Login() {
       return;
     }
 
-    // Validação básica da matrícula (deve ter pelo menos 3 caracteres)
-    if (matricula.trim().length < 3) {
+    // Validação básica da matrícula (deve ter pelo menos 2 caracteres)
+    if (matricula.trim().length < 2) {
       toast({
         title: "Matrícula inválida",
-        description: "A matrícula deve ter pelo menos 3 caracteres.",
+        description: "A matrícula deve ter pelo menos 2 caracteres.",
         variant: "destructive",
         duration: 4000,
       });
