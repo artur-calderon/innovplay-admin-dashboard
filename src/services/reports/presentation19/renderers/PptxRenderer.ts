@@ -794,12 +794,18 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
       if (deckData.slide2ShowSerieTurmas) {
         const labPt = p19PxToPtForPptx(P19_SEGMENT_FIELD_LABEL_PX);
         const valPt = p19PxToPtForPptx(P19_SEGMENT_FIELD_VALUE_PX);
+        const escolaNomeCapa =
+          deckData.escolasParticipantes.length === 1
+            ? deckData.escolasParticipantes[0] ?? "N/A"
+            : deckData.escolasParticipantes.filter(Boolean).join(", ") || "N/A";
         const turmaList = deckData.turmasParticipantesCapa.length > 8;
         const turmaBodyPt = turmaList
           ? p19PxToPtForPptx(20)
           : p19PxToPtForPptx(deckData.turma.length > 120 ? 22 : 34);
         slide.addText(
           [
+            { text: "ESCOLA\n", options: { fontSize: labPt, color: "52525B", bold: true } },
+            { text: `${escolaNomeCapa}\n\n`, options: { fontSize: valPt, color: "18181B", bold: true } },
             { text: "SÉRIE\n", options: { fontSize: labPt, color: "52525B", bold: true } },
             { text: `${deckData.serie ?? "N/A"}\n\n`, options: { fontSize: valPt, color: "18181B", bold: true } },
             {

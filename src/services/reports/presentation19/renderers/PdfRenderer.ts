@@ -577,16 +577,17 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
     case "cover-school": {
       if (deckData.slide2ShowSerieTurmas) {
         doc.setFont("helvetica", "bold");
-        doc.setFillColor(248, 250, 252);
-        doc.setDrawColor(226, 232, 240);
-        doc.roundedRect(content.x, 160, content.w, 440, 14, 14, "FD");
         const x = content.x + 24;
         const maxW = content.w - 48;
+        const escolaNomeCapa =
+          deckData.escolasParticipantes.length === 1
+            ? deckData.escolasParticipantes[0] ?? "N/A"
+            : deckData.escolasParticipantes.filter(Boolean).join(", ") || "N/A";
 
         const drawLabelValueBlock = (args: { yTop: number; label: string; value: string; valueFontSize: number }) => {
           const labelFs = P19_SEGMENT_FIELD_LABEL_PX;
           const labelGap = 8;
-          const blockGap = 18;
+          const blockGap = 22;
 
           doc.setFont("helvetica", "bold");
           doc.setFontSize(labelFs);
@@ -606,7 +607,13 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
           return { yTop: y + blockGap };
         };
 
-        let yTop = 190;
+        let yTop = 200;
+        ({ yTop } = drawLabelValueBlock({
+          yTop,
+          label: "ESCOLA",
+          value: escolaNomeCapa,
+          valueFontSize: P19_SEGMENT_FIELD_VALUE_PX,
+        }));
         ({ yTop } = drawLabelValueBlock({ yTop, label: "SÉRIE", value: deckData.serie || "N/A", valueFontSize: P19_SEGMENT_FIELD_VALUE_PX }));
         const turmaBody =
           deckData.turmasParticipantesCapa.length > 8

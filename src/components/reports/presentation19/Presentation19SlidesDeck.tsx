@@ -443,25 +443,37 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
             <div className="flex-1 flex items-center justify-center min-h-0">
               <div className="text-center w-full max-w-4xl px-2">
                 {deckData.slide2ShowSerieTurmas ? (
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-8 text-left w-full">
-                    <div className="text-sm text-zinc-500 font-semibold">SÉRIE</div>
-                    <div className="text-3xl font-black text-zinc-900 mt-1">{deckData.serie}</div>
-                    <div className="mt-6 text-sm text-zinc-500 font-semibold">
-                      {deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA"}
-                    </div>
-                    {deckData.turmasParticipantesCapa.length > 8 ? (
-                      <ul className="mt-2 list-disc pl-5 text-lg font-black text-zinc-900 space-y-1 max-h-64 overflow-y-auto">
-                        {deckData.turmasParticipantesCapa.map((t) => (
-                          <li key={t}>{t}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div
-                        className={`font-black mt-1 text-zinc-900 ${deckData.turma.length > 120 ? "text-lg leading-snug" : "text-3xl"}`}
-                      >
-                        {deckData.turma}
+                  <div className="text-left w-full max-w-4xl mx-auto space-y-6">
+                    <div>
+                      <div className="text-sm text-zinc-500 font-semibold">ESCOLA</div>
+                      <div className="text-3xl font-black text-zinc-900 mt-1 leading-snug break-words">
+                        {deckData.escolasParticipantes.length === 1
+                          ? (deckData.escolasParticipantes[0] ?? "N/A")
+                          : deckData.escolasParticipantes.filter(Boolean).join(", ") || "N/A"}
                       </div>
-                    )}
+                    </div>
+                    <div>
+                      <div className="text-sm text-zinc-500 font-semibold">SÉRIE</div>
+                      <div className="text-3xl font-black text-zinc-900 mt-1">{deckData.serie}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-zinc-500 font-semibold">
+                        {deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA"}
+                      </div>
+                      {deckData.turmasParticipantesCapa.length > 8 ? (
+                        <ul className="mt-2 list-disc pl-5 text-lg font-black text-zinc-900 space-y-1 max-h-64 overflow-y-auto">
+                          {deckData.turmasParticipantesCapa.map((t) => (
+                            <li key={t}>{t}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div
+                          className={`font-black mt-1 text-zinc-900 ${deckData.turma.length > 120 ? "text-lg leading-snug" : "text-3xl"}`}
+                        >
+                          {deckData.turma}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ) : deckData.escolasParticipantes.length <= 1 ? (
                   <div className="text-4xl font-black text-zinc-900">{deckData.escolasParticipantes[0] ?? "N/A"}</div>
