@@ -108,7 +108,7 @@ export default function CompetitionAnalytics() {
     return Number.isFinite(n) ? n : fallback;
   };
 
-  // Dados adaptados para ResultsCharts (estatisticas_gerais + resultados_por_disciplina)
+  // Dados adaptados para ResultsCharts (`estatisticas_gerais.por_disciplina` — mesmo contrato da rota de avaliações)
   const chartsApiData = useMemo(() => {
     if (!analytics) return null;
     const avgGrade = analytics.averages?.grade ?? 0;
@@ -118,15 +118,20 @@ export default function CompetitionAnalytics() {
       estatisticas_gerais: {
         media_nota_geral: toNumber(avgGrade),
         media_proficiencia_geral: toNumber(avgProf),
+        por_disciplina: [
+          {
+            disciplina: competitionName || 'Competição',
+            total_avaliacoes: 1,
+            total_alunos: toNumber(analytics.participation?.participated_students),
+            alunos_participantes: toNumber(analytics.participation?.participated_students),
+            alunos_pendentes: 0,
+            alunos_ausentes: 0,
+            media_nota: toNumber(avgGrade),
+            media_proficiencia: toNumber(avgProf),
+            distribuicao_classificacao: dist as Record<string, number>,
+          },
+        ],
       },
-      resultados_por_disciplina: [
-        {
-          disciplina: competitionName || 'Competição',
-          media_nota: toNumber(avgGrade),
-          media_proficiencia: toNumber(avgProf),
-          distribuicao_classificacao: dist,
-        },
-      ],
     };
   }, [analytics, competitionName]);
 
@@ -321,7 +326,7 @@ export default function CompetitionAnalytics() {
 
         <TabsContent value="charts" className="space-y-6 mt-6">
           {/* Gráficos do Results (média nota, proficiência, distribuição) */}
-          {chartsApiData?.estatisticas_gerais && chartsApiData?.resultados_por_disciplina ? (
+          {chartsApiData?.estatisticas_gerais ? (
             <ResultsCharts
               apiData={chartsApiData}
               evaluationInfo={chartsEvaluationInfo}
