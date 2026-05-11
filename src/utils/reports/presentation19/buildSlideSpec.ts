@@ -4,6 +4,7 @@ import { getProficiencyTableInfo } from "@/components/evaluations/results/utils/
 import { getSubjectPaletteIndex } from "@/utils/competition/competitionSubjectColors";
 import { chunkPresentation19SlideQuestionRows } from "@/utils/reports/presentation19/questionsTablePagination";
 import { comparisonColumnLabel } from "@/utils/reports/presentation19/presentationScope";
+import { formatPctOneDecimalPtBr } from "@/utils/reports/presentation19/formatPctOneDecimalPtBr";
 
 const MAX_CATEGORY_ROWS_PER_SLIDE = 14;
 /** Proficiência por disciplina: 1 gráfico por slide (largura total, uma disciplina por “linha”). */
@@ -180,13 +181,12 @@ function buildLevelsChart(deckData: Presentation19DeckData): ExportChart {
   // Comparativo (ex.: Turma selecionada vs Geral da série): barras empilhadas por nível por escopo.
   if (deckData.comparisonAxis === "turma" && deckData.niveisPorSerie.length > 1) {
     const sorted = [...deckData.niveisPorSerie].sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
-    const rawMax = Math.max(
-      1,
-      ...sorted.flatMap((r) => [r.abaixoDoBasico, r.basico, r.adequado, r.avancado])
-    );
+    const rowSum = (r: (typeof sorted)[number]) =>
+      Number(r.abaixoDoBasico ?? 0) + Number(r.basico ?? 0) + Number(r.adequado ?? 0) + Number(r.avancado ?? 0);
+    const rawMax = Math.max(1, ...sorted.map(rowSum));
     const maxRounded = rawMax <= 10 ? 10 : Math.ceil(rawMax / 5) * 5;
     return {
-      type: "bar",
+      type: "stackedBar",
       categoryKey: "label",
       valueKeys: [
         { key: "abaixo", label: "Abaixo do Básico", color: levelColors.abaixo_do_basico },
@@ -633,8 +633,7 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
   const multiSchool = isMunicipalMultiSchool(deckData);
 
   const presenceChunks = chunkFlat(deckData.presencaPorSerie, MAX_CATEGORY_ROWS_PER_SLIDE);
-  const presenceTableSlides: Presentation19SlideSpec[] = presenceChunks.map((chunk, i) => ({
-    index: 0,
+  const presenceTableSlides: Array<Omit<Presentation19SlideSpec, "index">> = presenceChunks.map((chunk) => ({
     kind: "presence-table" as const,
     table: {
       columns: [catLabel, "Total de Alunos", "Total de Presentes", "Presença Média (%)", "Alunos Faltosos"],
@@ -642,14 +641,13 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
         r.label,
         Math.round(Number(r.totalAlunos ?? 0)),
         Math.round(Number(r.totalPresentes ?? 0)),
-        `${Math.round(Number(r.presencaMediaPct ?? 0))}%`,
+        formatPctOneDecimalPtBr(Number(r.presencaMediaPct ?? 0)),
         Math.round(Number(r.alunosFaltosos ?? 0)),
       ]),
     },
   }));
 
-  const presenceChartSlides: Presentation19SlideSpec[] = presenceChunks.map((chunk) => ({
-    index: 0,
+  const presenceChartSlides: Array<Omit<Presentation19SlideSpec, "index">> = presenceChunks.map((chunk) => ({
     kind: "presence-chart" as const,
     chart: buildPresenceChart(deckData, chunk),
   }));
@@ -849,7 +847,7 @@ export function buildSlideSpec(deckData: Presentation19DeckData): Presentation19
 
   const slides: Presentation19SlideSpec[] = [];
   let idx = 1;
-  const push = (slide: Omit<Presentation19SlideSpec, "index">) => {
+  const push = <S extends Omit<Presentation19SlideSpec, "index">>(slide: S) => {
     slides.push({ ...slide, index: idx } as Presentation19SlideSpec);
     idx += 1;
   };

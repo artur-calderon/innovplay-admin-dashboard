@@ -86,6 +86,9 @@ export type Presentation19DeckData = {
   /** Turmas distintas que participaram (avaliação/cartão), para layout em lista quando necessário. */
   turmasParticipantesCapa: string[];
 
+  /** Slide 2: com escola selecionada, mostrar série e turmas em vez da lista municipal de escolas. */
+  slide2ShowSerieTurmas: boolean;
+
   /** Slides 5-6 — coluna principal = `label` conforme `comparisonAxis`. */
   presencaPorSerie: PresenceBySeriesRow[];
 

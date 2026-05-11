@@ -91,6 +91,8 @@ import {
   P19_SLIDE_FOOTER_RESERVE_PX,
   P19_SLIDE_TITLE_FIRST_LINE_TOP_PX,
   P19_TITLE_TO_SUBTITLE_GAP_PX,
+  P19_CHART_V_BAR_TOP_PAD_PX,
+  P19_CHART_V_BAR_VALUE_LABEL_RESERVE_PX,
   P19_DECK_LOGO_H_PX,
   P19_DECK_LOGO_RIGHT_MARGIN_PX,
   P19_DECK_LOGO_TOP_PX,
@@ -254,7 +256,7 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
 
   const barsStartX = box.x + xScale(8);
   const barsW = Math.max(0.35, box.x + box.w - barsStartX - xScale(10));
-  const topPad = yScale(6);
+  const topPad = yScale(P19_CHART_V_BAR_TOP_PAD_PX + P19_CHART_V_BAR_VALUE_LABEL_RESERVE_PX);
   /**
    * Em caixas pequenas (ex.: proficiência por disciplina), só `yScale(34)` deixa a faixa de rótulos
    * microscopic — preview reserva ~30px de linha + padding (`LABEL_ROW_H` + padding).
@@ -289,15 +291,14 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
         const barH = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaH;
         const barY = baselineY - barH;
         const barX = baseXAligned + groupOffsetX + sIdx * (seriesW + gapIn);
-        slide.addShape(pptx.ShapeType.rect, {
+        slide.addShape(pptx.ShapeType.roundRect, {
           x: barX,
           y: barY,
           w: seriesW,
           h: barH,
           fill: { color: hexNoHash(s.color) },
           line: { color: hexNoHash(s.color), pt: 0 },
-          rx: 0.06,
-          ry: 0.06,
+          rectRadius: 0.06,
         });
         const valBoxW = Math.max(0.58, seriesW + 0.26);
         slide.addText(formatBarValueLabel(value, s.label), {
@@ -322,15 +323,14 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
         total += Math.max(0, value);
         const barH = (Math.max(0, value - axisMin) / (maxValue - axisMin)) * chartAreaH;
         const barY = currentTop - barH;
-        slide.addShape(pptx.ShapeType.rect, {
+        slide.addShape(pptx.ShapeType.roundRect, {
           x: singleX,
           y: barY,
           w: singleW,
           h: barH,
           fill: { color: hexNoHash(s.color) },
           line: { color: hexNoHash(s.color), pt: 0 },
-          rx: 0.08,
-          ry: 0.08,
+          rectRadius: 0.08,
         });
         currentTop = barY;
       });
@@ -354,15 +354,14 @@ function drawPdfAlignedBarChart(slide: PptxGenJS.Slide, chart: ExportChart, box:
       const barColor = String(row.color ?? palette[idx % palette.length] ?? s.color);
       const singleW = Math.max(0.04, Math.min(xScale(34), innerW * 0.7));
       const singleX = baseXAligned + (innerW - singleW) / 2;
-      slide.addShape(pptx.ShapeType.rect, {
+      slide.addShape(pptx.ShapeType.roundRect, {
         x: singleX,
         y: barY,
         w: singleW,
         h: barH,
         fill: { color: hexNoHash(barColor) },
         line: { color: hexNoHash(barColor), pt: 0 },
-        rx: 0.10,
-        ry: 0.10,
+        rectRadius: 0.1,
       });
       const oneSerW = Math.max(0.62, singleW + 0.32);
       slide.addText(formatBarValueLabel(value, s.label), {
@@ -453,8 +452,7 @@ function drawTitle(
     y: p19PxToSlideInY(titleTopPx),
     w: p19PxToSlideInX(P19_TITLE_ACCENT_W_PX),
     h: p19PxToSlideInY(P19_TITLE_ACCENT_H_PX),
-    rx: 0.06,
-    ry: 0.06,
+    rectRadius: 0.06,
     fill: { color: hexNoHash(primaryColor) },
     line: { color: hexNoHash(primaryColor) },
   });
@@ -576,7 +574,7 @@ function drawTable(
         };
       })
     ),
-  ];
+  ] as PptxGenJS.TableRow[];
   const colW =
     colWFrac && colWFrac.length === columns.length
       ? colWFrac.map((f) => totalW * f)
@@ -657,7 +655,7 @@ function drawQuestionsTable(
         };
       })
     ),
-  ];
+  ] as PptxGenJS.TableRow[];
   slide.addTable(tableRows, {
     x: tableX,
     y: startY,
@@ -728,7 +726,7 @@ function drawLevelsTable(
         },
       }));
     }),
-  ];
+  ] as PptxGenJS.TableRow[];
   const colW = columns.map((_, ci) => (ci === 0 ? totalW * 0.22 : (totalW - totalW * 0.22) / (columns.length - 1)));
   slide.addTable(tableRows, {
     x: tableX,
@@ -775,8 +773,7 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
         h: 1.85,
         fill: { color: "F8FAFC" },
         line: { color: "E2E8F0" },
-        rx: 0.12,
-        ry: 0.12,
+        rectRadius: 0.12,
       });
       slide.addText(
         [
@@ -794,6 +791,31 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
       );
       break;
     case "cover-school": {
+      if (deckData.slide2ShowSerieTurmas) {
+        const labPt = p19PxToPtForPptx(P19_SEGMENT_FIELD_LABEL_PX);
+        const valPt = p19PxToPtForPptx(P19_SEGMENT_FIELD_VALUE_PX);
+        const turmaList = deckData.turmasParticipantesCapa.length > 8;
+        const turmaBodyPt = turmaList
+          ? p19PxToPtForPptx(20)
+          : p19PxToPtForPptx(deckData.turma.length > 120 ? 22 : 34);
+        slide.addText(
+          [
+            { text: "SÉRIE\n", options: { fontSize: labPt, color: "52525B", bold: true } },
+            { text: `${deckData.serie ?? "N/A"}\n\n`, options: { fontSize: valPt, color: "18181B", bold: true } },
+            {
+              text: `${deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA"}\n`,
+              options: { fontSize: labPt, color: "52525B", bold: true },
+            },
+            {
+              text: turmaList ? deckData.turmasParticipantesCapa.map((t) => `• ${t}`).join("\n") : deckData.turma,
+              options: { fontSize: turmaBodyPt, color: "18181B", bold: true },
+            },
+          ],
+          { x: 0.76, y: 1.55, w: 11.8, h: 4.9, valign: "top" }
+        );
+        break;
+      }
+
       const escolas = deckData.escolasParticipantes;
       if (escolas.length <= 1) {
         slide.addText(escolas[0] || "N/A", {
@@ -926,8 +948,7 @@ function renderSlide(slide: PptxGenJS.Slide, slideSpec: Presentation19SlideSpec,
           h: cardBox.h,
           fill: { color: p19LevelsGuideCardFillHex() },
           line: { color: p19LevelsGuideCardBorderHex() },
-          rx: rxIn,
-          ry: rxIn,
+          rectRadius: Math.min(0.35, Math.max(0.02, rxIn)),
         });
         const stripe = p19RectPxToSlideInches({ x: bx, y, w: 8, h });
         slide.addShape(pptx.ShapeType.rect, {

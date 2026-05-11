@@ -428,6 +428,7 @@ export default function RelatorioApresentacao19Slides() {
       params.set("estado", selectedState);
       params.set("municipio", selectedMunicipality);
       params.set("avaliacao", evaluationId);
+      if (selectedSchool !== "all") params.set("escola", selectedSchool);
       if (adminCityIdQuery) params.set("city_id", adminCityIdQuery);
       if (periodoApi) params.set("periodo", periodoApi);
       const resEval = await api.get<NovaRespostaAPI>(
