@@ -30,6 +30,18 @@ export interface AnswerSheetResultadosAgregadosRaw {
       avancado?: number;
     };
     total_avaliacoes?: number;
+    /** Quando o backend envia; senão o mapper preenche uma linha `GERAL`. */
+    por_disciplina?: Array<{
+      disciplina: string;
+      total_avaliacoes?: number;
+      total_alunos?: number;
+      alunos_participantes?: number;
+      alunos_pendentes?: number;
+      alunos_ausentes?: number;
+      media_nota?: number;
+      media_proficiencia?: number;
+      distribuicao_classificacao?: Record<string, number>;
+    }>;
   };
   resultados_por_disciplina?: Array<{
     disciplina: string;
@@ -200,6 +212,37 @@ export function mapAnswerSheetResultadosAgregadosToNovaResposta(
 
   const distGeral = { ...emptyDist(), ...eg.distribuicao_classificacao_geral };
 
+  const porDisciplinaFromBackend = eg.por_disciplina;
+  const porDisciplinaStats =
+    Array.isArray(porDisciplinaFromBackend) && porDisciplinaFromBackend.length > 0
+      ? porDisciplinaFromBackend.map((row) => ({
+          disciplina: String(row.disciplina ?? "GERAL"),
+          total_avaliacoes: row.total_avaliacoes ?? eg.total_avaliacoes ?? 1,
+          total_alunos: row.total_alunos ?? eg.total_alunos ?? 0,
+          alunos_participantes: row.alunos_participantes ?? eg.alunos_participantes ?? 0,
+          alunos_pendentes: row.alunos_pendentes ?? eg.alunos_pendentes ?? 0,
+          alunos_ausentes: row.alunos_ausentes ?? eg.alunos_ausentes ?? 0,
+          media_nota: row.media_nota ?? eg.media_nota_geral ?? 0,
+          media_proficiencia: row.media_proficiencia ?? eg.media_proficiencia_geral ?? 0,
+          distribuicao_classificacao: {
+            ...distGeral,
+            ...(row.distribuicao_classificacao ?? {}),
+          } as Record<string, number>,
+        }))
+      : [
+          {
+            disciplina: "GERAL",
+            total_avaliacoes: eg.total_avaliacoes ?? 1,
+            total_alunos: eg.total_alunos ?? 0,
+            alunos_participantes: eg.alunos_participantes ?? 0,
+            alunos_pendentes: eg.alunos_pendentes ?? 0,
+            alunos_ausentes: eg.alunos_ausentes ?? 0,
+            media_nota: eg.media_nota_geral ?? 0,
+            media_proficiencia: eg.media_proficiencia_geral ?? 0,
+            distribuicao_classificacao: { ...distGeral } as Record<string, number>,
+          },
+        ];
+
   const resultadosPorDisciplina = (raw.resultados_por_disciplina ?? []).map((d) => ({
     disciplina: d.disciplina,
     total_avaliacoes: d.total_avaliacoes ?? 1,
@@ -339,6 +382,7 @@ export function mapAnswerSheetResultadosAgregadosToNovaResposta(
       media_nota_geral: eg.media_nota_geral ?? 0,
       media_proficiencia_geral: eg.media_proficiencia_geral ?? 0,
       distribuicao_classificacao_geral: distGeral,
+      por_disciplina: porDisciplinaStats,
     },
     resultados_por_disciplina: resultadosPorDisciplina,
     resultados_detalhados: {

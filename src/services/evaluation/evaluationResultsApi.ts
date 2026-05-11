@@ -58,6 +58,20 @@ interface FiltrosAplicados {
   avaliacao: string;
 }
 
+/** Estatísticas por disciplina no mesmo escopo da rota (GET /evaluation-results/avaliacoes). */
+export interface EstatisticasGeraisPorDisciplinaItem {
+  disciplina: string;
+  total_avaliacoes?: number;
+  total_alunos: number;
+  alunos_participantes: number;
+  alunos_pendentes?: number;
+  alunos_ausentes?: number;
+  media_nota: number;
+  media_proficiencia: number;
+  /** Faixas padrão (online) ou chaves livres (ex.: cartão-resposta). */
+  distribuicao_classificacao: Record<string, number>;
+}
+
 interface EstatisticasGerais {
   tipo: 'municipio' | 'escola' | 'serie' | 'turma' | 'avaliacao';
   nome: string;
@@ -91,6 +105,10 @@ interface EstatisticasGerais {
     adequado: number;
     avancado: number;
   };
+  participantes_distribuicao?: number;
+  report_entity_type?: string;
+  /** Agregado por disciplina no escopo atual; ausente ou `[]` em alguns branches — tratar como []. */
+  por_disciplina?: EstatisticasGeraisPorDisciplinaItem[];
 }
 
 interface OpcoesProximosFiltros {
@@ -3179,10 +3197,17 @@ export class EvaluationResultsApiService {
         // Fazer uma chamada ampla para obter estatísticas globais
         const unifiedResponse = await this.getEvaluationsList(1, 1, {});
         
-        if (unifiedResponse?.estatisticas_gerais && unifiedResponse?.resultados_por_disciplina) {
+        if (unifiedResponse?.estatisticas_gerais) {
           
           const stats = unifiedResponse.estatisticas_gerais;
-          const disciplinas = unifiedResponse.resultados_por_disciplina;
+          const disciplinas =
+            (stats.por_disciplina && stats.por_disciplina.length > 0
+              ? stats.por_disciplina
+              : unifiedResponse.resultados_por_disciplina) ?? [];
+          
+          if (disciplinas.length === 0) {
+            return null;
+          }
           
           // Encontrar disciplina com melhor desempenho
           const melhorDisciplina = disciplinas.reduce((melhor, atual) => 

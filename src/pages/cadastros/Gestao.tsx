@@ -1064,7 +1064,7 @@ export default function Gestao() {
           <InstituicaoUsersTab
             cityId={
               user.role === "tecadm"
-                ? (user.tenant_id ?? null)
+                ? (user.tenant_id || user.city_id || null)
                 : (selectedUsersCityId || null)
             }
             cities={(citiesWithSlug.length > 0 ? citiesWithSlug : availableCities).map((c) => ({ id: c.id, name: c.name }))}

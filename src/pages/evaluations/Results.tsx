@@ -1226,8 +1226,14 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
             serie: dataToSet.estatisticas_gerais.serie,
           };
 
-        // Coletar disciplinas dos resultados por disciplina
-        const subjectsFromResults = (dataToSet.resultados_por_disciplina || [])
+        // Coletar disciplinas: prioridade `estatisticas_gerais.por_disciplina` (backend), fallback `resultados_por_disciplina`
+        const fromPorDisciplina = (dataToSet.estatisticas_gerais as { por_disciplina?: { disciplina: string }[] })
+          ?.por_disciplina;
+        const subjectsFromResults = (
+          Array.isArray(fromPorDisciplina) && fromPorDisciplina.length > 0
+            ? fromPorDisciplina
+            : dataToSet.resultados_por_disciplina || []
+        )
           .map(d => {
             const subject = d.disciplina;
             if (typeof subject === 'string') return subject;
@@ -2065,7 +2071,14 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
       evaluationInfo!.disciplinas!.forEach(s => { if (s) set.add(String(s)); });
     }
     if (evaluationInfo?.disciplina) set.add(String(evaluationInfo.disciplina));
-    if (Array.isArray(apiData?.resultados_por_disciplina)) {
+    const porDisciplinaStats = (apiData?.estatisticas_gerais as { por_disciplina?: { disciplina: string }[] })
+      ?.por_disciplina;
+    if (Array.isArray(porDisciplinaStats) && porDisciplinaStats.length > 0) {
+      porDisciplinaStats.forEach((d) => {
+        const name = extractSubjectName(d.disciplina as unknown);
+        if (name) set.add(name);
+      });
+    } else if (Array.isArray(apiData?.resultados_por_disciplina)) {
       apiData!.resultados_por_disciplina.forEach(d => {
         const name = extractSubjectName(d.disciplina as unknown);
         if (name) set.add(name);
@@ -2605,11 +2618,10 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
 
                 <TabsContent value="charts" className="space-y-6">
                   
-                  {apiData && apiData.estatisticas_gerais && apiData.resultados_por_disciplina ? (
+                  {apiData && apiData.estatisticas_gerais ? (
                     <ResultsCharts
                       apiData={{
                         estatisticas_gerais: apiData.estatisticas_gerais,
-                        resultados_por_disciplina: apiData.resultados_por_disciplina,
                       }}
                       evaluationInfo={evaluationInfo ? {
                         id: evaluationInfo?.id || '',

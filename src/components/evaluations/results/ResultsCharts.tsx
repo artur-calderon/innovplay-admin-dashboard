@@ -11,26 +11,68 @@ interface ChartData {
   distributionData: Array<{
     disciplina: string;
     data: Array<{ name: string; value: number }>;
+    donutColors?: string[];
   }>;
   proficiencyMax: number;
 }
 
+/** Fonte dos gráficos por disciplina: `estatisticas_gerais.por_disciplina` (backend). */
 interface ChartsApiData {
   estatisticas_gerais?: {
     media_nota_geral?: number;
     media_proficiencia_geral?: number;
+    por_disciplina?: Array<{
+      disciplina: string;
+      media_nota: number;
+      media_proficiencia: number;
+      distribuicao_classificacao?: Record<string, number>;
+    }>;
   };
-  resultados_por_disciplina?: Array<{
-    disciplina: string;
-    media_nota: number; // ✅ CORREÇÃO: Campo obrigatório
-    media_proficiencia: number; // ✅ CORREÇÃO: Campo obrigatório
-    distribuicao_classificacao?: {
-      abaixo_do_basico?: number;
-      basico?: number;
-      adequado?: number;
-      avancado?: number;
-    };
-  }>;
+}
+
+const DONUT_SLICE_COLORS = [
+  "#dc2626",
+  "#eab308",
+  "#22c55e",
+  "#15803d",
+  "#6366f1",
+  "#a855f7",
+  "#f97316",
+  "#0ea5e9",
+];
+
+function normalizeDiscKey(disc: string): string {
+  return String(disc || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+/** Monta fatias do donut a partir do objeto do backend (sem agregar médias). */
+function donutSlicesFromDistribuicao(
+  dist: Record<string, number> | undefined
+): Array<{ name: string; value: number }> {
+  if (!dist || typeof dist !== "object") return [];
+  const d = dist as Record<string, unknown>;
+  const hasStandard =
+    "abaixo_do_basico" in d ||
+    "basico" in d ||
+    "adequado" in d ||
+    "avancado" in d;
+  if (hasStandard) {
+    return [
+      { name: "Abaixo do Básico", value: Number(d.abaixo_do_basico) || 0 },
+      { name: "Básico", value: Number(d.basico) || 0 },
+      { name: "Adequado", value: Number(d.adequado) || 0 },
+      { name: "Avançado", value: Number(d.avancado) || 0 },
+    ];
+  }
+  return Object.entries(dist).map(([name, v]) => ({
+    name,
+    value: typeof v === "number" && Number.isFinite(v) ? v : Number(v) || 0,
+  }));
 }
 
 interface ChartsEvaluationInfo {
@@ -59,89 +101,85 @@ interface ResultsChartsProps {
 
 // ✅ HOOK PARA LÓGICA DE DADOS
 function useChartData(
-  apiData: ChartsApiData | null, 
-  inferStageGroup: () => StageGroup, 
+  apiData: ChartsApiData | null,
+  inferStageGroup: () => StageGroup,
   getMaxForDiscipline: (disciplina: string, group: StageGroup) => number
 ): ChartData | null {
   return useMemo(() => {
- 
-    
-   
-    
-    if (!apiData?.estatisticas_gerais || !apiData?.resultados_por_disciplina) {
-      console.warn('Dados incompletos para gráficos:', apiData);
+    if (!apiData?.estatisticas_gerais) {
+      console.warn("Dados incompletos para gráficos:", apiData);
       return null;
     }
 
-    // ✅ FUNÇÕES AUXILIARES
-    const createScoreData = () => {
+    const porDisciplina = apiData.estatisticas_gerais.por_disciplina ?? [];
+    // Não duplicar barra "Geral" quando o backend envia disciplina "GERAL" (cartão-resposta).
+    const disciplineItems = porDisciplina.filter(
+      (it) => normalizeDiscKey(it.disciplina) !== "geral"
+    );
 
-      
+    const createScoreData = () => {
       const scoreData = [
-        { name: "Geral", value: typeof apiData.estatisticas_gerais!.media_nota_geral === 'number' ? apiData.estatisticas_gerais!.media_nota_geral : 0 },
-        ...apiData.resultados_por_disciplina!.map((item) => {
-          const value = typeof item.media_nota === 'number' ? item.media_nota : 0;
-          return {
-            name: item.disciplina.toUpperCase(),
-            value: value
-          };
-        })
+        {
+          name: "Geral",
+          value:
+            typeof apiData.estatisticas_gerais!.media_nota_geral === "number"
+              ? apiData.estatisticas_gerais!.media_nota_geral
+              : 0,
+        },
+        ...disciplineItems.map((item) => ({
+          name: String(item.disciplina || "").toUpperCase(),
+          value: typeof item.media_nota === "number" ? item.media_nota : 0,
+        })),
       ];
-      
       return scoreData;
     };
 
     const createProficiencyData = () => {
-    
-      
       const proficiencyData = [
-        { name: "Geral", value: typeof apiData.estatisticas_gerais!.media_proficiencia_geral === 'number' ? apiData.estatisticas_gerais!.media_proficiencia_geral : 0 },
-        ...apiData.resultados_por_disciplina!.map((item) => {
-          const value = typeof item.media_proficiencia === 'number' ? item.media_proficiencia : 0;
-          return {
-            name: item.disciplina.toUpperCase(),
-            value: value
-          };
-        })
+        {
+          name: "Geral",
+          value:
+            typeof apiData.estatisticas_gerais!.media_proficiencia_geral === "number"
+              ? apiData.estatisticas_gerais!.media_proficiencia_geral
+              : 0,
+        },
+        ...disciplineItems.map((item) => ({
+          name: String(item.disciplina || "").toUpperCase(),
+          value: typeof item.media_proficiencia === "number" ? item.media_proficiencia : 0,
+        })),
       ];
-      
       return proficiencyData;
     };
 
     const createDistributionData = () => {
-    
-      
-      return apiData.resultados_por_disciplina!.map((item) => {
-        
-        
-        return {
-          disciplina: item.disciplina,
-          data: [
-            { name: "Abaixo do Básico", value: item.distribuicao_classificacao?.abaixo_do_basico || 0 },
-            { name: "Básico", value: item.distribuicao_classificacao?.basico || 0 },
-            { name: "Adequado", value: item.distribuicao_classificacao?.adequado || 0 },
-            { name: "Avançado", value: item.distribuicao_classificacao?.avancado || 0 }
-          ]
-        };
-      });
+      return disciplineItems
+        .map((item) => {
+          const slices = donutSlicesFromDistribuicao(item.distribuicao_classificacao);
+          const total = slices.reduce((s, x) => s + x.value, 0);
+          if (total <= 0) return null;
+          return {
+            disciplina: item.disciplina,
+            data: slices,
+            donutColors: slices.map((_, i) => DONUT_SLICE_COLORS[i % DONUT_SLICE_COLORS.length]),
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item));
     };
 
     const calculateProficiencyMax = () => {
       const group = inferStageGroup();
-      const profMaxCandidates = apiData.resultados_por_disciplina!.length
-        ? apiData.resultados_por_disciplina!.map(d => getMaxForDiscipline(d.disciplina, group))
+      const profMaxCandidates = disciplineItems.length
+        ? disciplineItems.map((d) => getMaxForDiscipline(d.disciplina, group))
         : [getMaxForDiscipline("outras", group)];
       return Math.max(...profMaxCandidates);
     };
 
-    const result = {
+    return {
       averageScoreData: createScoreData(),
       averageProficiencyData: createProficiencyData(),
       distributionData: createDistributionData(),
       proficiencyMax: calculateProficiencyMax(),
     };
-
-    return result;
   }, [apiData, inferStageGroup, getMaxForDiscipline]);
 }
 
@@ -156,7 +194,7 @@ const ScoreChart = ({ data }: { data: ChartData }) => (
         color="#22c55e"
         yAxisDomain={[0, 10]}
         yAxisLabel="Nota"
-        showValues={true} // Mostrar valores nas barras
+        showValues={true}
       />
     </CardContent>
   </Card>
@@ -172,7 +210,7 @@ const ProficiencyChart = ({ data }: { data: ChartData }) => (
         color="#15803d"
         yAxisDomain={[0, data.proficiencyMax]}
         yAxisLabel="Proficiência"
-        showValues={true} // Mostrar valores nas barras
+        showValues={true}
       />
     </CardContent>
   </Card>
@@ -181,13 +219,14 @@ const ProficiencyChart = ({ data }: { data: ChartData }) => (
 const DistributionCharts = ({ data }: { data: ChartData }) => (
   <>
     {data.distributionData.map((item, index) => (
-      <Card key={index}>
+      <Card key={`${item.disciplina}-${index}`}>
         <CardContent className="pt-6">
           <DonutChartComponent
             data={item.data}
             title={item.disciplina.toUpperCase()}
             subtitle="Distribuição de Desempenho"
-            showValues={true} // Mostrar valores nos gráficos de donut
+            colors={item.donutColors}
+            showValues={true}
           />
         </CardContent>
       </Card>
@@ -196,13 +235,12 @@ const DistributionCharts = ({ data }: { data: ChartData }) => (
 );
 
 // ✅ COMPONENTE PRINCIPAL MAIS LIMPO
-export function ResultsCharts({ 
-  apiData, 
-  evaluationInfo, 
-  inferStageGroup, 
-  getMaxForDiscipline 
+export function ResultsCharts({
+  apiData,
+  evaluationInfo: _evaluationInfo,
+  inferStageGroup,
+  getMaxForDiscipline,
 }: ResultsChartsProps) {
-  
   const chartData = useChartData(apiData, inferStageGroup, getMaxForDiscipline);
 
   if (!chartData) {
@@ -215,13 +253,11 @@ export function ResultsCharts({
 
   return (
     <div className="space-y-6">
-      {/* Gráficos de Médias */}
       <div className="grid gap-6 md:grid-cols-2">
         <ScoreChart data={chartData} />
         <ProficiencyChart data={chartData} />
       </div>
 
-      {/* Gráficos de Distribuição */}
       {chartData.distributionData.length > 0 && (
         <div className="grid gap-6 md:grid-cols-2">
           <DistributionCharts data={chartData} />

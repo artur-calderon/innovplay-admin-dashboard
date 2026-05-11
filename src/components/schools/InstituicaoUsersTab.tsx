@@ -191,6 +191,7 @@ export function InstituicaoUsersTab({
   const { toast } = useToast();
   const { user: authUser } = useAuth();
   const canFetchSchoolEnrichment = authUser?.role === "admin" || authUser?.role === "tecadm";
+  const canDeleteSingleUser = authUser?.role === "admin" || authUser?.role === "tecadm";
   const canBatchDelete = Boolean(
     authUser?.role === "admin"
       && selectedUserIdsForBatchDelete
@@ -589,6 +590,7 @@ export function InstituicaoUsersTab({
     : [];
 
   const showCitySelector = isAdmin && cities.length > 0 && !cityId;
+  const canCreateTecAdmin = authUser?.role === "admin" || authUser?.role === "tecadm";
 
   return (
     <div className="space-y-6 mt-6">
@@ -615,7 +617,7 @@ export function InstituicaoUsersTab({
               </Select>
             </>
           )}
-          {authUser?.role === "admin" && effectiveCityId && (
+          {canCreateTecAdmin && effectiveCityId && (
             <Button
               type="button"
               onClick={() => setAddTecAdminOpen(true)}
@@ -818,7 +820,7 @@ export function InstituicaoUsersTab({
                                       <Pencil className="h-4 w-4" />
                                     </Button>
                                   )}
-                                  {authUser?.role === "admin" && (
+                                  {canDeleteSingleUser && (
                                     <Button
                                       variant="ghost"
                                       size="icon"
@@ -1052,7 +1054,7 @@ export function InstituicaoUsersTab({
         </DialogContent>
       </Dialog>
 
-      {/* Confirmação de exclusão de usuário (somente admin) */}
+      {/* Confirmação de exclusão de usuário */}
       <AlertDialog open={!!userToDelete} onOpenChange={(open) => !open && !isDeletingUser && setUserToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

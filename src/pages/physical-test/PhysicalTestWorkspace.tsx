@@ -421,10 +421,20 @@ function GenerationProgressPanel({
               <Button
                 onClick={onDownloadAll}
                 size="sm"
+                disabled={isDownloadingAll}
                 className="bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-500"
               >
-                <Download className="h-4 w-4 mr-2" />
-                Baixar ZIP
+                {isDownloadingAll ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Baixando...
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4 mr-2" />
+                    Baixar ZIP
+                  </>
+                )}
               </Button>
             )}
             {onDismiss && (
@@ -478,6 +488,7 @@ export function PhysicalTestWorkspace({
   const [isLoading, setIsLoading] = useState(true);
   const [testStatus, setTestStatus] = useState<PhysicalTestStatus | null>(null);
   const [generatedForms, setGeneratedForms] = useState<GeneratedForm[]>([]);
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
 
   // Estados para geração de formulários
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1158,8 +1169,15 @@ export function PhysicalTestWorkspace({
 
   const handleDownloadAll = async () => {
     if (!id) return;
+    if (isDownloadingAll) return;
 
     try {
+      setIsDownloadingAll(true);
+      toast({
+        title: "Baixando...",
+        description: "Preparando o arquivo ZIP. Isso pode levar alguns instantes.",
+      });
+
       await fetchAuthenticatedDownload(`physical-tests/test/${id}/download-all`, "formularios.zip");
 
       toast({
@@ -1188,6 +1206,9 @@ export function PhysicalTestWorkspace({
           variant: "destructive",
         });
       }
+    }
+    finally {
+      setIsDownloadingAll(false);
     }
   };
 
@@ -1575,10 +1596,20 @@ export function PhysicalTestWorkspace({
                       <Button
                         onClick={handleDownloadAll}
                         variant="outline"
+                        disabled={isDownloadingAll}
                         className="border-purple-600 text-purple-600 hover:bg-purple-50 dark:border-purple-500 dark:text-purple-400 dark:hover:bg-purple-950/40"
                       >
-                        <Download className="h-4 w-4 mr-2" />
-                        Baixar Todos ({generatedForms.length})
+                        {isDownloadingAll ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Baixando...
+                          </>
+                        ) : (
+                          <>
+                            <Download className="h-4 w-4 mr-2" />
+                            Baixar Todos ({generatedForms.length})
+                          </>
+                        )}
                       </Button>
                       <Button
                         onClick={handleDeleteAllForms}

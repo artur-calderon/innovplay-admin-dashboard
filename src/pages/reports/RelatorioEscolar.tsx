@@ -1814,12 +1814,29 @@ export default function RelatorioEscolar({
     if (apiData?.resultados_detalhados?.avaliacoes?.length) {
       const granularidade = apiData.nivel_granularidade;
       const avaliacoes = apiData.resultados_detalhados.avaliacoes;
-      const mediaLpGlobal = readOptionalFiniteNumber(
-        (apiData.resultados_por_disciplina ?? []).find((d) => nomeDisciplinaEhPortugues(d.disciplina))?.media_nota
-      );
-      const mediaMatGlobal = readOptionalFiniteNumber(
-        (apiData.resultados_por_disciplina ?? []).find((d) => nomeDisciplinaEhMatematica(d.disciplina))?.media_nota
-      );
+      const porDisciplina = apiData.resultados_por_disciplina ?? [];
+
+      const rowAggKey = (value?: string | null) =>
+        normalizeText((value ?? "").trim()).replace(/\s+/g, " ");
+
+      const resolveRowDisciplineMedia = (
+        rowKey: string,
+        match: (disciplina: string | undefined) => boolean
+      ): number | undefined => {
+        if (!rowKey?.trim()) return undefined;
+        const key = rowAggKey(rowKey);
+        const item = porDisciplina.find((d) => {
+          const groupLabel =
+            granularidade === "municipio"
+              ? (d as { escola?: string | null }).escola
+              : granularidade === "turma"
+                ? null
+                : (d as { turma?: string | null }).turma;
+          if (groupLabel == null) return false;
+          return rowAggKey(groupLabel) === key && match(d.disciplina);
+        });
+        return item ? readOptionalFiniteNumber(item.media_nota) : undefined;
+      };
 
       const rows: ClassSummaryRow[] = avaliacoes.map((avaliacao, index) => {
         const { turmaLabel, serieVal } = labelsFromAvaliacaoClassStatistics(
@@ -1850,13 +1867,26 @@ export default function RelatorioEscolar({
         const matAg = readOptionalFiniteNumber(
           (avaliacao as { media_nota_matematica?: number | null }).media_nota_matematica
         );
+        const rowGroupKey =
+          granularidade === "municipio"
+            ? String(avaliacao.escola ?? turmaLabel)
+            : granularidade === "escola"
+              ? String(
+                  (avaliacao.turma && avaliacao.turma !== "Todas as turmas")
+                    ? avaliacao.turma
+                    : (avaliacao.serie && avaliacao.serie !== "Todas as séries")
+                      ? avaliacao.serie
+                      : turmaLabel
+                )
+              : String(avaliacao.turma ?? turmaLabel);
+
         const mediaLP =
           lpAg ??
-          mediaLpGlobal ??
+          resolveRowDisciplineMedia(rowGroupKey, nomeDisciplinaEhPortugues) ??
           (nomeDisciplinaEhPortugues(disciplinaDaLinha) ? mediaDisciplinaDaLinha : undefined);
         const mediaMAT =
           matAg ??
-          mediaMatGlobal ??
+          resolveRowDisciplineMedia(rowGroupKey, nomeDisciplinaEhMatematica) ??
           (nomeDisciplinaEhMatematica(disciplinaDaLinha) ? mediaDisciplinaDaLinha : undefined);
 
         const row: ClassSummaryRow = {
@@ -2754,48 +2784,78 @@ export default function RelatorioEscolar({
   }, [apiData, isMunicipalView, relatorioCompleto, reportAnswerSheet, isAnswerSheetAgregados]);
 
   const distributionCharts = useMemo<DistributionChartData[]>(() => {
-    if (!apiData || !apiData.resultados_por_disciplina) return [];
+    if (!apiData) return [];
 
-    // ✅ NOVO: Usar dados reais de resultados_por_disciplina
-    return apiData.resultados_por_disciplina
+    const pdStats = (
+      apiData.estatisticas_gerais as {
+        por_disciplina?: Array<{
+          disciplina: string;
+          distribuicao_classificacao?: Record<string, number>;
+        }>;
+      }
+    )?.por_disciplina;
+    const fromStats = Array.isArray(pdStats) && pdStats.length > 0;
+    const baseList = fromStats ? pdStats : (apiData.resultados_por_disciplina ?? []);
+    if (!baseList.length) return [];
+
+    const REL_DIST_COLORS = ["#EF4444", "#FACC15", "#22C55E", "#16A34A", "#6366f1", "#a855f7"];
+
+    return baseList
       .filter((dadosDisciplina) => {
+        if (fromStats) return true;
         if (!isAnswerSheetAgregados) return true;
         return !isNomeDisciplinaGeralAgregado(dadosDisciplina.disciplina);
       })
       .map((dadosDisciplina) => {
-        // Buscar distribuição de classificação da disciplina
-        const distribuicao = dadosDisciplina.distribuicao_classificacao;
-        if (!distribuicao) return null;
+        const distribuicao = dadosDisciplina.distribuicao_classificacao as
+          | Record<string, number>
+          | undefined;
+        if (!distribuicao || typeof distribuicao !== "object") return null;
 
-        const abaixo_do_basico = Number(distribuicao.abaixo_do_basico ?? 0);
-        const basico = Number(distribuicao.basico ?? 0);
-        const adequado = Number(distribuicao.adequado ?? 0);
-        const avancado = Number(distribuicao.avancado ?? 0);
+        const d = distribuicao as Record<string, unknown>;
+        const hasStandard =
+          "abaixo_do_basico" in d ||
+          "basico" in d ||
+          "adequado" in d ||
+          "avancado" in d;
 
-        const total = abaixo_do_basico + basico + adequado + avancado;
-
-        if (total === 0) return null;
-
-        // Cores padronizadas do sistema (mesma paleta usada em `AcertoNiveis.tsx`)
-        const segments = [
-          { key: 'abaixo', label: 'Abaixo do Básico', value: abaixo_do_basico, color: '#EF4444' }, // [239, 68, 68]
-          { key: 'basico', label: 'Básico', value: basico, color: '#FACC15' }, // [250, 204, 21]
-          { key: 'adequado', label: 'Adequado', value: adequado, color: '#22C55E' }, // [34, 197, 94]
-          { key: 'avancado', label: 'Avançado', value: avancado, color: '#16A34A' } // [22, 163, 74]
-        ].map(segment => ({
-          ...segment,
-          percentage: total > 0 ? Number(((segment.value / total) * 100).toFixed(1)) : 0
-        }));
-
-        // Obter nome da disciplina formatado
-        const disciplinaNome = dadosDisciplina.disciplina || 'Disciplina';
+        const disciplinaNome = dadosDisciplina.disciplina || "Disciplina";
         const title = disciplinaNome.toUpperCase();
 
-        return {
-          title,
-          total,
-          segments
-        } as DistributionChartData;
+        if (hasStandard) {
+          const abaixo_do_basico = Number(d.abaixo_do_basico ?? 0);
+          const basico = Number(d.basico ?? 0);
+          const adequado = Number(d.adequado ?? 0);
+          const avancado = Number(d.avancado ?? 0);
+          const total = abaixo_do_basico + basico + adequado + avancado;
+          if (total === 0) return null;
+          const segments = [
+            { key: "abaixo", label: "Abaixo do Básico", value: abaixo_do_basico, color: "#EF4444" },
+            { key: "basico", label: "Básico", value: basico, color: "#FACC15" },
+            { key: "adequado", label: "Adequado", value: adequado, color: "#22C55E" },
+            { key: "avancado", label: "Avançado", value: avancado, color: "#16A34A" },
+          ].map((segment) => ({
+            ...segment,
+            percentage: total > 0 ? Number(((segment.value / total) * 100).toFixed(1)) : 0,
+          }));
+          return { title, total, segments } as DistributionChartData;
+        }
+
+        const entries = Object.entries(distribuicao).filter(([, v]) => Number(v) > 0);
+        const total = entries.reduce((s, [, v]) => s + (Number(v) || 0), 0);
+        if (total === 0) return null;
+        const segments = entries
+          .map(([label, value], idx) => ({
+            key: `dyn-${idx}-${normalizeText(label)}`,
+            label,
+            value: Number(value) || 0,
+            color: REL_DIST_COLORS[idx % REL_DIST_COLORS.length],
+          }))
+          .map((segment) => ({
+            ...segment,
+            percentage: total > 0 ? Number(((segment.value / total) * 100).toFixed(1)) : 0,
+          }));
+        return { title, total, segments } as DistributionChartData;
       })
       .filter((item): item is DistributionChartData => Boolean(item));
   }, [apiData, isAnswerSheetAgregados]);
@@ -2881,9 +2941,14 @@ export default function RelatorioEscolar({
     
     if (!apiData) return null;
 
-    const porDisciplinaFiltrado = (apiData.resultados_por_disciplina ?? []).filter(
-      (d) => !isNomeDisciplinaGeralAgregado(d.disciplina)
-    );
+    const porDisciplinaFromStats = (
+      apiData.estatisticas_gerais as { por_disciplina?: NovaRespostaAPI["resultados_por_disciplina"] }
+    )?.por_disciplina;
+    const porDisciplinaFiltrado = (
+      Array.isArray(porDisciplinaFromStats) && porDisciplinaFromStats.length > 0
+        ? porDisciplinaFromStats
+        : (apiData.resultados_por_disciplina ?? [])
+    ).filter((d) => !isNomeDisciplinaGeralAgregado(d.disciplina));
 
     // ✅ Cartão resposta (GET /answer-sheets/resultados-agregados): KPIs alinhados ao payload da rota
     if (isAnswerSheetAgregados) {
@@ -2961,11 +3026,15 @@ export default function RelatorioEscolar({
       };
     }
 
-    // ✅ Avaliação digital: usar apenas agregados já calculados pelo backend.
-    const portuguesDisciplina = apiData.resultados_por_disciplina?.find((d) =>
+    // ✅ Avaliação digital: agregados do backend (`por_disciplina` nas estatísticas gerais, quando existir).
+    const porDisciplinaDigital =
+      (Array.isArray(porDisciplinaFromStats) && porDisciplinaFromStats.length > 0
+        ? porDisciplinaFromStats
+        : apiData.resultados_por_disciplina) ?? [];
+    const portuguesDisciplina = porDisciplinaDigital.find((d) =>
       nomeDisciplinaEhPortugues(d.disciplina)
     );
-    const matematicaDisciplina = apiData.resultados_por_disciplina?.find((d) =>
+    const matematicaDisciplina = porDisciplinaDigital.find((d) =>
       nomeDisciplinaEhMatematica(d.disciplina)
     );
 
@@ -3058,10 +3127,20 @@ export default function RelatorioEscolar({
   }, [apiData, relatorioCompleto, isAnswerSheetAgregados]);
 
   const disciplineSummaryCards = useMemo(() => {
-    if (!apiData?.resultados_por_disciplina?.length) return [];
+    if (!apiData) return [];
 
-    return apiData.resultados_por_disciplina
-      .filter((d) => !isNomeDisciplinaGeralAgregado(d.disciplina))
+    const fromStats = (apiData.estatisticas_gerais as { por_disciplina?: { disciplina?: string; media_nota?: number }[] })
+      ?.por_disciplina;
+    let list =
+      Array.isArray(fromStats) && fromStats.length > 0
+        ? fromStats.filter((d) => !isNomeDisciplinaGeralAgregado(d.disciplina))
+        : (apiData.resultados_por_disciplina ?? []).filter((d) => !isNomeDisciplinaGeralAgregado(d.disciplina));
+
+    if (!list.length && apiData.resultados_por_disciplina?.length) {
+      list = apiData.resultados_por_disciplina.filter((d) => !isNomeDisciplinaGeralAgregado(d.disciplina));
+    }
+
+    return list
       .map((d) => {
         const media = readOptionalFiniteNumber(d.media_nota);
         if (media === undefined) return null;
