@@ -1852,11 +1852,9 @@ export default function RelatorioEscolar({
         );
         const mediaLP =
           lpAg ??
-          mediaLpGlobal ??
           (nomeDisciplinaEhPortugues(disciplinaDaLinha) ? mediaDisciplinaDaLinha : undefined);
         const mediaMAT =
           matAg ??
-          mediaMatGlobal ??
           (nomeDisciplinaEhMatematica(disciplinaDaLinha) ? mediaDisciplinaDaLinha : undefined);
 
         const row: ClassSummaryRow = {
