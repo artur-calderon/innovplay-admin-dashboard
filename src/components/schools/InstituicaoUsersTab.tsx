@@ -615,7 +615,7 @@ export function InstituicaoUsersTab({
               </Select>
             </>
           )}
-          {authUser?.role === "admin" && effectiveCityId && (
+          {(authUser?.role === "admin" || authUser?.role === "tecadm") && effectiveCityId && (
             <Button
               type="button"
               onClick={() => setAddTecAdminOpen(true)}
