@@ -46,8 +46,8 @@ export interface EventAudiencePanelProps {
   onAudienceModeChange: (mode: AudienceMode) => void;
   allMunicipality: boolean;
   onAllMunicipalityChange: (v: boolean) => void;
-  roleGroupId: CalendarRoleGroupId | '';
-  onRoleGroupIdChange: (id: CalendarRoleGroupId | '') => void;
+  roleGroupIds: CalendarRoleGroupId[];
+  onRoleGroupIdsChange: (ids: CalendarRoleGroupId[]) => void;
   roleGroupSchoolIds: string[];
   onRoleGroupSchoolIdsChange: (ids: string[]) => void;
   roleGroupGradeIds: string[];
@@ -117,8 +117,8 @@ export function EventAudiencePanel({
   onAudienceModeChange,
   allMunicipality,
   onAllMunicipalityChange,
-  roleGroupId,
-  onRoleGroupIdChange,
+  roleGroupIds,
+  onRoleGroupIdsChange,
   roleGroupSchoolIds,
   onRoleGroupSchoolIdsChange,
   roleGroupGradeIds,
@@ -148,6 +148,7 @@ export function EventAudiencePanel({
     targetsData.escolas?.length ||
     targetsData.turmas?.length
   );
+  const includesAlunoRole = roleGroupIds.includes('aluno');
 
   if (isStudent) {
     return (
@@ -242,13 +243,19 @@ export function EventAudiencePanel({
                     <Button
                       key={id}
                       type="button"
-                      variant={roleGroupId === id ? 'default' : 'outline'}
+                      variant={roleGroupIds.includes(id) ? 'default' : 'outline'}
                       size="sm"
                       className={cn(
                         'h-auto min-h-[2.75rem] py-2 px-3 justify-center text-center font-medium leading-tight',
-                        roleGroupId === id && 'shadow-sm'
+                        roleGroupIds.includes(id) && 'shadow-sm'
                       )}
-                      onClick={() => onRoleGroupIdChange(id)}
+                      onClick={() =>
+                        onRoleGroupIdsChange(
+                          roleGroupIds.includes(id)
+                            ? roleGroupIds.filter((roleId) => roleId !== id)
+                            : [...roleGroupIds, id]
+                        )
+                      }
                     >
                       {roleGroupLabel(id)}
                     </Button>
@@ -263,8 +270,8 @@ export function EventAudiencePanel({
                     Refinar o público (opcional)
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Combine escola, série e/ou turma para limitar quem entra no perfil. O sistema usa
-                    todos os filtros ao mesmo tempo — quanto mais você marca, menor e mais preciso fica o grupo.
+                    Escolas refinam todos os perfis escolhidos. Série e turma aparecem apenas quando
+                    “Alunos” estiver selecionado. O sistema aplica os filtros em conjunto.
                   </p>
                   <Separator />
                   <div className="space-y-3">
@@ -319,7 +326,7 @@ export function EventAudiencePanel({
                           />
                         </div>
                       )}
-                    {roleGroupGradeOptions.length > 0 && (
+                    {includesAlunoRole && roleGroupGradeOptions.length > 0 && (
                       <div className="space-y-2">
                         <Label className="text-xs font-medium text-muted-foreground">Séries</Label>
                         <FormMultiSelect
@@ -330,7 +337,7 @@ export function EventAudiencePanel({
                         />
                       </div>
                     )}
-                    {roleGroupClassTurmas.length > 0 && (
+                    {includesAlunoRole && roleGroupClassTurmas.length > 0 && (
                       <div className="space-y-2">
                         <Label className="text-xs font-medium text-muted-foreground">Turmas</Label>
                         <FormMultiSelect

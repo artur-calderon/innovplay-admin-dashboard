@@ -3145,3 +3145,42 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ===========================================
+   STABILITY FIXES (MONTH VIEW POSITIONING)
+   Keep event layout in normal flow to avoid
+   cards rendering in wrong cells/offsets.
+   =========================================== */
+.fc .fc-daygrid-month .fc-daygrid-day-top {
+  position: static !important;
+  z-index: auto !important;
+}
+
+.fc .fc-daygrid-month .fc-daygrid-day-number {
+  position: static !important;
+  top: auto !important;
+  left: auto !important;
+  width: auto !important;
+  height: auto !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  display: inline-block !important;
+  padding: 0.5rem !important;
+}
+
+.fc .fc-daygrid-month .fc-daygrid-day-frame {
+  min-height: 120px !important;
+  height: auto !important;
+}
+
+.fc .fc-daygrid-month .fc-daygrid-day-events {
+  position: static !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: auto !important;
+  margin: 0.25rem !important;
+  overflow: visible !important;
+}
