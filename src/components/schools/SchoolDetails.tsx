@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/authContext";
-import { UserPlus, Eye, Pencil, Trash2, Edit, Loader2, ArrowLeft, Building, Users, GraduationCap, MapPin, Globe, Calendar, Plus, BookOpen, School, Upload, FileSpreadsheet, MoveRight } from "lucide-react";
+import { UserPlus, Eye, Pencil, Trash2, Edit, Loader2, ArrowLeft, Building, Users, GraduationCap, MapPin, Globe, Calendar, Plus, BookOpen, School, Upload, MoveRight, Link2 } from "lucide-react";
 import { AddUserForm } from "./AddUserForm";
 import { CreateClassForm } from "./CreateClassForm";
 import { LinkTeacherModal } from "./LinkTeacherModal";
@@ -12,6 +12,8 @@ import { ManageClassModal } from "./ManageClassModal";
 import { LinkDirectorCoordinatorModal } from "./LinkDirectorCoordinatorModal";
 import { ManageSchoolLinksModal } from "./ManageSchoolLinksModal";
 import { BulkUploadStudentsModal } from "./BulkUploadStudentsModal";
+import { BulkManageTeachersModal, type BulkTeachersModalInitialEntry } from "./BulkManageTeachersModal";
+import { BulkCreateCoordinatorsModal } from "./BulkCreateCoordinatorsModal";
 import { PasswordReportModal } from "./PasswordReportModal";
 import { SchoolCoursesTab } from "./SchoolCoursesTab";
 import { InstituicaoDisciplinasTab } from "./InstituicaoDisciplinasTab";
@@ -105,9 +107,31 @@ interface Student {
   class_id?: string;
 }
 
+/** Ordena turmas: primeiro pelo número da série (1º, 2º…), depois pelo nome da turma (A, B, C). */
+function getClassGradeSortNumber(cls: Class): number {
+  const grade = cls.grade;
+  const label =
+    typeof grade === "object" && grade !== null
+      ? String((grade as { name?: string }).name ?? "")
+      : String(grade ?? "");
+  const m = label.match(/(\d+)/);
+  if (m) return parseInt(m[1], 10);
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function compareClassesForDisplay(a: Class, b: Class): number {
+  const byGrade = getClassGradeSortNumber(a) - getClassGradeSortNumber(b);
+  if (byGrade !== 0) return byGrade;
+  return String(a.name ?? "").localeCompare(String(b.name ?? ""), "pt-BR", {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
 export default function SchoolDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const [school, setSchool] = useState<School | null>(null);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -119,6 +143,7 @@ export default function SchoolDetails() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isLoadingSchool, setIsLoadingSchool] = useState(true);
   const [isLoadingClasses, setIsLoadingClasses] = useState(false);
+  const [isLoadingTeachers, setIsLoadingTeachers] = useState(false);
   const [selectedDirectors, setSelectedDirectors] = useState<string[]>([]);
   const [selectedCoordinators, setSelectedCoordinators] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState("overview");
@@ -128,9 +153,13 @@ export default function SchoolDetails() {
   const [classStudents, setClassStudents] = useState<{[key: string]: Student[]}>({});
   const [showLinkDirectorModal, setShowLinkDirectorModal] = useState(false);
   const [showLinkCoordinatorModal, setShowLinkCoordinatorModal] = useState(false);
+  const [showBulkCoordinatorModal, setShowBulkCoordinatorModal] = useState(false);
   const [showManageSchoolLinksModal, setShowManageSchoolLinksModal] = useState(false);
   const [showLinkTeacherModal, setShowLinkTeacherModal] = useState(false);
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
+  const [showBulkTeachersModal, setShowBulkTeachersModal] = useState(false);
+  const [bulkTeachersModalEntry, setBulkTeachersModalEntry] =
+    useState<BulkTeachersModalInitialEntry>("import");
   const [showPasswordReportModal, setShowPasswordReportModal] = useState(false);
   const [currentTeacherUserId, setCurrentTeacherUserId] = useState<string | null>(null);
   const [showStudentsDialog, setShowStudentsDialog] = useState(false);
@@ -161,6 +190,8 @@ export default function SchoolDetails() {
     }
     return list;
   }, [classes]);
+
+  const sortedClasses = useMemo(() => [...classes].sort(compareClassesForDisplay), [classes]);
 
   useEffect(() => {
     const fetchSchool = async () => {
@@ -304,43 +335,56 @@ export default function SchoolDetails() {
     }
   };
 
-  useEffect(() => {
-    const fetchTeachers = async () => {
-      if (!id) return;
+  const loadSchoolTeachers = useCallback(async () => {
+    if (!id) return;
 
-      try {
-        const response = await api.get(`/school-teacher`);
-        const vinculos = response.data?.vinculos || [];
-        const allTeachers = vinculos.reduce((acc: any[], vinculo: any) => {
-          const professor = vinculo?.professor;
-          if (!professor) return acc;
+    setIsLoadingTeachers(true);
+    try {
+      const response = await api.get(`/school-teacher`);
+      const vinculos = response.data?.vinculos || [];
+      const allTeachers = vinculos.reduce((acc: any[], vinculo: any) => {
+        const professor = vinculo?.professor;
+        if (!professor) return acc;
 
-          acc.push({
-            id: professor.id,
-            name: professor.name,
-            email: professor.email,
-            registration: vinculo.registration,
-            school_id: vinculo.school_id,
-            teacher_id: vinculo.teacher_id,
-            role: "professor",
-          });
-
-          return acc;
-        }, []);
-        const teachers = allTeachers.filter(teacher => teacher.school_id === id);
-        setTeachers(teachers);
-      } catch (error) {
-        toast({
-          title: "Erro",
-          description: "Erro ao carregar professores",
-          variant: "destructive",
+        acc.push({
+          id: professor.id,
+          name: professor.name,
+          email: professor.email,
+          registration: vinculo.registration,
+          school_id: vinculo.school_id,
+          teacher_id: vinculo.teacher_id,
+          role: "professor",
         });
-        setTeachers([]);
-      }
-    };
 
-    fetchTeachers();
+        return acc;
+      }, []);
+      const filtered = allTeachers.filter((teacher) => teacher.school_id === id);
+      setTeachers(filtered);
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar professores",
+        variant: "destructive",
+      });
+      setTeachers([]);
+    } finally {
+      setIsLoadingTeachers(false);
+    }
   }, [id, toast]);
+
+  useEffect(() => {
+    loadSchoolTeachers();
+  }, [loadSchoolTeachers]);
+
+  useEffect(() => {
+    const shouldOpenBulk = searchParams.get("professoresLote") === "1";
+    if (!shouldOpenBulk) return;
+    setBulkTeachersModalEntry("import");
+    setShowBulkTeachersModal(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("professoresLote");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // Buscar managers da escola
   useEffect(() => {
@@ -410,41 +454,6 @@ export default function SchoolDetails() {
 
     fetchStudents();
   }, [id, toast]);
-
-  const handleRemoveTeacher = async (teacherId: string) => {
-    if (!id) return;
-
-    try {
-      await api.delete(`/school-teacher/${teacherId}`);
-      toast({
-        title: "Sucesso",
-        description: "Professor removido com sucesso.",
-      });
-      
-      // Recarregar lista de professores
-      const response = await api.get(`/school-teacher`);
-      const vinculos = response.data?.vinculos || [];
-      const allTeachers = vinculos.map(vinculo => ({
-        id: vinculo.professor.id,
-        name: vinculo.professor.name,
-        email: vinculo.professor.email,
-        registration: vinculo.registration,
-        school_id: vinculo.school_id,
-        teacher_id: vinculo.teacher_id,
-        role: 'professor'
-      }));
-      const teachers = allTeachers.filter(teacher => 
-        teacher.school_id === id
-      );
-      setTeachers(teachers);
-    } catch (error) {
-      toast({
-        title: "Erro",
-        description: "Erro ao remover professor",
-        variant: "destructive",
-      });
-    }
-  };
 
   // Buscar escolas disponíveis do mesmo município
   const fetchAvailableSchools = async () => {
@@ -701,10 +710,19 @@ export default function SchoolDetails() {
             <GraduationCap className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{teachers.length}</div>
-            <p className="text-xs text-muted-foreground">
-              {teachers.filter(teacher => !teacher.class_id).length} sem turma
-            </p>
+            {isLoadingTeachers ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm">Carregando...</span>
+              </div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{teachers.length}</div>
+                <p className="text-xs text-muted-foreground">
+                  {teachers.filter(teacher => !teacher.class_id).length} sem turma
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -825,16 +843,6 @@ export default function SchoolDetails() {
                     Gerenciar
                   </Button>
                 )}
-                {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador' || user.role === 'professor') && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowPasswordReportModal(true)}
-                  >
-                    <FileSpreadsheet className="h-4 w-4 mr-2" />
-                    Relatório de Senhas
-                  </Button>
-                )}
               </div>
             </div>
             </CardHeader>
@@ -882,21 +890,33 @@ export default function SchoolDetails() {
 
               {/* Coordinators */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <h4 className="font-medium text-sm flex items-center gap-2">
                     <Users className="h-4 w-4 text-orange-600" />
                     Coordenadores ({coordinators.length})
                   </h4>
-                  {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowLinkCoordinatorModal(true)}
-                    >
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Adicionar
-                    </Button>
-                  )}
+                  <div className="flex gap-2 flex-wrap items-center">
+                    {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowLinkCoordinatorModal(true)}
+                      >
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        Adicionar
+                      </Button>
+                    )}
+                    {(user.role === 'admin' || user.role === 'tecadm') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowBulkCoordinatorModal(true)}
+                      >
+                        <Users className="h-4 w-4 mr-2" />
+                        Coordenador em lote
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 {coordinators.length === 0 ? (
                   <div className="text-center py-4 bg-muted rounded-lg">
@@ -918,6 +938,93 @@ export default function SchoolDetails() {
                   </div>
                 )}
               </div>
+
+              <Separator />
+
+              {/* Teachers */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium text-sm flex items-center gap-2">
+                    <GraduationCap className="h-4 w-4 text-purple-600" />
+                    Professores ({isLoadingTeachers ? "..." : teachers.length})
+                  </h4>
+                  <div className="flex gap-2 flex-wrap">
+                    {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowLinkTeacherModal(true)}
+                      >
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        Adicionar
+                      </Button>
+                    )}
+                    {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setBulkTeachersModalEntry("link-classes");
+                          setShowBulkTeachersModal(true);
+                        }}
+                      >
+                        <Link2 className="h-4 w-4 mr-2" />
+                        Atrelar turmas
+                      </Button>
+                    )}
+                    {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setBulkTeachersModalEntry("import");
+                          setShowBulkTeachersModal(true);
+                        }}
+                      >
+                        <GraduationCap className="h-4 w-4 mr-2" />
+                        Professores em lote
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {isLoadingTeachers ? (
+                  <div className="text-center py-6 bg-muted rounded-lg">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Carregando professores...</p>
+                  </div>
+                ) : teachers.length === 0 ? (
+                  <div className="text-center py-4 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground">Nenhum professor cadastrado</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {teachers.slice(0, 3).map((teacher) => (
+                      <div key={teacher.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted border-border">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm">{teacher.name}</div>
+                          {user.role !== 'professor' && (
+                            <div className="text-xs text-muted-foreground">{teacher.email}</div>
+                          )}
+                        </div>
+                        <Badge variant="outline" className="text-xs">Professor</Badge>
+                      </div>
+                    ))}
+                    {teachers.length > 3 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="justify-start h-auto px-2 py-1 text-xs text-blue-600 hover:text-blue-700"
+                        onClick={() => {
+                          setBulkTeachersModalEntry("link-classes");
+                          setShowBulkTeachersModal(true);
+                        }}
+                      >
+                        +{teachers.length - 3} professor(es)
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 
@@ -929,7 +1036,7 @@ export default function SchoolDetails() {
                 Turmas da Escola
               </CardTitle>
               <CardDescription>
-                Turmas onde professores e alunos são vinculados
+                Turmas com alunos vinculados
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -942,7 +1049,7 @@ export default function SchoolDetails() {
                 <div className="text-center py-8">
                   <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">Nenhuma turma cadastrada</h3>
-                                     <p className="text-muted-foreground mb-4 text-sm">Crie turmas para organizar professores e alunos</p>
+                                     <p className="text-muted-foreground mb-4 text-sm">Crie turmas para organizar os alunos</p>
                    {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
                      <CreateClassForm
                        schoolId={school.id}
@@ -956,7 +1063,7 @@ export default function SchoolDetails() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {classes.map((classItem) => {
+                  {sortedClasses.map((classItem) => {
                     return (
                       <div key={classItem.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
                         <div className="flex items-center justify-between mb-3">
@@ -997,7 +1104,7 @@ export default function SchoolDetails() {
                     Gerenciamento de Turmas
                   </CardTitle>
                   <CardDescription>
-                    Organize professores e alunos por turmas
+                    Organize os alunos por turmas
                   </CardDescription>
                 </div>
                                  {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
@@ -1022,11 +1129,11 @@ export default function SchoolDetails() {
                 <div className="text-center py-8">
                   <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">Nenhuma turma cadastrada</h3>
-                  <p className="text-muted-foreground mb-4 text-sm">Crie turmas para organizar professores e alunos</p>
+                  <p className="text-muted-foreground mb-4 text-sm">Crie turmas para organizar os alunos</p>
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {classes.map((classItem) => {
+                  {sortedClasses.map((classItem) => {
                     return (
                       <div key={classItem.id} className="border rounded-lg p-4">
                         <div className="flex items-center justify-between mb-4">
@@ -1105,7 +1212,6 @@ export default function SchoolDetails() {
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          {/* Teachers in this class */}
                           <div>
                             <h5 className="font-medium text-sm mb-3 flex items-center gap-2">
                               <GraduationCap className="h-4 w-4 text-blue-600" />
@@ -1133,7 +1239,6 @@ export default function SchoolDetails() {
                             </div>
                           </div>
 
-                          {/* Students in this class */}
                           <div>
                             <h5 className="font-medium text-sm mb-3 flex items-center gap-2">
                               <Users className="h-4 w-4 text-green-600" />
@@ -1204,13 +1309,33 @@ export default function SchoolDetails() {
             setSelectedClass(null);
           }}
           schoolId={school.id}
+          schoolName={school.name}
+          schoolCityId={school.city_id}
           classData={selectedClass}
           onSuccess={() => {
             if (classes.length > 0) {
               fetchClassDetails(classes);
             }
           }}
+        />
+      )}
+
+      {/* Link Teacher Modal */}
+      {showLinkTeacherModal && school && (
+        <LinkTeacherModal
+          isOpen={showLinkTeacherModal}
+          onClose={() => setShowLinkTeacherModal(false)}
+          schoolId={school.id}
+          classId=""
+          className={`Escola ${school.name}`}
           schoolCityId={school.city_id}
+          onSuccess={async () => {
+            await loadSchoolTeachers();
+            if (classes.length > 0) {
+              await fetchClassDetails(classes);
+            }
+          }}
+          schoolOnlyMode
         />
       )}
 
@@ -1242,6 +1367,20 @@ export default function SchoolDetails() {
         }}
       />
 
+      {/* Bulk Coordinator Modal */}
+      {showBulkCoordinatorModal && (
+        <BulkCreateCoordinatorsModal
+          isOpen={showBulkCoordinatorModal}
+          onClose={() => setShowBulkCoordinatorModal(false)}
+          schoolId={school.id}
+          schoolName={school.name}
+          schoolCityId={school.city_id}
+          onSuccess={() => {
+            window.location.reload();
+          }}
+        />
+      )}
+
       {/* Manage School Links Modal */}
       <ManageSchoolLinksModal
         isOpen={showManageSchoolLinksModal}
@@ -1268,6 +1407,29 @@ export default function SchoolDetails() {
           onSuccess={() => {
             // Recarregar dados da escola
             window.location.reload();
+          }}
+        />
+      )}
+
+      {/* Bulk Manage Teachers Modal */}
+      {showBulkTeachersModal && (
+        <BulkManageTeachersModal
+          isOpen={showBulkTeachersModal}
+          onClose={() => {
+            setShowBulkTeachersModal(false);
+            setBulkTeachersModalEntry("import");
+          }}
+          schoolId={school.id}
+          schoolName={school.name}
+          schoolCityId={school.city_id}
+          classes={classes}
+          classTeachers={classTeachers}
+          initialEntry={bulkTeachersModalEntry}
+          onSuccess={async () => {
+            await loadSchoolTeachers();
+            if (classes.length > 0) {
+              await fetchClassDetails(classes);
+            }
           }}
         />
       )}
