@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +34,14 @@ const REPORT_COLORS: Record<"primary" | "textDark" | "textGray" | "borderLight" 
   bgLight: [250, 250, 250],
   white: [255, 255, 255],
 };
+
+/** yyyy-mm-dd → dd/mm/aaaa (só exibição). */
+function formatDateBr(iso: string): string {
+  const day = iso.split("T")[0];
+  const [y, m, d] = day.split("-");
+  if (y && m && d) return `${d}/${m}/${y}`;
+  return iso;
+}
 
 type ReportFormat = "excel" | "pdf";
 
@@ -173,6 +181,48 @@ export function PasswordReportModal({
         }
         return false;
       });
+
+  const filterSummaryLines = useMemo(() => {
+    const formatLabel = reportFormat === "excel" ? "Excel (.xlsx)" : "PDF";
+    const gradeLabel =
+      selectedGrade === "all"
+        ? "Todas as séries"
+        : grades.find((g) => g.id === selectedGrade)?.name?.trim() || `Série (id: ${selectedGrade})`;
+    const classLabel =
+      selectedClass === "all"
+        ? "Todas as turmas"
+        : classes.find((c) => c.id === selectedClass)?.name?.trim() || `Turma (id: ${selectedClass})`;
+
+    const lines: { key: string; label: string; value: string }[] = [
+      { key: "school", label: "Escola", value: schoolName },
+      { key: "format", label: "Formato", value: formatLabel },
+      { key: "grade", label: "Série", value: gradeLabel },
+      { key: "class", label: "Turma", value: classLabel },
+    ];
+
+    if (reportFormat === "excel") {
+      let period = "Sem filtro de período (todos no escopo acima)";
+      if (dateFrom && dateTo) {
+        period = `${formatDateBr(dateFrom)} a ${formatDateBr(dateTo)}`;
+      } else if (dateFrom) {
+        period = `A partir de ${formatDateBr(dateFrom)}`;
+      } else if (dateTo) {
+        period = `Até ${formatDateBr(dateTo)}`;
+      }
+      lines.push({ key: "period", label: "Período (cadastro)", value: period });
+    }
+
+    return lines;
+  }, [
+    schoolName,
+    reportFormat,
+    selectedGrade,
+    selectedClass,
+    grades,
+    classes,
+    dateFrom,
+    dateTo,
+  ]);
 
   const handleGenerateReport = async () => {
     // Validação de datas (apenas para Excel)
@@ -545,7 +595,7 @@ export function PasswordReportModal({
       doc.setFontSize(11);
       doc.text("GESTÃO ESCOLAR — CONTAS E SENHAS", centerX, titleY + 8, { align: "center" });
 
-      let y = BAND_H + 18;
+      const y = BAND_H + 18;
       const cardW = pageWidth - 40;
       const cardX = (pageWidth - cardW) / 2;
       const cardH = 70;
@@ -736,15 +786,17 @@ export function PasswordReportModal({
           {/* Informações pré-preenchidas */}
           <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
             <h4 className="font-medium text-sm mb-2 text-blue-800 dark:text-blue-400">
-              Filtros pré-selecionados:
+              Filtros aplicados neste relatório:
             </h4>
             <div className="space-y-1 text-sm text-blue-700 dark:text-blue-300">
-              <p>
-                <strong>Escola:</strong> {schoolName}
-              </p>
+              {filterSummaryLines.map((line) => (
+                <p key={line.key}>
+                  <strong>{line.label}:</strong> {line.value}
+                </p>
+              ))}
               {reportFormat === "excel" && (
-                <p>
-                  <strong>Cidade:</strong> Já incluída no filtro
+                <p className="text-xs text-blue-600/90 dark:text-blue-400/90 pt-1 border-t border-blue-200/60 dark:border-blue-800/60 mt-2">
+                  No Excel, a cidade já entra no escopo da escola selecionada na exportação.
                 </p>
               )}
             </div>

@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/authContext";
-import { UserPlus, Eye, Pencil, Trash2, Edit, Loader2, ArrowLeft, Building, Users, GraduationCap, MapPin, Globe, Calendar, Plus, BookOpen, School, Upload, MoveRight, Link2 } from "lucide-react";
+import { UserPlus, Eye, Pencil, Trash2, Edit, Loader2, ArrowLeft, Building, Users, GraduationCap, MapPin, Globe, Calendar, Plus, BookOpen, School, Upload, MoveRight, Link2, KeyRound } from "lucide-react";
 import { AddUserForm } from "./AddUserForm";
 import { CreateClassForm } from "./CreateClassForm";
 import { LinkTeacherModal } from "./LinkTeacherModal";
@@ -27,7 +27,6 @@ import {
 } from "@/components/ui/table";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -126,6 +125,11 @@ function compareClassesForDisplay(a: Class, b: Class): number {
     numeric: true,
     sensitivity: "base",
   });
+}
+
+/** Caixa alta só na interface (não altera dados vindos da API). */
+function upperDisplay(value: string | undefined | null): string {
+  return String(value ?? "").toUpperCase();
 }
 
 export default function SchoolDetails() {
@@ -480,19 +484,32 @@ export default function SchoolDetails() {
 
   // Excluir turma
   const handleDeleteClass = async () => {
-    if (!classToDelete) return;
+    if (!classToDelete || isDeleting) return;
 
+    const deletedId = classToDelete.id;
     setIsDeleting(true);
     try {
-      await api.delete(`/classes/${classToDelete.id}`);
-      
+      await api.delete(`/classes/${deletedId}`);
+
+      setShowDeleteClassDialog(false);
+      setClassToDelete(null);
+
+      setClasses((prev) => prev.filter((c) => c.id !== deletedId));
+      setClassTeachers((prev) => {
+        const next = { ...prev };
+        delete next[deletedId];
+        return next;
+      });
+      setClassStudents((prev) => {
+        const next = { ...prev };
+        delete next[deletedId];
+        return next;
+      });
+
       toast({
         title: "Sucesso",
         description: "Turma excluída com sucesso",
       });
-      
-      // Recarregar turmas
-      window.location.reload();
     } catch (error: unknown) {
       let errorTitle = "Erro ao excluir";
       let errorMessage = "Ocorreu um erro ao excluir a turma";
@@ -532,8 +549,6 @@ export default function SchoolDetails() {
       });
     } finally {
       setIsDeleting(false);
-      setShowDeleteClassDialog(false);
-      setClassToDelete(null);
     }
   };
 
@@ -843,6 +858,16 @@ export default function SchoolDetails() {
                     Gerenciar
                   </Button>
                 )}
+                {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowPasswordReportModal(true)}
+                  >
+                    <KeyRound className="h-4 w-4 mr-2" />
+                    Relatório de Senhas
+                  </Button>
+                )}
               </div>
             </div>
             </CardHeader>
@@ -1067,10 +1092,16 @@ export default function SchoolDetails() {
                     return (
                       <div key={classItem.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
                         <div className="flex items-center justify-between mb-3">
-                          <h4 className="font-medium text-sm">{classItem.name}</h4>
+                          <h4 className="font-medium text-sm">{upperDisplay(classItem.name)}</h4>
                           {classItem.grade && (
                             <Badge variant="secondary" className="text-xs">
-                              {typeof classItem.grade === 'object' && classItem.grade !== null ? (classItem.grade as any).name : classItem.grade}
+                              {upperDisplay(
+                                typeof classItem.grade === "object" && classItem.grade !== null
+                                  ? String((classItem.grade as { name?: string }).name ?? "")
+                                  : typeof classItem.grade === "string"
+                                    ? classItem.grade
+                                    : ""
+                              )}
                             </Badge>
                           )}
                         </div>
@@ -1138,15 +1169,23 @@ export default function SchoolDetails() {
                       <div key={classItem.id} className="border rounded-lg p-4">
                         <div className="flex items-center justify-between mb-4">
                           <div>
-                            <h4 className="font-medium text-lg">{classItem.name}</h4>
+                            <h4 className="font-medium text-lg">{upperDisplay(classItem.name)}</h4>
                             {classItem.grade && (
                               <div className="text-sm text-muted-foreground">
                                 <p>
-                                  Série: {typeof classItem.grade === 'object' && classItem.grade !== null ? (classItem.grade as any).name : classItem.grade}
+                                  Série:{" "}
+                                  {upperDisplay(
+                                    typeof classItem.grade === "object" && classItem.grade !== null
+                                      ? String((classItem.grade as { name?: string }).name ?? "")
+                                      : typeof classItem.grade === "string"
+                                        ? classItem.grade
+                                        : ""
+                                  )}
                                 </p>
-                                {typeof classItem.grade === 'object' && classItem.grade !== null && (classItem.grade as any).education_stage && (
+                                {typeof classItem.grade === "object" && classItem.grade !== null && (classItem.grade as any).education_stage && (
                                   <p className="text-xs text-muted-foreground">
-                                    Curso: {(classItem.grade as any).education_stage.name}
+                                    Curso:{" "}
+                                    {upperDisplay((classItem.grade as any).education_stage.name)}
                                   </p>
                                 )}
                               </div>
@@ -1226,7 +1265,7 @@ export default function SchoolDetails() {
                                 <div className="space-y-1">
                                   {classTeachers[classItem.id]?.slice(0, 3).map((teacher) => (
                                     <div key={teacher.id} className="text-xs text-muted-foreground truncate">
-                                      {teacher.name}
+                                      {upperDisplay(teacher.name)}
                                     </div>
                                   ))}
                                   {classTeachers[classItem.id]?.length > 3 && (
@@ -1253,7 +1292,7 @@ export default function SchoolDetails() {
                                 <div className="space-y-1">
                                   {classStudents[classItem.id]?.slice(0, 3).map((student) => (
                                     <div key={student.id} className="text-xs text-muted-foreground truncate">
-                                      {student.name}
+                                      {upperDisplay(student.name)}
                                     </div>
                                   ))}
                                   {classStudents[classItem.id]?.length > 3 && (
@@ -1447,12 +1486,21 @@ export default function SchoolDetails() {
       )}
 
       {/* Delete Class Dialog */}
-      <AlertDialog open={showDeleteClassDialog} onOpenChange={setShowDeleteClassDialog}>
+      <AlertDialog
+        open={showDeleteClassDialog}
+        onOpenChange={(open) => {
+          if (!open && isDeleting) return;
+          setShowDeleteClassDialog(open);
+          if (!open && !isDeleting) {
+            setClassToDelete(null);
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar Exclusão de Turma</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir a turma <strong>{classToDelete?.name}</strong>?
+              Tem certeza que deseja excluir a turma <strong>{upperDisplay(classToDelete?.name)}</strong>?
               <br /><br />
               Esta ação não pode ser desfeita. Todos os alunos e professores serão desvinculados da turma.
             </AlertDialogDescription>
@@ -1461,10 +1509,12 @@ export default function SchoolDetails() {
             <AlertDialogCancel disabled={isDeleting}>
               Cancelar
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteClass}
+            <Button
+              type="button"
+              variant="destructive"
               disabled={isDeleting}
               className="bg-red-600 hover:bg-red-700"
+              onClick={() => void handleDeleteClass()}
             >
               {isDeleting ? (
                 <>
@@ -1474,7 +1524,7 @@ export default function SchoolDetails() {
               ) : (
                 "Excluir Turma"
               )}
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1485,7 +1535,7 @@ export default function SchoolDetails() {
           <DialogHeader>
             <DialogTitle>Mover Turma para Outra Escola</DialogTitle>
             <DialogDescription>
-              Mova a turma <strong>{classToMove?.name}</strong> para outra escola do mesmo município.
+              Mova a turma <strong>{upperDisplay(classToMove?.name)}</strong> para outra escola do mesmo município.
               <br /><br />
               Os alunos da turma serão automaticamente transferidos para a nova escola.
             </DialogDescription>
@@ -1509,7 +1559,7 @@ export default function SchoolDetails() {
                   ) : (
                     availableSchools.map((school) => (
                       <SelectItem key={school.id} value={school.id}>
-                        {school.name}
+                        {upperDisplay(school.name)}
                       </SelectItem>
                     ))
                   )}
@@ -1575,7 +1625,8 @@ export default function SchoolDetails() {
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle>
-              Alunos da turma {studentsDialogClass?.name ? `"${studentsDialogClass.name}"` : ""}
+              Alunos da turma{" "}
+              {studentsDialogClass?.name ? `"${upperDisplay(studentsDialogClass.name)}"` : ""}
             </DialogTitle>
             <DialogDescription>
               Lista completa de alunos vinculados à sua turma.
@@ -1590,7 +1641,7 @@ export default function SchoolDetails() {
                 <div className="space-y-2">
                   {(classStudents[studentsDialogClass.id] || []).map((s) => (
                     <div key={s.id} className="text-sm text-foreground">
-                      {s.name}
+                      {upperDisplay(s.name)}
                     </div>
                   ))}
                 </div>
