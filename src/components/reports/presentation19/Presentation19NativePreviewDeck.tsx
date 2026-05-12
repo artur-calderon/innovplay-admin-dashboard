@@ -71,6 +71,7 @@ import {
   P19_PROFICIENCY_DISC_CARD_TITLE_PX,
   P19_THANK_YOU_FONT_PX,
 } from "@/utils/reports/presentation19/presentation19ExportTypography";
+import { P19_CHART_V_BAR_VALUE_LABEL_RESERVE_PX } from "@/utils/reports/presentation19/presentation19Layout";
 
 type Props = {
   deckData: Presentation19DeckData;
@@ -339,6 +340,17 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                 alignItems: "stretch",
               }}
             >
+              <div style={{ flexShrink: 0, height: P19_CHART_V_BAR_VALUE_LABEL_RESERVE_PX }} aria-hidden />
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "stretch",
+                }}
+              >
               {hasMultipleSeries ? (
                 isStacked ? (
                   (() => {
@@ -561,6 +573,7 @@ function BarChartPreview({ chart, height = P19_CHART_REF_H_PX }: { chart: Export
                   );
                 })()
               )}
+              </div>
             </div>
           ))}
         </div>
@@ -717,7 +730,57 @@ const NativeSlideFrame = memo(function NativeSlideFrame({
                     overflow: "auto",
                   }}
                 >
-                  {deckData.escolasParticipantes.length <= 1 ? (
+                  {deckData.slide2ShowSerieTurmas ? (
+                    <div style={{ width: "100%", maxWidth: 920, display: "flex", flexDirection: "column", gap: 24 }}>
+                      <div>
+                        <div style={{ fontSize: P19_SEGMENT_FIELD_LABEL_PX, fontWeight: 700, color: P19_TEXT_MUTED }}>ESCOLA</div>
+                        <div style={{ marginTop: 6, fontSize: P19_SEGMENT_FIELD_VALUE_PX, fontWeight: 900, lineHeight: 1.25, wordBreak: "break-word", color: P19_TEXT_STRONG }}>
+                          {deckData.escolasParticipantes.length === 1
+                            ? (deckData.escolasParticipantes[0] ?? "N/A")
+                            : deckData.escolasParticipantes.filter(Boolean).join(", ") || "N/A"}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: P19_SEGMENT_FIELD_LABEL_PX, fontWeight: 700, color: P19_TEXT_MUTED }}>SÉRIE</div>
+                        <div style={{ marginTop: 6, fontSize: P19_SEGMENT_FIELD_VALUE_PX, fontWeight: 900, color: P19_TEXT_STRONG }}>{deckData.serie}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: P19_SEGMENT_FIELD_LABEL_PX, fontWeight: 700, color: P19_TEXT_MUTED }}>
+                          {deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA"}
+                        </div>
+                        {deckData.turmasParticipantesCapa.length > 8 ? (
+                          <ul
+                            style={{
+                              margin: "8px 0 0",
+                              paddingLeft: 22,
+                              fontSize: 20,
+                              fontWeight: 800,
+                              lineHeight: 1.45,
+                              maxHeight: 280,
+                              overflow: "auto",
+                            }}
+                          >
+                            {deckData.turmasParticipantesCapa.map((t) => (
+                              <li key={t}>{t}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div
+                            style={{
+                              marginTop: 6,
+                              fontSize: deckData.turma.length > 120 ? 22 : 34,
+                              fontWeight: 900,
+                              lineHeight: 1.25,
+                              wordBreak: "break-word",
+                              color: P19_TEXT_STRONG,
+                            }}
+                          >
+                            {deckData.turma}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : deckData.escolasParticipantes.length <= 1 ? (
                     <div style={{ fontSize: P19_COVER_SCHOOL_SINGLE_PX, fontWeight: 900, textAlign: "center" }}>
                       {deckData.escolasParticipantes[0] ?? "N/A"}
                     </div>

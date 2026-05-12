@@ -316,6 +316,8 @@ export type RankingPdfStudentInput = {
   proficiencia: number;
   classificacao: string;
   status: 'concluida' | 'pendente';
+  /** Posição no ranking quando a ordem vem do backend (`respectBackendRankingOrder`). */
+  posicao?: number;
   questoes_respondidas?: number;
   acertos?: number;
   erros?: number;
@@ -346,8 +348,24 @@ export type RankingPdfRowBuilt = {
 
 function buildSortedRankingRows(
   students: RankingPdfStudentInput[],
-  maxRows: number
+  maxRows: number,
+  respectBackendOrder: boolean
 ): RankingPdfRowBuilt[] {
+  if (respectBackendOrder) {
+    const list = [...students].sort((a, b) => (a.posicao ?? 999999) - (b.posicao ?? 999999));
+    return list.slice(0, maxRows).map((s) => ({
+      pos: s.posicao ?? 0,
+      nome: (s.nome || '—').trim() || '—',
+      turma: (s.turma || '—').trim() || '—',
+      escola: (s.escola || '').trim() || '—',
+      serie: (s.serie || '').trim() || '—',
+      nota: Number(s.nota ?? 0).toFixed(1),
+      prof: Number(s.proficiencia ?? 0).toFixed(1),
+      classif: (s.classificacao || '—').trim() || '—',
+      level: normalizeProficiencyLevelLabel(s.classificacao),
+    }));
+  }
+
   const list = students.filter(studentMatchesRankingList);
   list.sort((a, b) => (b.proficiencia || 0) - (a.proficiencia || 0));
   return list.slice(0, maxRows).map((s, i) => ({
@@ -371,11 +389,17 @@ export async function generateRankingPdf(opts: {
   students: RankingPdfStudentInput[];
   maxRows?: number;
   fileNameBase?: string;
+  /** Avaliação online: manter ordem e posição exatamente como o backend enviou no `ranking`. */
+  respectBackendRankingOrder?: boolean;
 }): Promise<void> {
   const { default: autoTable } = await import('jspdf-autotable');
   const maxRows = opts.maxRows ?? 100;
   const filters = opts.filterLabels;
-  const rowModels = buildSortedRankingRows(opts.students, maxRows);
+  const rowModels = buildSortedRankingRows(
+    opts.students,
+    maxRows,
+    opts.respectBackendRankingOrder === true
+  );
 
   const contextSubtitle =
     opts.context === 'avaliacoes'

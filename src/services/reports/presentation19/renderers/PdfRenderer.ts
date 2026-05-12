@@ -74,6 +74,7 @@ import {
   P19_CHART_H_BAR_TOP_PAD_PX,
   P19_CHART_INNER_HORIZONTAL_PAD_PX,
   P19_CHART_V_BAR_TOP_PAD_PX,
+  P19_CHART_V_BAR_VALUE_LABEL_RESERVE_PX,
   P19_DECK_LOGO_H_PX,
   P19_DECK_LOGO_RIGHT_MARGIN_PX,
   P19_DECK_LOGO_TOP_PX,
@@ -157,6 +158,11 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
     g: (n >> 8) & 255,
     b: n & 255,
   };
+}
+
+function setPdfTextColorFromHex(doc: jsPDF, hex: string): void {
+  const { r, g, b } = hexToRgb(hex);
+  doc.setTextColor(r, g, b);
 }
 
 /**
@@ -326,7 +332,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
   const { x, y, w, h } = area;
   const barsStartX = x + P19_CHART_INNER_HORIZONTAL_PAD_PX;
   const barsW = w - P19_CHART_INNER_HORIZONTAL_PAD_PX * 2;
-  const topPad = P19_CHART_V_BAR_TOP_PAD_PX;
+  const plotTopInset = P19_CHART_V_BAR_TOP_PAD_PX + P19_CHART_V_BAR_VALUE_LABEL_RESERVE_PX;
   const colWidth = barsW / Math.max(1, chart.data.length);
   const innerW = Math.max(8, colWidth - 36);
 
@@ -352,7 +358,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
       maxCatLines = Math.max(maxCatLines, lines.length);
     });
     const neededBottom = 8 + maxCatLines * lineH + 10;
-    const maxBottom = Math.max(34, h - topPad - minChartPx);
+    const maxBottom = Math.max(34, h - plotTopInset - minChartPx);
     if (neededBottom <= maxBottom || catFs <= 7) {
       bottomPad = Math.min(Math.max(34, neededBottom), maxBottom);
       break;
@@ -361,7 +367,7 @@ function drawBarChart(doc: jsPDF, chart: ExportChart, area: { x: number; y: numb
   }
 
   const baselineY = y + h - bottomPad;
-  const chartAreaH = baselineY - (y + topPad);
+  const chartAreaH = baselineY - (y + plotTopInset);
   const catLineH = p19PdfLineHeightPx(catFs);
 
   const palette = ["#3B82F6", "#22C55E", "#F97316", "#A855F7", "#EF4444", "#06B6D4", "#EAB308", "#14B8A6"];
@@ -453,7 +459,7 @@ function drawCenteredSectionBlock(
   const titleFs = P19_TITLE_FONT_PX;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(titleFs);
-  doc.setTextColor(...Object.values(hexToRgb(primaryColor)));
+  setPdfTextColorFromHex(doc, primaryColor);
   const titleLines = doc.splitTextToSize(title, maxW);
   const titleLineH = p19PdfLineHeightPx(titleFs);
   let y = page.height / 2 - P19_SECTION_CENTER_VERTICAL_OFFSET_PX - (titleLines.length * titleLineH) / 2;
@@ -516,7 +522,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
     case "cover-main": {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(P19_COVER_MAIN_TITLE_PX);
-      doc.setTextColor(...Object.values(hexToRgb(deckData.primaryColor)));
+      setPdfTextColorFromHex(doc, deckData.primaryColor);
       const titleLines = doc.splitTextToSize(deckData.avaliacaoNome || "N/A", content.w - 20);
       const titleLh = p19PdfLineHeightPx(P19_COVER_MAIN_TITLE_PX);
       let ty = 180;
@@ -569,6 +575,60 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       break;
     }
     case "cover-school": {
+      if (deckData.slide2ShowSerieTurmas) {
+        doc.setFont("helvetica", "bold");
+        const x = content.x + 24;
+        const maxW = content.w - 48;
+        const escolaNomeCapa =
+          deckData.escolasParticipantes.length === 1
+            ? deckData.escolasParticipantes[0] ?? "N/A"
+            : deckData.escolasParticipantes.filter(Boolean).join(", ") || "N/A";
+
+        const drawLabelValueBlock = (args: { yTop: number; label: string; value: string; valueFontSize: number }) => {
+          const labelFs = P19_SEGMENT_FIELD_LABEL_PX;
+          const labelGap = 8;
+          const blockGap = 22;
+
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(labelFs);
+          doc.setTextColor(82, 82, 91);
+          doc.text(args.label, x, args.yTop + labelFs);
+
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(args.valueFontSize);
+          doc.setTextColor(24, 24, 27);
+          const valueLines = doc.splitTextToSize(args.value, maxW);
+          const valueLh = p19PdfLineHeightPx(args.valueFontSize);
+          let y = args.yTop + labelFs + labelGap + args.valueFontSize;
+          valueLines.forEach((ln) => {
+            doc.text(ln, x, y);
+            y += valueLh;
+          });
+          return { yTop: y + blockGap };
+        };
+
+        let yTop = 200;
+        ({ yTop } = drawLabelValueBlock({
+          yTop,
+          label: "ESCOLA",
+          value: escolaNomeCapa,
+          valueFontSize: P19_SEGMENT_FIELD_VALUE_PX,
+        }));
+        ({ yTop } = drawLabelValueBlock({ yTop, label: "SÉRIE", value: deckData.serie || "N/A", valueFontSize: P19_SEGMENT_FIELD_VALUE_PX }));
+        const turmaBody =
+          deckData.turmasParticipantesCapa.length > 8
+            ? deckData.turmasParticipantesCapa.map((t) => `• ${t}`).join("\n")
+            : deckData.turma || "N/A";
+        const fsTurma = turmaBody.length > 200 ? 16 : turmaBody.length > 100 ? 20 : 28;
+        drawLabelValueBlock({
+          yTop,
+          label: deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA",
+          value: turmaBody,
+          valueFontSize: fsTurma,
+        });
+        break;
+      }
+
       doc.setFont("helvetica", "bold");
       const escolas = deckData.escolasParticipantes;
       if (escolas.length <= 1) {
@@ -619,7 +679,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       doc.setTextColor(82, 82, 91);
       doc.setFontSize(P19_METRIC_HEADER_PX);
       doc.text("MÉTRICA GERAL", page.width / 2, 280, { align: "center" });
-      doc.setTextColor(...Object.values(hexToRgb(deckData.primaryColor)));
+      setPdfTextColorFromHex(doc, deckData.primaryColor);
       doc.setFontSize(P19_METRIC_NUMBER_PX);
       doc.text(Math.round(deckData.totalAlunosParticiparam).toLocaleString("pt-BR"), page.width / 2, 380, { align: "center" });
       doc.setTextColor(51, 65, 85);
@@ -685,7 +745,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
           ? presentationTitleTablePresence(deckData.comparisonAxis)
           : presentationTitleTableGrades(deckData.comparisonAxis);
       const titleMaxW = content.w - P19_TITLE_TEXT_OFFSET_X_PX;
-      let yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX, titleMaxW);
+      const yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX, titleMaxW);
       const tableStartY = yAfter + P19_TITLE_TO_BODY_GAP_PX;
       autoTable(doc, {
         startY: tableStartY,
@@ -720,7 +780,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         pageInfo != null && pageInfo.total > 1
           ? content.w - P19_QUESTIONS_PAGE_INDICATOR_RIGHT_PAD_PX
           : content.w - P19_TITLE_TEXT_OFFSET_X_PX;
-      let yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX, titleMaxW);
+      const yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX, titleMaxW);
       if (pageInfo != null && pageInfo.total > 1) {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(P19_PAGE_INDICATOR_FONT_PX);
@@ -778,7 +838,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
         pageInfo != null && pageInfo.total > 1
           ? content.w - P19_QUESTIONS_PAGE_INDICATOR_RIGHT_PAD_PX
           : content.w - P19_TITLE_TEXT_OFFSET_X_PX;
-      let yb = drawWrappedSlideTitle(
+      const yb = drawWrappedSlideTitle(
         doc,
         "PORCENTAGEM DE ACERTOS",
         deckData.primaryColor,
@@ -805,7 +865,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
     case "levels-table": {
       const titleText = niveisAprendizagemTituloPorEixo(deckData.comparisonAxis);
       const titleMaxW = content.w - P19_TITLE_TEXT_OFFSET_X_PX;
-      let yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX, titleMaxW);
+      const yAfter = drawWrappedSlideTitle(doc, titleText, deckData.primaryColor, P19_SLIDE_TITLE_FIRST_BASELINE_Y_PX, titleMaxW);
       let tableStartY = yAfter + P19_TITLE_TO_BODY_GAP_PX;
       if (slide.escolaNome) {
         tableStartY =
@@ -850,7 +910,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
     }
     case "presence-chart": {
       const titleMaxW = content.w - P19_TITLE_TEXT_OFFSET_X_PX;
-      let yb = drawWrappedSlideTitle(
+      const yb = drawWrappedSlideTitle(
         doc,
         presentationTitleChartPresence(deckData.comparisonAxis),
         deckData.primaryColor,
@@ -876,7 +936,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       slideLevelsGuidePdf(doc, spec);
       break;
     case "levels-chart": {
-      let yb = drawWrappedSlideTitle(
+      const yb = drawWrappedSlideTitle(
         doc,
         presentationTitleChartLevels(deckData.comparisonAxis),
         deckData.primaryColor,
@@ -908,7 +968,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       );
       break;
     case "proficiency-general-chart": {
-      let yb = drawWrappedSlideTitle(
+      const yb = drawWrappedSlideTitle(
         doc,
         presentationTitleProficiencyGeneralChart(deckData.comparisonAxis),
         deckData.primaryColor,
@@ -933,7 +993,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       break;
     }
     case "proficiency-by-discipline-chart": {
-      let yb = drawWrappedSlideTitle(
+      const yb = drawWrappedSlideTitle(
         doc,
         presentationTitleProficiencyByDiscipline(deckData.comparisonAxis),
         deckData.primaryColor,
@@ -981,7 +1041,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       break;
     }
     case "grades-by-discipline-chart": {
-      let yb = drawWrappedSlideTitle(
+      const yb = drawWrappedSlideTitle(
         doc,
         presentationTitleGradesByDiscipline(deckData.comparisonAxis),
         deckData.primaryColor,
@@ -1036,7 +1096,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       );
       break;
     case "grades-chart": {
-      let yb = drawWrappedSlideTitle(
+      const yb = drawWrappedSlideTitle(
         doc,
         presentationTitleChartGrades(deckData.comparisonAxis),
         deckData.primaryColor,
@@ -1065,7 +1125,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
     case "dynamic-series-cover": {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(P19_DYNAMIC_COVER_PX);
-      doc.setTextColor(...Object.values(hexToRgb(deckData.primaryColor)));
+      setPdfTextColorFromHex(doc, deckData.primaryColor);
       const lines = doc.splitTextToSize(`[${deckData.serieNomeCapas}]`, content.w - 80);
       const lh = p19PdfLineHeightPx(P19_DYNAMIC_COVER_PX);
       let yy = page.height / 2 - (lines.length * lh) / 2;
@@ -1078,7 +1138,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
     case "dynamic-class-cover": {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(P19_DYNAMIC_COVER_PX);
-      doc.setTextColor(...Object.values(hexToRgb(deckData.primaryColor)));
+      setPdfTextColorFromHex(doc, deckData.primaryColor);
       const lines = doc.splitTextToSize(`[${deckData.turmaNomeCapas}]`, content.w - 80);
       const lh = p19PdfLineHeightPx(P19_DYNAMIC_COVER_PX);
       let yy = page.height / 2 - (lines.length * lh) / 2;
@@ -1093,7 +1153,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
       doc.setFont("helvetica", "bold");
       const fs = line.length > 120 ? 22 : line.length > 80 ? 26 : 32;
       doc.setFontSize(fs);
-      doc.setTextColor(...Object.values(hexToRgb(deckData.primaryColor)));
+      setPdfTextColorFromHex(doc, deckData.primaryColor);
       const lines = doc.splitTextToSize(line, content.w - 80);
       const lineHeight = fs * 1.25;
       const totalH = lines.length * lineHeight;
@@ -1107,7 +1167,7 @@ function drawSlide(doc: jsPDF, slide: Presentation19SlideSpec, spec: Presentatio
     case "thank-you":
       doc.setFont("helvetica", "bold");
       doc.setFontSize(P19_THANK_YOU_FONT_PX);
-      doc.setTextColor(...Object.values(hexToRgb(deckData.primaryColor)));
+      setPdfTextColorFromHex(doc, deckData.primaryColor);
       doc.text(deckData.closingMessage || "Obrigado!!", page.width / 2, page.height / 2, { align: "center" });
       break;
   }

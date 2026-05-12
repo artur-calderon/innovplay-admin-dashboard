@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Edit, Trash2, AlertCircle, Calendar, Link2, Plus, Paperclip, Download, X } from 'lucide-react';
+import { Edit, Trash2, AlertCircle, Calendar, Link2, Plus, Paperclip, X, Loader2 } from 'lucide-react';
 import { EventDetailDialog } from "@/components/agenda/EventDetailDialog";
 import {
   CalendarApi as CalendarService,
@@ -85,7 +85,7 @@ export default function AdminAgendaOptimized() {
 
   const [audienceMode, setAudienceMode] = useState<AudienceMode>("entities");
   const [allMunicipality, setAllMunicipality] = useState(false);
-  const [roleGroupId, setRoleGroupId] = useState<CalendarRoleGroupId | "">("");
+  const [roleGroupIds, setRoleGroupIds] = useState<CalendarRoleGroupId[]>([]);
   const [roleGroupSchoolIds, setRoleGroupSchoolIds] = useState<string[]>([]);
   const [roleGroupGradeIds, setRoleGroupGradeIds] = useState<string[]>([]);
   const [roleGroupClassIds, setRoleGroupClassIds] = useState<string[]>([]);
@@ -102,8 +102,25 @@ export default function AdminAgendaOptimized() {
   const [editLinkResources, setEditLinkResources] = useState<EventLinkResource[]>([]);
   const [pendingCreateFiles, setPendingCreateFiles] = useState<File[]>([]);
   const [pendingEditFiles, setPendingEditFiles] = useState<File[]>([]);
+  const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+  const [isDeletingEvent, setIsDeletingEvent] = useState(false);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+  const fetchRequestRef = useRef(0);
+  const isMutationLoading = isCreatingEvent || isDeletingEvent;
+
+  const getErrorMessage = (error: unknown, fallback: string): string => {
+    if (typeof error !== 'object' || error === null) return fallback;
+    const maybeResponse = error as { response?: { data?: { error?: string; message?: string } } };
+    const apiError = maybeResponse.response?.data?.error || maybeResponse.response?.data?.message;
+    if (typeof apiError === 'string' && apiError.trim()) {
+      return apiError;
+    }
+    return fallback;
+  };
 
   const fetchEvents = useCallback(async (startISO: string, endISO: string) => {
+    const requestId = ++fetchRequestRef.current;
+    setIsLoadingEvents(true);
     try {
       const list = await CalendarService.listMyEvents(startISO, endISO);
       const uid = user?.id;
@@ -111,9 +128,15 @@ export default function AdminAgendaOptimized() {
         ...ev,
         editable: isCalendarEventCreatedByUser(uid, ev),
       }));
-      setCurrentEvents(enriched as CustomEventInput[]);
+      if (requestId === fetchRequestRef.current) {
+        setCurrentEvents(enriched as CustomEventInput[]);
+      }
     } catch (_) {
       toast.error('Não foi possível carregar os eventos');
+    } finally {
+      if (requestId === fetchRequestRef.current) {
+        setIsLoadingEvents(false);
+      }
     }
   }, [user?.id]);
 
@@ -148,7 +171,7 @@ export default function AdminAgendaOptimized() {
     setTargetsData({});
     setAudienceMode("entities");
     setAllMunicipality(false);
-    setRoleGroupId("");
+    setRoleGroupIds([]);
     setRoleGroupSchoolIds([]);
     setRoleGroupGradeIds([]);
     setRoleGroupClassIds([]);
@@ -157,7 +180,7 @@ export default function AdminAgendaOptimized() {
   const resetAudienceForNewEvent = () => {
     setAudienceMode("entities");
     setAllMunicipality(false);
-    setRoleGroupId("");
+    setRoleGroupIds([]);
     setRoleGroupSchoolIds([]);
     setRoleGroupGradeIds([]);
     setRoleGroupClassIds([]);
@@ -170,13 +193,13 @@ export default function AdminAgendaOptimized() {
     setAudienceMode(mode);
     if (mode === "self") {
       setAllMunicipality(false);
-      setRoleGroupId("");
+      setRoleGroupIds([]);
       setRoleGroupSchoolIds([]);
       setRoleGroupGradeIds([]);
       setRoleGroupClassIds([]);
     }
     if (mode === "entities") {
-      setRoleGroupId("");
+      setRoleGroupIds([]);
       setRoleGroupSchoolIds([]);
       setRoleGroupGradeIds([]);
       setRoleGroupClassIds([]);
@@ -195,6 +218,14 @@ export default function AdminAgendaOptimized() {
       setSelectedMunicipioIds([]);
       setSelectedEscolaIds([]);
       setSelectedTurmaIds([]);
+    }
+  };
+
+  const handleRoleGroupIdsChange = (ids: CalendarRoleGroupId[]) => {
+    setRoleGroupIds(ids);
+    if (!ids.includes('aluno')) {
+      setRoleGroupGradeIds([]);
+      setRoleGroupClassIds([]);
     }
   };
 
@@ -274,7 +305,7 @@ export default function AdminAgendaOptimized() {
         userId: user?.id,
         neutralSelfWording: false,
         allMunicipality,
-        roleGroupId,
+        roleGroupIds,
         roleGroupSchoolIds,
         roleGroupGradeIds,
         roleGroupClassIds,
@@ -288,7 +319,7 @@ export default function AdminAgendaOptimized() {
       user?.name,
       user?.id,
       allMunicipality,
-      roleGroupId,
+      roleGroupIds,
       roleGroupSchoolIds,
       roleGroupGradeIds,
       roleGroupClassIds,
@@ -316,7 +347,7 @@ export default function AdminAgendaOptimized() {
       userId: user?.id,
       userRole: user?.role,
       allMunicipality,
-      roleGroupId,
+      roleGroupIds,
       roleGroupSchoolIds,
       roleGroupGradeIds,
       roleGroupClassIds,
@@ -352,7 +383,7 @@ export default function AdminAgendaOptimized() {
     }
 
     if (mode === 'role_group') {
-      if (!roleGroupId) {
+      if (roleGroupIds.length === 0) {
         toast.error('Selecione um perfil de destinatário (por perfil).');
         return false;
       }
@@ -484,10 +515,10 @@ export default function AdminAgendaOptimized() {
 
   const createEvent = async () => {
     if (!validateEventForm()) return;
-
-    const { visibility_scope, targets } = buildEventTargets();
+    setIsCreatingEvent(true);
 
     try {
+      const { visibility_scope, targets } = buildEventTargets();
       const startISO = toLocalOffsetISO(new Date(formData.startTime));
       const endISO = toLocalOffsetISO(new Date(formData.endTime));
 
@@ -551,7 +582,9 @@ export default function AdminAgendaOptimized() {
       toast.success('Evento criado e publicado');
     } catch (error) {
       console.error('Erro ao criar evento:', error);
-      toast.error('Erro ao criar evento');
+      toast.error(getErrorMessage(error, 'Erro ao criar evento'));
+    } finally {
+      setIsCreatingEvent(false);
     }
   };
 
@@ -571,7 +604,7 @@ export default function AdminAgendaOptimized() {
     const parsed = parseTargetsFromEvent(eventTargets);
     setAudienceMode(parsed.mode);
     setAllMunicipality(parsed.allMunicipality);
-    setRoleGroupId(parsed.roleGroupId);
+    setRoleGroupIds(parsed.roleGroupIds);
     setRoleGroupSchoolIds(parsed.roleGroupSchoolIds);
     setRoleGroupGradeIds(parsed.roleGroupGradeIds);
     setRoleGroupClassIds(parsed.roleGroupClassIds);
@@ -726,12 +759,14 @@ export default function AdminAgendaOptimized() {
       toast.error('Apenas o criador pode excluir este evento.');
       return;
     }
+    setIsDeletingEvent(true);
     try {
       await CalendarService.deleteEvent(String(selected.id));
       setIsViewOpen(false);
       await refetchCurrentRange();
       toast.success('Evento excluído');
     } catch (_) { toast.error('Erro ao excluir evento'); }
+    finally { setIsDeletingEvent(false); }
   };
 
   return (
@@ -744,7 +779,15 @@ export default function AdminAgendaOptimized() {
         <p className="text-muted-foreground">Gerencie eventos e atividades da instituição</p>
       </div>
 
-      <div className="bg-card rounded-lg shadow-sm border border-border">
+      <div className="bg-card rounded-lg shadow-sm border border-border relative">
+        {isLoadingEvents && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-[1px]">
+            <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm shadow-sm">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Carregando eventos...
+            </div>
+          </div>
+        )}
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
@@ -775,7 +818,6 @@ export default function AdminAgendaOptimized() {
           dateClick={handleDateClick}
           eventClick={handleEventClick}
           eventClassNames={getEventClassNames}
-          eventMinHeight={48}
           eventOrder="start,title"
           slotMinTime="06:00:00"
           slotMaxTime="22:00:00"
@@ -791,6 +833,7 @@ export default function AdminAgendaOptimized() {
 
       {/* Criar evento */}
       <Dialog open={isCreateOpen} onOpenChange={(open) => {
+        if (isCreatingEvent) return;
         setIsCreateOpen(open);
         if (open) {
           resetAudienceForNewEvent();
@@ -813,6 +856,10 @@ export default function AdminAgendaOptimized() {
         <DialogContent
           className="max-w-3xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full !top-[50%] !left-[50%] !translate-x-[-50%] !translate-y-[-50%]"
           onInteractOutside={(e) => {
+            if (isCreatingEvent) {
+              e.preventDefault();
+              return;
+            }
             // No mobile, prevenir fechamento acidental por toque fora
             const isMobile = window.innerWidth < 640;
             if (isMobile) {
@@ -820,6 +867,10 @@ export default function AdminAgendaOptimized() {
             }
           }}
           onEscapeKeyDown={(e) => {
+            if (isCreatingEvent) {
+              e.preventDefault();
+              return;
+            }
             // No mobile, prevenir fechamento por ESC
             const isMobile = window.innerWidth < 640;
             if (isMobile) {
@@ -827,6 +878,10 @@ export default function AdminAgendaOptimized() {
             }
           }}
           onPointerDownOutside={(e) => {
+            if (isCreatingEvent) {
+              e.preventDefault();
+              return;
+            }
             // No mobile, prevenir fechamento por pointer down
             const isMobile = window.innerWidth < 640;
             if (isMobile) {
@@ -927,8 +982,8 @@ export default function AdminAgendaOptimized() {
               onAudienceModeChange={handleAudienceModeChange}
               allMunicipality={allMunicipality}
               onAllMunicipalityChange={handleAllMunicipalityChange}
-              roleGroupId={roleGroupId}
-              onRoleGroupIdChange={setRoleGroupId}
+              roleGroupIds={roleGroupIds}
+              onRoleGroupIdsChange={handleRoleGroupIdsChange}
               roleGroupSchoolIds={roleGroupSchoolIds}
               onRoleGroupSchoolIdsChange={setRoleGroupSchoolIds}
               roleGroupGradeIds={roleGroupGradeIds}
@@ -945,15 +1000,22 @@ export default function AdminAgendaOptimized() {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
-            <Button onClick={createEvent}>Criar Evento</Button>
+            <Button variant="outline" onClick={() => setIsCreateOpen(false)} disabled={isCreatingEvent}>
+              Cancelar
+            </Button>
+            <Button onClick={createEvent} disabled={isCreatingEvent}>
+              {isCreatingEvent ? 'Criando...' : 'Criar Evento'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <EventDetailDialog
         open={isViewOpen}
-        onOpenChange={setIsViewOpen}
+        onOpenChange={(open) => {
+          if (isDeletingEvent) return;
+          setIsViewOpen(open);
+        }}
         selected={selected}
         audienceLines={viewAudienceLines}
         emptyDescriptionHint={
@@ -967,21 +1029,36 @@ export default function AdminAgendaOptimized() {
           canManageSelected ? (
             <>
               <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-                <Button variant="outline" className="flex-1 sm:flex-initial" onClick={() => setIsViewOpen(false)}>
+                <Button
+                  variant="outline"
+                  className="flex-1 sm:flex-initial"
+                  onClick={() => setIsViewOpen(false)}
+                  disabled={isDeletingEvent}
+                >
                   Fechar
                 </Button>
-                <Button variant="secondary" className="flex-1 sm:flex-initial gap-2" onClick={openEditFromSelected}>
+                <Button
+                  variant="secondary"
+                  className="flex-1 sm:flex-initial gap-2"
+                  onClick={openEditFromSelected}
+                  disabled={isDeletingEvent}
+                >
                   <Edit className="h-4 w-4" />
                   Editar
                 </Button>
               </div>
               <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-                <Button className="flex-1 sm:flex-initial shadow-sm" onClick={publishEvent}>
+                <Button className="flex-1 sm:flex-initial shadow-sm" onClick={publishEvent} disabled={isDeletingEvent}>
                   Publicar
                 </Button>
-                <Button variant="destructive" className="flex-1 sm:flex-initial gap-2 shadow-sm" onClick={deleteEvent}>
-                  <Trash2 className="h-4 w-4" />
-                  Excluir
+                <Button
+                  variant="destructive"
+                  className="flex-1 sm:flex-initial gap-2 shadow-sm"
+                  onClick={deleteEvent}
+                  disabled={isDeletingEvent}
+                >
+                  {isDeletingEvent ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  {isDeletingEvent ? 'Excluindo...' : 'Excluir'}
                 </Button>
               </div>
             </>
@@ -1038,8 +1115,8 @@ export default function AdminAgendaOptimized() {
               onAudienceModeChange={handleAudienceModeChange}
               allMunicipality={allMunicipality}
               onAllMunicipalityChange={handleAllMunicipalityChange}
-              roleGroupId={roleGroupId}
-              onRoleGroupIdChange={setRoleGroupId}
+              roleGroupIds={roleGroupIds}
+              onRoleGroupIdsChange={handleRoleGroupIdsChange}
               roleGroupSchoolIds={roleGroupSchoolIds}
               onRoleGroupSchoolIdsChange={setRoleGroupSchoolIds}
               roleGroupGradeIds={roleGroupGradeIds}
@@ -1120,6 +1197,27 @@ export default function AdminAgendaOptimized() {
           <DialogFooter>
             <Button onClick={() => setIsSuccessOpen(false)}>Fechar</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isMutationLoading} onOpenChange={() => {}}>
+        <DialogContent
+          className="max-w-sm w-[90vw] sm:w-full"
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Processando
+            </DialogTitle>
+            <DialogDescription>
+              {isCreatingEvent
+                ? 'Criando evento. Aguarde a conclusão para continuar.'
+                : 'Excluindo evento. Aguarde a conclusão para continuar.'}
+            </DialogDescription>
+          </DialogHeader>
         </DialogContent>
       </Dialog>
     </div>

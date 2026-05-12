@@ -26,7 +26,7 @@ export interface BuildAudienceInput {
   userRole?: string;
   /** Admin/tecnm: envia para todo o município via target ALL */
   allMunicipality: boolean;
-  roleGroupId: CalendarRoleGroupId | '';
+  roleGroupIds: CalendarRoleGroupId[];
   roleGroupSchoolIds: string[];
   roleGroupGradeIds: string[];
   roleGroupClassIds: string[];
@@ -47,7 +47,7 @@ export function buildEventTargetsFromAudience(
     userId,
     userRole,
     allMunicipality,
-    roleGroupId,
+    roleGroupIds,
     roleGroupSchoolIds,
     roleGroupGradeIds,
     roleGroupClassIds,
@@ -75,23 +75,27 @@ export function buildEventTargetsFromAudience(
   }
 
   if (mode === 'role_group') {
-    if (!roleGroupId) {
+    if (roleGroupIds.length === 0) {
       throw new Error('Selecione um perfil de destinatário');
     }
-    const filters: { school_ids?: string[]; grade_ids?: string[]; class_ids?: string[] } = {};
-    if (roleGroupSchoolIds.length > 0) filters.school_ids = roleGroupSchoolIds;
-    if (roleGroupGradeIds.length > 0) filters.grade_ids = roleGroupGradeIds;
-    if (roleGroupClassIds.length > 0) filters.class_ids = roleGroupClassIds;
-
-    const hasFilters = Object.keys(filters).length > 0;
-    const target: CalendarTargetPayload = hasFilters
-      ? { target_type: 'ROLE_GROUP', target_id: roleGroupId, filters }
-      : { target_type: 'ROLE_GROUP', target_id: roleGroupId };
+    const targets: CalendarTargetPayload[] = roleGroupIds.map((roleGroupId) => {
+      const filters: { school_ids?: string[]; grade_ids?: string[]; class_ids?: string[] } = {};
+      if (roleGroupSchoolIds.length > 0) filters.school_ids = roleGroupSchoolIds;
+      if (roleGroupId === 'aluno') {
+        if (roleGroupGradeIds.length > 0) filters.grade_ids = roleGroupGradeIds;
+        if (roleGroupClassIds.length > 0) filters.class_ids = roleGroupClassIds;
+      }
+      const hasFilters = Object.keys(filters).length > 0;
+      return hasFilters
+        ? { target_type: 'ROLE_GROUP', target_id: roleGroupId, filters }
+        : { target_type: 'ROLE_GROUP', target_id: roleGroupId };
+    });
 
     let visibility_scope: CalendarVisibilityScope = 'MUNICIPALITY';
-    if (roleGroupClassIds.length > 0) {
+    const hasAlunoRole = roleGroupIds.includes('aluno');
+    if (hasAlunoRole && roleGroupClassIds.length > 0) {
       visibility_scope = 'CLASS';
-    } else if (roleGroupGradeIds.length > 0) {
+    } else if (hasAlunoRole && roleGroupGradeIds.length > 0) {
       visibility_scope = 'GRADE';
     } else if (roleGroupSchoolIds.length > 0) {
       visibility_scope = 'SCHOOL';
@@ -101,7 +105,7 @@ export function buildEventTargetsFromAudience(
       visibility_scope = 'SCHOOL';
     }
 
-    return { visibility_scope, targets: [target] };
+    return { visibility_scope, targets };
   }
 
   // mode === 'entities'
@@ -194,7 +198,7 @@ export function summarizeAudience(
   mode: AudienceMode,
   ctx: AudienceSummaryContext & {
     allMunicipality: boolean;
-    roleGroupId: CalendarRoleGroupId | '';
+    roleGroupIds: CalendarRoleGroupId[];
     roleGroupSchoolIds: string[];
     roleGroupGradeIds: string[];
     roleGroupClassIds: string[];
@@ -222,10 +226,11 @@ export function summarizeAudience(
     return lines;
   }
 
-  if (mode === 'role_group' && ctx.roleGroupId) {
-    const roleLabel = roleGroupLabel(ctx.roleGroupId);
-    const parts: string[] = [`Todos com perfil: ${roleLabel}`];
-    if (ctx.roleGroupClassIds.length > 0) {
+  if (mode === 'role_group' && ctx.roleGroupIds.length > 0) {
+    const roleLabels = ctx.roleGroupIds.map((id) => roleGroupLabel(id));
+    const hasAlunoRole = ctx.roleGroupIds.includes('aluno');
+    const parts: string[] = [`Perfis: ${roleLabels.join(', ')}`];
+    if (hasAlunoRole && ctx.roleGroupClassIds.length > 0) {
       const names =
         targetsData.turmas
           ?.filter((t) => ctx.roleGroupClassIds.includes(t.id))
@@ -233,7 +238,7 @@ export function summarizeAudience(
           .join(', ') || `${ctx.roleGroupClassIds.length} turma(s)`;
       parts.push(`nas turmas: ${names}`);
     }
-    if (ctx.roleGroupGradeIds.length > 0) {
+    if (hasAlunoRole && ctx.roleGroupGradeIds.length > 0) {
       const gradeNames = new Map<string, string>();
       targetsData.turmas?.forEach((t) => {
         if (t.serie_id && ctx.roleGroupGradeIds.includes(t.serie_id)) {
@@ -254,8 +259,8 @@ export function summarizeAudience(
     }
     if (
       ctx.roleGroupSchoolIds.length === 0 &&
-      ctx.roleGroupGradeIds.length === 0 &&
-      ctx.roleGroupClassIds.length === 0
+      (!hasAlunoRole || ctx.roleGroupGradeIds.length === 0) &&
+      (!hasAlunoRole || ctx.roleGroupClassIds.length === 0)
     ) {
       parts.push('sem recorte adicional (escopo amplo conforme sua permissão).');
     } else {
@@ -303,7 +308,7 @@ export function parseTargetsFromEvent(
 ): {
   mode: AudienceMode;
   allMunicipality: boolean;
-  roleGroupId: CalendarRoleGroupId | '';
+  roleGroupIds: CalendarRoleGroupId[];
   roleGroupSchoolIds: string[];
   roleGroupGradeIds: string[];
   roleGroupClassIds: string[];
@@ -314,7 +319,7 @@ export function parseTargetsFromEvent(
   const empty = {
     mode: 'entities' as AudienceMode,
     allMunicipality: false,
-    roleGroupId: '' as const,
+    roleGroupIds: [] as CalendarRoleGroupId[],
     roleGroupSchoolIds: [] as string[],
     roleGroupGradeIds: [] as string[],
     roleGroupClassIds: [] as string[],
@@ -331,17 +336,28 @@ export function parseTargetsFromEvent(
   }
 
   const roleGroups = targets.filter((t) => t?.target_type === 'ROLE_GROUP');
-  if (roleGroups.length === 1) {
-    const t = roleGroups[0];
-    const fid = String(t.target_id || '') as CalendarRoleGroupId;
-    const f = t.filters || {};
+  if (roleGroups.length >= 1) {
+    const roleGroupIds = roleGroups
+      .map((t) => String(t.target_id || '') as CalendarRoleGroupId)
+      .filter((id): id is CalendarRoleGroupId =>
+        ['admin', 'tecadm', 'diretor', 'coordenador', 'professor', 'aluno'].includes(id)
+      );
+    const genericFilters = roleGroups.find((t) => t?.filters)?.filters || {};
+    const alunoFilters =
+      roleGroups.find((t) => String(t?.target_id || '').toLowerCase() === 'aluno')?.filters || {};
     return {
       ...empty,
       mode: 'role_group',
-      roleGroupId: fid,
-      roleGroupSchoolIds: Array.isArray(f.school_ids) ? f.school_ids.map(String) : [],
-      roleGroupGradeIds: Array.isArray(f.grade_ids) ? f.grade_ids.map(String) : [],
-      roleGroupClassIds: Array.isArray(f.class_ids) ? f.class_ids.map(String) : [],
+      roleGroupIds,
+      roleGroupSchoolIds: Array.isArray(genericFilters.school_ids)
+        ? genericFilters.school_ids.map(String)
+        : [],
+      roleGroupGradeIds: Array.isArray(alunoFilters.grade_ids)
+        ? alunoFilters.grade_ids.map(String)
+        : [],
+      roleGroupClassIds: Array.isArray(alunoFilters.class_ids)
+        ? alunoFilters.class_ids.map(String)
+        : [],
     };
   }
 
@@ -379,7 +395,7 @@ export function summarizeStoredTargets(
     targetsData,
     neutralSelfWording: options?.neutralSelf ?? true,
     allMunicipality: parsed.allMunicipality,
-    roleGroupId: parsed.roleGroupId,
+    roleGroupIds: parsed.roleGroupIds,
     roleGroupSchoolIds: parsed.roleGroupSchoolIds,
     roleGroupGradeIds: parsed.roleGroupGradeIds,
     roleGroupClassIds: parsed.roleGroupClassIds,

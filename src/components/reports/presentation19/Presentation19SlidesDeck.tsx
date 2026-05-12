@@ -35,18 +35,26 @@ import {
 import { getProficiencyTableInfo } from "@/components/evaluations/results/utils/proficiency";
 import { getSubjectPaletteIndex } from "@/utils/competition/competitionSubjectColors";
 import { chunkPresentation19SlideQuestionRows } from "@/utils/reports/presentation19/questionsTablePagination";
+import { formatPctOneDecimalPtBr } from "@/utils/reports/presentation19/formatPctOneDecimalPtBr";
+import {
+  P19_CHART_V_BAR_TOP_PAD_PX,
+  P19_CHART_V_BAR_VALUE_LABEL_RESERVE_PX,
+} from "@/utils/reports/presentation19/presentation19Layout";
+
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(String(hex ?? "").trim());
+  if (!m) return `rgba(124, 58, 237, ${alpha})`;
+  const r = parseInt(m[1], 16);
+  const g = parseInt(m[2], 16);
+  const b = parseInt(m[3], 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 type SlideFrameProps = {
   children: React.ReactNode;
   primaryColor: string;
   logoDataUrl?: string;
 };
-
-function formatPct(n: number): string {
-  if (!Number.isFinite(n)) return "0%";
-  const rounded = Math.round(n * 10) / 10;
-  return `${rounded.toFixed(1).replace(".", ",")}%`;
-}
 
 function linearTicks(min: number, max: number, segments = 4): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return [min, max];
@@ -59,8 +67,11 @@ function clampToRange(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+const P19_RECHARTS_V_BAR_MARGIN_TOP =
+  P19_CHART_V_BAR_TOP_PAD_PX + P19_CHART_V_BAR_VALUE_LABEL_RESERVE_PX + 4;
+
 /** Margem inferior ampla para o eixo X ficar abaixo da linha zero; barras encostam no zero. */
-const P19_BAR_MARGIN = { top: 10, right: 16, bottom: 56, left: 8 } as const;
+const P19_BAR_MARGIN = { top: P19_RECHARTS_V_BAR_MARGIN_TOP, right: 16, bottom: 56, left: 8 } as const;
 
 function p19XAxisProps(fontSize: number) {
   return {
@@ -431,7 +442,40 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
           <div className="h-full flex flex-col">
             <div className="flex-1 flex items-center justify-center min-h-0">
               <div className="text-center w-full max-w-4xl px-2">
-                {deckData.escolasParticipantes.length <= 1 ? (
+                {deckData.slide2ShowSerieTurmas ? (
+                  <div className="text-left w-full max-w-4xl mx-auto space-y-6">
+                    <div>
+                      <div className="text-sm text-zinc-500 font-semibold">ESCOLA</div>
+                      <div className="text-3xl font-black text-zinc-900 mt-1 leading-snug break-words">
+                        {deckData.escolasParticipantes.length === 1
+                          ? (deckData.escolasParticipantes[0] ?? "N/A")
+                          : deckData.escolasParticipantes.filter(Boolean).join(", ") || "N/A"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-zinc-500 font-semibold">SÉRIE</div>
+                      <div className="text-3xl font-black text-zinc-900 mt-1">{deckData.serie}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-zinc-500 font-semibold">
+                        {deckData.turmasParticipantesCapa.length > 1 ? "TURMAS" : "TURMA"}
+                      </div>
+                      {deckData.turmasParticipantesCapa.length > 8 ? (
+                        <ul className="mt-2 list-disc pl-5 text-lg font-black text-zinc-900 space-y-1 max-h-64 overflow-y-auto">
+                          {deckData.turmasParticipantesCapa.map((t) => (
+                            <li key={t}>{t}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div
+                          className={`font-black mt-1 text-zinc-900 ${deckData.turma.length > 120 ? "text-lg leading-snug" : "text-3xl"}`}
+                        >
+                          {deckData.turma}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : deckData.escolasParticipantes.length <= 1 ? (
                   <div className="text-4xl font-black text-zinc-900">{deckData.escolasParticipantes[0] ?? "N/A"}</div>
                 ) : (
                   <>
@@ -537,7 +581,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                   </span>,
                   r.totalAlunos,
                   r.totalPresentes,
-                  formatPct(r.presencaMediaPct),
+                  formatPctOneDecimalPtBr(r.presencaMediaPct),
                   r.alunosFaltosos,
                 ])}
                 accentColor={deckData.primaryColor}
@@ -579,7 +623,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                   <LabelList
                     dataKey="total_presentes"
                     position="top"
-                    offset={-4}
+                    offset={2}
                     formatter={(v: number) => String(Math.round(Number(v)))}
                     style={{ fontSize: 11, fill: "#0f172a", fontWeight: 700 }}
                   />
@@ -642,7 +686,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                 height={500}
                 data={levelsChartData}
                 layout="vertical"
-                margin={{ top: 10, right: 36, bottom: 34, left: 10 }}
+                margin={{ top: P19_BAR_MARGIN.top, right: 36, bottom: 34, left: 10 }}
               >
                 <CartesianGrid
                   stroke="#64748b"
@@ -762,6 +806,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                   <LabelList
                     dataKey="proficiencia"
                     position="top"
+                    offset={2}
                     formatter={(v: number) => Number(v).toFixed(1)}
                     style={{ fontSize: 11, fill: "#0f172a", fontWeight: 700 }}
                   />
@@ -803,7 +848,12 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                         width={308}
                         height={176}
                         data={disc.data}
-                        margin={{ top: 6, right: 6, bottom: 44, left: 2 }}
+                        margin={{
+                          top: Math.max(18, P19_CHART_V_BAR_TOP_PAD_PX + P19_CHART_V_BAR_VALUE_LABEL_RESERVE_PX - 8),
+                          right: 6,
+                          bottom: 44,
+                          left: 2,
+                        }}
                       >
                         <XAxis dataKey="turma" interval={0} {...p19XAxisProps(10)} />
                         <YAxis
@@ -823,6 +873,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                           <LabelList
                             dataKey="proficiencia"
                             position="top"
+                            offset={2}
                             formatter={(v: number) => (Number(v) > 0 ? Number(v).toFixed(1) : "")}
                             style={{ fontSize: 10, fill: "#0f172a", fontWeight: 600 }}
                           />
@@ -930,6 +981,7 @@ export function Presentation19SlidesDeck({ deckData }: { deckData: Presentation1
                   <LabelList
                     dataKey="nota"
                     position="top"
+                    offset={2}
                     formatter={(v: number) => Number(v).toFixed(1).replace(".", ",")}
                     style={{ fontSize: 11, fill: "#0f172a", fontWeight: 700 }}
                   />

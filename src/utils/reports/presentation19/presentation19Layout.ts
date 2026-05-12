@@ -94,6 +94,9 @@ export const P19_DECK_LOGO_RIGHT_MARGIN_PX = 40;
 
 /** Padding interno gráfico de barras vertical. */
 export const P19_CHART_V_BAR_TOP_PAD_PX = 6;
+
+/** Faixa livre entre o topo da caixa do gráfico e o pico da barra máxima, para caber o número acima das barras. */
+export const P19_CHART_V_BAR_VALUE_LABEL_RESERVE_PX = 22;
 export const P19_CHART_V_BAR_BOTTOM_PAD_MIN_PX = 34;
 export const P19_CHART_INNER_HORIZONTAL_PAD_PX = 8;
 

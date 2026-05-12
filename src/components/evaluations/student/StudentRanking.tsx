@@ -18,7 +18,8 @@ interface Student {
   serie?: string;
   nota: number;
   proficiencia: number;
-  classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+  /** Nível de proficiência (texto da API); vazio quando o backend não envia nível. */
+  classificacao: string;
   status: 'concluida' | 'pendente';
   moedas_ganhas?: number; // Opcional para competições
   posicao?: number; // Posição no ranking (opcional)
@@ -29,37 +30,50 @@ interface StudentRankingProps {
   maxStudents?: number;
   showCoins?: boolean; // Mostrar coluna de moedas (para competições)
   isCompetition?: boolean; // Se é ranking de competição
+  /** Quando true: exibe todos na lista principal, ordenados por `posicao` (fonte: backend). */
+  backendRankingOrder?: boolean;
 }
 
 export function StudentRanking({ 
   students, 
   maxStudents = 50,
   showCoins = false,
-  isCompetition = false
+  isCompetition = false,
+  backendRankingOrder = false,
 }: StudentRankingProps) {
   const normStatus = (s: Student['status'] | undefined) => String(s ?? '').trim().toLowerCase();
 
   // Separar alunos que participaram da avaliação dos que não concluíram (faltosos / pendente)
   const { completedStudents, absentStudents } = useMemo(() => {
+    if (backendRankingOrder) {
+      return { completedStudents: students, absentStudents: [] as Student[] };
+    }
     const completed = students.filter((student) => normStatus(student.status) === 'concluida');
     const absent = students.filter((student) => normStatus(student.status) !== 'concluida');
 
     return { completedStudents: completed, absentStudents: absent };
-  }, [students]);
+  }, [students, backendRankingOrder]);
 
-  // Ordenar alunos por proficiência (maior para menor) ou por posição se for competição
+  // Ordenação: backend (`posicao`) nas avaliações online; competição com posição; senão proficiência.
   const rankedStudents = useMemo(() => {
-    const sorted = isCompetition && students.some(s => s.posicao !== undefined)
-      ? [...completedStudents].sort((a, b) => (a.posicao || 999) - (b.posicao || 999))
-      : [...completedStudents].sort((a, b) => (b.proficiencia || 0) - (a.proficiencia || 0));
-    
+    let sorted: Student[];
+    if (backendRankingOrder) {
+      sorted = [...completedStudents].sort((a, b) => (a.posicao ?? 999999) - (b.posicao ?? 999999));
+    } else if (isCompetition && students.some((s) => s.posicao !== undefined)) {
+      sorted = [...completedStudents].sort((a, b) => (a.posicao || 999) - (b.posicao || 999));
+    } else {
+      sorted = [...completedStudents].sort((a, b) => (b.proficiencia || 0) - (a.proficiencia || 0));
+    }
+
     return sorted
       .map((student, index) => ({
         ...student,
-        posicao: student.posicao || index + 1
+        posicao: backendRankingOrder
+          ? (student.posicao ?? index + 1)
+          : student.posicao || index + 1,
       }))
       .slice(0, maxStudents);
-  }, [completedStudents, maxStudents, isCompetition, students]);
+  }, [backendRankingOrder, completedStudents, maxStudents, isCompetition, students]);
 
   // Função para obter ícone do ranking
   const getRankingIcon = (position: number) => {
@@ -106,7 +120,9 @@ export function StudentRanking({
               <div>
                 <h1 className="text-xl font-semibold">Ranking dos Melhores</h1>
                 <p className="text-purple-100 text-sm">
-                  Classificação por proficiência
+                  {backendRankingOrder
+                    ? 'Ordem e posições definidas pelo servidor'
+                    : 'Classificação por proficiência'}
                 </p>
               </div>
             </div>
@@ -190,7 +206,7 @@ export function StudentRanking({
                       <div className="flex flex-col items-end gap-1">
                         <div className="text-xs text-muted-foreground font-medium">Nível</div>
                         <Badge className={getReportProficiencyTagClass(student.classificacao)}>
-                          {student.classificacao}
+                          {student.classificacao?.trim() ? student.classificacao : '—'}
                         </Badge>
                       </div>
                       {showCoins && student.moedas_ganhas !== undefined && student.moedas_ganhas > 0 && (

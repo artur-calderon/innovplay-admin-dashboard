@@ -1,4 +1,4 @@
-import type { RelatorioCompleto } from "@/types/evaluation-results";
+import type { NivelAprendizagemGeral, RelatorioCompleto } from "@/types/evaluation-results";
 import type { NovaRespostaAPI } from "@/services/evaluation/evaluationResultsApi";
 import type {
   BuildDeckDataArgs,
@@ -401,9 +401,11 @@ function buildProficiencyGeneralByTurma(
   const porTurma = (geral?.por_turma ?? []) as Array<{ turma: string; proficiencia: number }>;
   if (porTurma.length === 0) {
     const mediaGeral = clampToNumber((geral as AnyRecord | undefined)?.media_geral, NaN);
-    return Number.isFinite(mediaGeral) ? [{ turma: "GERAL", proficiencia: mediaGeral }] : [];
+    return Number.isFinite(mediaGeral) ? [{ label: "GERAL", proficiencia: mediaGeral }] : [];
   }
+  const avMap = buildRelatorioTurmaAvaliadosMap(relatorio);
   return porTurma
+    .filter((r) => deveIncluirLinhaPorTurmaRelatorio(relatorio, String(r.turma ?? "").trim(), avMap))
     .map((r) => ({
       label: String(r.turma ?? "").trim(),
       proficiencia: clampToNumber(r.proficiencia, 0),
@@ -427,14 +429,18 @@ function buildProficiencyByDisciplineByTurma(
 
   const geralKey = findGeralKey(profDisc) ?? "GERAL";
 
+  const avMap = buildRelatorioTurmaAvaliadosMap(relatorio);
+
   const disciplines = Object.entries(profDisc as AnyRecord)
     .filter(([k]) => normalizeText(k).toLowerCase() !== normalizeText(geralKey).toLowerCase())
     .map(([disciplina, dadosDisc]) => {
       const porTurma = (dadosDisc as AnyRecord)?.por_turma as Array<{ turma: string; proficiencia: number }>;
-      const valuesByTurma = (porTurma ?? []).map((r) => ({
-        turma: String(r.turma ?? "").trim(),
-        proficiencia: clampToNumber(r.proficiencia, 0),
-      }));
+      const valuesByTurma = (porTurma ?? [])
+        .filter((r) => deveIncluirLinhaPorTurmaRelatorio(relatorio, String(r.turma ?? "").trim(), avMap))
+        .map((r) => ({
+          turma: String(r.turma ?? "").trim(),
+          proficiencia: clampToNumber(r.proficiencia, 0),
+        }));
       return { disciplina, valuesByTurma };
     })
     .filter((d) => d.valuesByTurma.length > 0);
@@ -464,14 +470,18 @@ function buildNotasByDisciplineByTurma(relatorio: Partial<RelatorioCompleto> | n
   if (!ng) return [];
   const geralKey = findGeralKey(ng) ?? "GERAL";
 
+  const avMap = buildRelatorioTurmaAvaliadosMap(relatorio);
+
   return Object.entries(ng as AnyRecord)
     .filter(([k]) => normalizeText(k).toLowerCase() !== normalizeText(geralKey).toLowerCase())
     .map(([disciplina, dadosDisc]) => {
       const porTurma = (dadosDisc as AnyRecord)?.por_turma as Array<{ turma: string; nota: number }>;
-      const valuesByTurma = (porTurma ?? []).map((r) => ({
-        turma: String(r.turma ?? "").trim(),
-        mediaNota: clampToNumber(r.nota, 0),
-      }));
+      const valuesByTurma = (porTurma ?? [])
+        .filter((r) => deveIncluirLinhaPorTurmaRelatorio(relatorio, String(r.turma ?? "").trim(), avMap))
+        .map((r) => ({
+          turma: String(r.turma ?? "").trim(),
+          mediaNota: clampToNumber(r.nota, 0),
+        }));
       return { disciplina, valuesByTurma };
     })
     .filter((d) => d.valuesByTurma.length > 0);
@@ -500,6 +510,7 @@ function buildNotasByDisciplinePorCategoria(
   const ng = relatorio?.nota_geral?.por_disciplina;
   if (!ng) return [];
   const geralKey = findGeralKey(ng) ?? "GERAL";
+  const avMap = buildRelatorioTurmaAvaliadosMap(relatorio);
 
   return Object.entries(ng as AnyRecord)
     .filter(([k]) => normalizeText(k).toLowerCase() !== normalizeText(geralKey).toLowerCase())
@@ -516,6 +527,10 @@ function buildNotasByDisciplinePorCategoria(
         };
       }
       const rows = (porTurma ?? []).filter((r) => {
+        const t = String(r.turma ?? "").trim();
+        if (axis === "serie" || axis === "turma") {
+          if (!deveIncluirLinhaPorTurmaRelatorio(relatorio, t, avMap)) return false;
+        }
         if (axis === "turma" && serieFilterLabel) {
           const s = String(r.serie ?? "").trim() || extractSerieFromTurma(r.turma);
           return normKey(s) === normKey(serieFilterLabel);
@@ -555,6 +570,7 @@ function notasByDisciplinePorEscolaFromNovaAvaliacoes(nova: NovaRespostaAPI | nu
 
   const byDisc = new Map<string, Array<{ turma: string; mediaNota: number }>>();
   for (const a of av) {
+    if (!novaAvaliacaoTeveParticipantes(a)) continue;
     const escola = String(a.escola ?? "").trim();
     if (!escola) continue;
     const mds = a.medias_por_disciplina;
@@ -592,6 +608,7 @@ function notasByDisciplinePorSerieFromNovaAvaliacoes(nova: NovaRespostaAPI | nul
   if (!av?.length) return [];
   const byDisc = new Map<string, Map<string, { sum: number; n: number }>>();
   for (const a of av) {
+    if (!deveIncluirLinhaNovaAvaliacao(a)) continue;
     const serieRaw = String(a.serie ?? "").trim();
     const serie = serieRaw || extractSerieFromTurma(String(a.turma ?? ""));
     if (!isValidSerieLabel(serie)) continue;
@@ -627,6 +644,7 @@ function notasByDisciplinePorTurmaFromNovaAvaliacoes(nova: NovaRespostaAPI | nul
   if (!av?.length) return [];
   const byDisc = new Map<string, Map<string, { sum: number; n: number }>>();
   for (const a of av) {
+    if (!deveIncluirLinhaNovaAvaliacao(a)) continue;
     const turma = String(a.turma ?? "").trim();
     if (!turma) continue;
     const mds = a.medias_por_disciplina;
@@ -972,31 +990,40 @@ function buildCursoSerieTurma(
   return { curso, serie, turma };
 }
 
+function novaIsGranularidadeMunicipio(nova: NovaRespostaAPI | null | undefined): boolean {
+  return String(nova?.nivel_granularidade ?? "") === "municipio";
+}
+
 /** Todas as turmas com participação no relatório agregado e/ou tabela detalhada da nova resposta. */
 function collectTurmasParticipantes(
   relatorio: Partial<RelatorioCompleto> | null,
   novaRespostaAgregados: NovaRespostaAPI | null,
   presencaPorSerie: PresenceBySeriesRow[],
   proficienciaGeralPorTurma: ProficiencyGeneralByTurmaRow[],
-  comparisonAxis: PresentationComparisonAxis
+  comparisonAxis: PresentationComparisonAxis,
+  selectedSchoolId?: string
 ): string[] {
   const set = new Set<string>();
+  const omitNovaWideTurmas =
+    Boolean(selectedSchoolId?.trim()) && novaIsGranularidadeMunicipio(novaRespostaAgregados);
 
   for (const row of relatorio?.total_alunos?.por_turma ?? []) {
     const t = String((row as { turma?: string }).turma ?? "").trim();
     if (t) set.add(t);
   }
 
-  const alunosGeral = novaRespostaAgregados?.tabela_detalhada?.geral?.alunos ?? [];
-  for (const a of alunosGeral) {
-    const t = String((a as { turma?: string }).turma ?? "").trim();
-    if (t) set.add(t);
-  }
-
-  for (const d of novaRespostaAgregados?.tabela_detalhada?.disciplinas ?? []) {
-    for (const a of d.alunos ?? []) {
+  if (!omitNovaWideTurmas) {
+    const alunosGeral = novaRespostaAgregados?.tabela_detalhada?.geral?.alunos ?? [];
+    for (const a of alunosGeral) {
       const t = String((a as { turma?: string }).turma ?? "").trim();
       if (t) set.add(t);
+    }
+
+    for (const d of novaRespostaAgregados?.tabela_detalhada?.disciplinas ?? []) {
+      for (const a of d.alunos ?? []) {
+        const t = String((a as { turma?: string }).turma ?? "").trim();
+        if (t) set.add(t);
+      }
     }
   }
 
@@ -1024,6 +1051,139 @@ function normKey(s?: string | null): string {
   return normalizeText(String(s ?? "").trim())
     .replace(/\s+/g, " ")
     .toLowerCase();
+}
+
+function isTodasTurmasAggregateLabel(turma?: string | null): boolean {
+  return normKey(turma) === normKey("Todas as turmas");
+}
+
+/** `null` = sem bloco por turma confiável (payload legado) → todas as linhas contam. */
+function buildRelatorioTurmaAvaliadosMap(relatorio: Partial<RelatorioCompleto> | null): Map<string, number> | null {
+  const rows = relatorio?.total_alunos?.por_turma;
+  if (!rows?.length) return null;
+  const m = new Map<string, number>();
+  for (const row of rows) {
+    const t = String((row as { turma?: string }).turma ?? "").trim();
+    if (!t) continue;
+    m.set(normKey(t), clampToNumber((row as { avaliados?: unknown }).avaliados, 0));
+  }
+  return m.size > 0 ? m : null;
+}
+
+function relatorioTurmaTeveAvaliados(avMap: Map<string, number> | null, turmaLabel: string): boolean {
+  if (!avMap) return true;
+  const k = normKey(turmaLabel);
+  if (!avMap.has(k)) return true;
+  return (avMap.get(k) ?? 0) > 0;
+}
+
+function deveIncluirLinhaPorTurmaRelatorio(
+  relatorio: Partial<RelatorioCompleto> | null,
+  turmaLabel: string,
+  avMap?: Map<string, number> | null
+): boolean {
+  const t = String(turmaLabel ?? "").trim();
+  if (!t) return false;
+  if (isTodasTurmasAggregateLabel(t)) return false;
+  const m = avMap !== undefined ? avMap : buildRelatorioTurmaAvaliadosMap(relatorio);
+  return relatorioTurmaTeveAvaliados(m, t);
+}
+
+function novaAvaliacaoTeveParticipantes(a: { alunos_participantes?: unknown }): boolean {
+  const raw = a.alunos_participantes;
+  if (raw === undefined || raw === null || String(raw) === "") return true;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return true;
+  return clampToNumber(n, 0) > 0;
+}
+
+function deveIncluirLinhaNovaAvaliacao(a: { turma?: string | null | undefined; alunos_participantes?: unknown }): boolean {
+  if (!novaAvaliacaoTeveParticipantes(a)) return false;
+  const turma = String(a.turma ?? "").trim();
+  if (turma && isTodasTurmasAggregateLabel(turma)) return false;
+  return true;
+}
+
+/** Média de proficiência geral só entre linhas elegíveis (participação + não agregado «Todas as turmas»). */
+function mediaProficienciaGeralDasTurmasNoDeck(
+  relatorio: Partial<RelatorioCompleto> | null,
+  rows: ProficiencyGeneralByTurmaRow[],
+  excludeLabelNorm?: string
+): number {
+  const avMap = buildRelatorioTurmaAvaliadosMap(relatorio);
+  const ex = excludeLabelNorm ?? "";
+  const filtered = rows.filter((r) => {
+    const lab = String(r.label ?? "").trim();
+    if (!lab) return false;
+    if (ex && normKey(lab) === ex) return false;
+    if (isTodasTurmasAggregateLabel(lab)) return false;
+    return deveIncluirLinhaPorTurmaRelatorio(relatorio, lab, avMap);
+  });
+  const base =
+    filtered.length > 0
+      ? filtered
+      : rows.filter((r) => {
+          const lab = String(r.label ?? "").trim();
+          if (!lab) return false;
+          if (ex && normKey(lab) === ex) return false;
+          return !isTodasTurmasAggregateLabel(lab);
+        });
+  const vals = base.map((r) => clampToNumber(r.proficiencia, 0));
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+}
+
+function mediaProficienciaPorDisciplinaDasTurmasNoRelatorio(
+  relatorio: Partial<RelatorioCompleto> | null,
+  valuesByTurma: Array<{ turma: string; proficiencia: number }>,
+  excludeTurmaNorm?: string
+): number {
+  const avMap = buildRelatorioTurmaAvaliadosMap(relatorio);
+  const ex = excludeTurmaNorm ?? "";
+  const filtered = valuesByTurma.filter((v) => {
+    const t = String(v.turma ?? "").trim();
+    if (!t) return false;
+    if (ex && normKey(t) === ex) return false;
+    if (isTodasTurmasAggregateLabel(t)) return false;
+    return deveIncluirLinhaPorTurmaRelatorio(relatorio, t, avMap);
+  });
+  const base =
+    filtered.length > 0
+      ? filtered
+      : valuesByTurma.filter((v) => {
+          const t = String(v.turma ?? "").trim();
+          if (!t) return false;
+          if (ex && normKey(t) === ex) return false;
+          return !isTodasTurmasAggregateLabel(t);
+        });
+  const vals = base.map((v) => clampToNumber(v.proficiencia, 0));
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+}
+
+function mediaNotaDasTurmasNoRelatorio(
+  relatorio: Partial<RelatorioCompleto> | null,
+  rows: NotaPorCategoriaDeck[],
+  excludeLabelNorm?: string
+): number {
+  const avMap = buildRelatorioTurmaAvaliadosMap(relatorio);
+  const ex = excludeLabelNorm ?? "";
+  const filtered = rows.filter((r) => {
+    const lab = String(r.label ?? "").trim();
+    if (!lab) return false;
+    if (ex && normKey(lab) === ex) return false;
+    if (isTodasTurmasAggregateLabel(lab)) return false;
+    return deveIncluirLinhaPorTurmaRelatorio(relatorio, lab, avMap);
+  });
+  const base =
+    filtered.length > 0
+      ? filtered
+      : rows.filter((r) => {
+          const lab = String(r.label ?? "").trim();
+          if (!lab) return false;
+          if (ex && normKey(lab) === ex) return false;
+          return !isTodasTurmasAggregateLabel(lab);
+        });
+  const vals = base.map((r) => clampToNumber(r.mediaNota, 0));
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
 }
 
 function findResultadoPorDisciplinaNova(
@@ -1263,8 +1423,10 @@ function buildProficiencyGeneralPorSerieFromRelatorio(relatorio: Partial<Relator
   const geralKey = findGeralKey(prof) ?? "GERAL";
   const geral = (prof as AnyRecord)[geralKey] as { por_turma?: Array<{ turma: string; proficiencia: number }> };
   const porTurma = geral?.por_turma ?? [];
+  const avMap = buildRelatorioTurmaAvaliadosMap(relatorio);
   const map = new Map<string, { sum: number; n: number }>();
   for (const row of porTurma) {
+    if (!deveIncluirLinhaPorTurmaRelatorio(relatorio, String(row.turma ?? "").trim(), avMap)) continue;
     const serie = extractSerieFromTurma(row.turma);
     if (!isValidSerieLabel(serie)) continue;
     const p = clampToNumber(row.proficiencia, 0);
@@ -1286,6 +1448,7 @@ function buildProficiencyByDisciplinePorCategoria(
   const profDisc = relatorio?.proficiencia?.por_disciplina;
   if (!profDisc) return [];
   const geralKey = findGeralKey(profDisc) ?? "GERAL";
+  const avMap = buildRelatorioTurmaAvaliadosMap(relatorio);
 
   return Object.entries(profDisc as AnyRecord)
     .filter(([k]) => normalizeText(k).toLowerCase() !== normalizeText(geralKey).toLowerCase())
@@ -1302,6 +1465,10 @@ function buildProficiencyByDisciplinePorCategoria(
         };
       }
       const rows = (porTurma ?? []).filter((r) => {
+        const t = String(r.turma ?? "").trim();
+        if (axis === "serie" || axis === "turma") {
+          if (!deveIncluirLinhaPorTurmaRelatorio(relatorio, t, avMap)) return false;
+        }
         if (axis === "turma" && serieFilterLabel) {
           const s = String(r.serie ?? "").trim() || extractSerieFromTurma(r.turma);
           return normKey(s) === normKey(serieFilterLabel);
@@ -1355,9 +1522,14 @@ function buildNotasPorCategoriaFromRelatorio(
   }
 
   const outMap = new Map<string, { sum: number; n: number }>();
+  const avMap = buildRelatorioTurmaAvaliadosMap(relatorio);
   for (const [, dadosDisc] of Object.entries(ng as AnyRecord)) {
     const porTurma = (dadosDisc as AnyRecord)?.por_turma as Array<{ turma: string; nota: number; serie?: string }>;
     for (const r of porTurma ?? []) {
+      const t = String(r.turma ?? "").trim();
+      if (axis === "serie" || axis === "turma") {
+        if (!deveIncluirLinhaPorTurmaRelatorio(relatorio, t, avMap)) continue;
+      }
       if (axis === "turma" && serieFilterLabel) {
         const s = String(r.serie ?? "").trim() || extractSerieFromTurma(r.turma);
         if (normKey(s) !== normKey(serieFilterLabel)) continue;
@@ -1386,6 +1558,7 @@ function proficiencyGeralPorEscolaFromNovaAvaliacoes(nova: NovaRespostaAPI | nul
   const av = nova?.resultados_detalhados?.avaliacoes;
   if (g !== "municipio" || !av?.length) return [];
   return av
+    .filter((a) => novaAvaliacaoTeveParticipantes(a))
     .map((a) => ({
       label: String(a.escola ?? "").trim(),
       proficiencia: clampToNumber(a.media_proficiencia, 0),
@@ -1401,6 +1574,7 @@ function proficiencyByDisciplinePorEscolaFromNovaAvaliacoes(nova: NovaRespostaAP
 
   const byDisc = new Map<string, Array<{ turma: string; proficiencia: number }>>();
   for (const a of av) {
+    if (!novaAvaliacaoTeveParticipantes(a)) continue;
     const escola = String(a.escola ?? "").trim();
     if (!escola) continue;
     const mds = a.medias_por_disciplina;
@@ -1440,6 +1614,7 @@ function notasPorCategoriaEscolaFromNovaAvaliacoes(nova: NovaRespostaAPI | null)
   const av = nova?.resultados_detalhados?.avaliacoes;
   if (g !== "municipio" || !av?.length) return [];
   return av
+    .filter((a) => novaAvaliacaoTeveParticipantes(a))
     .map((a) => ({
       label: String(a.escola ?? "").trim(),
       mediaNota: clampToNumber(a.media_nota, 0),
@@ -1455,6 +1630,7 @@ function proficiencyGeralPorSerieFromNovaAvaliacoes(nova: NovaRespostaAPI | null
 
   const map = new Map<string, { sum: number; n: number }>();
   for (const a of av) {
+    if (!deveIncluirLinhaNovaAvaliacao(a)) continue;
     const serieRaw = String(a.serie ?? "").trim();
     const serie = serieRaw || extractSerieFromTurma(String(a.turma ?? ""));
     if (!isValidSerieLabel(serie)) continue;
@@ -1479,6 +1655,7 @@ function proficiencyGeralPorTurmaFromNovaAvaliacoes(nova: NovaRespostaAPI | null
   if (!av?.length) return [];
   const map = new Map<string, { sum: number; n: number }>();
   for (const a of av) {
+    if (!deveIncluirLinhaNovaAvaliacao(a)) continue;
     const turma = String(a.turma ?? "").trim();
     if (!turma) continue;
     const p = clampToNumber(a.media_proficiencia, NaN);
@@ -1499,6 +1676,7 @@ function notasPorCategoriaFromNovaAvaliacoesSerie(nova: NovaRespostaAPI | null):
   if (!av?.length) return [];
   const map = new Map<string, { sum: number; n: number }>();
   for (const a of av) {
+    if (!deveIncluirLinhaNovaAvaliacao(a)) continue;
     const serieRaw = String(a.serie ?? "").trim();
     const serie = serieRaw || extractSerieFromTurma(String(a.turma ?? ""));
     if (!isValidSerieLabel(serie)) continue;
@@ -1520,6 +1698,7 @@ function notasPorCategoriaFromNovaAvaliacoesTurma(nova: NovaRespostaAPI | null):
   if (!av?.length) return [];
   const map = new Map<string, { sum: number; n: number }>();
   for (const a of av) {
+    if (!deveIncluirLinhaNovaAvaliacao(a)) continue;
     const turma = String(a.turma ?? "").trim();
     if (!turma) continue;
     const n = clampToNumber(a.media_nota, NaN);
@@ -1878,24 +2057,29 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
       }
     }
 
-    for (const a of novaRespostaAgregados?.tabela_detalhada?.geral?.alunos ?? []) {
-      const e = String((a as { escola?: string }).escola ?? "").trim();
-      if (e) names.add(e);
-    }
+    const omitNovaWideEscolas =
+      Boolean(selectedSchoolId?.trim()) && novaIsGranularidadeMunicipio(novaRespostaAgregados);
 
-    for (const disc of novaRespostaAgregados?.tabela_detalhada?.disciplinas ?? []) {
-      for (const a of disc.alunos ?? []) {
+    if (!omitNovaWideEscolas) {
+      for (const a of novaRespostaAgregados?.tabela_detalhada?.geral?.alunos ?? []) {
         const e = String((a as { escola?: string }).escola ?? "").trim();
         if (e) names.add(e);
       }
-    }
-    for (const r of novaRespostaAgregados?.ranking ?? []) {
-      const e = String((r as { escola?: string }).escola ?? "").trim();
-      if (e) names.add(e);
-    }
-    for (const a of novaRespostaAgregados?.resultados_detalhados?.avaliacoes ?? []) {
-      const e = String(a.escola ?? "").trim();
-      if (e) names.add(e);
+
+      for (const disc of novaRespostaAgregados?.tabela_detalhada?.disciplinas ?? []) {
+        for (const a of disc.alunos ?? []) {
+          const e = String((a as { escola?: string }).escola ?? "").trim();
+          if (e) names.add(e);
+        }
+      }
+      for (const r of novaRespostaAgregados?.ranking ?? []) {
+        const e = String((r as { escola?: string }).escola ?? "").trim();
+        if (e) names.add(e);
+      }
+      for (const a of novaRespostaAgregados?.resultados_detalhados?.avaliacoes ?? []) {
+        const e = String(a.escola ?? "").trim();
+        if (e) names.add(e);
+      }
     }
 
     return Array.from(names).sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
@@ -2035,7 +2219,8 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
     novaRespostaAgregados,
     presencaPorSerie,
     proficienciaGeralPorTurma,
-    comparisonAxis
+    comparisonAxis,
+    selectedSchoolId
   );
   if (selectedTurmaEffective) {
     turmasParticipantesCapa = [selectedTurmaEffective];
@@ -2245,8 +2430,7 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
         const bySerie = buildProficiencyGeneralPorSerieFromRelatorio(relatorioDetalhado);
         const row = bySerie.find((r) => normKey(r.label) === normKey(serieForTurmaCompare));
         if (row) return row.proficiencia;
-        const vals = profGeralFinal.map((r) => clampToNumber(r.proficiencia, 0));
-        return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+        return mediaProficienciaGeralDasTurmasNoDeck(relatorioDetalhado, profGeralFinal);
       })();
       profGeralFinal = [
         turmaProf ? { label: selectedTurmaEffective, proficiencia: clampToNumber(turmaProf.proficiencia, 0) } : null,
@@ -2259,8 +2443,7 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
       profDiscFinal = profDiscFinal
         .map((row) => {
           const turmaEntry = row.valuesByTurma.find((v) => normKey(v.turma) === normKey(selectedTurmaEffective));
-          const vals = row.valuesByTurma.map((v) => clampToNumber(v.proficiencia, 0));
-          const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+          const avg = mediaProficienciaPorDisciplinaDasTurmasNoRelatorio(relatorioDetalhado, row.valuesByTurma);
           if (!turmaEntry) return null;
           return {
             disciplina: row.disciplina,
@@ -2277,10 +2460,7 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
     if (!novaRespostaSerieAgregados?.estatisticas_gerais || !novaRespostaAgregados?.estatisticas_gerais) {
       const notasTurmaRows = buildNotasPorCategoriaFromRelatorio(relatorioDetalhado, "turma", serieForTurmaCompare);
       const turmaNota = notasTurmaRows.find((r) => normKey(r.label) === normKey(selectedTurmaEffective));
-      const serieNotaAvg = (() => {
-        const vals = notasTurmaRows.map((r) => clampToNumber(r.mediaNota, 0));
-        return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-      })();
+      const serieNotaAvg = mediaNotaDasTurmasNoRelatorio(relatorioDetalhado, notasTurmaRows);
       notasDiscFinal = [];
       mediaNotaFinal = null;
       notasCatFinal = [
@@ -2334,6 +2514,7 @@ export function buildDeckDataForPresentation19Slides(args: BuildDeckDataArgs): P
     serie: serieFinal,
     turma: turmaCapa,
     turmasParticipantesCapa,
+    slide2ShowSerieTurmas: Boolean(selectedSchoolId?.trim()),
 
     presencaPorSerie: presencaFinal,
     niveisPorSerie: niveisFinal,

@@ -20,13 +20,18 @@ interface BulkUploadStudentsModalProps {
   isOpen: boolean;
   onClose: () => void;
   schoolId: string;
-  schoolName: string;
+  schoolName?: string;
   onSuccess: () => void;
   schoolAddress?: string;
   schoolState?: string;
   schoolMunicipality?: string;
   /** Lista de séries da escola (id + nome), vinda do pai; usada para preencher serie e grade_id no template */
   grades?: { id: string; name: string }[];
+  /** Quando informado, força criação/vínculo dos alunos nesta turma. */
+  fixedClassId?: string;
+  fixedClassName?: string;
+  fixedGradeId?: string;
+  fixedGradeName?: string;
 }
 
 interface UploadResult {
@@ -63,12 +68,16 @@ export function BulkUploadStudentsModal({
   isOpen,
   onClose,
   schoolId,
-  schoolName,
+  schoolName = "Escola",
   onSuccess,
   schoolAddress = "",
   schoolState = "",
   schoolMunicipality = "",
   grades = [],
+  fixedClassId,
+  fixedClassName,
+  fixedGradeId,
+  fixedGradeName,
 }: BulkUploadStudentsModalProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -128,6 +137,9 @@ export function BulkUploadStudentsModal({
     setIsUploading(true);
     const formData = new FormData();
     formData.append('file', selectedFile);
+    if (fixedClassId) {
+      formData.append("class_id", fixedClassId);
+    }
 
     try {
       const response = await api.post('/users/bulk-upload-students', formData, {
@@ -222,8 +234,9 @@ export function BulkUploadStudentsModal({
 
   const downloadCSVTemplate = () => {
     const headerRow = "nome,data_nascimento,matricula,turma,escola,endereco_escola,estado_escola,municipio_escola,curso,serie,grade_id";
-    const rows =
-      grades.length > 0
+    const rows = fixedClassName && fixedGradeId
+      ? [`Exemplo,01/01/2010,2024001,${fixedClassName},${schoolName},${address},${state},${municipality},Anos Finais,${fixedGradeName || ""},${fixedGradeId}`]
+      : grades.length > 0
         ? grades.map((g) => `Exemplo,01/01/2010,2024001,A,${schoolName},${address},${state},${municipality},Anos Finais,${g.name},${g.id}`)
         : [`Exemplo,01/01/2010,2024001,A,${schoolName},${address},${state},${municipality},Anos Finais,6º Ano,`];
     const csvContent = [headerRow, ...rows].join("\n");
@@ -242,8 +255,9 @@ export function BulkUploadStudentsModal({
       const XLSX = await import("xlsx");
 
       const headerRow = ["nome", "data_nascimento", "matricula", "turma", "escola", "endereco_escola", "estado_escola", "municipio_escola", "curso", "serie", "grade_id"];
-      const dataRows =
-        grades.length > 0
+      const dataRows = fixedClassName && fixedGradeId
+        ? [["Exemplo", "01/01/2010", "2024001", fixedClassName, schoolName, address, state, municipality, "Anos Finais", fixedGradeName || "", fixedGradeId]]
+        : grades.length > 0
           ? grades.map((g) => ["Exemplo", "01/01/2010", "2024001", "A", schoolName, address, state, municipality, "Anos Finais", g.name, g.id])
           : [["Exemplo", "01/01/2010", "2024001", "A", schoolName, address, state, municipality, "Anos Finais", "6º Ano", ""]];
       const templateData = [headerRow, ...dataRows];
@@ -399,12 +413,19 @@ export function BulkUploadStudentsModal({
         <DialogHeader className="pb-3 border-b">
           <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
             <Upload className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
-            Importar Alunos em Massa
+            {fixedClassName ? `Importar Alunos em Massa - Turma ${fixedClassName}` : "Importar Alunos em Massa"}
           </DialogTitle>
           <DialogDescription className="text-sm sm:text-base">
-            Importe uma lista de alunos através de um arquivo CSV ou Excel. 
-            O arquivo deve conter as colunas: <strong>nome, data_nascimento, matricula, turma, escola, endereco_escola, estado_escola, municipio_escola, curso, serie, grade_id</strong>. 
-            Use <strong>grade_id</strong> (id da série) para evitar erros de comparação no backend; o modelo baixado já vem com os grade_id das séries desta escola quando houver turmas cadastradas.
+            Importe uma lista de alunos através de um arquivo CSV ou Excel.
+            {fixedClassName && (
+              <strong> Todos os alunos serão vinculados na turma {fixedClassName}.</strong>
+            )} 
+            {fixedClassName ? (
+              <> No modo de turma fixa, basta preencher pelo menos a coluna <strong>nome</strong>; as demais colunas podem permanecer no formato do modelo.</>
+            ) : (
+              <> O arquivo deve conter as colunas: <strong>nome, data_nascimento, matricula, turma, escola, endereco_escola, estado_escola, municipio_escola, curso, serie, grade_id</strong>. 
+              Use <strong>grade_id</strong> (id da série) para evitar erros de comparação no backend; o modelo baixado já vem com os grade_id das séries desta escola quando houver turmas cadastradas.</>
+            )}
           </DialogDescription>
         </DialogHeader>
 
