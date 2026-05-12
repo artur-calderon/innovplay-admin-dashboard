@@ -52,6 +52,7 @@ import { StudentCard } from "@/components/evaluations/student/StudentCard";
 import { QuestionData as TableQuestionData, DetailedReport as TableDetailedReport } from "@/types/results-table";
 import { generatePendingStudentsPdf } from "@/services/reports/pendingStudentsPdf";
 import { generateRankingPdf } from "@/services/reports/rankingPdf";
+import { normalizeEvaluationResultsRanking } from "@/utils/evaluation/normalizeEvaluationResultsRanking";
 
 // Interfaces para os dados da API - Nova estrutura baseada na implementação real
 interface EvaluationResult {
@@ -133,21 +134,7 @@ interface TabelaDetalhada {
 }
 
 // Importar tipos do serviço
-import type { NovaRespostaAPI, RankingItem } from '@/services/evaluation/evaluationResultsApi';
-
-// ✅ NOVO: Interfaces para tipagem correta
-interface RankingItemWithAluno {
-  aluno_id: string;
-  nome: string;
-  turma: string;
-  escola?: string;
-  serie?: string;
-  nota_geral: number;
-  proficiencia_geral: number;
-  classificacao_geral: string;
-  total_questoes: number;
-  total_acertos: number;
-}
+import type { NovaRespostaAPI } from '@/services/evaluation/evaluationResultsApi';
 
 interface DetailedReportAluno {
   id: string;
@@ -1626,25 +1613,24 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
         }));
     }
     
-    // Prioridade 2: Fallback para apiData.ranking se tabela_detalhada.geral não disponível
+    // Prioridade 2: Fallback — mesmo formato aninhado/plano que a aba Ranking (fonte: `ranking[]`).
     if (apiData?.ranking?.length) {
-      return apiData.ranking
-        .map((item: RankingItemWithAluno) => ({
-          id: item.aluno_id,
-          nome: item.nome,
-          turma: item.turma || 'N/A',
-          escola: item.escola ?? '',
-          serie: item.serie ?? '',
-          nota: item.nota_geral || 0,
-          proficiencia: item.proficiencia_geral || 0,
-          classificacao: item.classificacao_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
-          questoes_respondidas: item.total_questoes || 0,
-          acertos: item.total_acertos || 0,
-          erros: (item as unknown as { total_erros?: number; erros?: number }).total_erros ?? (item as unknown as { total_erros?: number; erros?: number }).erros ?? 0,
-          em_branco: 0,
-          tempo_gasto: 0,
-          status: 'concluida' as const
-        }));
+      return normalizeEvaluationResultsRanking(apiData.ranking as unknown[]).map((r) => ({
+        id: r.id,
+        nome: r.nome,
+        turma: r.turma || 'N/A',
+        escola: r.escola ?? '',
+        serie: r.serie ?? '',
+        nota: r.nota,
+        proficiencia: r.proficiencia,
+        classificacao: r.classificacao as unknown as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
+        questoes_respondidas: r.questoes_respondidas,
+        acertos: r.acertos,
+        erros: r.erros,
+        em_branco: r.em_branco,
+        tempo_gasto: 0,
+        status: r.status,
+      }));
     }
 
     return [];
@@ -1774,17 +1760,26 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
     );
   }, [transformedStudents]);
 
+  /** Ranking = sempre `apiData.ranking[]` do backend (posição e critério do servidor). */
   const rankingStudents = useMemo(() => {
-    return filteredStudents.filter((student) => {
-      const isCompleted = String(student.status || '').toLowerCase() === 'concluida';
-      const hasAnyEvaluation =
-        Number(student.questoes_respondidas ?? 0) > 0 ||
-        Number(student.acertos ?? 0) > 0 ||
-        Number(student.erros ?? 0) > 0 ||
-        Number(student.em_branco ?? 0) > 0;
-      return isCompleted && hasAnyEvaluation;
-    });
-  }, [filteredStudents]);
+    if (!apiData?.ranking?.length) return [];
+    return normalizeEvaluationResultsRanking(apiData.ranking as unknown[]).map((r) => ({
+      id: r.id,
+      nome: r.nome,
+      turma: r.turma,
+      escola: r.escola || undefined,
+      serie: r.serie || undefined,
+      nota: r.nota,
+      proficiencia: r.proficiencia,
+      classificacao: r.classificacao,
+      status: r.status,
+      posicao: r.posicao,
+      questoes_respondidas: r.questoes_respondidas,
+      acertos: r.acertos,
+      erros: r.erros,
+      em_branco: r.em_branco,
+    }));
+  }, [apiData?.ranking]);
 
   const rankingPdfFilterLabels = useMemo(() => {
     const estadoLabel =
@@ -1837,9 +1832,24 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
         context: 'avaliacoes',
         escopoTitulo: evaluationInfo?.titulo,
         filterLabels: rankingPdfFilterLabels,
-        students: rankingStudents,
+        students: rankingStudents.map((s) => ({
+          nome: s.nome,
+          turma: s.turma,
+          escola: s.escola,
+          serie: s.serie,
+          nota: s.nota,
+          proficiencia: s.proficiencia,
+          classificacao: s.classificacao,
+          status: s.status,
+          posicao: s.posicao,
+          questoes_respondidas: s.questoes_respondidas,
+          acertos: s.acertos,
+          erros: s.erros,
+          em_branco: s.em_branco,
+        })),
         maxRows: 100,
         fileNameBase: `ranking-avaliacoes-${evaluationInfo?.titulo ?? 'resultados'}`,
+        respectBackendRankingOrder: true,
       });
       toast({ title: 'PDF gerado', description: 'O ranking foi exportado com sucesso.' });
     } catch (e) {
@@ -2905,10 +2915,10 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
                         Exportar PDF
                       </Button>
                     </div>
-                    {/* Usar sempre a mesma lista da página (tabela/cards): evita ranking vazio ao filtrar por escola/turma/série */}
                     <StudentRanking
                       students={rankingStudents}
                       maxStudents={100}
+                      backendRankingOrder
                     />
                   </TabsContent>
                 )}
