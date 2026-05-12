@@ -13,14 +13,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { teacherIdFromCreateResponse } from "@/lib/teacher-create-response";
-import { Loader2, Search, UserPlus, Plus, Eye, EyeOff } from "lucide-react";
+import { Loader2, Search, UserPlus, Plus, Eye, EyeOff, CheckCircle2, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/authContext";
 import { useEmailCheck, generatePasswordFromName } from "@/hooks/useEmailCheck";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Teacher {
   id: string;
@@ -28,11 +26,6 @@ interface Teacher {
   email: string;
   registration?: string;
   role?: string;
-}
-
-interface Municipality {
-  id: number;
-  name: string;
 }
 
 interface ApiError {
@@ -50,21 +43,24 @@ interface LinkTeacherModalProps {
   isOpen: boolean;
   onClose: () => void;
   schoolId: string;
-  classId: string;
-  className: string;
+  classId?: string;
+  className?: string;
   onSuccess: () => void;
   /** Município da escola: professor já é criado nesse município (evita erro de city_id para admin) */
   schoolCityId?: string;
+  /** Quando true, modal opera no contexto da escola (sem obrigar turma). */
+  schoolOnlyMode?: boolean;
 }
 
 export function LinkTeacherModal({
   isOpen,
   onClose,
   schoolId,
-  classId,
-  className,
+  classId = "",
+  className = "Escola",
   onSuccess,
   schoolCityId,
+  schoolOnlyMode = false,
 }: LinkTeacherModalProps) {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [selectedTeachers, setSelectedTeachers] = useState<string[]>([]);
@@ -73,7 +69,6 @@ export function LinkTeacherModal({
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("link");
   const [isCreating, setIsCreating] = useState(false);
-  const [municipios, setMunicipios] = useState<Municipality[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     nome: "",
@@ -81,7 +76,6 @@ export function LinkTeacherModal({
     senha: "",
     matricula: "",
     birth_date: "",
-    city_id: ""
   });
   const { toast } = useToast();
   const { user } = useAuth();
@@ -96,18 +90,6 @@ export function LinkTeacherModal({
     }
   }, [checkedEmail, activeTab]);
 
-  useEffect(() => {
-    if (activeTab !== "create" || !formData.nome) return;
-    setFormData(prev => ({ ...prev, senha: generatePasswordFromName(prev.nome) }));
-  }, [formData.nome, activeTab]);
-
-  // Pré-preencher município quando o modal é aberto no contexto de uma escola
-  useEffect(() => {
-    if (isOpen && schoolCityId) {
-      setFormData(prev => ({ ...prev, city_id: schoolCityId }));
-    }
-  }, [isOpen, schoolCityId]);
-
   // Verificar permissões para vincular professores
   const canLinkTeachers = () => {
     if (!user) return false;
@@ -119,31 +101,18 @@ export function LinkTeacherModal({
     return ['diretor', 'coordenador', 'professor'].includes(user.role);
   };
 
-  // Carregar municípios se for admin ou tecadm
-  const fetchMunicipios = useCallback(async () => {
-    if (['admin', 'tecadm'].includes(user?.role || '')) {
-      try {
-        const response = await api.get('/city/');
-        setMunicipios(response.data || []);
-      } catch (error) {
-        console.error('Erro ao carregar municípios:', error);
-      }
-    }
-  }, [user?.role]);
-
-  useEffect(() => {
-    fetchMunicipios();
-  }, [fetchMunicipios]);
-
   // Buscar professores não vinculados à turma
   const fetchTeachers = useCallback(async () => {
     if (!isOpen) return;
     
     setIsLoading(true);
     try {
-      // Determinar endpoint baseado na permissão do usuário
+      // No contexto de turma, sempre carregar professores da escola para evitar consulta global pesada.
+      // No contexto schoolOnly, admin/tecadm podem visualizar todos os professores do sistema.
       const canViewAllTeachers = ['admin', 'tecadm'].includes(user?.role || '');
-      const endpoint = canViewAllTeachers ? '/teacher' : `/teacher/school/${schoolId}`;
+      const endpoint = schoolOnlyMode
+        ? (canViewAllTeachers ? '/teacher' : `/teacher/school/${schoolId}`)
+        : `/teacher/school/${schoolId}`;
       
       const response = await api.get(endpoint);
       let allTeachers = [];
@@ -165,9 +134,11 @@ export function LinkTeacherModal({
       }
       
       // Filtrar apenas professores (não diretores/coordenadores) que não estão na turma
-      const availableTeachers = allTeachers.filter((teacher: Record<string, unknown>) => 
-        teacher.role === 'professor' && !teacher.class_id
-      );
+      const availableTeachers = allTeachers.filter((teacher: Record<string, unknown>) => {
+        if (teacher.role !== "professor") return false;
+        if (schoolOnlyMode) return true;
+        return !teacher.class_id;
+      });
 
       setTeachers(availableTeachers as Teacher[]);
     } catch (error: unknown) {
@@ -187,7 +158,7 @@ export function LinkTeacherModal({
     } finally {
       setIsLoading(false);
     }
-  }, [isOpen, schoolId, user?.role, toast]);
+  }, [isOpen, schoolId, user?.role, schoolOnlyMode, toast]);
 
   useEffect(() => {
     fetchTeachers();
@@ -217,18 +188,25 @@ export function LinkTeacherModal({
 
     setIsLinking(true);
     try {
-      const linkPromises = selectedTeachers.map(teacherId =>
-        api.post("/teacher-class", {
-          teacher_id: teacherId,
-          class_id: classId
-        })
+      const linkPromises = selectedTeachers.map((teacherId) =>
+        schoolOnlyMode
+          ? api.post("/school-teacher", {
+              teacher_id: teacherId,
+              school_id: schoolId,
+            })
+          : api.post("/teacher-class", {
+              teacher_id: teacherId,
+              class_id: classId,
+            })
       );
 
       await Promise.all(linkPromises);
 
       toast({
         title: "Sucesso",
-        description: `${selectedTeachers.length} professor(es) vinculado(s) à turma com sucesso!`,
+        description: schoolOnlyMode
+          ? `${selectedTeachers.length} professor(es) vinculado(s) à escola com sucesso!`
+          : `${selectedTeachers.length} professor(es) vinculado(s) à turma com sucesso!`,
       });
 
       onSuccess();
@@ -236,10 +214,15 @@ export function LinkTeacherModal({
       setSelectedTeachers([]);
     } catch (error) {
       console.error("Erro ao vincular professores:", error);
-      const errorMessage = (error as ApiError)?.response?.data?.erro ?? (error as ApiError)?.response?.data?.error ?? "Erro ao vincular professores à turma";
+      const errorMessage =
+        (error as ApiError)?.response?.data?.erro ??
+        (error as ApiError)?.response?.data?.error ??
+        (schoolOnlyMode
+          ? "Erro ao vincular professores à escola"
+          : "Erro ao vincular professores à turma");
       toast({
         title: "Erro",
-        description: typeof errorMessage === "string" ? errorMessage : "Erro ao vincular professores à turma",
+        description: typeof errorMessage === "string" ? errorMessage : "Erro ao vincular professores",
         variant: "destructive",
       });
     } finally {
@@ -257,11 +240,10 @@ export function LinkTeacherModal({
       return;
     }
 
-    const effectiveCityId = schoolCityId || formData.city_id;
-    if (['admin', 'tecadm'].includes(user?.role || '') && !effectiveCityId) {
+    if (['admin', 'tecadm'].includes(user?.role || '') && !schoolCityId) {
       toast({
         title: "Erro",
-        description: "Selecione um município",
+        description: "Não foi possível identificar o município da escola. Recarregue a página ou contate o suporte.",
         variant: "destructive",
       });
       return;
@@ -275,7 +257,9 @@ export function LinkTeacherModal({
         senha: formData.senha,
         matricula: formData.matricula || undefined,
         birth_date: formData.birth_date,
-        city_id: ['admin', 'tecadm'].includes(user?.role || '') ? effectiveCityId : (user as any)?.city_id
+        city_id: ['admin', 'tecadm'].includes(user?.role || '')
+          ? schoolCityId
+          : (user as { city_id?: string })?.city_id,
       };
 
       const response = await api.post("/teacher", teacherData);
@@ -294,9 +278,19 @@ export function LinkTeacherModal({
         school_id: schoolId,
       });
 
+      if (!schoolOnlyMode && classId) {
+        await api.post("/teacher-class", {
+          teacher_id: newTeacherId,
+          class_id: classId,
+        });
+      }
+
       toast({
         title: "Sucesso",
-        description: "Professor criado e vinculado à escola com sucesso!",
+        description:
+          !schoolOnlyMode && classId
+            ? "Professor criado e vinculado à escola e à turma com sucesso!"
+            : "Professor criado e vinculado à escola com sucesso!",
       });
 
       // Limpar formulário
@@ -306,7 +300,6 @@ export function LinkTeacherModal({
         senha: "",
         matricula: "",
         birth_date: "",
-        city_id: schoolCityId ?? ""
       });
 
       await fetchTeachers();
@@ -331,6 +324,14 @@ export function LinkTeacherModal({
     }));
   };
 
+  const handleNomeChange = (value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      nome: value,
+      senha: generatePasswordFromName(value),
+    }));
+  };
+
   const handleOpenChange = (open: boolean) => {
     if (!open) {
       setFormData({
@@ -339,7 +340,6 @@ export function LinkTeacherModal({
         senha: "",
         matricula: "",
         birth_date: "",
-        city_id: ""
       });
       setSelectedTeachers([]);
       onClose();
@@ -361,8 +361,10 @@ export function LinkTeacherModal({
           </DialogTitle>
           <DialogDescription asChild>
             <p className="text-sm sm:text-base text-muted-foreground mt-1">
-              Vincule professores existentes ou crie novos para a turma.
-              {['admin', 'tecadm'].includes(user?.role || '') && (
+              {schoolOnlyMode
+                ? "Vincule professores existentes ou crie novos para a escola."
+                : "Vincule professores existentes ou crie novos para a turma."}
+              {schoolOnlyMode && ['admin', 'tecadm'].includes(user?.role || '') && (
                 <span className="block mt-1 text-xs text-blue-600 dark:text-blue-400">
                   ⚡ Visualizando todos os professores do sistema
                 </span>
@@ -485,7 +487,7 @@ export function LinkTeacherModal({
                   >
                     {isLinking && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     <UserPlus className="mr-2 h-4 w-4" />
-                    Vincular ({selectedTeachers.length})
+                    {schoolOnlyMode ? "Vincular à escola" : "Vincular"} ({selectedTeachers.length})
                   </Button>
                 </div>
               </div>
@@ -494,7 +496,10 @@ export function LinkTeacherModal({
             <TabsContent value="create" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=inactive]:hidden">
               <div className="flex-1 overflow-y-auto border border-border rounded-lg bg-card p-4 sm:p-5 scrollbar-thin scrollbar-thumb-blue-300 dark:scrollbar-thumb-blue-700 scrollbar-track-transparent">
                 <p className="text-sm text-muted-foreground mb-4">
-                  Preencha os dados. A senha não será exibida após o cadastro.
+                  E-mail e senha são gerados automaticamente a partir do nome. O cadastro usa o município da escola.
+                  {!isChecking && isAvailable === false && (
+                    <span className="text-amber-600 ml-1">E-mail original em uso — usando sugestão disponível.</span>
+                  )}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -504,31 +509,40 @@ export function LinkTeacherModal({
                       placeholder="Digite o nome completo"
                       className="h-11 border-input bg-background focus:ring-2 focus:ring-blue-500"
                       value={formData.nome}
-                      onChange={(e) => handleInputChange('nome', e.target.value)}
+                      onChange={(e) => handleNomeChange(e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="email" className="text-sm font-medium text-foreground">Email *</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="Digite o email"
-                      className="h-11 border-input bg-background focus:ring-2 focus:ring-blue-500"
-                      value={formData.email}
-                      onChange={(e) => handleInputChange('email', e.target.value)}
-                    />
+                    <Label htmlFor="email" className="text-sm font-medium text-foreground">E-mail (gerado automaticamente)</Label>
+                    <div className="relative">
+                      <Input
+                        id="email"
+                        readOnly
+                        className="h-11 bg-muted border-border font-mono text-sm cursor-not-allowed pr-8"
+                        value={formData.email}
+                        placeholder="Será gerado ao digitar o nome"
+                      />
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                        {isChecking && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                        {!isChecking && isAvailable === true && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                        {!isChecking && isAvailable === false && <AlertCircle className="h-4 w-4 text-amber-500" />}
+                      </div>
+                    </div>
+                    {!isChecking && isAvailable === false && (
+                      <p className="text-xs text-amber-600">E-mail original em uso. Usando sugestão disponível.</p>
+                    )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="senha" className="text-sm font-medium text-foreground">Senha *</Label>
+                    <Label htmlFor="senha" className="text-sm font-medium text-foreground">Senha (gerada automaticamente)</Label>
                     <div className="relative">
                       <Input
                         id="senha"
                         type={showPassword ? "text" : "password"}
+                        readOnly
                         autoComplete="new-password"
-                        placeholder="Digite a senha"
-                        className="h-11 border-input bg-background focus:ring-2 focus:ring-blue-500 pr-10"
+                        className="h-11 bg-muted border-border font-mono text-sm cursor-not-allowed pr-10"
                         value={formData.senha}
-                        onChange={(e) => handleInputChange('senha', e.target.value)}
+                        placeholder="Será gerada ao digitar o nome"
                       />
                       <button
                         type="button"
@@ -564,21 +578,6 @@ export function LinkTeacherModal({
                       onChange={(e) => handleInputChange('birth_date', e.target.value)}
                     />
                   </div>
-                  {['admin', 'tecadm'].includes(user?.role || '') && (
-                    <div className="space-y-2">
-                      <Label htmlFor="city_id" className="text-sm font-medium text-foreground">Município *</Label>
-                      <Select onValueChange={(value) => handleInputChange('city_id', value)} value={formData.city_id}>
-                        <SelectTrigger className="h-11">
-                          <SelectValue placeholder="Selecione um município" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {municipios.map((city) => (
-                            <SelectItem key={city.id} value={city.id.toString()}>{city.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t bg-gray-50/50 dark:bg-muted px-4 py-3 rounded-b-lg shrink-0">
@@ -591,7 +590,7 @@ export function LinkTeacherModal({
                   </Button>
                   <Button
                     onClick={handleCreateTeacher}
-                    disabled={isCreating}
+                    disabled={isCreating || !formData.nome.trim() || !formData.email || !formData.senha || !formData.birth_date}
                     className="h-10 order-1 sm:order-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400"
                   >
                     {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}

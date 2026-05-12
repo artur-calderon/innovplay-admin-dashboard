@@ -19,8 +19,21 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { FileSpreadsheet, FileText, Download, Loader2, Calendar } from "lucide-react";
+import { FileSpreadsheet, FileText, Download, Loader2, Calendar, Users } from "lucide-react";
 import { useAuth } from "@/context/authContext";
+import { generatePasswordFromName } from "@/hooks/useEmailCheck";
+import { loadLogoAssetForLandscapePdf } from "@/utils/pdfCityBranding";
+
+type Rgb = [number, number, number];
+
+const REPORT_COLORS: Record<"primary" | "textDark" | "textGray" | "borderLight" | "bgLight" | "white", Rgb> = {
+  primary: [124, 62, 237],
+  textDark: [31, 41, 55],
+  textGray: [107, 114, 128],
+  borderLight: [229, 231, 235],
+  bgLight: [250, 250, 250],
+  white: [255, 255, 255],
+};
 
 type ReportFormat = "excel" | "pdf";
 
@@ -42,6 +55,39 @@ interface Grade {
   name: string;
 }
 
+interface UserExportRow {
+  nome: string;
+  email: string;
+  senha: string;
+  role: "diretor" | "coordenador" | "professor";
+  roleLabel: string;
+}
+
+interface ManagerSchoolResponseItem {
+  user?: {
+    name?: string;
+    email?: string;
+    role?: string;
+  };
+  manager?: {
+    name?: string;
+    email?: string;
+    role?: string;
+  };
+}
+
+interface TeacherSchoolResponseItem {
+  professor?: {
+    name?: string;
+    email?: string;
+  };
+  usuario?: {
+    name?: string;
+    email?: string;
+    role?: string;
+  };
+}
+
 export function PasswordReportModal({
   isOpen,
   onClose,
@@ -52,6 +98,7 @@ export function PasswordReportModal({
 }: PasswordReportModalProps) {
   const { user } = useAuth();
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingUsers, setIsGeneratingUsers] = useState(false);
   const [isLoadingGrades, setIsLoadingGrades] = useState(false);
   const { toast } = useToast();
 
@@ -277,6 +324,372 @@ export function PasswordReportModal({
     }
   };
 
+  const roleLabel = (role: string): string => {
+    const r = role.toLowerCase();
+    if (r === "diretor") return "Diretor";
+    if (r === "coordenador") return "Coordenador";
+    return "Professor";
+  };
+
+  const safeFileSchoolName = schoolName.replace(/\s+/g, "_");
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const blobUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(blobUrl);
+  };
+
+  const fetchUsersByRole = async (): Promise<UserExportRow[]> => {
+    const [managersResp, teachersResp] = await Promise.all([
+      api.get(`/managers/school/${schoolId}`),
+      api.get(`/teacher/school/${schoolId}`),
+    ]);
+
+    const managers = (managersResp.data?.managers ?? []) as ManagerSchoolResponseItem[];
+    const teachers = (teachersResp.data?.professores ?? []) as TeacherSchoolResponseItem[];
+
+    const managerRows = managers
+      .map((item) => {
+        const usr = item.user ?? item.manager;
+        const name = String(usr?.name ?? "").trim();
+        const email = String(usr?.email ?? "").trim();
+        const role = String(usr?.role ?? "").toLowerCase();
+        if (!name || !email || (role !== "diretor" && role !== "coordenador")) return null;
+        return {
+          nome: name,
+          email,
+          senha: generatePasswordFromName(name),
+          role: role as "diretor" | "coordenador",
+          roleLabel: roleLabel(role),
+        };
+      })
+      .filter((row): row is UserExportRow => Boolean(row));
+
+    const teacherRows = teachers
+      .map((item) => {
+        const name = String(item.professor?.name ?? item.usuario?.name ?? "").trim();
+        const email = String(item.professor?.email ?? item.usuario?.email ?? "").trim();
+        if (!name || !email) return null;
+        return {
+          nome: name,
+          email,
+          senha: generatePasswordFromName(name),
+          role: "professor" as const,
+          roleLabel: "Professor",
+        };
+      })
+      .filter((row): row is UserExportRow => Boolean(row));
+
+    const dedup = new Map<string, UserExportRow>();
+    [...managerRows, ...teacherRows].forEach((row) => {
+      const key = `${row.role}:${row.email.toLowerCase()}`;
+      if (!dedup.has(key)) dedup.set(key, row);
+    });
+
+    return Array.from(dedup.values()).sort((a, b) => {
+      const roleOrder = ["diretor", "coordenador", "professor"];
+      const roleDiff = roleOrder.indexOf(a.role) - roleOrder.indexOf(b.role);
+      if (roleDiff !== 0) return roleDiff;
+      return a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" });
+    });
+  };
+
+  const exportUsersExcel = async (rows: UserExportRow[]) => {
+    const XLSX = (await import("xlsx-js-style")).default;
+    const wb = XLSX.utils.book_new();
+
+    const roleCounts = {
+      diretor: rows.filter((row) => row.role === "diretor").length,
+      coordenador: rows.filter((row) => row.role === "coordenador").length,
+      professor: rows.filter((row) => row.role === "professor").length,
+    };
+
+    const purpleHeader = {
+      font: { bold: true, color: { rgb: "FFFFFF" }, sz: 12 },
+      fill: { fgColor: { rgb: "7C3AED" } },
+      alignment: { horizontal: "center" as const, vertical: "center" as const },
+    };
+
+    const capaData: (string | number)[][] = [
+      ["RELATÓRIO DE ACESSO — GESTÃO ESCOLAR"],
+      ["Diretores, coordenadores e professores"],
+      [""],
+      ["Escola", schoolName],
+      ["Gerado em", new Date().toLocaleString("pt-BR")],
+      ["Total de contas", rows.length],
+      ["Diretores", roleCounts.diretor],
+      ["Coordenadores", roleCounts.coordenador],
+      ["Professores", roleCounts.professor],
+      [""],
+      [
+        "As senhas seguem o mesmo padrão de geração utilizado no cadastro de usuários (relatório de acesso dos alunos).",
+      ],
+    ];
+    const capaSheet = XLSX.utils.aoa_to_sheet(capaData);
+    capaSheet["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
+      { s: { r: 10, c: 0 }, e: { r: 10, c: 5 } },
+    ];
+    capaSheet["!cols"] = [{ wch: 22 }, { wch: 52 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }];
+    const addr = (r: number, c: number) => XLSX.utils.encode_cell({ r, c });
+    capaSheet[addr(0, 0)]!.s = { ...purpleHeader, font: { bold: true, color: { rgb: "FFFFFF" }, sz: 14 } };
+    capaSheet[addr(1, 0)]!.s = { ...purpleHeader, font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11 } };
+    for (let r = 3; r <= 8; r++) {
+      capaSheet[addr(r, 0)]!.s = {
+        font: { bold: true, color: { rgb: "7C3AED" } },
+        alignment: { horizontal: "left" },
+      };
+    }
+    capaSheet[addr(10, 0)]!.s = {
+      font: { italic: true, color: { rgb: "6B7280" }, sz: 10 },
+      alignment: { horizontal: "left", vertical: "top", wrapText: true },
+    };
+    XLSX.utils.book_append_sheet(wb, capaSheet, "Capa");
+
+    const groups: Array<{ role: UserExportRow["role"]; label: string }> = [
+      { role: "diretor", label: "Diretores" },
+      { role: "coordenador", label: "Coordenadores" },
+      { role: "professor", label: "Professores" },
+    ];
+
+    groups.forEach((group) => {
+      const groupRows = rows
+        .filter((row) => row.role === group.role)
+        .map((row) => [row.nome, row.email, row.senha, row.roleLabel]);
+      const sheet = XLSX.utils.aoa_to_sheet([
+        ["Nome", "E-mail", "Senha", "Perfil"],
+        ...groupRows,
+      ]);
+      const ref = sheet["!ref"];
+      if (ref) {
+        const decoded = XLSX.utils.decode_range(ref);
+        for (let c = decoded.s.c; c <= decoded.e.c; c++) {
+          const a = XLSX.utils.encode_cell({ r: 0, c });
+          const cell = sheet[a];
+          if (cell) cell.s = purpleHeader;
+        }
+      }
+      sheet["!cols"] = [{ wch: 36 }, { wch: 38 }, { wch: 14 }, { wch: 16 }];
+      XLSX.utils.book_append_sheet(wb, sheet, group.label);
+    });
+
+    const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([excelBuffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    downloadBlob(blob, `relatorio_senhas_usuarios_escola_${safeFileSchoolName}.xlsx`);
+  };
+
+  const exportUsersPdf = async (rows: UserExportRow[]) => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import("jspdf"),
+      import("jspdf-autotable"),
+    ]);
+
+    type PdfDoc = InstanceType<typeof jsPDF> & { lastAutoTable?: { finalY?: number } };
+    const groups: Array<{ role: UserExportRow["role"]; label: string }> = [
+      { role: "diretor", label: "Diretores" },
+      { role: "coordenador", label: "Coordenadores" },
+      { role: "professor", label: "Professores" },
+    ];
+
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pdfDoc = doc as PdfDoc;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const centerX = pageWidth / 2;
+    const margin = 14;
+    const generatedAt = new Date().toLocaleString("pt-BR");
+
+    const logoAsset = await loadLogoAssetForLandscapePdf(cityId);
+    const C = REPORT_COLORS;
+
+    const roleCounts = {
+      diretor: rows.filter((row) => row.role === "diretor").length,
+      coordenador: rows.filter((row) => row.role === "coordenador").length,
+      professor: rows.filter((row) => row.role === "professor").length,
+    };
+
+    const drawCover = () => {
+      const BAND_H = 58;
+      doc.setFillColor(...C.white);
+      doc.rect(0, 0, pageWidth, pageHeight, "F");
+      doc.setFillColor(...C.primary);
+      doc.rect(0, 0, pageWidth, BAND_H, "F");
+
+      let logoBottom = 0;
+      if (logoAsset?.dataUrl && logoAsset.iw > 0 && logoAsset.ih > 0) {
+        const desiredW = 38;
+        const desiredH = (logoAsset.ih * desiredW) / logoAsset.iw;
+        doc.addImage(logoAsset.dataUrl, "PNG", centerX - desiredW / 2, 7, desiredW, desiredH);
+        logoBottom = 7 + desiredH;
+      } else {
+        doc.setFontSize(18);
+        doc.setTextColor(...C.white);
+        doc.setFont("helvetica", "bold");
+        doc.text("AFIRME PLAY", centerX, 22, { align: "center" });
+        logoBottom = 28;
+      }
+
+      const titleY = Math.max(logoBottom + 5, BAND_H - 17);
+      doc.setTextColor(...C.white);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(17);
+      doc.text("RELATÓRIO DE ACESSO", centerX, titleY, { align: "center" });
+      doc.setFontSize(11);
+      doc.text("GESTÃO ESCOLAR — CONTAS E SENHAS", centerX, titleY + 8, { align: "center" });
+
+      let y = BAND_H + 18;
+      const cardW = pageWidth - 40;
+      const cardX = (pageWidth - cardW) / 2;
+      const cardH = 70;
+      const ACCENT_W = 4;
+      doc.setFillColor(...C.bgLight);
+      doc.rect(cardX, y, cardW, cardH, "F");
+      doc.setFillColor(...C.primary);
+      doc.rect(cardX, y, ACCENT_W, cardH, "F");
+      doc.setDrawColor(...C.borderLight);
+      doc.setLineWidth(0.4);
+      doc.rect(cardX, y, cardW, cardH, "S");
+
+      let cy = y + 12;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(...C.primary);
+      doc.text("INFORMAÇÕES", cardX + ACCENT_W + (cardW - ACCENT_W) / 2, cy, { align: "center" });
+      cy += 6;
+      doc.setDrawColor(...C.borderLight);
+      doc.setLineWidth(0.3);
+      doc.line(cardX + ACCENT_W + 4, cy, cardX + cardW - 4, cy);
+      cy += 8;
+
+      const labelX = cardX + ACCENT_W + 10;
+      const valueX = labelX + 52;
+      const rowH = 7;
+      const infoRows: Array<[string, string]> = [
+        ["Escola:", schoolName],
+        ["Gerado em:", generatedAt],
+        ["Total de contas:", String(rows.length)],
+        ["Diretores:", String(roleCounts.diretor)],
+        ["Coordenadores:", String(roleCounts.coordenador)],
+        ["Professores:", String(roleCounts.professor)],
+      ];
+      doc.setFontSize(10);
+      for (const [label, value] of infoRows) {
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...C.primary);
+        doc.text(label, labelX, cy);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...C.textDark);
+        doc.text(value, valueX, cy, { maxWidth: cardW - (valueX - cardX) - 12 });
+        cy += rowH;
+      }
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(...C.textGray);
+      doc.text(
+        "As senhas seguem o mesmo padrão de geração utilizado no cadastro de usuários (relatório de acesso dos alunos).",
+        margin,
+        y + cardH + 10,
+        { maxWidth: pageWidth - 2 * margin }
+      );
+    };
+
+    drawCover();
+    doc.addPage();
+    let startY = margin;
+
+    groups.forEach((group) => {
+      const groupRows = rows
+        .filter((row) => row.role === group.role)
+        .map((row) => [row.nome, row.email, row.senha]);
+
+      if (startY > 240) {
+        doc.addPage();
+        startY = margin;
+      }
+
+      doc.setTextColor(...C.textDark);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text(`${group.label} (${groupRows.length})`, margin, startY);
+
+      autoTable(doc, {
+        startY: startY + 3,
+        head: [["Nome", "E-mail", "Senha"]],
+        body: groupRows.length > 0 ? groupRows : [["Sem registros", "-", "-"]],
+        theme: "grid",
+        styles: { fontSize: 9, cellPadding: 2, textColor: [31, 41, 55] },
+        headStyles: { fillColor: [124, 62, 237], textColor: 255 },
+        alternateRowStyles: { fillColor: [249, 250, 251] },
+        margin: { left: margin, right: margin },
+        columnStyles: {
+          0: { cellWidth: 58 },
+          1: { cellWidth: 78 },
+          2: { cellWidth: 36 },
+        },
+      });
+
+      startY = (pdfDoc.lastAutoTable?.finalY ?? startY) + 10;
+    });
+
+    const totalPages = doc.getNumberOfPages();
+    for (let page = 1; page <= totalPages; page++) {
+      doc.setPage(page);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(156, 163, 175);
+      doc.text("AFIRME EDUCACIONAL", margin, pageHeight - 10);
+      doc.text(`Página ${page} de ${totalPages}`, centerX, pageHeight - 10, { align: "center" });
+      doc.text(generatedAt, pageWidth - margin, pageHeight - 10, { align: "right" });
+    }
+
+    doc.save(`relatorio_senhas_usuarios_escola_${safeFileSchoolName}.pdf`);
+  };
+
+  const handleGenerateUsersReport = async () => {
+    try {
+      setIsGeneratingUsers(true);
+      const rows = await fetchUsersByRole();
+      if (rows.length === 0) {
+        toast({
+          title: "Sem dados para exportar",
+          description: "Não foram encontrados diretores, coordenadores ou professores nesta escola.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (reportFormat === "pdf") {
+        await exportUsersPdf(rows);
+      } else {
+        await exportUsersExcel(rows);
+      }
+
+      toast({
+        title: "Relatório gerado com sucesso!",
+        description: `Relatório de contas e senhas (${reportFormat.toUpperCase()}) baixado.`,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Não foi possível gerar o relatório de usuários.";
+      toast({
+        title: "Erro ao gerar relatório",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingUsers(false);
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="w-full max-w-[95vw] sm:max-w-2xl lg:max-w-3xl max-h-[95vh] overflow-y-auto">
@@ -431,6 +844,13 @@ export function PasswordReportModal({
               {reportFormat === "excel" && " No Excel, você também pode filtrar por período (datas)."}
             </p>
           </div>
+
+          <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
+            <p className="text-sm text-orange-800 dark:text-orange-300">
+              <strong>Contas de gestão:</strong> você também pode exportar diretor, coordenador e professor,
+              separados por perfil, com senha gerada no mesmo padrão atual do sistema.
+            </p>
+          </div>
         </div>
 
         <DialogFooter className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t">
@@ -442,23 +862,43 @@ export function PasswordReportModal({
           >
             Cancelar
           </Button>
-          <Button
-            onClick={handleGenerateReport}
-            disabled={isGenerating}
-            className="w-full sm:w-auto"
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Gerando relatório...
-              </>
-            ) : (
-              <>
-                <Download className="h-4 w-4 mr-2" />
-                Gerar Relatório
-              </>
-            )}
-          </Button>
+          <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={handleGenerateUsersReport}
+              disabled={isGenerating || isGeneratingUsers}
+              className="w-full sm:w-auto"
+            >
+              {isGeneratingUsers ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Exportando contas...
+                </>
+              ) : (
+                <>
+                  <Users className="h-4 w-4 mr-2" />
+                  Exportar contas (gestão)
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={handleGenerateReport}
+              disabled={isGenerating || isGeneratingUsers}
+              className="w-full sm:w-auto"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Gerando relatório...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  Gerar Relatório (alunos)
+                </>
+              )}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
