@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -134,7 +135,7 @@ interface TabelaDetalhada {
 }
 
 // Importar tipos do serviço
-import type { NovaRespostaAPI } from '@/services/evaluation/evaluationResultsApi';
+import type { AlunoPendenteDetalheEstatisticas, NovaRespostaAPI } from '@/services/evaluation/evaluationResultsApi';
 
 interface DetailedReportAluno {
   id: string;
@@ -525,6 +526,46 @@ async function resultsFetchEvaluationsList(
     );
   }
   return data as NovaRespostaAPI;
+}
+
+/** Normaliza texto da pesquisa de pendentes (acentos, caixa, símbolos comuns de grau). */
+function normalizePendingStudentSearchText(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[°ºª]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+/** Interpreta prefixos "Turma …", "Escola …", "Série …" / "Serie …" (resto filtra só esse campo). */
+function parsePendingStudentSearchInput(raw: string): {
+  kind: 'turma' | 'escola' | 'serie' | 'general';
+  needle: string;
+} {
+  const trimmed = raw.trim();
+  if (!trimmed) return { kind: 'general', needle: '' };
+  const lowered = trimmed
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[°ºª]/g, '')
+    .toLowerCase()
+    .trim();
+
+  const turmaMatch = lowered.match(/^turma\s*:?\s*(.+)$/);
+  if (turmaMatch?.[1]?.trim()) {
+    return { kind: 'turma', needle: normalizePendingStudentSearchText(turmaMatch[1]) };
+  }
+  const escolaMatch = lowered.match(/^escola\s*:?\s*(.+)$/);
+  if (escolaMatch?.[1]?.trim()) {
+    return { kind: 'escola', needle: normalizePendingStudentSearchText(escolaMatch[1]) };
+  }
+  const serieMatch = lowered.match(/^serie\s*:?\s*(.+)$/);
+  if (serieMatch?.[1]?.trim()) {
+    return { kind: 'serie', needle: normalizePendingStudentSearchText(serieMatch[1]) };
+  }
+
+  return { kind: 'general', needle: normalizePendingStudentSearchText(trimmed) };
 }
 
 type ResultsProps = { hidePageHeading?: boolean };
@@ -1203,7 +1244,7 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
             status: 'pendente',
             total_alunos: dataToSet.estatisticas_gerais.total_alunos,
             alunos_participantes: dataToSet.estatisticas_gerais.alunos_participantes,
-            alunos_ausentes: dataToSet.estatisticas_gerais.alunos_ausentes,
+            alunos_ausentes: dataToSet.estatisticas_gerais.alunos_pendentes,
             media_nota: dataToSet.estatisticas_gerais.media_nota_geral,
             media_proficiencia: dataToSet.estatisticas_gerais.media_proficiencia_geral,
             escola: selectedSchool === 'all' 
@@ -1439,8 +1480,9 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
     source: 'database' | 'question';
   }>>>({});
 
-  // Modal: alunos pendentes (status_geral !== 'concluida')
+  // Modal: alunos pendentes (`estatisticas_gerais.alunos_pendentes_detalhe`)
   const [showPendingStudentsModal, setShowPendingStudentsModal] = useState(false);
+  const [pendingStudentsModalSearch, setPendingStudentsModalSearch] = useState('');
 
   
   
@@ -2063,16 +2105,68 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
     return {
       totalAlunos: s?.total_alunos ?? 0,
       participantes: s?.alunos_participantes ?? 0,
-      ausentes: s?.alunos_ausentes ?? 0,
+      pendentes: s?.alunos_pendentes ?? 0,
       mediaNota: s?.media_nota_geral ?? 0,
       mediaProficiencia: s?.media_proficiencia_geral ?? 0,
     };
   }, [apiData?.estatisticas_gerais]);
 
-  const pendingStudents = useMemo(() => {
-    const geral = apiData?.tabela_detalhada?.geral?.alunos ?? [];
-    return geral.filter((a) => (a.status_geral || '').toLowerCase() !== 'concluida');
-  }, [apiData?.tabela_detalhada?.geral?.alunos]);
+  const pendingStudents = useMemo((): AlunoPendenteDetalheEstatisticas[] => {
+    const raw = apiData?.estatisticas_gerais?.alunos_pendentes_detalhe;
+    if (!Array.isArray(raw)) return [];
+    return raw.map((a, i) => ({
+      id: String(a.id ?? `sem-id-${i}`),
+      nome: String(a.nome ?? ''),
+      escola: a.escola,
+      serie: a.serie,
+      turma: a.turma,
+    }));
+  }, [apiData?.estatisticas_gerais]);
+
+  const filteredPendingStudents = useMemo(() => {
+    const q = pendingStudentsModalSearch.trim();
+    if (!q) return pendingStudents;
+    const parsed = parsePendingStudentSearchInput(q);
+    const n = normalizePendingStudentSearchText;
+
+    if (parsed.kind === 'general' && !parsed.needle) return pendingStudents;
+
+    return pendingStudents.filter((a) => {
+      if (parsed.kind === 'turma') {
+        return n(String(a.turma ?? '')).includes(parsed.needle);
+      }
+      if (parsed.kind === 'escola') {
+        return n(String(a.escola ?? '')).includes(parsed.needle);
+      }
+      if (parsed.kind === 'serie') {
+        return n(String(a.serie ?? '')).includes(parsed.needle);
+      }
+      const needle = parsed.needle;
+      return (
+        n(String(a.nome ?? '')).includes(needle) ||
+        n(String(a.escola ?? '')).includes(needle) ||
+        n(String(a.serie ?? '')).includes(needle) ||
+        n(String(a.turma ?? '')).includes(needle)
+      );
+    });
+  }, [pendingStudents, pendingStudentsModalSearch]);
+
+  const pendingStudentsSearchPlaceholder = useMemo(() => {
+    const g = apiData?.nivel_granularidade ?? apiData?.estatisticas_gerais?.tipo;
+    switch (g) {
+      case 'municipio':
+        return 'Nome ou trecho da escola, série, turma… Use Turma A ou Escola municipal…';
+      case 'escola':
+        return 'Nome, série, turma ou trecho… Use Turma A, Série 8º…';
+      case 'serie':
+        return 'Nome, turma ou trecho… Use Turma A…';
+      case 'turma':
+      case 'avaliacao':
+        return 'Pesquisar por nome…';
+      default:
+        return 'Nome ou trecho (escola, série, turma)… Turma A, Escola cent…';
+    }
+  }, [apiData?.nivel_granularidade, apiData?.estatisticas_gerais?.tipo]);
 
   // Disciplinas derivadas unificando múltiplas fontes
   const derivedSubjects = useMemo(() => {
@@ -2536,7 +2630,7 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
                       <div className="text-sm font-medium text-muted-foreground leading-tight">
                         Faltosos /<br />Pendentes
                       </div>
-                      {pendingStudents.length > 0 && (
+                      {backendStats.pendentes > 0 && (
                         <Button
                           type="button"
                           variant="ghost"
@@ -2548,7 +2642,7 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
                         </Button>
                       )}
                     </div>
-                    <div className="text-2xl font-bold text-red-600">{backendStats.ausentes}</div>
+                    <div className="text-2xl font-bold text-red-600">{backendStats.pendentes}</div>
                   </div>
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">Nota Geral</div>
@@ -2645,7 +2739,7 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
                         data_aplicacao: evaluationInfo?.data_aplicacao || '',
                         total_alunos: evaluationInfo?.total_alunos || 0,
                         alunos_participantes: evaluationInfo?.alunos_participantes || 0,
-                        alunos_ausentes: evaluationInfo?.alunos_ausentes || 0,
+                        alunos_ausentes: evaluationInfo?.alunos_ausentes ?? 0,
                         media_nota: evaluationInfo?.media_nota || 0,
                         media_proficiencia: evaluationInfo?.media_proficiencia || 0
                       } : null}
@@ -2929,7 +3023,13 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
       )}
 
       {/* Modal: Alunos Pendentes */}
-      <Dialog open={showPendingStudentsModal} onOpenChange={setShowPendingStudentsModal}>
+      <Dialog
+        open={showPendingStudentsModal}
+        onOpenChange={(open) => {
+          setShowPendingStudentsModal(open);
+          if (!open) setPendingStudentsModalSearch('');
+        }}
+      >
         <DialogContent className="w-[96vw] max-w-5xl h-[88vh] max-h-[92vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -2941,44 +3041,87 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
             </DialogTitle>
           </DialogHeader>
           <div className="overflow-y-auto flex-1 min-h-0 py-2">
-            {pendingStudents.length > 0 ? (
+            {backendStats.pendentes > 0 ? (
               <div className="space-y-4">
                 <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-3 h-3 bg-red-500 dark:bg-red-400 rounded-full shrink-0" />
                     <span className="font-semibold text-red-800 dark:text-red-400">
-                      {pendingStudents.length} {pendingStudents.length === 1 ? 'aluno' : 'alunos'} pendente(s)
+                      {backendStats.pendentes}{' '}
+                      {backendStats.pendentes === 1 ? 'aluno' : 'alunos'} pendente(s)
                     </span>
                   </div>
                   <p className="text-sm text-red-700 dark:text-red-400">
                     Estes alunos ainda não entregaram ou não tiveram a avaliação concluída.
                   </p>
                 </div>
-                <div className="grid gap-3">
-                  {pendingStudents.map((a) => (
-                    <div
-                      key={a.id}
-                      className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-red-100 dark:bg-red-950/30 rounded-full flex items-center justify-center shrink-0">
-                          <span className="text-red-600 dark:text-red-400 font-semibold text-sm">
-                            {(a.nome || '').charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-medium text-foreground truncate">{a.nome}</div>
-                          <div className="text-sm text-muted-foreground truncate">
-                            {[a.escola, a.turma, a.serie].filter(Boolean).join(' · ') || '—'}
-                          </div>
-                        </div>
-                      </div>
-                      <Badge variant="outline" className="text-red-600 dark:text-red-400 border-red-300 dark:border-red-800">
-                        Pendente
-                      </Badge>
+                {pendingStudents.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <Search
+                        className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none"
+                        aria-hidden
+                      />
+                      <Input
+                        type="search"
+                        placeholder={pendingStudentsSearchPlaceholder}
+                        value={pendingStudentsModalSearch}
+                        onChange={(e) => setPendingStudentsModalSearch(e.target.value)}
+                        className="pl-9"
+                        autoComplete="off"
+                      />
                     </div>
-                  ))}
-                </div>
+                    {pendingStudentsModalSearch.trim() !== '' && (
+                      <p className="text-xs text-muted-foreground">
+                        Exibindo {filteredPendingStudents.length} de {pendingStudents.length}{' '}
+                        {pendingStudents.length === 1 ? 'aluno' : 'alunos'}
+                      </p>
+                    )}
+                    {filteredPendingStudents.length > 0 ? (
+                      <div className="grid gap-3">
+                        {filteredPendingStudents.map((a) => (
+                          <div
+                            key={a.id}
+                            className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 bg-red-100 dark:bg-red-950/30 rounded-full flex items-center justify-center shrink-0">
+                                <span className="text-red-600 dark:text-red-400 font-semibold text-sm">
+                                  {(a.nome || '').charAt(0).toUpperCase()}
+                                </span>
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-medium text-foreground truncate">{a.nome}</div>
+                                <div className="text-sm text-muted-foreground truncate">
+                                  {[
+                                    a.escola,
+                                    a.turma != null && String(a.turma).trim() !== ''
+                                      ? `Turma ${String(a.turma).trim()}`
+                                      : '',
+                                    a.serie,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' · ') || '—'}
+                                </div>
+                              </div>
+                            </div>
+                            <Badge variant="outline" className="text-red-600 dark:text-red-400 border-red-300 dark:border-red-800">
+                              Pendente
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground rounded-lg border border-border bg-muted/50 p-4 text-center">
+                        Nenhum aluno encontrado com esse nome. Tente outro termo ou limpe a pesquisa.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground rounded-lg border border-border bg-muted/50 p-4">
+                    O total de pendentes foi informado nas estatísticas, mas a lista detalhada de alunos não veio nesta resposta.
+                  </p>
+                )}
               </div>
             ) : (
               <div className="text-center py-8">
@@ -2997,12 +3140,13 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
+                  disabled={filteredPendingStudents.length === 0}
                   onClick={async () => {
                     try {
                       await generatePendingStudentsPdf({
                         title: "Alunos pendentes — Avaliação",
                         subtitle: evaluationInfo?.titulo ? String(evaluationInfo.titulo) : undefined,
-                        students: pendingStudents.map((a) => ({
+                        students: filteredPendingStudents.map((a) => ({
                           nome: a.nome,
                           escola: a.escola,
                           turma: a.turma,

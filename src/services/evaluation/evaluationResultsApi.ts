@@ -58,6 +58,15 @@ interface FiltrosAplicados {
   avaliacao: string;
 }
 
+/** Aluno pendente/faltoso no recorte (lista em `estatisticas_gerais.alunos_pendentes_detalhe`). */
+export interface AlunoPendenteDetalheEstatisticas {
+  id: string;
+  nome: string;
+  escola?: string;
+  serie?: string;
+  turma?: string;
+}
+
 /** Estatísticas por disciplina no mesmo escopo da rota (GET /evaluation-results/avaliacoes). */
 export interface EstatisticasGeraisPorDisciplinaItem {
   disciplina: string;
@@ -90,6 +99,8 @@ interface EstatisticasGerais {
   alunos_participantes: number;
   alunos_pendentes: number;
   alunos_ausentes: number;
+  /** Lista de pendentes/faltosos alinhada a `alunos_pendentes` no consolidado. */
+  alunos_pendentes_detalhe?: AlunoPendenteDetalheEstatisticas[];
   /** Comparecimento agregado (GET /answer-sheets/resultados-agregados). */
   percentual_comparecimento?: number;
   /**
