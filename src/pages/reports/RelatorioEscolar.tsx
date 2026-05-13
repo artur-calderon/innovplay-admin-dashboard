@@ -45,6 +45,11 @@ import { useAuth } from "@/context/authContext";
 import { FilterComponentAnalise, ResultsPeriodMonthYearPicker } from "@/components/filters";
 import { normalizeResultsPeriodYm } from "@/utils/resultsPeriod";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext, cityIdQueryParamForAdmin } from "@/utils/userHierarchy";
+import {
+  normAggKey,
+  filterInstitutionalRankingRowsByRoleAccess,
+  sortInstitutionalRowsByPerformance,
+} from "@/utils/evaluation/institutionalRankingRoleFilter";
 import { cn } from "@/lib/utils";
 import {
   getProficiencyLevelLabel,
@@ -250,6 +255,8 @@ const IA_PANORAMA_GERAL_HIDDEN_KEYS = new Set([
 interface ClassSummaryRow {
   serie: string;
   turma: string;
+  /** Quando a linha é uma escola (agregados / município), para cruzar com o vínculo do gestor. */
+  escola_id?: string;
   mediaLP?: number;
   mediaMAT?: number;
   mediaGeral?: number;
@@ -1073,11 +1080,6 @@ function labelsFromAvaliacaoClassStatistics(
   return { turmaLabel, serieVal };
 }
 
-/** Normaliza texto para comparar escola/série/turma entre API agregada e `tabela_detalhada`. */
-function normAggKey(s?: string | null): string {
-  return normalizeText((s ?? "").trim()).replace(/\s+/g, " ");
-}
-
 type LinhaResultadoDetalhadoChave = {
   escola?: string;
   serie?: string;
@@ -1892,6 +1894,7 @@ export default function RelatorioEscolar({
         const row: ClassSummaryRow = {
           turma: turmaLabel,
           serie: serieVal,
+          escola_id: (avaliacao as { escola_id?: string }).escola_id,
           mediaLP,
           mediaMAT,
           mediaGeral,
@@ -2325,8 +2328,9 @@ export default function RelatorioEscolar({
         const row: ClassSummaryRow = {
           turma: turmaLabel,
           serie: serieVal,
-          mediaLP: computedMedias.mediaLP ?? lpAg ?? mediaLpGlobal,
-          mediaMAT: computedMedias.mediaMAT ?? matAg ?? mediaMatGlobal,
+          escola_id: (avaliacao as { escola_id?: string }).escola_id,
+          mediaLP,
+          mediaMAT,
           mediaGeral,
           proficienciaMedia,
           matriculados: totalAlunos,
@@ -2782,6 +2786,16 @@ export default function RelatorioEscolar({
 
     return sortedRows;
   }, [apiData, isMunicipalView, relatorioCompleto, reportAnswerSheet, isAnswerSheetAgregados]);
+
+  const classSummaryRowsRanked = useMemo(() => {
+    const sorted = sortInstitutionalRowsByPerformance(classSummaryRows);
+    return filterInstitutionalRankingRowsByRoleAccess(sorted, {
+      role: user?.role,
+      hierarchy: userHierarchyContext,
+      granularidade: apiData?.nivel_granularidade,
+      isMunicipalView,
+    });
+  }, [classSummaryRows, user?.role, userHierarchyContext, apiData?.nivel_granularidade, isMunicipalView]);
 
   const distributionCharts = useMemo<DistributionChartData[]>(() => {
     if (!apiData) return [];
@@ -3672,20 +3686,20 @@ export default function RelatorioEscolar({
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(14);
       doc.setTextColor(124, 58, 237);
-      const sectionTitle = `Desempenho por ${isMunicipalView ? 'Escola' : 'Turma'}`;
+      const sectionTitle = `Ranking — desempenho por ${isMunicipalView ? 'escola' : 'turma/série'} (maior média primeiro)`;
       doc.text(sectionTitle, margin, startY, { maxWidth: pageWidth - 2 * margin });
       startY += 8;
 
       // Tabela de desempenho
-      if (classSummaryRows.length > 0) {
+      if (classSummaryRowsRanked.length > 0) {
         const tableData: (string | number)[][] = [];
         const hasLpCol = performanceDisciplineColumns.some((c) => c.key === "lp");
         const hasMatCol = performanceDisciplineColumns.some((c) => c.key === "mat");
         
-        classSummaryRows.forEach(row => {
+        classSummaryRowsRanked.forEach((row, rankIdx) => {
           // Truncar nomes muito longos
           const turmaName = row.turma.length > 35 ? row.turma.substring(0, 32) + '...' : row.turma;
-          const rowValues: (string | number)[] = [turmaName];
+          const rowValues: (string | number)[] = [rankIdx + 1, turmaName];
           if (hasLpCol) rowValues.push(formatAverage(row.mediaLP));
           if (hasMatCol) rowValues.push(formatAverage(row.mediaMAT));
           rowValues.push(
@@ -3700,6 +3714,7 @@ export default function RelatorioEscolar({
         // Adicionar linha total
         if (summaryStats) {
           const totalRow: (string | number)[] = [
+            '',
             isMunicipalView ? 'Total Município' : 'Total Escola',
           ];
           if (hasLpCol) totalRow.push(formatAverage(summaryStats.mediaLP));
@@ -3714,9 +3729,10 @@ export default function RelatorioEscolar({
         }
 
         const levelColIndex =
-          1 + (hasLpCol ? 1 : 0) + (hasMatCol ? 1 : 0) + 3;
+          2 + (hasLpCol ? 1 : 0) + (hasMatCol ? 1 : 0) + 3;
         const nonLevelColsCount = levelColIndex;
         const headColumns = [
+          '#',
           isMunicipalView ? 'ESCOLA' : 'TURMA',
           ...(hasLpCol ? ['MÉDIA LP'] : []),
           ...(hasMatCol ? ['MÉDIA MAT'] : []),
@@ -3751,9 +3767,10 @@ export default function RelatorioEscolar({
           alternateRowStyles: { fillColor: [248, 250, 252] },
           columnStyles: (() => {
             const styles: Record<number, { halign: 'left' | 'center'; fontStyle?: 'bold'; cellWidth?: number | 'auto'; minCellWidth?: number }> = {
-              0: { halign: 'left', fontStyle: 'bold', cellWidth: 'auto', minCellWidth: 32 },
+              0: { halign: 'center', fontStyle: 'bold', cellWidth: 10 },
+              1: { halign: 'left', fontStyle: 'bold', cellWidth: 'auto', minCellWidth: 32 },
             };
-            for (let i = 1; i < levelColIndex; i += 1) {
+            for (let i = 2; i < levelColIndex; i += 1) {
               styles[i] = { halign: 'center', cellWidth: 19 };
             }
             styles[levelColIndex] = { halign: 'center', cellWidth: 'auto', minCellWidth: 30 };
@@ -4264,7 +4281,7 @@ export default function RelatorioEscolar({
     }
   }, [
     apiData,
-    classSummaryRows,
+    classSummaryRowsRanked,
     distributionCharts,
     isMunicipalView,
     proficiencyDistributions,
@@ -5623,10 +5640,16 @@ export default function RelatorioEscolar({
           {/* ✅ SEMPRE MOSTRAR: Seção de desempenho e botão de download sempre aparecem quando há apiData */}
           <Card className="mt-6 overflow-hidden shadow-md">
             <CardHeader className="flex flex-col gap-3 border-b border-border md:flex-row md:items-center md:justify-between">
-              <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
-                <FileText className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                {isMunicipalView ? 'Desempenho por Escola' : 'Desempenho por Turma'}
-              </CardTitle>
+              <div className="min-w-0 space-y-1">
+                <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                  <FileText className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                  {isMunicipalView ? 'Ranking por escola' : 'Ranking por turma/série'}
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Ordenado por média geral (maior primeiro). Visível conforme seu perfil (SEMED: município;
+                  diretor/coordenador: sua escola; professor: suas turmas).
+                </p>
+              </div>
               <Button
                 onClick={handleDownloadReport}
                 disabled={isGeneratingReport || !apiData}
@@ -5649,11 +5672,14 @@ export default function RelatorioEscolar({
               </Button>
             </CardHeader>
             <CardContent className="p-0">
-              {classSummaryRows.length > 0 ? (
+              {classSummaryRowsRanked.length > 0 ? (
                 <div className="overflow-hidden">
                   <table className="min-w-full border-separate border-spacing-0 text-sm">
                     <thead>
                       <tr>
+                        <th className="bg-[#6C2BD9] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white">
+                          #
+                        </th>
                         <th className="bg-[#6C2BD9] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white">
                           {isMunicipalView ? 'Escola' : 'Turma'}
                         </th>
@@ -5672,13 +5698,16 @@ export default function RelatorioEscolar({
                       </tr>
                     </thead>
                     <tbody>
-                      {classSummaryRows.map((row, index) => (
+                      {classSummaryRowsRanked.map((row, index) => (
                         <tr
-                          key={row.turma}
+                          key={`${row.turma}-${row.serie}-${index}`}
                           className={cn(
                             index % 2 === 0 ? 'bg-card' : 'bg-muted/50'
                           )}
                         >
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-muted-foreground border-t border-border">
+                            {index + 1}
+                          </td>
                           <td className="px-4 py-3 text-sm font-semibold text-foreground border-t border-border">
                             {row.turma}
                           </td>
@@ -5719,6 +5748,7 @@ export default function RelatorioEscolar({
                       ))}
                       {summaryStats && (
                         <tr className="bg-muted">
+                          <td className="px-4 py-3 border-t border-border" />
                           <td className="px-4 py-3 text-sm font-semibold text-foreground border-t border-border">
                             {isMunicipalView ? 'Total Município' : 'Total Escola'}
                           </td>

@@ -1,7 +1,18 @@
+import { useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { FileText } from "lucide-react";
 import { useAuth } from "@/context/authContext";
+import { useToast } from "@/hooks/use-toast";
+import type { UserHierarchyContext } from "@/utils/userHierarchy";
+import {
+  filterInstitutionalRankingRowsByRoleAccess,
+  sortInstitutionalRowsByPerformance,
+  type InstitutionalGranularity,
+} from "@/utils/evaluation/institutionalRankingRoleFilter";
+import { generateInstitutionalRankingPdf } from "@/services/reports/institutionalRankingPdf";
 
 interface ClassData {
   name: string;
@@ -28,6 +39,7 @@ interface ClassStatisticsProps {
         serie?: string;
         turma?: string;
         escola?: string;
+        escola_id?: string;
         total_alunos?: number;
         alunos_participantes?: number;
         alunos_pendentes?: number;
@@ -91,13 +103,227 @@ interface ClassStatisticsProps {
       };
     };
   } | null;
+  /** Visão município (ex.: escola = "all" nos filtros). */
+  isMunicipalView?: boolean;
+  /** Hierarquia do usuário (diretor, coordenador, professor). */
+  userHierarchy?: UserHierarchyContext | null;
+  /** Rótulos dos filtros para o PDF agregado. */
+  rankingPdfFilterLabels?: {
+    estado: string;
+    municipio: string;
+    escola: string;
+    serie: string;
+    turma: string;
+  };
+  /** Título da avaliação ou gabarito (capa do PDF). */
+  escopoTitulo?: string;
+  /** Contexto só para nome do arquivo. */
+  reportContext?: "avaliacoes" | "cartao-resposta";
 }
 
-export function ClassStatistics({ apiData }: ClassStatisticsProps) {
+function buildFilterRowFromAvaliacao(
+  avaliacao: NonNullable<
+    NonNullable<ClassStatisticsProps["apiData"]>["resultados_detalhados"]
+  >["avaliacoes"][number],
+  index: number,
+  granularidade: InstitutionalGranularity
+): { turma: string; serie: string; escola_id?: string } {
+  const escola_id =
+    typeof (avaliacao as { escola_id?: string }).escola_id === "string"
+      ? (avaliacao as { escola_id?: string }).escola_id
+      : undefined;
+  let turma = "";
+  let serie = "";
+  switch (granularidade) {
+    case "municipio":
+      turma = avaliacao.escola || `Escola ${index + 1}`;
+      serie = avaliacao.serie === "Todas as séries" ? "" : avaliacao.serie || "";
+      break;
+    case "escola":
+      turma =
+        avaliacao.turma === "Todas as turmas"
+          ? avaliacao.serie || `Série ${index + 1}`
+          : `${avaliacao.serie} - ${avaliacao.turma}`;
+      serie = avaliacao.serie || "";
+      break;
+    case "serie":
+      turma = avaliacao.turma || `Turma ${index + 1}`;
+      serie = avaliacao.serie || "";
+      break;
+    case "turma":
+    case "avaliacao":
+    default:
+      turma = avaliacao.turma || `Turma ${index + 1}`;
+      serie = avaliacao.serie || "";
+      break;
+  }
+  return { turma, serie, escola_id };
+}
+
+function entityColumnLabel(g: InstitutionalGranularity): string {
+  switch (g) {
+    case "municipio":
+      return "Escola";
+    case "escola":
+      return "Série / Turma";
+    case "serie":
+      return "Turma";
+    default:
+      return "Turma";
+  }
+}
+
+export function ClassStatistics({
+  apiData,
+  isMunicipalView = false,
+  userHierarchy = null,
+  rankingPdfFilterLabels,
+  escopoTitulo,
+  reportContext = "avaliacoes",
+}: ClassStatisticsProps) {
   const { user } = useAuth();
-  
-  // ✅ NOVO: Verificar se o usuário é admin ou tecadmin
-  const isAdminOrTecAdmin = user?.role === 'admin' || user?.role === 'tecadmin';
+  const { toast } = useToast();
+
+  const isAdminOrTecSemed = user?.role === "admin" || user?.role === "tecadm";
+
+  const granularidade = (apiData?.nivel_granularidade || "turma") as InstitutionalGranularity;
+
+  const pairedDetailed = useMemo(() => {
+    if (!apiData?.resultados_detalhados?.avaliacoes?.length) return [];
+    const g = granularidade;
+    return apiData.resultados_detalhados.avaliacoes.map((avaliacao, index) => {
+      const totalStudents = avaliacao.total_alunos || 0;
+      const participatingStudents = avaliacao.alunos_participantes || 0;
+      const averageGrade = avaliacao.media_nota || 0;
+      const proficiency = avaliacao.media_proficiencia || 0;
+      const distribution =
+        avaliacao.distribuicao_classificacao || {
+          abaixo_do_basico: 0,
+          basico: 0,
+          adequado: 0,
+          avancado: 0,
+        };
+      let name: string;
+      let seriesName: string | undefined;
+      switch (g) {
+        case "municipio":
+          name = avaliacao.escola || `Escola ${index + 1}`;
+          seriesName = avaliacao.serie === "Todas as séries" ? undefined : avaliacao.serie;
+          break;
+        case "escola":
+          name =
+            avaliacao.turma === "Todas as turmas"
+              ? avaliacao.serie || `Série ${index + 1}`
+              : `${avaliacao.serie} - ${avaliacao.turma}`;
+          seriesName = avaliacao.serie;
+          break;
+        case "serie":
+          name = avaliacao.turma || `Turma ${index + 1}`;
+          seriesName = avaliacao.serie;
+          break;
+        case "turma":
+        case "avaliacao":
+        default:
+          name = avaliacao.turma || `Turma ${index + 1}`;
+          seriesName = avaliacao.serie;
+          break;
+      }
+      const classData: ClassData = {
+        name,
+        seriesName,
+        totalStudents,
+        participatingStudents,
+        averageGrade: Number(averageGrade.toFixed(1)),
+        proficiency: Number(proficiency.toFixed(1)),
+        distribution,
+      };
+      const filterRow = buildFilterRowFromAvaliacao(avaliacao, index, g);
+      return { classData, filterRow };
+    });
+  }, [apiData, granularidade]);
+
+  const detailedData = useMemo(() => {
+    const enriched = pairedDetailed.map((p, i) => ({ ...p.filterRow, __i: i }));
+    const allowedIdx = new Set(
+      filterInstitutionalRankingRowsByRoleAccess(enriched, {
+        role: user?.role,
+        hierarchy: userHierarchy ?? null,
+        granularidade,
+        isMunicipalView,
+      }).map((r) => (r as { __i: number }).__i)
+    );
+    return pairedDetailed.filter((_, i) => allowedIdx.has(i)).map((p) => p.classData);
+  }, [pairedDetailed, user?.role, userHierarchy, granularidade, isMunicipalView]);
+
+  const detailedDataRankedForPdf = useMemo(() => {
+    const enriched = pairedDetailed.map((p, i) => ({ ...p.filterRow, __i: i }));
+    const allowedIdx = new Set(
+      filterInstitutionalRankingRowsByRoleAccess(enriched, {
+        role: user?.role,
+        hierarchy: userHierarchy ?? null,
+        granularidade,
+        isMunicipalView,
+      }).map((r) => (r as { __i: number }).__i)
+    );
+    const rows = pairedDetailed
+      .filter((_, i) => allowedIdx.has(i))
+      .map((p) => ({
+        nome: p.classData.seriesName
+          ? `${p.classData.seriesName} - ${p.classData.name}`
+          : p.classData.name,
+        totalAlunos: p.classData.totalStudents,
+        participantes: p.classData.participatingStudents,
+        mediaNota: p.classData.averageGrade,
+        proficiencia: p.classData.proficiency,
+        mediaGeral: p.classData.averageGrade,
+        proficienciaMedia: p.classData.proficiency,
+      }));
+    return sortInstitutionalRowsByPerformance(rows);
+  }, [pairedDetailed, user?.role, userHierarchy, granularidade, isMunicipalView]);
+
+  const handleExportInstitutionalPdf = useCallback(async () => {
+    if (!rankingPdfFilterLabels) {
+      toast({
+        title: "Filtros indisponíveis",
+        description: "Não foi possível montar o PDF sem os rótulos de filtro.",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      await generateInstitutionalRankingPdf({
+        escopoTitulo: escopoTitulo || "Resultados",
+        filterLabels: rankingPdfFilterLabels,
+        colEntidade: entityColumnLabel(granularidade),
+        rows: detailedDataRankedForPdf.map((r) => ({
+          nome: r.nome,
+          totalAlunos: r.totalAlunos,
+          participantes: r.participantes,
+          mediaNota: r.mediaNota,
+          proficiencia: r.proficiencia,
+        })),
+        fileNameBase:
+          reportContext === "cartao-resposta"
+            ? `ranking-agregado-cartao-${(escopoTitulo || "resultados").slice(0, 40)}`
+            : `ranking-agregado-avaliacoes-${(escopoTitulo || "resultados").slice(0, 40)}`,
+      });
+      toast({ title: "PDF gerado", description: "Ranking agregado exportado com sucesso." });
+    } catch (e) {
+      console.error(e);
+      toast({
+        title: "Erro ao gerar PDF",
+        description: "Não foi possível exportar o ranking agregado.",
+        variant: "destructive",
+      });
+    }
+  }, [
+    rankingPdfFilterLabels,
+    escopoTitulo,
+    granularidade,
+    detailedDataRankedForPdf,
+    reportContext,
+    toast,
+  ]);
 
   // ✅ NOVO: Helpers de distribuição
   const emptyDistribution = {
@@ -209,63 +435,6 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
     };
   };
 
-  // ✅ NOVO: Gerar dados detalhados por escola/turma
-  const generateDetailedData = (): ClassData[] => {
-    if (!apiData?.resultados_detalhados?.avaliacoes?.length) {
-      return [];
-    }
-
-    const granularidade = apiData.nivel_granularidade || 'turma';
-
-    return apiData.resultados_detalhados.avaliacoes.map((avaliacao, index) => {
-      const totalStudents = avaliacao.total_alunos || 0;
-      const participatingStudents = avaliacao.alunos_participantes || 0;
-      const averageGrade = avaliacao.media_nota || 0;
-      const proficiency = avaliacao.media_proficiencia || 0;
-      
-      const distribution = avaliacao.distribuicao_classificacao || {
-        abaixo_do_basico: 0,
-        basico: 0,
-        adequado: 0,
-        avancado: 0
-      };
-
-      // Determinar nome baseado na granularidade
-      let name: string;
-      let seriesName: string | undefined;
-
-      switch (granularidade) {
-        case 'municipio':
-          name = avaliacao.escola || `Escola ${index + 1}`;
-          seriesName = avaliacao.serie === 'Todas as séries' ? undefined : avaliacao.serie;
-          break;
-        case 'escola':
-          name = avaliacao.turma === 'Todas as turmas' ? avaliacao.serie || `Série ${index + 1}` : `${avaliacao.serie} - ${avaliacao.turma}`;
-          seriesName = avaliacao.serie;
-          break;
-        case 'serie':
-          name = avaliacao.turma || `Turma ${index + 1}`;
-          seriesName = avaliacao.serie;
-          break;
-        case 'turma':
-        default:
-          name = avaliacao.turma || `Turma ${index + 1}`;
-          seriesName = avaliacao.serie;
-          break;
-      }
-
-      return {
-        name,
-        seriesName,
-        totalStudents,
-        participatingStudents,
-        averageGrade: Number(averageGrade.toFixed(1)),
-        proficiency: Number(proficiency.toFixed(1)),
-        distribution
-      };
-    });
-  };
-
   // ✅ NOVO: Componente para renderizar um card individual
   const renderStatisticsCard = (statisticsItem: ClassData, key: string) => {
     const participationRate = statisticsItem.totalStudents > 0 
@@ -367,6 +536,11 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
           general: 'Dados Gerais da Série',
           detailed: 'Dados por Turma'
         };
+      case 'avaliacao':
+        return {
+          general: 'Dados gerais',
+          detailed: 'Dados por turma',
+        };
       case 'turma':
       default:
         return {
@@ -377,7 +551,6 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
   };
 
   const generalData = generateGeneralData();
-  const detailedData = generateDetailedData();
   const titles = getTitles();
 
   // ✅ NOVO: Se não há dados, mostrar mensagem
@@ -394,7 +567,7 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
   return (
     <div className="space-y-6">
       {/* ✅ NOVO: Seção de Dados Gerais - apenas para admin/tecadmin */}
-      {isAdminOrTecAdmin && generalData && (
+      {isAdminOrTecSemed && generalData && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">{titles.general}</CardTitle>
@@ -410,8 +583,21 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
       {/* ✅ NOVO: Seção de Dados Detalhados */}
       {detailedData.length > 0 && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between space-y-0">
             <CardTitle className="text-lg">{titles.detailed}</CardTitle>
+            {rankingPdfFilterLabels ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2 shrink-0 w-full sm:w-auto"
+                disabled={detailedDataRankedForPdf.length === 0}
+                onClick={() => void handleExportInstitutionalPdf()}
+              >
+                <FileText className="h-4 w-4" />
+                PDF ranking (escolas / séries / turmas)
+              </Button>
+            ) : null}
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

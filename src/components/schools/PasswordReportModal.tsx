@@ -240,6 +240,7 @@ export function PasswordReportModal({
 
       if (reportFormat === "pdf") {
         // --- Relatório PDF ---
+        // O layout deste PDF é gerado no backend (endpoint /students/password-report/pdf).
         const params = new URLSearchParams();
         if (schoolId) params.append("school_id", schoolId);
         if (selectedGrade !== "all") params.append("grade_id", selectedGrade);
@@ -394,6 +395,8 @@ export function PasswordReportModal({
     window.URL.revokeObjectURL(blobUrl);
   };
 
+  const isDefined = <T,>(value: T | null | undefined): value is T => value != null;
+
   const fetchUsersByRole = async (): Promise<UserExportRow[]> => {
     const [managersResp, teachersResp] = await Promise.all([
       api.get(`/managers/school/${schoolId}`),
@@ -418,7 +421,7 @@ export function PasswordReportModal({
           roleLabel: roleLabel(role),
         };
       })
-      .filter((row): row is UserExportRow => Boolean(row));
+      .filter(isDefined);
 
     const teacherRows = teachers
       .map((item) => {
@@ -433,7 +436,7 @@ export function PasswordReportModal({
           roleLabel: "Professor",
         };
       })
-      .filter((row): row is UserExportRow => Boolean(row));
+      .filter(isDefined);
 
     const dedup = new Map<string, UserExportRow>();
     [...managerRows, ...teacherRows].forEach((row) => {
