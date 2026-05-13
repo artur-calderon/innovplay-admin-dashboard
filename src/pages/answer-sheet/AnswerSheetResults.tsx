@@ -39,7 +39,7 @@ import {
   EvaluationResultsApiService,
   REPORT_ENTITY_TYPE_ANSWER_SHEET,
 } from '@/services/evaluation/evaluationResultsApi';
-import { cityIdQueryParamForAdmin } from '@/utils/userHierarchy';
+import { cityIdQueryParamForAdmin, getUserHierarchyContext, type UserHierarchyContext } from '@/utils/userHierarchy';
 import { useToast } from '@/hooks/use-toast';
 import { ResultsCharts } from '@/components/evaluations/results/ResultsCharts';
 import { StudentRanking } from '@/components/evaluations/student/StudentRanking';
@@ -415,6 +415,31 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
   >(null);
 
   const user = useAuth((s) => s.user);
+  const [userHierarchyContext, setUserHierarchyContext] = useState<UserHierarchyContext | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setUserHierarchyContext(null);
+      return;
+    }
+    const rolesNeedHierarchy = ['professor', 'diretor', 'coordenador'];
+    if (!user.role || !rolesNeedHierarchy.includes(user.role)) {
+      setUserHierarchyContext(null);
+      return;
+    }
+    let cancelled = false;
+    getUserHierarchyContext(user.id, user.role)
+      .then((ctx) => {
+        if (!cancelled) setUserHierarchyContext(ctx);
+      })
+      .catch(() => {
+        if (!cancelled) setUserHierarchyContext(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.role]);
+
   const adminCityIdQuery = useMemo(
     () => cityIdQueryParamForAdmin(user?.role, municipio !== 'all' ? municipio : undefined),
     [user?.role, municipio]
@@ -1679,7 +1704,14 @@ export default function AnswerSheetResults({ hidePageHeading = false }: AnswerSh
 
               <TabsContent value="statistics" className="space-y-6 mt-6">
                 {apiDataForClassStatistics ? (
-                  <ClassStatistics apiData={apiDataForClassStatistics} />
+                  <ClassStatistics
+                    apiData={apiDataForClassStatistics}
+                    isMunicipalView={isMunicipioScope}
+                    userHierarchy={userHierarchyContext}
+                    rankingPdfFilterLabels={rankingPdfFilterLabels}
+                    escopoTitulo={tituloGabarito}
+                    reportContext="cartao-resposta"
+                  />
                 ) : (
                   <Card>
                     <CardContent className="flex flex-col items-center justify-center py-12">

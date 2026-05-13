@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PlusCircle, Search, Trash2, Building, Loader2, GraduationCap, Settings, School, Users, FileDown } from "lucide-react";
+import { PlusCircle, Search, Trash2, Building, Loader2, GraduationCap, Settings, School, Users, FileDown, Printer } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -41,8 +41,14 @@ import { InstituicaoUsersTab } from "@/components/schools/InstituicaoUsersTab";
 import { getUserHierarchyContext } from "@/utils/userHierarchy";
 import {
   generateUsersMunicipioCountsPdf,
+  type ContactsByRole,
   type UsersCountsReportResponse,
 } from "@/utils/reports/usersMunicipioCountsPdf";
+import {
+  buildSchoolScopedUsersCountsReport,
+  isSchoolScopedRole,
+  normalizeUsersCountsReport,
+} from "@/utils/reports/usersCountsScope";
 
 interface City {
   id: string;
@@ -137,6 +143,99 @@ interface Student {
   };
 }
 
+interface CityUsersResponseRow {
+  id?: string;
+  name?: string;
+  email?: string;
+  role?: string;
+}
+
+interface SchoolScopeInfo {
+  id: string;
+  name: string;
+}
+
+interface LeadershipCounts {
+  directors: number;
+  coordinators: number;
+}
+
+function cleanText(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function normalizeRole(value: unknown): string {
+  return cleanText(value).toLowerCase();
+}
+
+function stripControlChars(value: string): string {
+  let out = "";
+  for (const ch of value) {
+    const code = ch.charCodeAt(0);
+    const isControl = (code >= 0 && code <= 31) || (code >= 127 && code <= 159);
+    if (!isControl) out += ch;
+  }
+  return out;
+}
+
+function sanitizePersonName(value: unknown): string {
+  const base = cleanText(value).normalize("NFKC");
+  const noControl = stripControlChars(base);
+  const noJunkPrefix = noControl.replace(/^[^\p{L}\p{N}]+/u, "");
+  // Remove qualquer prefixo que não seja letra comum em nomes PT-BR (pega mojibake como Ÿ, Š etc.).
+  const strictPrefix = noJunkPrefix.replace(/^[^A-Za-zÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç]+/u, "");
+  const compact = strictPrefix.replace(/\s+/g, " ").trim();
+  const allowedPortugueseUpper = /^[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ]+$/u;
+
+  // Remove tokens curtos e estranhos no início (ex.: "Ÿ HENRICK ...", "ŠŸ GUILHERME ...").
+  let parts = compact.split(" ").filter(Boolean);
+  while (parts.length >= 2) {
+    const first = parts[0].replace(/[^A-Za-zÀ-ÿ]/g, "");
+    const second = parts[1].replace(/[^A-Za-zÀ-ÿ]/g, "");
+    const firstUpper = first.toUpperCase();
+    const secondLooksLikeName = second.length >= 3 && /^[A-Za-zÀ-ÿ]/u.test(second);
+    const firstLooksMojibake =
+      first.length > 0 &&
+      first.length <= 3 &&
+      !allowedPortugueseUpper.test(firstUpper);
+    if (firstLooksMojibake && secondLooksLikeName) {
+      parts = parts.slice(1);
+      continue;
+    }
+    break;
+  }
+
+  return parts.join(" ").trim();
+}
+
+function sanitizeEmail(value: unknown): string {
+  const base = cleanText(value).normalize("NFKC");
+  const noControlOrSpace = stripControlChars(base).replace(/\s+/g, "");
+  const withoutPrefix = noControlOrSpace.replace(/^[^a-zA-Z0-9]+/, "");
+  return withoutPrefix.replace(/[^a-zA-Z0-9._%+\-@]/g, "");
+}
+
+function mergeLeadershipCountsIntoReport(
+  report: UsersCountsReportResponse,
+  leadershipBySchool: Map<string, LeadershipCounts>
+): UsersCountsReportResponse {
+  const bySchool = Array.isArray(report.by_school) ? report.by_school : [];
+  const mergedBySchool = bySchool.map((row) => {
+    const schoolId = cleanText(row.school_id);
+    const leadership = schoolId ? leadershipBySchool.get(schoolId) : undefined;
+    if (!leadership) return row;
+    return {
+      ...row,
+      directors: leadership.directors,
+      coordinators: leadership.coordinators,
+    };
+  });
+  return {
+    ...report,
+    by_school: mergedBySchool,
+  };
+}
+
 export default function Gestao() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -175,6 +274,8 @@ export default function Gestao() {
   /** Mantido sincronizado com o município do subdomínio / tenant (evita ReferenceError em HMR antigo). */
   const [, setDomainCityId] = useState<string>("");
   const [isExportingUsersReport, setIsExportingUsersReport] = useState(false);
+  const [exportingSchoolId, setExportingSchoolId] = useState<string | null>(null);
+  const [currentUserSchoolScope, setCurrentUserSchoolScope] = useState<SchoolScopeInfo | null>(null);
   const [selectedUserIdsForBatchDelete, setSelectedUserIdsForBatchDelete] = useState<Set<string>>(
     () => new Set()
   );
@@ -592,11 +693,249 @@ export default function Gestao() {
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   })();
 
-  const handleExportUsersMunicipioReport = useCallback(async () => {
-    const effectiveCityId =
-      user.role === "tecadm" ? (user.tenant_id ?? "") : (selectedUsersCityId ?? "");
+  const effectiveUsersCityId =
+    user.role === "tecadm"
+      ? (user.tenant_id ?? user.city_id ?? "")
+      : (selectedUsersCityId || user.tenant_id || user.city_id || "");
 
-    if (!effectiveCityId) {
+  const resolveCurrentUserSchoolScope = useCallback(
+    async (cityId: string): Promise<SchoolScopeInfo | null> => {
+      if (!isSchoolScopedRole(user.role) || !user.id || !cityId) return null;
+      try {
+        const res = await api.get(`/managers/city/${cityId}`);
+        const list = Array.isArray(res.data) ? res.data : res.data?.managers ?? [];
+        const mine = list.find(
+          (item: { user?: { id?: string }; school?: { id?: string; name?: string; nome?: string } }) =>
+            item?.user?.id === user.id && item?.school?.id
+        );
+        if (mine?.school?.id) {
+          return {
+            id: String(mine.school.id),
+            name: String(mine.school.name ?? mine.school.nome ?? "Escola"),
+          };
+        }
+      } catch (error) {
+        console.warn("Não foi possível resolver escola do gestor por cidade:", error);
+      }
+      try {
+        const res = await api.get("/managers");
+        const list = Array.isArray(res.data) ? res.data : res.data?.managers ?? [];
+        const mine = list.find(
+          (item: { user?: { id?: string }; school?: { id?: string; name?: string; nome?: string } }) =>
+            item?.user?.id === user.id && item?.school?.id
+        );
+        if (mine?.school?.id) {
+          return {
+            id: String(mine.school.id),
+            name: String(mine.school.name ?? mine.school.nome ?? "Escola"),
+          };
+        }
+      } catch (error) {
+        console.warn("Não foi possível resolver escola do gestor em fallback:", error);
+      }
+      return null;
+    },
+    [user.id, user.role]
+  );
+
+  const fetchLeadershipCountsBySchool = useCallback(
+    async (cityId: string): Promise<Map<string, LeadershipCounts>> => {
+      const map = new Map<string, LeadershipCounts>();
+      if (!cityId) return map;
+      try {
+        const res = await api.get(`/managers/city/${cityId}`);
+        const list = Array.isArray(res.data) ? res.data : res.data?.managers ?? [];
+        for (const item of list) {
+          const schoolId = cleanText(item?.school?.id);
+          if (!schoolId) continue;
+          const role = normalizeRole(item?.user?.role);
+          const prev = map.get(schoolId) ?? { directors: 0, coordinators: 0 };
+          if (role === "diretor") prev.directors += 1;
+          if (role === "coordenador") prev.coordinators += 1;
+          map.set(schoolId, prev);
+        }
+      } catch (error) {
+        console.warn("Não foi possível complementar contagem de diretores/coordenadores por escola:", error);
+      }
+      return map;
+    },
+    []
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isSchoolScopedRole(user.role)) {
+      setCurrentUserSchoolScope(null);
+      return;
+    }
+    if (!effectiveUsersCityId) return;
+    resolveCurrentUserSchoolScope(effectiveUsersCityId)
+      .then((scope) => {
+        if (!cancelled) setCurrentUserSchoolScope(scope);
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentUserSchoolScope(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveUsersCityId, resolveCurrentUserSchoolScope, user.role]);
+
+  const fetchContactsByRoleForSchool = useCallback(
+    async (cityId: string, schoolId: string): Promise<ContactsByRole> => {
+      const contacts: ContactsByRole = {
+        diretor: [],
+        coordenador: [],
+        professor: [],
+        aluno: [],
+      };
+      const pushContact = (role: keyof ContactsByRole, name: string, email: string, dedupeKey: string) => {
+        if (!contacts[role]) contacts[role] = [];
+        const exists = contacts[role]!.some((item) => item.email === email || item.name === name || `${role}:${item.email}:${item.name}` === dedupeKey);
+        if (!exists) contacts[role]!.push({ name, email });
+      };
+
+      // Otimização: usar endpoints por escola para reduzir payload.
+      const [usersRes, managersRes, studentsRes, teachersRes] = await Promise.all([
+        api.get(`/city/${cityId}/users`),
+        api.get(`/managers/city/${cityId}`).catch(() => ({ data: [] })),
+        api.get(`/students/school/${schoolId}`).catch(() => ({ data: [] })),
+        api.get(`/teacher/school/${schoolId}`).catch(() => ({ data: [] })),
+      ]);
+
+      const cityUsers = Array.isArray(usersRes.data?.users) ? usersRes.data.users : [];
+      const baseUsers = cityUsers.map((u: CityUsersResponseRow) => ({
+        id: cleanText(u.id),
+        name: sanitizePersonName(u.name),
+        email: sanitizeEmail(u.email),
+        role: normalizeRole(u.role),
+      }));
+      const userById = new Map(baseUsers.map((u) => [u.id, u] as const));
+
+      const managerSchoolMap = new Map<string, string>();
+      const managersList = Array.isArray(managersRes.data) ? managersRes.data : managersRes.data?.managers ?? [];
+      for (const item of managersList) {
+        const uid = cleanText(item?.user?.id);
+        const sid = cleanText(item?.school?.id);
+        if (uid && sid) managerSchoolMap.set(uid, sid);
+      }
+
+      const studentSchoolMap = new Map<string, string>();
+      const studentHierarchyMap = new Map<string, { gradeName?: string; className?: string }>();
+      const studentsList = Array.isArray(studentsRes.data)
+        ? studentsRes.data
+        : studentsRes.data?.data ?? studentsRes.data?.alunos ?? studentsRes.data?.students ?? [];
+      for (const item of studentsList) {
+        const sid = cleanText(item?.school?.id ?? schoolId);
+        const schoolCityId = cleanText(item?.school?.city_id);
+        if (!sid || sid !== schoolId) continue;
+        if (schoolCityId && schoolCityId !== cityId) continue;
+        const uid = cleanText(item?.user_id ?? item?.usuario_id ?? item?.user?.id);
+        if (uid) {
+          studentSchoolMap.set(uid, sid);
+          const gradeName = cleanText(
+            item?.grade?.name ??
+              item?.serie?.name ??
+              item?.grade_name ??
+              item?.serie_nome ??
+              item?.series_name
+          );
+          const className = cleanText(
+            item?.class?.name ??
+              item?.turma?.name ??
+              item?.class_name ??
+              item?.turma_nome
+          );
+          studentHierarchyMap.set(uid, {
+            gradeName: gradeName || undefined,
+            className: className || undefined,
+          });
+        }
+        const fallbackName = cleanText(item?.name ?? item?.nome);
+        const fallbackEmail = sanitizeEmail(item?.user?.email ?? item?.email);
+        if (fallbackName && fallbackEmail && !uid) {
+          if (!contacts.aluno) contacts.aluno = [];
+          const already = contacts.aluno.some((c) => c.email === fallbackEmail);
+          if (!already) {
+            contacts.aluno.push({
+              name: sanitizePersonName(fallbackName),
+              email: fallbackEmail,
+              gradeName: studentHierarchyMap.get(uid)?.gradeName,
+              className: studentHierarchyMap.get(uid)?.className,
+            });
+          }
+        }
+      }
+
+      const teacherUserIds = new Set<string>();
+      const teachersList = Array.isArray(teachersRes.data)
+        ? teachersRes.data
+        : teachersRes.data?.data ?? teachersRes.data?.professores ?? [];
+      for (const item of teachersList) {
+        const uid = cleanText(item?.user_id ?? item?.usuario_id ?? item?.user?.id);
+        if (uid) {
+          teacherUserIds.add(uid);
+          continue;
+        }
+        const fallbackName = sanitizePersonName(item?.name ?? item?.nome);
+        const fallbackEmail = sanitizeEmail(item?.user?.email ?? item?.email);
+        if (fallbackName && fallbackEmail) {
+          pushContact("professor", fallbackName, fallbackEmail, `professor:fallback:${fallbackEmail}`);
+        }
+      }
+
+      for (const userRow of baseUsers) {
+        const role = userRow.role;
+        if (!userRow.id || !userRow.email || !userRow.name) continue;
+        if (role === "diretor" || role === "coordenador") {
+          if (managerSchoolMap.get(userRow.id) !== schoolId) continue;
+          pushContact(role, sanitizePersonName(userRow.name), sanitizeEmail(userRow.email), `${role}:${userRow.id}`);
+        } else if (role === "professor") {
+          if (!teacherUserIds.has(userRow.id)) continue;
+          pushContact("professor", sanitizePersonName(userRow.name), sanitizeEmail(userRow.email), `professor:${userRow.id}`);
+        } else if (role === "aluno") {
+          if (studentSchoolMap.get(userRow.id) !== schoolId) continue;
+          const hierarchy = studentHierarchyMap.get(userRow.id);
+          if (!contacts.aluno) contacts.aluno = [];
+          const already = contacts.aluno.some(
+            (item) =>
+              item.email === userRow.email ||
+              (item.name === userRow.name &&
+                (item.gradeName ?? "") === (hierarchy?.gradeName ?? "") &&
+                (item.className ?? "") === (hierarchy?.className ?? ""))
+          );
+          if (!already) {
+            contacts.aluno.push({
+              name: sanitizePersonName(userRow.name),
+              email: sanitizeEmail(userRow.email),
+              gradeName: hierarchy?.gradeName,
+              className: hierarchy?.className,
+            });
+          }
+        }
+      }
+
+      // Fallback para alunos/professores vindos no endpoint da escola sem user_id, mas presentes em city users por e-mail.
+      for (const contactRole of ["professor", "aluno"] as const) {
+        const list = contacts[contactRole] ?? [];
+        for (const item of list) {
+          if (!item.email) continue;
+          const existing = baseUsers.find((u) => u.email.toLowerCase() === item.email.toLowerCase());
+          if (!existing) continue;
+          const alreadyById = userById.get(existing.id);
+          if (alreadyById) {
+            item.name = item.name || alreadyById.name;
+          }
+        }
+      }
+
+      return contacts;
+    },
+    []
+  );
+
+  const handleExportUsersMunicipioReport = useCallback(async () => {
+    if (!effectiveUsersCityId) {
       toast({
         title: "Município não definido",
         description: "Selecione um município para exportar o relatório.",
@@ -606,19 +945,42 @@ export default function Gestao() {
     }
 
     const cityFromList =
-      (citiesWithSlug.length ? citiesWithSlug : availableCities).find((c) => c.id === effectiveCityId) ??
+      (citiesWithSlug.length ? citiesWithSlug : availableCities).find((c) => c.id === effectiveUsersCityId) ??
       null;
     const cityName = cityFromList?.name ?? "Município";
 
     setIsExportingUsersReport(true);
     try {
-      const res = await api.get<UsersCountsReportResponse>("/reports/users/counts", {
-        meta: { cityId: effectiveCityId },
-      });
+      const [res, leadershipBySchool] = await Promise.all([
+        api.get<UsersCountsReportResponse>("/reports/users/counts", {
+          meta: { cityId: effectiveUsersCityId },
+        }),
+        fetchLeadershipCountsBySchool(effectiveUsersCityId),
+      ]);
+      const reportWithLeadership = mergeLeadershipCountsIntoReport(res.data ?? {}, leadershipBySchool);
+      const normalizedReport = normalizeUsersCountsReport(reportWithLeadership);
+      const schoolScope =
+        isSchoolScopedRole(user.role)
+          ? (currentUserSchoolScope ?? (await resolveCurrentUserSchoolScope(effectiveUsersCityId)))
+          : null;
+      if (isSchoolScopedRole(user.role) && !schoolScope) {
+        toast({
+          title: "Escola não identificada",
+          description: "Não foi possível identificar a sua escola para exportar o relatório.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const finalReport = schoolScope
+        ? buildSchoolScopedUsersCountsReport(normalizedReport, schoolScope.id, schoolScope.name)
+        : normalizedReport;
       await generateUsersMunicipioCountsPdf({
-        cityId: effectiveCityId,
+        cityId: effectiveUsersCityId,
         cityName,
-        report: res.data ?? {},
+        report: finalReport,
+        scope: schoolScope
+          ? { type: "school", schoolName: schoolScope.name }
+          : { type: "city" },
       });
       toast({ title: "Relatório exportado", description: "PDF gerado com sucesso." });
     } catch (error) {
@@ -631,7 +993,78 @@ export default function Gestao() {
     } finally {
       setIsExportingUsersReport(false);
     }
-  }, [user.role, user.tenant_id, selectedUsersCityId, toast, citiesWithSlug, availableCities]);
+  }, [
+    availableCities,
+    citiesWithSlug,
+    currentUserSchoolScope,
+    effectiveUsersCityId,
+    fetchLeadershipCountsBySchool,
+    resolveCurrentUserSchoolScope,
+    toast,
+    user.role,
+  ]);
+
+  const canExportSchoolSummary = user.role === "admin" || user.role === "tecadm" || isSchoolScopedRole(user.role);
+  const canExportSchoolByRole = useCallback(
+    (schoolId: string): boolean => {
+      if (!canExportSchoolSummary) return false;
+      if (!isSchoolScopedRole(user.role)) return true;
+      return Boolean(currentUserSchoolScope?.id && currentUserSchoolScope.id === schoolId);
+    },
+    [canExportSchoolSummary, currentUserSchoolScope?.id, user.role]
+  );
+
+  const handleExportSchoolUsersSummary = useCallback(
+    async (school: Instituicao) => {
+      const schoolId = cleanText(school.id);
+      const cityId = cleanText(school.city_id || school.city?.id || effectiveUsersCityId);
+      if (!schoolId || !cityId) {
+        toast({
+          title: "Dados insuficientes",
+          description: "Não foi possível identificar escola e município para exportação.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!canExportSchoolByRole(schoolId)) {
+        toast({
+          title: "Acesso restrito",
+          description: "Você só pode exportar o resumo da sua própria escola.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setExportingSchoolId(schoolId);
+      try {
+        const [countsRes, contactsByRole, leadershipBySchool] = await Promise.all([
+          api.get<UsersCountsReportResponse>("/reports/users/counts", { meta: { cityId } }),
+          fetchContactsByRoleForSchool(cityId, schoolId),
+          fetchLeadershipCountsBySchool(cityId),
+        ]);
+        const reportWithLeadership = mergeLeadershipCountsIntoReport(countsRes.data ?? {}, leadershipBySchool);
+        const normalized = normalizeUsersCountsReport(reportWithLeadership);
+        const scoped = buildSchoolScopedUsersCountsReport(normalized, schoolId, school.name);
+        await generateUsersMunicipioCountsPdf({
+          cityId,
+          cityName: school.city?.name ?? "Município",
+          report: scoped,
+          scope: { type: "school", schoolName: school.name },
+          contactsByRole,
+        });
+        toast({ title: "Resumo exportado", description: `PDF da escola ${school.name} gerado com sucesso.` });
+      } catch (error) {
+        console.error("Erro ao exportar resumo por escola:", error);
+        toast({
+          title: "Erro",
+          description: "Não foi possível gerar o resumo de usuários por escola.",
+          variant: "destructive",
+        });
+      } finally {
+        setExportingSchoolId(null);
+      }
+    },
+    [canExportSchoolByRole, effectiveUsersCityId, fetchContactsByRoleForSchool, fetchLeadershipCountsBySchool, toast]
+  );
 
   const availableSchools: Instituicao[] = instituicoes
     .filter((i) => (selectedState === 'ALL' || i.city?.state === selectedState))
@@ -910,6 +1343,23 @@ export default function Gestao() {
                            <span className="hidden sm:inline">Gerenciar</span>
                         </Button>
 
+                        {canExportSchoolByRole(instituicao.id) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleExportSchoolUsersSummary(instituicao)}
+                            disabled={exportingSchoolId === instituicao.id}
+                            className="text-xs h-7 md:h-8"
+                          >
+                            {exportingSchoolId === instituicao.id ? (
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            ) : (
+                              <Printer className="h-3 w-3 mr-1" />
+                            )}
+                            <span className="hidden sm:inline">Imprimir relatório</span>
+                          </Button>
+                        )}
+
                         {user.role === 'admin' && (
                           <>
 
@@ -975,6 +1425,22 @@ export default function Gestao() {
                                <Settings className="h-3 w-3" />
                              </Button>
 
+                            {canExportSchoolByRole(instituicao.id) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleExportSchoolUsersSummary(instituicao)}
+                                disabled={exportingSchoolId === instituicao.id}
+                                title="Imprimir relatório de usuários da escola"
+                              >
+                                {exportingSchoolId === instituicao.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Printer className="h-3 w-3" />
+                                )}
+                              </Button>
+                            )}
+
                             {user.role === 'admin' && (
                               <>
 
@@ -1039,7 +1505,9 @@ export default function Gestao() {
         <TabsContent value="usuarios" className="mt-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <p className="text-muted-foreground text-sm">
-              Exporte um PDF com os quantitativos de usuários do município selecionado.
+              {isSchoolScopedRole(user.role)
+                ? "Exporte um PDF com os quantitativos de usuários da sua escola."
+                : "Exporte um PDF com os quantitativos de usuários do município selecionado."}
             </p>
             <Button
               type="button"

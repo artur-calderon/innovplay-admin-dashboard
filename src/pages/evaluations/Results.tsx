@@ -33,7 +33,7 @@ import { ptBR } from "date-fns/locale";
 import { EvaluationResultsApiService } from "@/services/evaluation/evaluationResultsApi";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
-import { getUserHierarchyContext } from "@/utils/userHierarchy";
+import { getUserHierarchyContext, type UserHierarchyContext } from "@/utils/userHierarchy";
 import { ResultsCharts } from "@/components/evaluations/results/ResultsCharts";
 import { ClassStatistics } from "@/components/evaluations/results/ClassStatistics";
 import { StudentRanking } from "@/components/evaluations/student/StudentRanking";
@@ -655,8 +655,9 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
   const [classes, setClasses] = useState<Class[]>([]);
   const [evaluationInfo, setEvaluationInfo] = useState<EvaluationInfoSummary | null>(null);
 
-  // Turmas do professor (quando role === 'professor'): usadas para filtrar estatísticas e lista quando turma não está selecionada
+  // Turmas do professor + hierarquia (diretor/coordenador/professor) para estatísticas agregadas e PDF
   const [professorClassNames, setProfessorClassNames] = useState<Set<string>>(new Set());
+  const [userHierarchyContext, setUserHierarchyContext] = useState<UserHierarchyContext | null>(null);
 
   // Estados para controles da tabela
 
@@ -1328,23 +1329,39 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
   // Verificar se é professor especificamente (para mensagens específicas)
   const isProfessor = user?.role === 'professor';
 
-  // Carregar turmas do professor para filtrar estatísticas/lista quando turma não está selecionada
   useEffect(() => {
-    if (user?.role !== 'professor' || !user?.id) {
+    if (!user?.id) {
       setProfessorClassNames(new Set());
+      setUserHierarchyContext(null);
+      return;
+    }
+    const rolesNeedHierarchy = ["professor", "diretor", "coordenador"];
+    if (!user.role || !rolesNeedHierarchy.includes(user.role)) {
+      setProfessorClassNames(new Set());
+      setUserHierarchyContext(null);
       return;
     }
     let cancelled = false;
     getUserHierarchyContext(user.id, user.role).then((ctx) => {
       if (cancelled) return;
-      const names = (ctx.classes ?? [])
-        .map((c) => (c.class_name ?? '').trim())
-        .filter(Boolean);
-      setProfessorClassNames(new Set(names));
+      setUserHierarchyContext(ctx);
+      if (user.role === "professor") {
+        const names = (ctx.classes ?? [])
+          .map((c) => (c.class_name ?? "").trim())
+          .filter(Boolean);
+        setProfessorClassNames(new Set(names));
+      } else {
+        setProfessorClassNames(new Set());
+      }
     }).catch(() => {
-      if (!cancelled) setProfessorClassNames(new Set());
+      if (!cancelled) {
+        setUserHierarchyContext(null);
+        setProfessorClassNames(new Set());
+      }
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [user?.id, user?.role]);
 
   // ✅ Carregar dados quando os filtros obrigatórios estiverem preenchidos.
@@ -1651,7 +1668,7 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
           erros: (aluno as unknown as { total_erros_geral?: number }).total_erros_geral ?? 0,
           em_branco: aluno.total_em_branco_geral,
           tempo_gasto: 0,
-          status: ((aluno.status_geral || '').toLowerCase() === 'concluida' ? 'concluida' : 'pendente') as const
+          status: ((aluno.status_geral || '').toLowerCase() === 'concluida' ? 'concluida' : 'pendente') as 'concluida' | 'pendente'
         }));
     }
     
@@ -2966,7 +2983,8 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
                  </TabsContent>
 
                 <TabsContent value="statistics" className="space-y-6">
-                  <ClassStatistics apiData={apiData ? (() => {
+                  <ClassStatistics
+                    apiData={apiData ? (() => {
                     const hasSpecificFilters = selectedClass !== 'all' || selectedGrade !== 'all' || selectedSchool !== 'all';
                     const base = {
                       ...apiData,
@@ -2991,7 +3009,13 @@ export default function Results({ hidePageHeading = false }: ResultsProps = {}) 
                       base.estatisticas_gerais = apiData.estatisticas_gerais;
                     }
                     return base;
-                  })() : null} />
+                  })() : null}
+                    isMunicipalView={selectedSchool === 'all'}
+                    userHierarchy={userHierarchyContext}
+                    rankingPdfFilterLabels={rankingPdfFilterLabels}
+                    escopoTitulo={evaluationInfo?.titulo}
+                    reportContext="avaliacoes"
+                  />
                 </TabsContent>
 
                 {selectedEvaluation !== 'all' && (
