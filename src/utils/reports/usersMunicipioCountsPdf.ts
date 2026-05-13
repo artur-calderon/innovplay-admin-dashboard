@@ -1,6 +1,7 @@
 import { loadLogoAssetForLandscapePdf } from "@/utils/pdfCityBranding";
 
 type Rgb = [number, number, number];
+type UserRoleGroup = "diretor" | "coordenador" | "professor" | "aluno";
 
 export interface UsersCountsReportResponse {
   general?: Partial<{
@@ -43,15 +44,61 @@ export interface UsersCountsReportResponse {
   }>;
 }
 
+export interface UsersReportScope {
+  type: "city" | "school";
+  schoolName?: string;
+}
+
+export interface ReportContact {
+  name: string;
+  email: string;
+  gradeName?: string;
+  className?: string;
+}
+
+export type ContactsByRole = Partial<Record<UserRoleGroup, ReportContact[]>>;
+
 function n(value: unknown): number {
   const num = typeof value === "number" ? value : Number(value);
   return Number.isFinite(num) ? num : 0;
+}
+
+function str(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function normalizeSortTokens(input: string): { numeric: number; suffix: string } {
+  const cleaned = str(input)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const match = cleaned.match(/^(\d+)\s*[º°oª]?\s*([a-z]+)?/i);
+  if (!match) return { numeric: Number.MAX_SAFE_INTEGER, suffix: cleaned };
+  return {
+    numeric: Number(match[1]),
+    suffix: (match[2] || cleaned.replace(match[0], "")).trim(),
+  };
+}
+
+function sortGradeAndClass(a: { grade_name?: string; class_name?: string }, b: { grade_name?: string; class_name?: string }): number {
+  const gradeA = normalizeSortTokens(a.grade_name || "");
+  const gradeB = normalizeSortTokens(b.grade_name || "");
+  if (gradeA.numeric !== gradeB.numeric) return gradeA.numeric - gradeB.numeric;
+  const byGradeSuffix = gradeA.suffix.localeCompare(gradeB.suffix, "pt-BR", { sensitivity: "base" });
+  if (byGradeSuffix !== 0) return byGradeSuffix;
+
+  const classA = normalizeSortTokens(a.class_name || "");
+  const classB = normalizeSortTokens(b.class_name || "");
+  if (classA.numeric !== classB.numeric) return classA.numeric - classB.numeric;
+  return classA.suffix.localeCompare(classB.suffix, "pt-BR", { sensitivity: "base" });
 }
 
 export async function generateUsersMunicipioCountsPdf(args: {
   cityId: string;
   cityName: string;
   report: UsersCountsReportResponse;
+  scope?: UsersReportScope;
+  contactsByRole?: ContactsByRole;
 }): Promise<void> {
   const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
     import("jspdf"),
@@ -72,6 +119,11 @@ export async function generateUsersMunicipioCountsPdf(args: {
   const pageH = doc.internal.pageSize.getHeight();
   const centerX = pageW / 2;
   const margin = 15;
+  const scope = args.scope ?? { type: "city" as const };
+  const reportLabel =
+    scope.type === "school"
+      ? `DA ESCOLA ${str(scope.schoolName || "Escola").toUpperCase()}`
+      : `DO MUNICÍPIO ${str(args.cityName || "").toUpperCase()}`;
 
   const logoAsset = await loadLogoAssetForLandscapePdf(args.cityId);
 
@@ -102,7 +154,7 @@ export async function generateUsersMunicipioCountsPdf(args: {
     doc.setFontSize(18);
     doc.text("RELATÓRIO DE USUÁRIOS", centerX, titleY, { align: "center" });
     doc.setFontSize(12);
-    doc.text(`DO MUNICÍPIO ${String(args.cityName || "").toUpperCase()}`, centerX, titleY + 8, {
+    doc.text(reportLabel, centerX, titleY + 8, {
       align: "center",
     });
 
@@ -146,8 +198,8 @@ export async function generateUsersMunicipioCountsPdf(args: {
       ["PROFESSORES:", String(n(g.teachers))],
       ["DIRETORES:", String(n(g.directors))],
       ["COORDENADORES:", String(n(g.coordinators))],
-      ["TEC. ADM:", String(n(g.tecadm))],
     ];
+    if (scope.type === "city") rows.push(["TEC. ADM:", String(n(g.tecadm))]);
 
     doc.setFontSize(11);
     for (const [label, value] of rows) {
@@ -161,7 +213,8 @@ export async function generateUsersMunicipioCountsPdf(args: {
     }
 
     // Observação sob o card (contexto importante para leitura dos totais)
-    const note = "Observação: podem existir diretores e coordenadores com contas criadas, mas ainda não vinculadas a nenhuma escola.";
+    const note =
+      "Observação: podem existir diretores e coordenadores com contas criadas, mas ainda não vinculadas a nenhuma escola.";
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(...COLORS.textGray);
@@ -200,7 +253,7 @@ export async function generateUsersMunicipioCountsPdf(args: {
       ["Professores", n(g.teachers)],
       ["Diretores", n(g.directors)],
       ["Coordenadores", n(g.coordinators)],
-      ["Técnico administrativo", n(g.tecadm)],
+      ...(scope.type === "city" ? [["Técnico administrativo", n(g.tecadm)] as [string, number]] : []),
     ].map(([a, b]) => [String(a), String(b)]),
     theme: "striped",
     margin: { left: margin, right: margin },
@@ -233,49 +286,145 @@ export async function generateUsersMunicipioCountsPdf(args: {
   const bySchool = Array.isArray(args.report.by_school) ? args.report.by_school : [];
   addCountsTable(
     "Por escola",
-    ["Escola", "Alunos", "Professores", "Diretores", "Coordenadores", "Tec. Adm"],
+    ["Escola", "Alunos", "Professores", "Diretores", "Coordenadores"],
     bySchool.map((r) => [
       r.school_name ?? "—",
       n(r.students),
       n(r.teachers),
       n(r.directors),
       n(r.coordinators),
-      n(r.tecadm),
     ])
   );
 
   const byGrade = Array.isArray(args.report.by_grade) ? args.report.by_grade : [];
   addCountsTable(
     "Por série",
-    ["Série", "Alunos", "Professores", "Diretores", "Coordenadores", "Tec. Adm"],
+    ["Série", "Alunos", "Professores", "Diretores", "Coordenadores"],
     byGrade.map((r) => [
       r.grade_name ?? "—",
       n(r.students),
       n(r.teachers),
       n(r.directors),
       n(r.coordinators),
-      n(r.tecadm),
     ])
   );
 
   const byClass = Array.isArray(args.report.by_class) ? args.report.by_class : [];
-  addCountsTable(
-    "Por turma",
-    ["Turma", "Escola", "Série", "Alunos", "Professores", "Diretores", "Coordenadores", "Tec. Adm"],
-    byClass.map((r) => [
-      r.class_name ?? "—",
-      r.school_name ?? "—",
-      r.grade_name ?? "—",
-      n(r.students),
-      n(r.teachers),
-      n(r.directors),
-      n(r.coordinators),
-      n(r.tecadm),
-    ])
+  const byClassGroupedBySchool = new Map<string, typeof byClass>();
+  for (const row of byClass) {
+    const schoolName = str(row.school_name) || "Escola não informada";
+    const existing = byClassGroupedBySchool.get(schoolName) ?? [];
+    existing.push(row);
+    byClassGroupedBySchool.set(schoolName, existing);
+  }
+
+  const sortedSchoolGroups = Array.from(byClassGroupedBySchool.entries()).sort(([a], [b]) =>
+    a.localeCompare(b, "pt-BR", { sensitivity: "base" })
   );
 
-  const safeCity = String(args.cityName || "municipio").trim().replace(/\s+/g, "_");
+  const drawSchoolClassCover = (schoolName: string) => {
+    doc.addPage();
+    y = margin + 6;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(...COLORS.primary);
+    doc.text("Resultados por turma", margin, y);
+    y += 8;
+    doc.setFontSize(11);
+    doc.setTextColor(...COLORS.textDark);
+    doc.text(`Escola: ${schoolName}`, margin, y);
+    y += 6;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...COLORS.textGray);
+    const cityLabel = str(args.cityName) || "Município";
+    doc.text(`Município: ${cityLabel}  |  Data: ${new Date().toLocaleDateString("pt-BR")}`, margin, y);
+    y += 8;
+    doc.setDrawColor(...COLORS.borderLight);
+    doc.setLineWidth(0.3);
+    doc.line(margin, y, pageW - margin, y);
+    y += 5;
+  };
+
+  for (const [schoolName, rows] of sortedSchoolGroups) {
+    drawSchoolClassCover(schoolName);
+    const sortedRows = [...rows].sort(sortGradeAndClass);
+    autoTable(doc, {
+      startY: y,
+      styles: { font: "helvetica", fontSize: 9, textColor: COLORS.textDark as unknown as number[] },
+      headStyles: { fillColor: COLORS.primary as unknown as number[], textColor: COLORS.white as unknown as number[] },
+      bodyStyles: { fillColor: COLORS.white as unknown as number[] },
+      head: [["Série", "Turma", "Alunos", "Professores", "Diretores", "Coordenadores"]],
+      body: sortedRows.map((r) => [
+        str(r.grade_name) || "—",
+        str(r.class_name) || "—",
+        String(n(r.students)),
+        String(n(r.teachers)),
+        String(n(r.directors)),
+        String(n(r.coordinators)),
+      ]),
+      theme: "striped",
+      margin: { left: margin, right: margin },
+    });
+    y = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY
+      ? (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 12
+      : y + 40;
+  }
+
+  const contactRoleLabels: Array<{ key: UserRoleGroup; label: string }> = [
+    { key: "diretor", label: "Diretores" },
+    { key: "coordenador", label: "Coordenadores" },
+    { key: "professor", label: "Professores" },
+    { key: "aluno", label: "Alunos" },
+  ];
+
+  if (args.contactsByRole) {
+    for (const roleItem of contactRoleLabels) {
+      const list = (args.contactsByRole[roleItem.key] ?? []).filter((c) => str(c.name) || str(c.email));
+      const sortedList =
+        roleItem.key === "aluno"
+          ? [...list].sort((a, b) => {
+              const byHierarchy = sortGradeAndClass(
+                { grade_name: a.gradeName, class_name: a.className },
+                { grade_name: b.gradeName, class_name: b.className }
+              );
+              if (byHierarchy !== 0) return byHierarchy;
+              return str(a.name).localeCompare(str(b.name), "pt-BR", { sensitivity: "base" });
+            })
+          : [...list].sort((a, b) => str(a.name).localeCompare(str(b.name), "pt-BR", { sensitivity: "base" }));
+      if (sortedList.length === 0) continue;
+      if (y > pageH - 60) {
+        doc.addPage();
+        y = margin;
+      }
+      y = addSectionTitle(`Contatos - ${roleItem.label}`, y);
+      const isStudentRole = roleItem.key === "aluno";
+      autoTable(doc, {
+        startY: y,
+        styles: { font: "helvetica", fontSize: 9, textColor: COLORS.textDark as unknown as number[] },
+        headStyles: { fillColor: COLORS.primary as unknown as number[], textColor: COLORS.white as unknown as number[] },
+        bodyStyles: { fillColor: COLORS.white as unknown as number[] },
+        head: [isStudentRole ? ["Série", "Turma", "Nome", "E-mail"] : ["Nome", "E-mail"]],
+        body: sortedList.map((item) =>
+          isStudentRole
+            ? [str(item.gradeName) || "—", str(item.className) || "—", str(item.name) || "—", str(item.email) || "—"]
+            : [str(item.name) || "—", str(item.email) || "—"]
+        ),
+        theme: "striped",
+        margin: { left: margin, right: margin },
+      });
+      y = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY
+        ? (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 12
+        : y + 40;
+    }
+  }
+
+  const safeBase =
+    scope.type === "school"
+      ? str(scope.schoolName || "escola").replace(/\s+/g, "_")
+      : str(args.cityName || "municipio").replace(/\s+/g, "_");
   const dateStr = new Date().toISOString().slice(0, 10);
-  doc.save(`relatorio_usuarios_${safeCity}_${dateStr}.pdf`);
+  const prefix = scope.type === "school" ? "relatorio_usuarios_escola" : "relatorio_usuarios";
+  doc.save(`${prefix}_${safeBase}_${dateStr}.pdf`);
 }
 
