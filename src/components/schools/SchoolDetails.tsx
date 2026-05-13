@@ -1295,11 +1295,12 @@ export default function SchoolDetails() {
                                       {upperDisplay(student.name)}
                                     </div>
                                   ))}
-                                  {classStudents[classItem.id]?.length > 3 && (
-                                    <div className="text-xs text-blue-600">
-                                      +{classStudents[classItem.id].length - 3} mais
-                                    </div>
-                                  )}
+                                  {classStudents[classItem.id] &&
+                                    classStudents[classItem.id].length > 3 && (
+                                      <div className="text-xs text-blue-600">
+                                        +{classStudents[classItem.id].length - 3} mais
+                                      </div>
+                                    )}
                                 </div>
                               )}
                             </div>
@@ -1351,9 +1352,17 @@ export default function SchoolDetails() {
           schoolName={school.name}
           schoolCityId={school.city_id}
           classData={selectedClass}
-          onSuccess={() => {
+          onSuccess={async () => {
             if (classes.length > 0) {
-              fetchClassDetails(classes);
+              await fetchClassDetails(classes);
+            }
+            if (id) {
+              try {
+                const response = await api.get(`/students/school/${id}`);
+                setStudents(Array.isArray(response.data) ? response.data : []);
+              } catch {
+                /* ignore */
+              }
             }
           }}
         />

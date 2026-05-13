@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,11 +10,12 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { Loader2, Users, GraduationCap, Trash2, Plus, Eye, EyeOff, UserPlus, CheckCircle2, AlertCircle, Upload } from "lucide-react";
+import { Loader2, Users, GraduationCap, Trash2, Plus, Eye, EyeOff, UserPlus, CheckCircle2, AlertCircle, Upload, ArrowLeftRight, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { LinkTeacherModal } from "./LinkTeacherModal";
 import { LinkStudentModal } from "./LinkStudentModal";
 import { BulkCreateStudentsByListModal } from "./BulkCreateStudentsByListModal";
+import { TransferStudentModal } from "./TransferStudentModal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -105,6 +106,8 @@ export function ManageClassModal({
   const [showLinkTeacherModal, setShowLinkTeacherModal] = useState(false);
   const [showLinkStudentModal, setShowLinkStudentModal] = useState(false);
   const [showBulkStudentsModal, setShowBulkStudentsModal] = useState(false);
+  const [transferStudent, setTransferStudent] = useState<Student | null>(null);
+  const [studentSearchQuery, setStudentSearchQuery] = useState("");
   const [viewingStudent, setViewingStudent] = useState<Student | null>(null);
   const [viewingTeacher, setViewingTeacher] = useState<Teacher | null>(null);
   const [activeTab, setActiveTab] = useState("manage");
@@ -211,6 +214,21 @@ export function ManageClassModal({
     if (!isOpen) return;
     fetchClassData();
   }, [isOpen, fetchClassData]);
+
+  useEffect(() => {
+    if (!isOpen) setStudentSearchQuery("");
+  }, [isOpen]);
+
+  const filteredStudents = useMemo(() => {
+    const q = studentSearchQuery.trim().toLowerCase();
+    if (!q) return students;
+    return students.filter((s) => {
+      const name = String(s.name ?? "").toLowerCase();
+      const email = String(s.email ?? s.user?.email ?? "").toLowerCase();
+      const reg = String(s.registration ?? "").toLowerCase();
+      return name.includes(q) || email.includes(q) || reg.includes(q);
+    });
+  }, [students, studentSearchQuery]);
 
   const handleRemoveTeacher = async (teacherId: string) => {
     setIsRemoving(`teacher-${teacherId}`);
@@ -547,6 +565,28 @@ export function ManageClassModal({
                         </Button>
                       </div>
 
+                      {students.length > 0 && (
+                        <div className="relative mb-3">
+                          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                          <Input
+                            id="student-search"
+                            type="search"
+                            placeholder="Pesquisar por nome, e-mail ou matrícula…"
+                            value={studentSearchQuery}
+                            onChange={(e) => setStudentSearchQuery(e.target.value)}
+                            className="h-10 pl-9"
+                            autoComplete="off"
+                            aria-label="Pesquisar aluno na turma"
+                          />
+                          {studentSearchQuery.trim() !== "" && (
+                            <p className="text-xs text-muted-foreground mt-1.5">
+                              Mostrando {filteredStudents.length} de {students.length} aluno
+                              {students.length === 1 ? "" : "s"}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
                       <div className="border rounded-lg flex-1 overflow-hidden bg-card border-border">
                         {students.length === 0 ? (
                           <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full min-h-[200px]">
@@ -560,10 +600,25 @@ export function ManageClassModal({
                               Clique em "Vincular Aluno" para vincular
                             </p>
                           </div>
+                        ) : filteredStudents.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full min-h-[160px]">
+                            <p className="text-sm text-muted-foreground text-center">
+                              Nenhum aluno corresponde à pesquisa.
+                            </p>
+                            <Button
+                              type="button"
+                              variant="link"
+                              size="sm"
+                              className="text-xs mt-1"
+                              onClick={() => setStudentSearchQuery("")}
+                            >
+                              Limpar pesquisa
+                            </Button>
+                          </div>
                         ) : (
                           <div className="p-3 sm:p-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-green-300 dark:scrollbar-thumb-green-700 scrollbar-track-transparent scroll-smooth">
                             <div className="space-y-2 sm:space-y-3">
-                              {students.map((student) => (
+                              {filteredStudents.map((student) => (
                                 <div
                                   key={student.id}
                                   className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-muted transition-colors border-border"
@@ -574,10 +629,24 @@ export function ManageClassModal({
                                     </div>
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-sm sm:text-base truncate text-foreground">
-                                      {student.name}
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="font-medium text-sm sm:text-base truncate text-foreground min-w-0">
+                                        {student.name}
+                                      </span>
+                                      {schoolCityId ? (
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-7 shrink-0 text-xs px-2"
+                                          onClick={() => setTransferStudent(student)}
+                                        >
+                                          <ArrowLeftRight className="h-3 w-3 mr-1" />
+                                          Transferir
+                                        </Button>
+                                      ) : null}
                                     </div>
-                                    <div className="text-xs sm:text-sm text-muted-foreground truncate">
+                                    <div className="text-xs sm:text-sm text-muted-foreground truncate mt-0.5">
                                       {student.email || student.user?.email}
                                     </div>
                                   </div>
@@ -842,6 +911,27 @@ export function ManageClassModal({
         }
         onSuccess={fetchClassData}
       />
+
+      {schoolCityId ? (
+        <TransferStudentModal
+          open={!!transferStudent}
+          onOpenChange={(open) => {
+            if (!open) setTransferStudent(null);
+          }}
+          municipalityId={schoolCityId}
+          sourceClassId={classData.id}
+          sourceClassName={classData.name}
+          student={
+            transferStudent
+              ? { id: transferStudent.id, name: transferStudent.name }
+              : null
+          }
+          onSuccess={async () => {
+            await fetchClassData();
+            onSuccess();
+          }}
+        />
+      ) : null}
     </>
   );
 }
