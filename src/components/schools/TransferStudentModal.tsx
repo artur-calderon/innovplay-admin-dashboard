@@ -9,11 +9,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/utils";
 
 export type TransferStudentModalProps = {
   open: boolean;
@@ -39,11 +44,13 @@ function gradeLabel(grade: FilteredClassRow["grade"]): string {
   return String(grade.name ?? "—");
 }
 
-function formatDestinationRow(row: FilteredClassRow): string {
-  const escola = row.school?.name ?? "—";
-  const serie = gradeLabel(row.grade);
-  const turma = row.name ?? "—";
-  return `${escola} — ${serie} — ${turma}`;
+/** Chave estável para filtrar por série dentro da escola (com ou sem `grade.id`). */
+function gradeFilterKey(row: FilteredClassRow): string {
+  const g = row.grade;
+  if (g == null) return "__none__";
+  if (typeof g === "string") return `str:${g}`;
+  if (g.id) return `id:${g.id}`;
+  return `name:${g.name ?? ""}`;
 }
 
 function parseFilteredPayload(data: unknown): FilteredClassRow[] {
@@ -67,22 +74,25 @@ export function TransferStudentModal({
   const { toast } = useToast();
   const [loadingList, setLoadingList] = useState(false);
   const [rows, setRows] = useState<FilteredClassRow[]>([]);
-  const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState("");
+  const [filterSchoolId, setFilterSchoolId] = useState("");
+  const [filterGradeKey, setFilterGradeKey] = useState("");
+  const [selectedClassId, setSelectedClassId] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!open) {
-      setQuery("");
-      setSelectedId("");
+      setFilterSchoolId("");
+      setFilterGradeKey("");
+      setSelectedClassId("");
       setRows([]);
       return;
     }
     if (!municipalityId) return;
 
     let cancelled = false;
-    setQuery("");
-    setSelectedId("");
+    setFilterSchoolId("");
+    setFilterGradeKey("");
+    setSelectedClassId("");
     setLoadingList(true);
 
     (async () => {
@@ -111,28 +121,70 @@ export function TransferStudentModal({
     };
   }, [open, municipalityId, toast]);
 
-  const destinations = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return rows
-      .filter((r) => r.id && r.id !== sourceClassId)
-      .filter((r) => {
-        if (!q) return true;
-        return formatDestinationRow(r).toLowerCase().includes(q);
-      })
+  const baseRows = useMemo(
+    () => rows.filter((r) => Boolean(r.id) && r.id !== sourceClassId),
+    [rows, sourceClassId]
+  );
+
+  const schoolOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of baseRows) {
+      const sid = r.school?.id?.trim();
+      if (!sid) continue;
+      const name = (r.school?.name ?? "").trim() || "Escola";
+      if (!map.has(sid)) map.set(sid, name);
+    }
+    return [...map.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }));
+  }, [baseRows]);
+
+  const gradeOptions = useMemo(() => {
+    if (!filterSchoolId) return [];
+    const map = new Map<string, string>();
+    for (const r of baseRows) {
+      if (r.school?.id !== filterSchoolId) continue;
+      const key = gradeFilterKey(r);
+      const label = gradeLabel(r.grade);
+      if (!map.has(key)) map.set(key, label);
+    }
+    return [...map.entries()]
+      .map(([key, label]) => ({ key, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+  }, [baseRows, filterSchoolId]);
+
+  const classOptions = useMemo(() => {
+    if (!filterSchoolId || !filterGradeKey) return [];
+    return baseRows
+      .filter(
+        (r) => r.school?.id === filterSchoolId && gradeFilterKey(r) === filterGradeKey
+      )
       .sort((a, b) =>
-        formatDestinationRow(a).localeCompare(formatDestinationRow(b), "pt-BR", {
-          sensitivity: "base",
-        })
+        (a.name ?? "").localeCompare(b.name ?? "", "pt-BR", { sensitivity: "base" })
       );
-  }, [rows, sourceClassId, query]);
+  }, [baseRows, filterSchoolId, filterGradeKey]);
+
+  const turmaPlaceholder = !filterSchoolId
+    ? "Selecione a escola e a série primeiro"
+    : !filterGradeKey
+      ? "Selecione a série primeiro"
+      : classOptions.length === 0
+        ? "Nenhuma turma nesta série"
+        : "Selecione a turma";
+
+  useEffect(() => {
+    if (!selectedClassId) return;
+    const stillValid = classOptions.some((c) => c.id === selectedClassId);
+    if (!stillValid) setSelectedClassId("");
+  }, [classOptions, selectedClassId]);
 
   const handleTransfer = async () => {
-    if (!student?.id || !selectedId) return;
+    if (!student?.id || !selectedClassId) return;
     setSubmitting(true);
     try {
       const res = await api.post(
         `/students/${student.id}/transferir-turma`,
-        { class_id: selectedId },
+        { class_id: selectedClassId },
         { meta: { cityId: municipalityId } }
       );
       const msg =
@@ -177,55 +229,93 @@ export function TransferStudentModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3 flex-1 min-h-0 flex flex-col py-2">
-          <div className="space-y-1.5">
-            <label htmlFor="transfer-class-search" className="text-sm font-medium">
-              Turma de destino
-            </label>
-            <Input
-              id="transfer-class-search"
-              placeholder="Buscar por escola, série ou turma…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              disabled={loadingList}
-            />
-          </div>
-
+        <div className="space-y-4 flex-1 min-h-0 flex flex-col py-2">
           {loadingList ? (
             <div className="flex items-center justify-center gap-2 py-10 text-muted-foreground text-sm">
               <Loader2 className="h-5 w-5 animate-spin" />
               Carregando turmas…
             </div>
           ) : (
-            <ScrollArea className="h-[min(50vh,320px)] border rounded-md">
-              <div className="p-2 space-y-1">
-                {destinations.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-8 px-2">
-                    Nenhuma turma encontrada. Ajuste a busca ou verifique permissões.
-                  </p>
-                ) : (
-                  destinations.map((row) => {
-                    const label = formatDestinationRow(row);
-                    const active = selectedId === row.id;
-                    return (
-                      <button
-                        key={row.id}
-                        type="button"
-                        onClick={() => setSelectedId(row.id)}
-                        className={cn(
-                          "w-full text-left rounded-md px-3 py-2 text-sm transition-colors",
-                          active
-                            ? "bg-primary text-primary-foreground"
-                            : "hover:bg-muted text-foreground"
-                        )}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })
-                )}
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="transfer-filter-school">Escola</Label>
+                <Select
+                  value={filterSchoolId || undefined}
+                  onValueChange={(v) => {
+                    setFilterSchoolId(v);
+                    setFilterGradeKey("");
+                    setSelectedClassId("");
+                  }}
+                  disabled={schoolOptions.length === 0}
+                >
+                  <SelectTrigger id="transfer-filter-school">
+                    <SelectValue placeholder="Selecione a escola" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {schoolOptions.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            </ScrollArea>
+
+              <div className="space-y-2">
+                <Label htmlFor="transfer-filter-grade">Série</Label>
+                <Select
+                  value={filterGradeKey || undefined}
+                  onValueChange={(v) => {
+                    setFilterGradeKey(v);
+                    setSelectedClassId("");
+                  }}
+                  disabled={!filterSchoolId || gradeOptions.length === 0}
+                >
+                  <SelectTrigger id="transfer-filter-grade">
+                    <SelectValue placeholder="Selecione a série" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {gradeOptions.map((g) => (
+                      <SelectItem key={g.key} value={g.key}>
+                        {g.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {filterSchoolId && gradeOptions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Não há turmas com série identificada para esta escola.
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="transfer-dest-class">Turma de destino</Label>
+                <Select
+                  value={selectedClassId || undefined}
+                  onValueChange={setSelectedClassId}
+                  disabled={
+                    !filterSchoolId || !filterGradeKey || classOptions.length === 0
+                  }
+                >
+                  <SelectTrigger id="transfer-dest-class">
+                    <SelectValue placeholder={turmaPlaceholder} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {classOptions.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name ?? "—"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {filterSchoolId && filterGradeKey && classOptions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Nenhuma turma nesta série para a escola escolhida.
+                  </p>
+                ) : null}
+              </div>
+            </>
           )}
         </div>
 
@@ -241,7 +331,7 @@ export function TransferStudentModal({
           <Button
             type="button"
             onClick={() => void handleTransfer()}
-            disabled={!selectedId || submitting || !student}
+            disabled={!selectedClassId || submitting || !student}
           >
             {submitting ? (
               <>

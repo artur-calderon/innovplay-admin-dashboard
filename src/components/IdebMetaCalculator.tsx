@@ -748,7 +748,7 @@ export default function IdebMetaCalculator() {
                         className="flex-1 min-w-0 flex items-center justify-between gap-2 text-left"
                         onClick={() => handleEntitySelect(school)}
                       >
-                        <span className="text-xs font-semibold truncate min-w-0">
+                        <span className="text-xs font-semibold break-words min-w-0 flex-1">
                           {school.nome}
                         </span>
                         <span className="text-sm font-bold tabular-nums shrink-0">{school.ideb.toFixed(1)}</span>
@@ -791,18 +791,18 @@ export default function IdebMetaCalculator() {
             <div className="space-y-6">
               {/* Card de Resumo */}
               <Card>
-                <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <CardTitle className="flex items-center gap-2 min-w-0 text-base sm:text-lg">
-                    <Target className="w-5 h-5 shrink-0" />
-                    <span className="truncate break-words">
+                <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <CardTitle className="flex items-start gap-2 min-w-0 flex-1 text-base sm:text-lg leading-snug">
+                    <Target className="w-5 h-5 mt-0.5 shrink-0" />
+                    <span className="min-w-0 break-words">
                       {activeEntityDisplayName.toUpperCase()}
                     </span>
                   </CardTitle>
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    <Badge variant="outline" className="text-[10px] sm:text-xs whitespace-nowrap">
+                    <Badge variant="outline" className="text-[10px] sm:text-xs whitespace-normal break-words items-start h-auto py-1">
                       {'municipio' in activeEntity ? 'CONSOLIDADO MUNICIPAL' : 'UNIDADE ESCOLAR'}
                     </Badge>
-                    <Badge variant="secondary" className="text-[10px] sm:text-xs truncate max-w-[120px] sm:max-w-none">
+                    <Badge variant="secondary" className="text-[10px] sm:text-xs whitespace-normal break-words items-start h-auto py-1">
                       {selectedLevel}
                     </Badge>
                     <Button
