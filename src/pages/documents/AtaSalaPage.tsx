@@ -910,38 +910,55 @@ export default function AtaSalaPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Nome da avaliação</Label>
-              <Input value={nomeAvaliacao} readOnly />
-            </div>
-            <div className="space-y-2">
-              <Label>Curso</Label>
-              <Input value={cursoLabel} readOnly />
-            </div>
-            <div className="space-y-2">
-              <Label>Município/UF</Label>
-              <Input value={municipioUf} readOnly />
-            </div>
-            <div className="space-y-2">
-              <Label>Rede</Label>
-              <Input value={rede} readOnly />
-            </div>
-            <div className="space-y-2">
-              <Label>Escola</Label>
-              <Input value={escola} readOnly />
-            </div>
-            <div className="space-y-2">
-              <Label>Série/Turma</Label>
-              <Input value={serieTurma} readOnly />
-            </div>
-            <div className="space-y-2">
-              <Label>Turno</Label>
-              <Input value={turno} readOnly />
-            </div>
-            <div className="space-y-2">
-              <Label>Disciplina</Label>
-              <Input value={disciplina} readOnly />
+          <div className="rounded-xl border-2 border-fuchsia-500/35 bg-muted/30 p-4 shadow-sm md:p-5">
+            <p className="mb-4 text-xs font-medium uppercase tracking-wide text-fuchsia-700/90 dark:text-fuchsia-300/90">
+              Cabeçalho da ata (como na lista de frequência)
+            </p>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2 md:col-span-2">
+                <Label>Nome da avaliação</Label>
+                <Input value={nomeAvaliacao} readOnly className="bg-background" />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Curso</Label>
+                <Input value={cursoLabel} readOnly className="bg-background" />
+              </div>
+              <div className="space-y-2">
+                <Label>Município/UF</Label>
+                <Input value={municipioUf} readOnly className="bg-background" />
+              </div>
+              <div className="space-y-2">
+                <Label>Rede</Label>
+                <Input value={rede} readOnly className="bg-background" />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Escola</Label>
+                <Input value={escola} readOnly className="bg-background" />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Série/Turma</Label>
+                <Input value={serieTurma} readOnly className="bg-background" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ata-turno">Turno</Label>
+                <Input
+                  id="ata-turno"
+                  value={turno}
+                  onChange={(e) => setTurno(e.target.value)}
+                  placeholder="Ex.: Matutino, Vespertino…"
+                  className="bg-background"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ata-disciplina">Disciplina</Label>
+                <Input
+                  id="ata-disciplina"
+                  value={disciplina}
+                  onChange={(e) => setDisciplina(e.target.value)}
+                  placeholder="Preencha se não veio da lista"
+                  className="bg-background"
+                />
+              </div>
             </div>
           </div>
 

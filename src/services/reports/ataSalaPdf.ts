@@ -49,6 +49,10 @@ const C = {
   pink: [223, 31, 166] as [number, number, number],
 };
 
+/** Borda / título do cabeçalho no estilo lista de frequência. */
+const PINK_LISTA: [number, number, number] = [236, 72, 153];
+const LINE_GRAY_HEADER: [number, number, number] = [120, 120, 120];
+
 /** Mesmo modelo visual da lista de frequência (marcador em círculo). */
 const MARK_PINK: [number, number, number] = [236, 72, 153];
 const MARK_GRAY: [number, number, number] = [180, 180, 180];
@@ -56,6 +60,14 @@ const MARK_RADIUS_MM = 2;
 
 const M = 14;
 const PINK_LW = 0.2;
+
+/** Espaço entre blocos rosa e margens internas de texto livre no PDF. */
+const SECTION_V_GAP = 5.5;
+const OPEN_PAD_X = 3.8;
+const OPEN_PAD_BOTTOM = 2.8;
+const OPEN_LINE_STEP = 5.6;
+const Q712_ROW_H = 14;
+const Q712_ROW_GAP = 2.2;
 
 function drawText(
   doc: jsPDF,
@@ -77,14 +89,6 @@ function drawPinkRect(doc: jsPDF, x: number, y: number, w: number, h: number): v
   doc.setDrawColor(...C.pink);
   doc.setLineWidth(PINK_LW);
   doc.rect(x, y, w, h);
-}
-
-function drawLinedBox(doc: jsPDF, x: number, y: number, w: number, h: number, lineGap = 10): void {
-  drawPinkRect(doc, x, y, w, h);
-  doc.setDrawColor(...C.pink);
-  for (let ly = y + lineGap; ly < y + h; ly += lineGap) {
-    doc.line(x, ly, x + w, ly);
-  }
 }
 
 /** Dígito centralizado na caixa (eixo X/Y ao centro da célula). */
@@ -159,71 +163,154 @@ function drawWrappedText(
   return y + lines.length * lineH;
 }
 
+function drawHeaderRowValueOrUnderline(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  label: string,
+  value: string,
+  endX: number,
+  isEmpty: boolean
+): void {
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...C.text);
+  doc.text(label, x, y, { align: "left", baseline: "alphabetic" });
+  const after = x + doc.getTextWidth(label) + 2.2;
+  if (isEmpty) {
+    doc.setDrawColor(...LINE_GRAY_HEADER);
+    doc.setLineWidth(0.2);
+    doc.line(after, y + 1.2, endX, y + 1.2);
+  } else {
+    const line = fitSingleLine(doc, value.trim(), endX - after - 0.5, 9);
+    doc.text(line, after, y, { align: "left", baseline: "alphabetic" });
+  }
+}
+
+/** Retorna baseline Y após o bloco ESCOLA (uma linha vazia ou várias linhas de texto). */
+function drawHeaderEscolaBlock(doc: jsPDF, x: number, y: number, escolaRaw: string, endX: number): number {
+  const label = "ESCOLA: ";
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...C.text);
+  const t = (escolaRaw || "").trim();
+  const empty = !t || t === "ESCOLA MUNICIPAL";
+  const xVal = x + doc.getTextWidth(label) + 1;
+  doc.text(label, x, y, { align: "left", baseline: "alphabetic" });
+  if (empty) {
+    doc.setDrawColor(...LINE_GRAY_HEADER);
+    doc.setLineWidth(0.2);
+    doc.line(xVal, y + 1.2, endX, y + 1.2);
+    return y + 5;
+  }
+  const lines = splitToLines(doc, t, endX - xVal) as string[];
+  let cy = y;
+  lines.forEach((ln) => {
+    doc.text(ln, xVal, cy, { align: "left", baseline: "alphabetic" });
+    cy += 5;
+  });
+  return cy;
+}
+
+/** Altura interna da caixa (conteúdo + margens), espelhando o layout desenhado. */
+function measureAtaHeaderBoxInnerHeight(
+  doc: jsPDF,
+  escolaEmpty: boolean,
+  escolaT: string,
+  tx0: number,
+  lineEnd: number,
+  rowGap: number
+): number {
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  const escolaLw = doc.getTextWidth("ESCOLA: ") + 1;
+  const nl = escolaEmpty ? 1 : Math.max(1, (splitToLines(doc, escolaT, lineEnd - tx0 - escolaLw) as string[]).length);
+  const escolaH = escolaEmpty ? rowGap : nl * 5 + 0.5;
+  return 6 + rowGap + rowGap + escolaH + 1 + rowGap + rowGap + 5;
+}
+
 function drawHeader(doc: jsPDF, data: AtaSalaPdfData): number {
   const pageW = doc.internal.pageSize.getWidth();
   const contentW = pageW - 2 * M;
+  const tx0 = M + 4;
+  const lineEnd = M + contentW - 4;
+  const innerW = contentW - 8;
+  const rowGap = 5.2;
   let y = M;
-  drawText(
-    doc,
-    fitSingleLine(doc, data.nomeAvaliacao || "NOME DA AVALIAÇÃO", contentW - 4, 10, "bold"),
-    pageW / 2,
-    y,
-    10,
-    "bold",
-    "center"
-  );
-  y += 7;
-  drawText(
-    doc,
-    fitSingleLine(doc, `ATA DE SALA - ${data.cursoLabel || "CURSO (ANOS INICIAIS OU FINAIS)"}`, contentW - 4, 8.2),
-    M,
-    y,
-    8.2,
-    "normal"
-  );
-  y += 5;
 
-  drawPinkRect(doc, M, y, contentW, 28);
-  drawText(
-    doc,
-    fitSingleLine(doc, `MUNICÍPIO/UF: ${data.municipioUf || "—"}`, contentW - 58, 8),
-    M + 2,
-    y + 5,
-    8
-  );
-  drawText(
-    doc,
-    fitSingleLine(doc, `REDE: ${data.rede || "MUNICIPAL"}`, 54, 8),
-    M + contentW - 2,
-    y + 5,
-    8,
-    "normal",
-    "right"
-  );
-  drawText(doc, fitSingleLine(doc, data.escola || "ESCOLA MUNICIPAL", contentW - 4, 8), M + 2, y + 12, 8);
-  drawText(
-    doc,
-    fitSingleLine(doc, `SÉRIE/TURMA: ${data.serieTurma || "—"}`, contentW - 58, 8),
-    M + 2,
-    y + 19,
-    8
-  );
-  drawText(
-    doc,
-    fitSingleLine(doc, `TURNO: ${data.turno || "—"}`, 54, 8),
-    M + contentW - 2,
-    y + 19,
-    8,
-    "normal",
-    "right"
-  );
-  drawText(doc, fitSingleLine(doc, `DISCIPLINA: ${data.disciplina || "—"}`, contentW - 4, 8), M + 2, y + 26, 8);
-  return y + 34;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(...PINK_LISTA);
+  const title = fitSingleLine(doc, (data.nomeAvaliacao || "").trim() || "NOME DA AVALIAÇÃO", innerW, 12, "bold");
+  doc.text(title, pageW / 2, y, { align: "center", baseline: "alphabetic" });
+  y += 7;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...C.text);
+  const sub = `ATA DE SALA - ${(data.cursoLabel || "").trim() || "CURSO (ANOS INICIAIS OU FINAIS)"}`;
+  doc.text(fitSingleLine(doc, sub, innerW, 10), pageW / 2, y, { align: "center", baseline: "alphabetic" });
+  y += 8;
+
+  const municipio = (data.municipioUf || "").trim();
+  const rede = (data.rede || "").trim();
+  const escola = (data.escola || "").trim();
+  const serieTurma = (data.serieTurma || "").trim();
+  const turno = (data.turno || "").trim();
+  const disciplina = (data.disciplina || "").trim();
+
+  const mEmpty = !municipio || municipio === "—";
+  const rEmpty = !rede;
+  const sEmpty = !serieTurma || serieTurma === "—";
+  const tEmpty = !turno;
+  const dEmpty = !disciplina;
+
+  const escolaT = (escola || "").trim();
+  const escolaEmpty = !escolaT || escolaT === "ESCOLA MUNICIPAL";
+
+  const boxTop = y;
+  const mid = tx0 + innerW * 0.48;
+  const boxH = measureAtaHeaderBoxInnerHeight(doc, escolaEmpty, escolaT, tx0, lineEnd, rowGap);
+
+  doc.setDrawColor(...PINK_LISTA);
+  doc.setLineWidth(0.35);
+  doc.rect(M, boxTop, contentW, boxH, "S");
+
+  let cy = boxTop + 6;
+  drawHeaderRowValueOrUnderline(doc, tx0, cy, "MUNICÍPIO/UF: ", municipio, lineEnd, mEmpty);
+  cy += rowGap;
+  drawHeaderRowValueOrUnderline(doc, tx0, cy, "REDE: ", rede, lineEnd, rEmpty);
+  cy += rowGap;
+  cy = drawHeaderEscolaBlock(doc, tx0, cy, escola, lineEnd) + 1;
+  drawHeaderRowValueOrUnderline(doc, tx0, cy, "SÉRIE/TURMA: ", serieTurma, lineEnd, sEmpty);
+  cy += rowGap;
+
+  doc.setFontSize(9);
+  doc.setTextColor(...C.text);
+  doc.text("TURNO: ", tx0, cy, { align: "left", baseline: "alphabetic" });
+  let lx = tx0 + doc.getTextWidth("TURNO: ") + 1;
+  if (tEmpty) {
+    doc.setDrawColor(...LINE_GRAY_HEADER);
+    doc.setLineWidth(0.2);
+    doc.line(lx, cy + 1.2, mid - 2, cy + 1.2);
+  } else {
+    doc.text(fitSingleLine(doc, turno, mid - lx - 2, 9), lx, cy, { align: "left", baseline: "alphabetic" });
+  }
+  doc.text("DISCIPLINA: ", mid, cy, { align: "left", baseline: "alphabetic" });
+  lx = mid + doc.getTextWidth("DISCIPLINA: ") + 1;
+  if (dEmpty) {
+    doc.setDrawColor(...LINE_GRAY_HEADER);
+    doc.line(lx, cy + 1.2, lineEnd, cy + 1.2);
+  } else {
+    doc.text(fitSingleLine(doc, disciplina, lineEnd - lx - 0.5, 9), lx, cy, { align: "left", baseline: "alphabetic" });
+  }
+
+  return boxTop + boxH + 4;
 }
 
 /**
  * Opções do item 5: círculo como na lista de frequência + rótulo na mesma linha (A) texto…).
- * Retorna a coordenada Y imediatamente abaixo da área desenhada.
+ * Retorna baseline Y útil para linha “Detalhes” ou próximo conteúdo (abaixo da grade).
  */
 function drawOccurrenceOptions(doc: jsPDF, x: number, y: number, contentInnerW: number, opts: AtaOptions): number {
   const rows = [
@@ -234,13 +321,14 @@ function drawOccurrenceOptions(doc: jsPDF, x: number, y: number, contentInnerW: 
     { key: "occurrenceE" as const, code: "E", label: "Outro." },
   ];
 
-  const pad = 2;
-  const colGap = 4;
+  const pad = 3.5;
+  const colGap = 7;
   const usableW = Math.max(40, contentInnerW - 2 * pad);
   const colW = (usableW - 2 * colGap) / 3;
-  const rowH = 6.5;
-  const circleInset = MARK_RADIUS_MM + 1.2;
-  const textXOffset = circleInset + MARK_RADIUS_MM + 1.5;
+  const rowH = 8.8;
+  const circleInset = MARK_RADIUS_MM + 2;
+  const textXOffset = circleInset + MARK_RADIUS_MM + 2.2;
+  const labelFs = 7.5;
 
   const drawOne = (col: number, row: number, code: string, label: string, checked: boolean) => {
     const colX = x + pad + col * (colW + colGap);
@@ -248,9 +336,9 @@ function drawOccurrenceOptions(doc: jsPDF, x: number, y: number, contentInnerW: 
     const cx = colX + circleInset;
     const cy = rowY + rowH / 2;
     drawMarkCircle(doc, cx, cy, checked);
-    const labelText = fitSingleLine(doc, `${code}) ${label}`, colW - textXOffset - 1, 7);
+    const labelText = fitSingleLine(doc, `${code}) ${label}`, colW - textXOffset - 1.5, labelFs);
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
+    doc.setFontSize(labelFs);
     doc.setTextColor(...C.text);
     doc.text(labelText, colX + textXOffset, cy, { align: "left", baseline: "middle" });
   };
@@ -262,7 +350,7 @@ function drawOccurrenceOptions(doc: jsPDF, x: number, y: number, contentInnerW: 
   drawOne(0, 1, rows[1].code, rows[1].label, opts.occurrenceB);
   drawOne(1, 1, rows[3].code, rows[3].label, opts.occurrenceD);
 
-  return y + rowH * 2 + 1;
+  return y + rowH * 2 + 3.5;
 }
 
 /**
@@ -278,8 +366,9 @@ function fillTextInOpenBox(
   boxH: number,
   padX: number,
   bodyStartY: number,
-  lineStep = 4.2,
-  fontSize = 7.2
+  lineStep = OPEN_LINE_STEP,
+  fontSize = 7.2,
+  padBottom = OPEN_PAD_BOTTOM
 ): void {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(fontSize);
@@ -287,40 +376,11 @@ function fillTextInOpenBox(
   const innerW = Math.max(8, boxW - 2 * padX);
   const lines = splitToLines(doc, text || "", innerW) as string[];
   let baseline = bodyStartY;
-  const maxBaseline = boxY + boxH - padX;
+  const maxBaseline = boxY + boxH - padBottom;
   for (const line of lines) {
     if (baseline > maxBaseline) break;
     doc.text(line, boxX + padX, baseline, { align: "left", baseline: "alphabetic" });
     baseline += lineStep;
-  }
-}
-
-/**
- * Texto em área pautada (assinaturas): linhas internas + alinhamento ao `lineGap`.
- * @param contentStartOffset soma ao primeiro baseline quando há cabeçalho acima do texto.
- */
-function fillTextLines(
-  doc: jsPDF,
-  text: string,
-  x: number,
-  yBoxTop: number,
-  w: number,
-  h: number,
-  lineGap: number,
-  padX = 2,
-  contentStartOffset = 0
-): void {
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.2);
-  const innerW = Math.max(10, w - 2 * padX);
-  const lines = splitToLines(doc, text || "", innerW) as string[];
-  const firstLineY = yBoxTop + lineGap + 3.2 + contentStartOffset;
-  const maxBottom = yBoxTop + h - 2;
-  let baseline = firstLineY;
-  for (let i = 0; i < lines.length; i += 1) {
-    if (baseline > maxBottom) break;
-    drawText(doc, lines[i], x + padX, baseline, 7.2, "normal", "left", "alphabetic");
-    baseline += lineGap;
   }
 }
 
@@ -339,89 +399,90 @@ function drawPage1(doc: jsPDF, data: AtaSalaPdfData): void {
     M,
     y,
     pageW - 2 * M,
-    4.2,
+    4.6,
     8,
     "italic"
   );
-  y += 4;
+  y += SECTION_V_GAP;
 
-  drawPinkRect(doc, M, y, contentW, 16);
-  drawText(doc, "1. Data do 1º dia de aplicação.", M + 2, y + 5, 7.4);
+  drawPinkRect(doc, M, y, contentW, 18);
+  drawText(doc, "1. Data do 1º dia de aplicação.", M + 2, y + 6, 7.4);
   const dateBoxW = 4.6;
   const dateFieldW = dateBoxW * 8 + 2 * 3.6;
   const dateX = rightX - dateFieldW - 2;
-  drawCodeBoxes(doc, dateX, y + 2, [data.options.dateDay[0] || "", data.options.dateDay[1] || ""], dateBoxW, 7);
-  drawText(doc, "/", dateX + dateBoxW * 2 + 1.2, y + 5.5, 9, "bold", "center", "middle");
-  drawCodeBoxes(doc, dateX + dateBoxW * 2 + 3.2, y + 2, [data.options.dateMonth[0] || "", data.options.dateMonth[1] || ""], dateBoxW, 7);
-  drawText(doc, "/", dateX + dateBoxW * 4 + 4.4, y + 5.5, 9, "bold", "center", "middle");
-  drawCodeBoxes(doc, dateX + dateBoxW * 4 + 6.4, y + 2, [
+  drawCodeBoxes(doc, dateX, y + 3, [data.options.dateDay[0] || "", data.options.dateDay[1] || ""], dateBoxW, 7);
+  drawText(doc, "/", dateX + dateBoxW * 2 + 1.2, y + 6.5, 9, "bold", "center", "middle");
+  drawCodeBoxes(doc, dateX + dateBoxW * 2 + 3.2, y + 3, [data.options.dateMonth[0] || "", data.options.dateMonth[1] || ""], dateBoxW, 7);
+  drawText(doc, "/", dateX + dateBoxW * 4 + 4.4, y + 6.5, 9, "bold", "center", "middle");
+  drawCodeBoxes(doc, dateX + dateBoxW * 4 + 6.4, y + 3, [
     data.options.dateYear[0] || "",
     data.options.dateYear[1] || "",
     data.options.dateYear[2] || "",
     data.options.dateYear[3] || "",
   ], dateBoxW, 7);
-  y += 16;
+  y += 18;
 
-  drawPinkRect(doc, M, y, contentW, 12);
+  drawPinkRect(doc, M, y, contentW, 14);
   const timeBoxW = 4.6;
   const hmFieldW = timeBoxW * 4 + 2.2;
   const q3FieldX = rightX - hmFieldW - 2;
   const q3TextX = q3FieldX - 56;
   const q2FieldX = q3TextX - hmFieldW - 16;
 
-  drawText(doc, "2. Início do 1º dia de aplicação.", M + 2, y + 5, 7.0);
-  drawCodeBoxes(doc, q2FieldX, y + 2, [data.options.startHour[0] || "", data.options.startHour[1] || ""], timeBoxW, 7);
-  drawText(doc, ":", q2FieldX + timeBoxW * 2 + 0.9, y + 5.5, 9, "bold", "center", "middle");
-  drawCodeBoxes(doc, q2FieldX + timeBoxW * 2 + 2.1, y + 2, [data.options.startMinute[0] || "", data.options.startMinute[1] || ""], timeBoxW, 7);
+  drawText(doc, "2. Início do 1º dia de aplicação.", M + 2, y + 6, 7.0);
+  drawCodeBoxes(doc, q2FieldX, y + 3, [data.options.startHour[0] || "", data.options.startHour[1] || ""], timeBoxW, 7);
+  drawText(doc, ":", q2FieldX + timeBoxW * 2 + 0.9, y + 6.5, 9, "bold", "center", "middle");
+  drawCodeBoxes(doc, q2FieldX + timeBoxW * 2 + 2.1, y + 3, [data.options.startMinute[0] || "", data.options.startMinute[1] || ""], timeBoxW, 7);
 
-  drawText(doc, "3. Término do 1º dia de aplicação.", q3TextX, y + 5, 7.0);
-  drawCodeBoxes(doc, q3FieldX, y + 2, [data.options.endHour[0] || "", data.options.endHour[1] || ""], timeBoxW, 7);
-  drawText(doc, ":", q3FieldX + timeBoxW * 2 + 0.9, y + 5.5, 9, "bold", "center", "middle");
-  drawCodeBoxes(doc, q3FieldX + timeBoxW * 2 + 2.1, y + 2, [data.options.endMinute[0] || "", data.options.endMinute[1] || ""], timeBoxW, 7);
-  y += 12;
+  drawText(doc, "3. Término do 1º dia de aplicação.", q3TextX, y + 6, 7.0);
+  drawCodeBoxes(doc, q3FieldX, y + 3, [data.options.endHour[0] || "", data.options.endHour[1] || ""], timeBoxW, 7);
+  drawText(doc, ":", q3FieldX + timeBoxW * 2 + 0.9, y + 6.5, 9, "bold", "center", "middle");
+  drawCodeBoxes(doc, q3FieldX + timeBoxW * 2 + 2.1, y + 3, [data.options.endMinute[0] || "", data.options.endMinute[1] || ""], timeBoxW, 7);
+  y += 14;
 
-  const Q4_BOX_H = 42;
+  const Q4_BOX_H = 50;
   drawPinkRect(doc, M, y, contentW, Q4_BOX_H);
-  drawText(doc, "4. Caso a aplicação do(s) teste(s) NÃO tenha ocorrido, informe o motivo no campo abaixo.", M + 2, y + 5, 7.2);
-  fillTextInOpenBox(doc, data.options.didNotOccurReason, M, y, contentW, Q4_BOX_H, 2.5, y + 10, 4.2);
-  y += Q4_BOX_H + 4;
+  drawText(doc, "4. Caso a aplicação do(s) teste(s) NÃO tenha ocorrido, informe o motivo no campo abaixo.", M + 2, y + 5.5, 7.2);
+  fillTextInOpenBox(doc, data.options.didNotOccurReason, M, y, contentW, Q4_BOX_H, OPEN_PAD_X, y + 12.5);
+  y += Q4_BOX_H + SECTION_V_GAP;
 
-  const Q5_H = 36;
-  drawPinkRect(doc, M, y, contentW, Q5_H);
+  const Q5_H = 44;
+  const q5Top = y;
+  drawPinkRect(doc, M, q5Top, contentW, Q5_H);
   drawText(
     doc,
     "5. Indique as ocorrências que incomodaram, mas não impediram a aplicação do(s) teste(s). Detalhe as ocorrências no campo 4.",
     M + 2,
-    y + 5,
+    q5Top + 5.5,
     7.2
   );
-  drawOccurrenceOptions(doc, M, y + 10, contentW, data.options);
+  const afterOccurrence = drawOccurrenceOptions(doc, M, q5Top + 11, contentW, data.options);
   if (data.options.occurrenceDetail5?.trim()) {
-    const det = fitSingleLine(doc, `Detalhes: ${data.options.occurrenceDetail5.trim()}`, contentW - 4, 7.1);
+    const det = fitSingleLine(doc, `Detalhes: ${data.options.occurrenceDetail5.trim()}`, contentW - OPEN_PAD_X * 2, 7.1);
     doc.setFont("helvetica", "italic");
     doc.setFontSize(7.1);
     doc.setTextColor(...C.text);
-    doc.text(det, M + 2, y + 29, { align: "left", baseline: "alphabetic" });
+    doc.text(det, M + OPEN_PAD_X, afterOccurrence + 1.5, { align: "left", baseline: "alphabetic" });
   }
-  y += Q5_H;
+  y += Q5_H + SECTION_V_GAP;
 
-  const Q6_BOX_H = 50;
+  const Q6_BOX_H = 56;
   drawPinkRect(doc, M, y, contentW, Q6_BOX_H);
   drawText(
     doc,
     "6. Registre neste campo, de forma clara e objetiva, todas as ocorrências que interferiram, mas não impediram a realização da aplicação.",
     M + 2,
-    y + 5,
+    y + 5.5,
     7.2
   );
-  const checkCx = M + 2 + MARK_RADIUS_MM + 0.5;
-  const checkCy = y + 11;
+  const checkCx = M + 2 + MARK_RADIUS_MM + 0.8;
+  const checkCy = y + 12.5;
   drawMarkCircle(doc, checkCx, checkCy, data.options.noOccurrences);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.2);
   doc.setTextColor(...C.text);
-  doc.text("Não houve ocorrências.", M + 8, checkCy, { align: "left", baseline: "middle" });
-  fillTextInOpenBox(doc, data.options.occurrenceDetail6, M, y, contentW, Q6_BOX_H, 2.5, y + 16, 4.2);
+  doc.text("Não houve ocorrências.", M + 9, checkCy, { align: "left", baseline: "middle" });
+  fillTextInOpenBox(doc, data.options.occurrenceDetail6, M, y, contentW, Q6_BOX_H, OPEN_PAD_X, y + 19.5);
 }
 
 /** Itens 7–12: duas caixas no modelo oficial (valores 0–99). */
@@ -431,21 +492,71 @@ const Q712_BOX_W = 6;
 function drawValueLineItem(doc: jsPDF, number: string, text: string, y: number, value: string): number {
   const pageW = doc.internal.pageSize.getWidth();
   const contentW = pageW - 2 * M;
-  drawPinkRect(doc, M, y, contentW, 12);
+  drawPinkRect(doc, M, y, contentW, Q712_ROW_H);
   const digits = String(value ?? "")
     .replace(/\D/g, "")
     .slice(0, Q712_MAX_BOXES);
   const padded = digits.padStart(Q712_MAX_BOXES, " ");
   const boxes = padded.split("").map((ch) => (ch === " " ? "" : ch));
   const boxesTotalW = Q712_MAX_BOXES * Q712_BOX_W;
-  const labelMaxW = Math.max(40, contentW - boxesTotalW - 6);
+  const labelMaxW = Math.max(40, contentW - boxesTotalW - 8);
   const labelText = fitSingleLine(doc, `${number}. ${text}`, labelMaxW, 7.2);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.2);
   doc.setTextColor(...C.text);
-  doc.text(labelText, M + 2, y + 6, { align: "left", baseline: "middle" });
-  drawCodeBoxes(doc, M + contentW - 2 - boxesTotalW, y + 2.2, boxes, Q712_BOX_W, 7);
-  return y + 12;
+  doc.text(labelText, M + 2.5, y + Q712_ROW_H / 2, { align: "left", baseline: "middle" });
+  const boxY = y + (Q712_ROW_H - 7) / 2;
+  drawCodeBoxes(doc, M + contentW - 2.5 - boxesTotalW, boxY, boxes, Q712_BOX_W, 7);
+  return y + Q712_ROW_H + Q712_ROW_GAP;
+}
+
+/** CPF visual xxx.yyy.zzz-aa: caixas só nos 11 dígitos; `.` e `-` entre grupos. */
+function drawCpfMaskedBoxes(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  cpfRaw: string,
+  digitBoxW: number,
+  digitBoxH: number
+): void {
+  const digits = cpfRaw.replace(/\D/g, "").slice(0, 11).padEnd(11, " ");
+  const cy = y + digitBoxH / 2;
+  let curX = x;
+
+  const drawDigit = (idx: number) => {
+    const ch = digits[idx];
+    drawPinkRect(doc, curX, y, digitBoxW, digitBoxH);
+    if (ch && ch !== " ") {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(...C.text);
+      doc.text(ch, curX + digitBoxW / 2, cy, { align: "center", baseline: "middle" });
+    }
+    curX += digitBoxW;
+  };
+
+  const drawSep = (sep: string, sepW: number) => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...C.text);
+    doc.text(sep, curX + sepW / 2, cy, { align: "center", baseline: "middle" });
+    curX += sepW;
+  };
+
+  drawDigit(0);
+  drawDigit(1);
+  drawDigit(2);
+  drawSep(".", 1.6);
+  drawDigit(3);
+  drawDigit(4);
+  drawDigit(5);
+  drawSep(".", 1.6);
+  drawDigit(6);
+  drawDigit(7);
+  drawDigit(8);
+  drawSep("-", 2);
+  drawDigit(9);
+  drawDigit(10);
 }
 
 function drawSignatureBlock(
@@ -458,18 +569,40 @@ function drawSignatureBlock(
 ): number {
   const pageW = doc.internal.pageSize.getWidth();
   const contentW = pageW - 2 * M;
-  const gap = 12;
-  const leftW = 80;
+  const gap = 10;
+  const leftW = 76;
   const rightW = contentW - leftW - gap;
   const rightX = M + leftW + gap;
+  const boxH = 13;
+  const innerPad = 2.4;
+  const digitBoxH = 6.8;
+  const sepTotal = 1.6 + 1.6 + 2;
+  const avail = Math.max(0, rightW - 2 * innerPad - sepTotal);
+  const digitBoxW = Math.max(4.4, avail / 11);
+
   drawText(doc, leftLabel, M, y, 7.8);
   drawText(doc, rightLabel, rightX, y, 7.8);
-  drawLinedBox(doc, M, y + 2, leftW, 18, 6);
-  fillTextLines(doc, leftValue, M, y + 2, leftW, 18, 6);
-  drawLinedBox(doc, rightX, y + 2, rightW, 18, 6);
-  const cpf = rightValue.replace(/\D/g, "").slice(0, 11).padEnd(11, " ");
-  drawCodeBoxes(doc, rightX + 2, y + 4, cpf.split(""), 6.7, 7);
-  return y + 27;
+
+  drawPinkRect(doc, M, y + 2, leftW, boxH);
+  const sigLineY = y + 2 + boxH - 2;
+  doc.setDrawColor(...C.pink);
+  doc.setLineWidth(PINK_LW);
+  doc.line(M + 2, sigLineY, M + leftW - 2, sigLineY);
+
+  const name = (leftValue || "").replace(/\s+/g, " ").trim();
+  if (name) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.4);
+    doc.setTextColor(...C.text);
+    const line = fitSingleLine(doc, name, leftW - 4, 7.4);
+    doc.text(line, M + 2, sigLineY - 0.6, { align: "left", baseline: "bottom" });
+  }
+
+  drawPinkRect(doc, rightX, y + 2, rightW, boxH);
+  const cpfY = y + 2 + (boxH - digitBoxH) / 2;
+  drawCpfMaskedBoxes(doc, rightX + innerPad, cpfY, rightValue, digitBoxW, digitBoxH);
+
+  return y + 2 + boxH + 9;
 }
 
 function drawPage2(doc: jsPDF, data: AtaSalaPdfData): void {
@@ -504,7 +637,7 @@ function drawPage2(doc: jsPDF, data: AtaSalaPdfData): void {
     y,
     data.options.q12SpecialSupportRoom
   );
-  y += 12;
+  y += 6;
 
   y = drawSignatureBlock(
     doc,
