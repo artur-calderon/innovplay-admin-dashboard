@@ -1,8 +1,10 @@
 /**
  * Normaliza o array `ranking` da rota `/evaluation-results/avaliacoes`
  * (formato plano tipo RankingItem ou aninhado com `aluno` + `posicao`).
- * Ordem relativa: `posicao` do backend; só entram alunos com nota, proficiência e nível válidos
- * (> 0 e nível não vazio); as posições exibidas são renumeradas 1..n nessa ordem.
+ * Ordem relativa: `posicao` do backend; mantém participantes mesmo com nota/proficiência 0,
+ * desde que `status` (ou `status_geral`) indique avaliação concluída (ou omitido —
+ * tratado como concluída por compatibilidade). Exclui não participantes (ex.: pendente).
+ * Posições exibidas são renumeradas 1..n na ordem resultante.
  */
 
 export type EvaluationResultsRankingStudentRow = {
@@ -37,12 +39,37 @@ function str(v: unknown): string {
   return v == null ? '' : String(v).trim();
 }
 
-/** Nota e proficiência numéricas > 0 e nível de proficiência preenchido (como no backend). */
-function rowHasNotaProficienciaENivel(r: EvaluationResultsRankingStudentRow): boolean {
-  const notaOk = Number.isFinite(r.nota) && r.nota > 0;
-  const profOk = Number.isFinite(r.proficiencia) && r.proficiencia > 0;
-  const nivelOk = r.classificacao.trim().length > 0;
-  return notaOk && profOk && nivelOk;
+function participationStatusFromSource(src: Record<string, unknown>): 'concluida' | 'pendente' {
+  const raw = str(src.status ?? src.status_geral);
+  if (!raw) return 'concluida';
+  const low = raw.toLowerCase();
+  if (
+    low === 'concluida' ||
+    low === 'concluída' ||
+    low === 'concluido' ||
+    low === 'concluído' ||
+    low === 'finalizada' ||
+    low === 'finalizado'
+  ) {
+    return 'concluida';
+  }
+  return 'pendente';
+}
+
+/** Item aninhado: `status` no wrapper tem precedência sobre o objeto `aluno`. */
+function participationStatusForNestedEntry(
+  outer: Record<string, unknown>,
+  nested: Record<string, unknown>
+): 'concluida' | 'pendente' {
+  if (str(outer.status ?? outer.status_geral)) return participationStatusFromSource(outer);
+  return participationStatusFromSource(nested);
+}
+
+/** Inclui concluídos com nota/proficiência finitas ≥ 0; nível vazio não descarta linha. */
+function rowEligibleForRanking(r: EvaluationResultsRankingStudentRow): boolean {
+  if (r.status !== 'concluida') return false;
+  if (!Number.isFinite(r.nota) || !Number.isFinite(r.proficiencia)) return false;
+  return r.nota >= 0 && r.proficiencia >= 0;
 }
 
 /**
@@ -84,7 +111,7 @@ export function normalizeEvaluationResultsRanking(raw: unknown[]): EvaluationRes
             ? num(nested.total_em_branco, 0)
             : Math.max(0, num(nested.total_questoes, 0) - num(nested.total_respondidas, 0)),
         tempo_gasto: 0,
-        status: 'concluida',
+        status: participationStatusForNestedEntry(row, nested),
         posicao,
       });
       continue;
@@ -109,7 +136,7 @@ export function normalizeEvaluationResultsRanking(raw: unknown[]): EvaluationRes
       erros: num(row.total_erros, 0),
       em_branco: num(row.total_em_branco, 0),
       tempo_gasto: 0,
-      status: 'concluida',
+      status: participationStatusFromSource(row),
       posicao,
     });
   }
@@ -119,6 +146,6 @@ export function normalizeEvaluationResultsRanking(raw: unknown[]): EvaluationRes
     return (a.nome || '').localeCompare(b.nome || '', undefined, { sensitivity: 'base' });
   });
 
-  const eligible = rows.filter(rowHasNotaProficienciaENivel);
+  const eligible = rows.filter(rowEligibleForRanking);
   return eligible.map((r, index) => ({ ...r, posicao: index + 1 }));
 }

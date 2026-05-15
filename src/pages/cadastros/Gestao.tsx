@@ -215,6 +215,11 @@ function sanitizeEmail(value: unknown): string {
   return withoutPrefix.replace(/[^a-zA-Z0-9._%+\-@]/g, "");
 }
 
+function isSchoolScopedExportRole(role: string | null | undefined): boolean {
+  const normalized = normalizeRole(role);
+  return normalized === "diretor" || normalized === "coordenador" || normalized === "professor";
+}
+
 function mergeLeadershipCountsIntoReport(
   report: UsersCountsReportResponse,
   leadershipBySchool: Map<string, LeadershipCounts>
@@ -700,7 +705,21 @@ export default function Gestao() {
 
   const resolveCurrentUserSchoolScope = useCallback(
     async (cityId: string): Promise<SchoolScopeInfo | null> => {
-      if (!isSchoolScopedRole(user.role) || !user.id || !cityId) return null;
+      if (!isSchoolScopedExportRole(user.role) || !user.id || !cityId) return null;
+      if (normalizeRole(user.role) === "professor") {
+        try {
+          const ctx = await getUserHierarchyContext(user.id, user.role);
+          const schoolId = cleanText(ctx?.school?.id);
+          if (schoolId) {
+            return {
+              id: schoolId,
+              name: cleanText(ctx?.school?.name) || "Escola",
+            };
+          }
+        } catch (error) {
+          console.warn("Não foi possível resolver escola do professor:", error);
+        }
+      }
       try {
         const res = await api.get(`/managers/city/${cityId}`);
         const list = Array.isArray(res.data) ? res.data : res.data?.managers ?? [];
@@ -764,7 +783,7 @@ export default function Gestao() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!isSchoolScopedRole(user.role)) {
+    if (!isSchoolScopedExportRole(user.role)) {
       setCurrentUserSchoolScope(null);
       return;
     }
@@ -1004,11 +1023,11 @@ export default function Gestao() {
     user.role,
   ]);
 
-  const canExportSchoolSummary = user.role === "admin" || user.role === "tecadm" || isSchoolScopedRole(user.role);
+  const canExportSchoolSummary = user.role === "admin" || user.role === "tecadm" || isSchoolScopedExportRole(user.role);
   const canExportSchoolByRole = useCallback(
     (schoolId: string): boolean => {
       if (!canExportSchoolSummary) return false;
-      if (!isSchoolScopedRole(user.role)) return true;
+      if (!isSchoolScopedExportRole(user.role)) return true;
       return Boolean(currentUserSchoolScope?.id && currentUserSchoolScope.id === schoolId);
     },
     [canExportSchoolSummary, currentUserSchoolScope?.id, user.role]
