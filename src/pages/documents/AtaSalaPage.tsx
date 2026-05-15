@@ -965,7 +965,7 @@ export default function AtaSalaPage() {
           <div className="space-y-1.5">
             <Label>1º dia de aplicação (data)</Label>
             <p className="text-xs text-muted-foreground">
-              Ano {ATA_YEAR_MIN}–{ATA_YEAR_MAX}; mês 01–12; dia conforme o mês (fevereiro 28 ou 29 em bissexto).
+              Ano {ATA_YEAR_MIN}–{ATA_YEAR_MAX};
             </p>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <div className="space-y-1.5">
