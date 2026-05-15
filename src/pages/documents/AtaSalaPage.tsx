@@ -54,6 +54,76 @@ function digitsOnlyMax2(raw: string): string {
   return raw.replace(/\D/g, "").slice(0, Q712_MAX_DIGITS);
 }
 
+/** Data da ata: ano permitido e dia coerente com mês/ano (incl. fevereiro bissexto). */
+const ATA_YEAR_MIN = 2026;
+const ATA_YEAR_MAX = 2050;
+
+function isLeapYear(y: number): boolean {
+  return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+}
+
+function daysInMonth(month: number, year: number): number {
+  if (month < 1 || month > 12) return 31;
+  if (month === 2) return isLeapYear(year) ? 29 : 28;
+  const days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return days[month - 1];
+}
+
+function maxDayForMonthYear(monthStr: string, yearStr: string): number {
+  const m = parseInt(monthStr, 10);
+  if (!Number.isFinite(m) || m < 1 || m > 12) return 31;
+  if (yearStr.length !== 4) {
+    if (m === 2) return 29;
+    if ([4, 6, 9, 11].includes(m)) return 30;
+    return 31;
+  }
+  let y = parseInt(yearStr, 10);
+  if (!Number.isFinite(y)) return 31;
+  y = Math.min(ATA_YEAR_MAX, Math.max(ATA_YEAR_MIN, y));
+  return daysInMonth(m, y);
+}
+
+function sanitizeAtaYear(rawDigits: string): string {
+  const d = rawDigits.slice(0, 4);
+  if (d.length < 4) return d;
+  let y = parseInt(d, 10);
+  if (!Number.isFinite(y)) return String(ATA_YEAR_MIN);
+  if (y < ATA_YEAR_MIN) y = ATA_YEAR_MIN;
+  if (y > ATA_YEAR_MAX) y = ATA_YEAR_MAX;
+  return String(y);
+}
+
+function sanitizeAtaMonth(rawDigits: string): string {
+  const d = rawDigits.slice(0, 2);
+  if (d.length === 0) return "";
+  if (d.length === 1) {
+    const c = d[0];
+    if (c === "0" || c === "1") return d;
+    if (c >= "2" && c <= "9") return `0${c}`;
+    return "";
+  }
+  let m = parseInt(d, 10);
+  if (!Number.isFinite(m) || m < 1) return "01";
+  if (m > 12) return "12";
+  return String(m).padStart(2, "0");
+}
+
+function sanitizeAtaDay(rawDigits: string, monthStr: string, yearStr: string): string {
+  const d = rawDigits.slice(0, 2);
+  if (d.length === 0) return "";
+  if (d.length === 1) {
+    const c = d[0];
+    if (c === "0") return d;
+    if (c >= "1" && c <= "9") return d;
+    return "";
+  }
+  const day = parseInt(d, 10);
+  const maxD = maxDayForMonthYear(monthStr, yearStr);
+  if (!Number.isFinite(day) || day < 1) return "01";
+  if (day > maxD) return String(maxD).padStart(2, "0");
+  return String(day).padStart(2, "0");
+}
+
 const DEFAULT_OPTIONS: AtaOptions = {
   dateDay: "",
   dateMonth: "",
@@ -559,6 +629,23 @@ export default function AtaSalaPage() {
     setOptions((prev) => ({ ...prev, [key]: digits }));
   };
 
+  const setDateField = (key: "dateDay" | "dateMonth" | "dateYear", raw: string) => {
+    const digits = normalizeDigits(raw).slice(0, key === "dateYear" ? 4 : 2);
+    setOptions((prev) => {
+      const dateYear = key === "dateYear" ? sanitizeAtaYear(digits) : prev.dateYear;
+      const dateMonth = key === "dateMonth" ? sanitizeAtaMonth(digits) : prev.dateMonth;
+      let dateDay =
+        key === "dateDay" ? sanitizeAtaDay(digits, prev.dateMonth, prev.dateYear) : prev.dateDay;
+      if (key === "dateMonth" && prev.dateDay.length === 2) {
+        dateDay = sanitizeAtaDay(prev.dateDay, dateMonth, prev.dateYear);
+      }
+      if (key === "dateYear" && prev.dateDay.length === 2) {
+        dateDay = sanitizeAtaDay(prev.dateDay, prev.dateMonth, dateYear);
+      }
+      return { ...prev, dateYear, dateMonth, dateDay };
+    });
+  };
+
   const pdfData = useMemo<AtaSalaPdfData>(
     () => ({
       nomeAvaliacao,
@@ -858,18 +945,46 @@ export default function AtaSalaPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <div className="space-y-1.5">
-              <Label>Dia</Label>
-              <Input maxLength={2} value={options.dateDay} onChange={(e) => setOpt("dateDay", e.target.value.replace(/\D/g, "").slice(0, 2))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Mês</Label>
-              <Input maxLength={2} value={options.dateMonth} onChange={(e) => setOpt("dateMonth", e.target.value.replace(/\D/g, "").slice(0, 2))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Ano</Label>
-              <Input maxLength={4} value={options.dateYear} onChange={(e) => setOpt("dateYear", e.target.value.replace(/\D/g, "").slice(0, 4))} />
+          <div className="space-y-1.5">
+            <Label>1º dia de aplicação (data)</Label>
+            <p className="text-xs text-muted-foreground">
+              Ano {ATA_YEAR_MIN}–{ATA_YEAR_MAX}; mês 01–12; dia conforme o mês (fevereiro 28 ou 29 em bissexto).
+            </p>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="ata-date-day">Dia</Label>
+                <Input
+                  id="ata-date-day"
+                  maxLength={2}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={options.dateDay}
+                  onChange={(e) => setDateField("dateDay", e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ata-date-month">Mês</Label>
+                <Input
+                  id="ata-date-month"
+                  maxLength={2}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={options.dateMonth}
+                  onChange={(e) => setDateField("dateMonth", e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="ata-date-year">Ano</Label>
+                <Input
+                  id="ata-date-year"
+                  maxLength={4}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder={`${ATA_YEAR_MIN}–${ATA_YEAR_MAX}`}
+                  value={options.dateYear}
+                  onChange={(e) => setDateField("dateYear", e.target.value)}
+                />
+              </div>
             </div>
           </div>
 
