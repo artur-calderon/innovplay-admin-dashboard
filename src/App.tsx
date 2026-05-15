@@ -46,6 +46,7 @@ const AnswerSheetCorrection = React.lazy(() => import("@/pages/answer-sheet/Answ
 const RelatoriosAcertoNiveisHub = React.lazy(() => import("@/pages/reports/RelatoriosAcertoNiveisHub"));
 const RelatoriosRelatorioEscolarHub = React.lazy(() => import("@/pages/reports/RelatoriosRelatorioEscolarHub"));
 const RelatoriosResultadosHub = React.lazy(() => import("@/pages/reports/RelatoriosResultadosHub"));
+const RankingHub = React.lazy(() => import("@/pages/reports/RankingHub"));
 const RelatorioApresentacao19Slides = React.lazy(() => import("@/pages/reports/RelatorioApresentacao19Slides"));
 const InseSaebReport = React.lazy(() => import("@/pages/reports/InseSaebReport"));
 const PneerqReport = React.lazy(() => import("@/pages/reports/PneerqReport"));
@@ -132,6 +133,7 @@ const Settings = React.lazy(() => import("@/pages/profile/Settings"));
 const Avisos = React.lazy(() => import("@/pages/dashboard/Avisos"));
 const EditQuickLinks = React.lazy(() => import("@/pages/dashboard/EditQuickLinks"));
 const ListaFrequencia = React.lazy(() => import("@/pages/dashboard/ListaFrequencia"));
+const AtaSalaPage = React.lazy(() => import("@/pages/documents/AtaSalaPage"));
 const StudentAgenda = React.lazy(() => import("@/pages/agenda/StudentAgendaOptimized"));
 const AdminAgenda = React.lazy(() => import("@/pages/agenda/AdminAgendaOptimized"));
 const IdebCalculatorPage = React.lazy(() => import("@/pages/reports/IdebCalculatorPage"));
@@ -302,6 +304,7 @@ const App = () => {
                 }
               />
               <Route path="/app/lista-frequencia" element={<PrivateRoute><ListaFrequencia /></PrivateRoute>} />
+              <Route path="/app/documentos/ata-sala" element={<PrivateRoute><AtaSalaPage /></PrivateRoute>} />
               <Route path="/app/certificados" element={<PrivateRoute><Certificates /></PrivateRoute>} />
               <Route path="/app/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
               <Route path="/app/olimpiadas" element={<PrivateRoute><Olimpiadas /></PrivateRoute>} />
@@ -432,6 +435,15 @@ const App = () => {
                 element={
                   <PrivateRoute>
                     <Navigate to="/app/relatorios/relatorio-escolar?aba=cartao" replace />
+                  </PrivateRoute>
+                }
+              />
+              <Route path="/app/relatorios/ranking" element={<PrivateRoute><RankingHub /></PrivateRoute>} />
+              <Route
+                path="/app/ranking"
+                element={
+                  <PrivateRoute>
+                    <Navigate to="/app/relatorios/ranking" replace />
                   </PrivateRoute>
                 }
               />

@@ -311,10 +311,13 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
           ]
         },
         {
-          icon: ClipboardList,
-          label: "Lista de Frequência",
-          href: "/app/lista-frequencia",
-          role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
+          icon: FileText,
+          label: "Documentos",
+          role: ["admin", "professor", "diretor", "coordenador", "tecadm"],
+          children: [
+            { icon: ClipboardList, label: "Lista de Frequência", href: "/app/lista-frequencia", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: FileText, label: "Impressão de Ata de Sala", href: "/app/documentos/ata-sala", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+          ]
         },
         {
           icon: Target,
@@ -349,6 +352,7 @@ export default function Sidebar({ onMobileMenuClose, isMobileOpen = false }: Sid
             { icon: PieChart, label: "Análise das Avaliações", href: "/app/relatorios/analise-avaliacoes", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: School, label: "Relatório Escolar", href: "/app/relatorios/relatorio-escolar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: Presentation, label: "Relatório Apresentação", href: "/app/relatorios/relatorio-apresentacao-19-slides", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: Medal, label: "Relatório de ranking", href: "/app/relatorios/ranking", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
           ]
         },
       ]
